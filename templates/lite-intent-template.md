@@ -119,7 +119,7 @@ DRAFT
 
 ### `bug` — Reproduction
 
-[Verbatim failing command, log excerpt, or step-by-step repro. Required for `type: bug`. The first IB scaffolded by `--decompose --bug-reproduction` is the failing test that this Reproduction proves; the Verification predicate's `bug-reproduction-fixed` check runs that test.]
+[Verbatim failing command, log excerpt, or step-by-step repro. Required for `type: bug`. The first bead produced at `--decompose` is the failing test that proves this Reproduction — and it is the Intent's ADR-029 Outcome Verification test (red-first); the Verification predicate's `bug-reproduction-fixed` check runs that test.]
 
 ### `nfr` — Metric and Target
 

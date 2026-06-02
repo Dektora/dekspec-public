@@ -87,7 +87,16 @@ Use the `target_dir` / `allocate_canonical` decision from Step 3.6 (the `dekspec
 2. Save the Intent (Status `DRAFT`):
    - **Default (provisional, `allocate_canonical=false`):** save to `<target_dir>/INT-provisional-<slug>.md` — the canonical graph and `dekspec/intent-index.md` are untouched. (This mirrors `dekspec library new-provisional INT <slug>`; you may run that verb to scaffold the skeleton + branch in one shot.) Skip steps 3–4's canonical-index update; instead create the branch `int/INT-provisional-<slug>` and hand off.
    - **Opt-out (`--canonical`, `allocate_canonical=true`):** save to `dekspec/intents/INT-NNN-<slug>.md` using the INT-NNN allocated in Step 3.6, then continue with steps 3–4 below.
-3. Create the branch: `git checkout -b int/INT-NNN-<slug>` (canonical) or `int/INT-provisional-<slug>` (provisional). The Intent file is in the working tree on the new branch — commit it as the first commit on the branch.
+3. **Worktree-collision guard (ds-2tky).** Before creating the branch, run the guard so a second Intent lifecycle in the same checkout cannot flip HEAD against this one:
+
+   ```
+   python plugins/dekspec/skills/write-intent/scripts/worktree_guard.py --new-branch int/INT-NNN-<slug>
+   ```
+
+   - Exit `2` → HEAD is on another `int/INT-*` branch. **Do NOT `git checkout -b` on the shared tree** — branching one Intent off another's HEAD lets their commits collide and pollutes diff-confinement at `--testpass`. Create an isolated worktree from a clean base (the guard prints the exact `git worktree add … -b int/INT-NNN-<slug> main` command), then run the Intent lifecycle inside that worktree.
+   - Exit `0` → safe; proceed. (An advisory may list other in-flight Intent branches — heed it if a coding/spec session for one of them is active in this checkout.)
+
+   Then create the branch: `git checkout -b int/INT-NNN-<slug>` (canonical) or `int/INT-provisional-<slug>` (provisional). The Intent file is in the working tree on the new branch — commit it as the first commit on the branch.
 4. (Canonical only) Update `dekspec/intent-index.md` (created at P1.5; until then, log "intent-index.md not yet present — index update will be backfilled when P1.5 lands" and continue). Append a row to the Active queue with INT-NNN, title, type, status, branch, created date, owner.
 
 ### Step 6: Hand Off

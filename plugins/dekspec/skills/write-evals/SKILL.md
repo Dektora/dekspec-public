@@ -10,7 +10,7 @@ argument-hint: [--help | --teaching | --audit | --review | --resync | --revise |
 related_skills: [write-ibs, write-tests, write-beads, write-intent, exec-coding-session]
 ---
 
-> **Vendored asset paths (INT-097):** Paths below like `dekspec/templates/X-template.md` and `dekspec/dekspec-<doc>.md` reference the consumer-vendored layout. If your install is pip-only (no `scripts/install-dekspec.sh` run), resolve any reference via `dekspec resource template X` or `dekspec resource doc <name>` (consumer-fs override wins when present). See [`_lib/vendored_assets.md`](../_lib/vendored_assets.md) for the full resolution rule.
+> **Vendored asset paths:** Template + doc paths below resolve via `dekspec resource template <name>` / `dekspec resource doc <name>` (wheel-bundled since v0.91.0; consumer-fs override wins when present). See [`_lib/vendored_assets.md`](../_lib/vendored_assets.md) for the full resolution rule.
 
 Write or maintain probabilistic behavioral evals for beads that produce model output. Evals codify the boundary between *deterministic* test assertions (which the coding agent writes during the session) and *probabilistic* model-output checks (which the engineer authors before the session begins, because the coding agent cannot be trusted to grade its own output).
 

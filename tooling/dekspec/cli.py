@@ -2533,13 +2533,23 @@ def _check_plugin_version_drift() -> tuple[str, str] | None:
         plugin_cache = Path.home() / ".claude" / "plugins" / "cache" / "dekspec" / "dekspec"
         if not plugin_cache.is_dir():
             return ("skip", "plugin not installed under ~/.claude/plugins/cache/dekspec/dekspec/")
-        installed_versions = sorted(
-            (p.name for p in plugin_cache.iterdir() if p.is_dir()),
-            reverse=True,
-        )
-        if not installed_versions:
+        version_dirs = [p.name for p in plugin_cache.iterdir() if p.is_dir()]
+        if not version_dirs:
             return ("skip", "plugin cache dir exists but holds no version subdirs")
-        plugin_version = installed_versions[0]
+
+        # Pick the highest version SEMVER-wise, not lexicographically. A lex
+        # sort ranks "0.99.0" above "0.106.0" (because "9" > "1" at the second
+        # component), so a cache that still holds older subdirs left behind by
+        # `claude plugin update` would report false drift (ds-ro98). Parse each
+        # dir name into an int tuple; unparseable names (e.g. a git SHA) sort
+        # last so a real X.Y.Z release always wins when present.
+        def _semver_key(name: str) -> tuple[int, tuple[int, ...]]:
+            try:
+                return (1, tuple(int(p) for p in name.split(".")))
+            except ValueError:
+                return (0, ())
+
+        plugin_version = max(version_dirs, key=_semver_key)
         if plugin_version == cli_version:
             return ("ok", f"CLI={cli_version} plugin={plugin_version}")
         return (

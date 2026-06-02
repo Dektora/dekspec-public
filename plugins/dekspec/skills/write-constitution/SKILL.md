@@ -10,7 +10,7 @@ argument-hint: [--provisional <slug>] [--help | --teaching | --audit | --review 
 related_skills: [write-sv, write-ggc, write-adr, write-ae, write-evals]
 ---
 
-> **Vendored asset paths (INT-097):** Paths below like `dekspec/templates/X-template.md` and `dekspec/dekspec-<doc>.md` reference the consumer-vendored layout. If your install is pip-only (no `scripts/install-dekspec.sh` run), resolve any reference via `dekspec resource template X` or `dekspec resource doc <name>` (consumer-fs override wins when present). See [`_lib/vendored_assets.md`](../_lib/vendored_assets.md) for the full resolution rule.
+> **Vendored asset paths:** Template + doc paths below resolve via `dekspec resource template <name>` / `dekspec resource doc <name>` (wheel-bundled since v0.91.0; consumer-fs override wins when present). See [`_lib/vendored_assets.md`](../_lib/vendored_assets.md) for the full resolution rule.
 
 Write or maintain the project's Constitution — the third L0 singleton (after System Vision and Domain Glossary) that captures standing operational commitments worker agents read at session-load time. The Constitution has exactly eight articles in canonical order: Project Identity (typed pointer to System Vision), Technology Stack, Quality Standards, Architecture Principles (typed `adr_refs`), Development Workflow, Model Configuration, Boundaries (typed `adr_refs` + `ae_refs`), Amendments.
 

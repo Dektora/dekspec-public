@@ -10,7 +10,7 @@ argument-hint: [--canonical] [--provisional <slug>] [--help | --teaching | --aud
 related_skills: [write-intent, orchestrate-intent, write-sv, write-ae]
 ---
 
-> **Vendored asset paths (INT-097):** Paths below like `dekspec/templates/X-template.md` and `dekspec/dekspec-<doc>.md` reference the consumer-vendored layout. If your install is pip-only (no `scripts/install-dekspec.sh` run), resolve any reference via `dekspec resource template X` or `dekspec resource doc <name>` (consumer-fs override wins when present). See [`_lib/vendored_assets.md`](../_lib/vendored_assets.md) for the full resolution rule.
+> **Vendored asset paths:** Template + doc paths below resolve via `dekspec resource template <name>` / `dekspec resource doc <name>` (wheel-bundled since v0.91.0; consumer-fs override wins when present). See [`_lib/vendored_assets.md`](../_lib/vendored_assets.md) for the full resolution rule.
 
 > **Scope of this skill (Phase 2).** A Mission (`MSN-NNN`) holds an ordered queue of Intents that share an outcome, a feature flag, a release boundary, or a kill criterion. Most work in Phase 1 did not need a Mission; single-Intent work skips this skill entirely. A Mission is created when *any* of: the work plausibly decomposes into more than one Intent at first sketch; a feature flag will guard partial state during rollout; multiple Intents need to share an outcome / out-of-scope contract / kill criterion; the work spans more than ~1 week of execution.
 

@@ -10,7 +10,7 @@ argument-hint: [--provisional <slug>] [--help | --teaching | --audit | --review 
 related_skills: [write-ae, write-adr, write-constitution, write-mission, write-ggc]
 ---
 
-> **Vendored asset paths (INT-097):** Paths below like `dekspec/templates/X-template.md` and `dekspec/dekspec-<doc>.md` reference the consumer-vendored layout. If your install is pip-only (no `scripts/install-dekspec.sh` run), resolve any reference via `dekspec resource template X` or `dekspec resource doc <name>` (consumer-fs override wins when present). See [`_lib/vendored_assets.md`](../_lib/vendored_assets.md) for the full resolution rule.
+> **Vendored asset paths:** Template + doc paths below resolve via `dekspec resource template <name>` / `dekspec resource doc <name>` (wheel-bundled since v0.91.0; consumer-fs override wins when present). See [`_lib/vendored_assets.md`](../_lib/vendored_assets.md) for the full resolution rule.
 
 > **Scope of this skill.** The System Vision is the singleton root of the dekspec graph. There is exactly one per system, at `dekspec/system-vision.md` (id: `SYSTEM-VISION`). Subsystem-level descriptions belong in Architecture Elements (`/write-ae`), not in additional Vision documents. If a prior artifact named `Vision Note:` exists, it is a legacy naming — migrate to a System Vision (singleton) or convert to an Architecture Element (subsystem).
 

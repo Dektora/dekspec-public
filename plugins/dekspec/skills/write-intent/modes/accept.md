@@ -41,7 +41,9 @@ If no incubation folder is detected, skip directly to Step 4 (this is the common
 
 Before the Status transition, determine whether this Intent requires bead decomposition as a pre-condition of acceptance.
 
-1. **Read the `beads_before_accept` field** from the Intent's front-matter (parsed IR). The field defaults to `true` for new Intents authored after this gate shipped.
+0. **WS/IB-presence pre-check (no-WS class).** Read the Intent's Coverage Report / Size Assessment / Layer impact analysis. **If the Intent produced zero Working Specs and zero Implementation Briefs** (the no-WS class — most `refactor` / `environment` / `documentation` Intents, where WS fan-in is 0 and beads hang directly off the Intent at `--decompose` per Decision #12), the Bead Authoring Gate is **N/A**: there are no IBs to decompose *yet* (IBs/beads are produced by `--decompose`, which runs only after ACCEPTED). Skip steps 1–3 with the note *"No-WS Intent — bead authoring deferred to `--decompose` (post-ACCEPTED); the accept-time bead gate does not apply."* and proceed to Step 5. This branch is independent of `beads_before_accept`, which governs only the WS→IB→bead chain; for a no-WS Intent the field's `true` default is structurally unreachable (ds-1k2m) and is treated as N/A rather than as a gate to satisfy.
+
+1. **(WS/IBs exist) Read the `beads_before_accept` field** from the Intent's front-matter (parsed IR). The field defaults to `true` for new Intents authored after this gate shipped.
 2. **If `beads_before_accept: true`** (the default):
    - Invoke `/write-beads` with the Intent path as the argument. This decomposes the Intent's Implementation Briefs into atomic bead work-units before the ACCEPTED transition, ensuring the decomposition is reviewed as part of the accept decision.
    - If `/write-beads` surfaces errors or the engineer declines the decomposition, STOP — the Intent stays at `PROPOSED` and no transition occurs.
@@ -53,6 +55,6 @@ Before the Status transition, determine whether this Intent requires bead decomp
 
 1. Flip Status to `ACCEPTED`, bump Modified, and append the Amendment Log row — run `python ../_lib/scripts/artifact_ops.py transition <Intent-path> --from PROPOSED --to ACCEPTED --note "Promoted PROPOSED to ACCEPTED via /write-intent --accept" --engineer <engineer-or-agent>` (surface stderr on non-zero exit and STOP).
 2. Update `dekspec/intent-index.md` — run `python ../_lib/scripts/artifact_ops.py update-index dekspec/intent-index.md --id INT-NNN --status ACCEPTED` (surface stderr on non-zero exit). Or run `dekspec library regen-indexes` for the full deterministic refresh (MSN-015 path).
-3. Surface the next-step message: ACCEPTED Intents become IMPLEMENTING via `--decompose` (Part B). Until Part B ships, the engineer drives decomposition by hand using `/write-beads` (Intent path, P1.7) and `/write-beads` (Intent path with `--bug-reproduction` for bug type, P1.7).
+3. Surface the next-step message: ACCEPTED Intents become IMPLEMENTING via `--decompose`, which scaffolds the IBs/beads. For a `type: bug` Intent the first bead is the failing reproduction test — which is the Intent's ADR-029 Outcome Verification test (red-first), produced through the normal `/write-beads` flow (there is no separate `--bug-reproduction` mode).
 
 **End of Accept Mode.**

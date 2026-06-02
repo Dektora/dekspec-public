@@ -10,7 +10,7 @@ argument-hint: [--canonical] [--provisional <slug>] [--help | --teaching | --aud
 related_skills: [orchestrate-intent, write-ws, write-ibs, write-beads, write-mission]
 ---
 
-> **Vendored asset paths (INT-097):** Paths below like `dekspec/templates/X-template.md` and `dekspec/dekspec-<doc>.md` reference the consumer-vendored layout. If your install is pip-only (no `scripts/install-dekspec.sh` run), resolve any reference via `dekspec resource template X` or `dekspec resource doc <name>` (consumer-fs override wins when present). See [`_lib/vendored_assets.md`](../_lib/vendored_assets.md) for the full resolution rule.
+> **Vendored asset paths:** Template + doc paths below resolve via `dekspec resource template <name>` / `dekspec resource doc <name>` (wheel-bundled since v0.91.0; consumer-fs override wins when present). See [`_lib/vendored_assets.md`](../_lib/vendored_assets.md) for the full resolution rule.
 
 > **Scope of this skill (Phase 1 + Phase 3 complete).** Phase 1: **(no flag)**, **`--analyze`**, **`--accept`** (Part A — v5 Prompt 4), and **`--decompose`**, **`--testpass`**, **`--lock`** (Part B — v5 Prompt 6). Phase 3: **`--sync`**, **`--audit`**, **`--review`**, **`--amend`** (P3.1–P3.4), plus **`--unlock`** — the `LOCKED → PROPOSED` editorial-correction precursor to `--lock`, pairing with it per the CLAUDE.md guardrail. All eleven flags are now implemented; Phase 4 (the autonomous orchestration brain) is **out of scope for this repo** — it lives in `dekfactory`. See `docs/architecture.md` §What does NOT live here.
 

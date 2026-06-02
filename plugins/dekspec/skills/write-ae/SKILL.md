@@ -10,7 +10,7 @@ argument-hint: [--provisional <slug>] [--help | --teaching | --audit | --review 
 related_skills: [write-sv, write-adr, write-ws, write-ic, write-intent]
 ---
 
-> **Vendored asset paths (INT-097):** Paths below like `dekspec/templates/X-template.md` and `dekspec/dekspec-<doc>.md` reference the consumer-vendored layout. If your install is pip-only (no `scripts/install-dekspec.sh` run), resolve any reference via `dekspec resource template X` or `dekspec resource doc <name>` (consumer-fs override wins when present). See [`_lib/vendored_assets.md`](../_lib/vendored_assets.md) for the full resolution rule.
+> **Vendored asset paths:** Template + doc paths below resolve via `dekspec resource template <name>` / `dekspec resource doc <name>` (wheel-bundled since v0.91.0; consumer-fs override wins when present). See [`_lib/vendored_assets.md`](../_lib/vendored_assets.md) for the full resolution rule.
 
 > **Skill rename — DN→AE migration 2026-04-27.** This skill was renamed from the legacy `write-design-note` to `write-ae`. The artifact it produces is an **Architecture Element (AE)**, the post-migration replacement for the legacy Design Note (DN). The mandatory new pieces are: (a) **subtype selection** from the C4-aligned enum (System / Subsystem / Container / Component / Pipeline / Data Model / Cross-Cutting Concern / Platform Concern / Interface Surface / Workflow / Process), (b) a **classifier/router** that refuses to write an AE for ADR/WS/IC/IB-shaped input and redirects to the right skill, and (c) three new audit T-checks (**T10 subtype present**, **T11 boundary defined**, **T12 views present or absence justified**) plus drift checks **D17/D18** that replace the retired D6 NFR exemption (see "AE-specific additions" below).
 >

@@ -514,6 +514,68 @@ def classify_intent_diff(old_text: str, new_text: str) -> list[str]:
     return touched
 
 
+# ADR editorial guard (ds-qxpq). For an ADR the editable surface is the
+# cross-reference + discoverability prose — the `Decision` section (e.g. adding
+# a mantra/principle opening), the `Links` section, and the Related/Linked
+# Architecture Elements section. Everything that constitutes the *decision
+# itself* is behavioral and must route through `--unlock` + `--lock`: Status,
+# the supersession fields, Context, Options Considered, Consequences, and
+# Validation. The guard is a DENY-list of those sections (a change inside any
+# of them refuses) plus a targeted check on the top-of-file supersession lines
+# (which live in the preamble, not under a `## ` heading).
+_ADR_BEHAVIORAL_SECTIONS: dict[str, str] = {
+    # `## ` heading (exact, or prefix-matched for "Context*") -> refusal label
+    "Status": "Status",
+    "Context and Decision Drivers": "Context",
+    "Context": "Context",
+    "Options Considered": "Options Considered",
+    "Consequences": "Consequences",
+    "Validation": "Validation",
+}
+
+_ADR_SUPERSESSION_RE = re.compile(
+    r"^\*(?:Supersedes|Superseded by):\*.*$", re.MULTILINE
+)
+
+
+def _supersession_lines(text: str) -> str:
+    """Return the ADR's top-of-file supersession lines as a stable string."""
+    return "\n".join(_ADR_SUPERSESSION_RE.findall(text))
+
+
+def classify_adr_diff(old_text: str, new_text: str) -> list[str]:
+    """Return behavioral-field labels whose body changed between two ADR texts.
+
+    Empty list == editorial-safe (only Decision / Links / Related AEs / Open
+    Issues / preamble-metadata changed). A non-empty list means the change
+    alters the decision and must go through `--unlock` + `--lock`.
+    """
+    old_sections = _split_sections(old_text)
+    new_sections = _split_sections(new_text)
+    touched: list[str] = []
+    seen: set[str] = set()
+    for heading, label in _ADR_BEHAVIORAL_SECTIONS.items():
+        old_body = old_sections.get(heading)
+        new_body = new_sections.get(heading)
+        if old_body is None and new_body is None:
+            continue
+        if old_body != new_body and label not in seen:
+            touched.append(label)
+            seen.add(label)
+    if _supersession_lines(old_text) != _supersession_lines(new_text):
+        if "Supersession" not in seen:
+            touched.append("Supersession")
+    return touched
+
+
+def _is_adr(path: Path) -> bool:
+    """True when `path` is an ADR (under an `adrs/` dir or named `ADR-NNN-*`)."""
+    name = path.name
+    if name.startswith("ADR-"):
+        return True
+    return "adrs" in {p.name for p in path.parents}
+
+
 def _git_head_text(path: Path) -> str | None:
     """Return the git-HEAD baseline contents of `path`, or None when git is
     unavailable, the file is untracked, or any subprocess error occurs.
@@ -575,18 +637,26 @@ def editorial_amend(
             f"(file may be untracked or git is unavailable). Pass --baseline "
             f"<path-to-prior-version> to classify against an explicit baseline."
         )
-    touched = classify_intent_diff(baseline, text)
+    is_adr = _is_adr(path)
+    touched = classify_adr_diff(baseline, text) if is_adr else classify_intent_diff(baseline, text)
     if touched:
-        # Bead refusal-message contract — name the FIRST offending field.
-        # Per the bead body: "--editorial refused: diff touches behavioral
-        # field <field-name>. Use --amend (without --editorial) for
-        # behavioral revisions; that walk will cascade PROPOSED→DRAFT or
-        # ACCEPTED→DRAFT as designed."
+        # Refusal-message contract — name the FIRST offending field. The
+        # remedy differs by kind: an Intent routes through full `--amend`
+        # (which cascades PROPOSED→DRAFT); a LOCKED ADR is immutable except via
+        # the `--unlock` + `--lock` cycle (ds-qxpq).
         primary = touched[0]
         suffix = ""
         if len(touched) > 1:
             extras = ", ".join(touched[1:])
             suffix = f" (other behavioral fields also touched: {extras})"
+        if is_adr:
+            raise ValueError(
+                f"--amend refused: diff touches decision field "
+                f"{primary!r}.{suffix} Editorial amend may only change the "
+                f"Decision prose, Links, and Related Architecture Elements. A "
+                f"change to the decision itself must go through `--unlock` + "
+                f"`--lock`."
+            )
         raise ValueError(
             f"--editorial refused: diff touches behavioral field "
             f"{primary!r}.{suffix} Use --amend (without --editorial) for "
@@ -1046,8 +1116,9 @@ def _build_parser() -> argparse.ArgumentParser:
     p_ed = sub.add_parser(
         "editorial-amend",
         help=(
-            "append an `editorial` Amendment Log row to an Intent without "
-            "flipping Status; refuses on behavioral-field diffs (see INT-088)"
+            "append an `editorial` Amendment Log row to an Intent or ADR "
+            "without flipping Status; refuses on behavioral-field diffs "
+            "(Intent: INT-088; ADR: ds-qxpq — Decision/Links/Related-AEs only)"
         ),
     )
     p_ed.add_argument("path", type=Path)

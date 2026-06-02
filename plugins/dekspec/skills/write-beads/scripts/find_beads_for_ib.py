@@ -86,6 +86,36 @@ def _normalize_ib(ib: str) -> str:
     return token
 
 
+def _resolve_lookup(ib: str) -> tuple[str, str]:
+    """Resolve an IB/Intent argument to a `(mode, key)` lookup pair.
+
+    - Canonical `IB-NNN` / `INT-NNN` ids (bare, pathed, or `:suffix` form) match
+      by **token** — `mode="token"`, `key` = the `IB-NNN`/`INT-NNN` token.
+    - Provisional bare-slug IB paths carry no NNN token
+      (e.g. `dekspec/provisional/<slug>/IB-provisional-<slug>-ib.md`). They match
+      by **literal** — `mode="literal"`, `key` = the filename stem (dir, `.md`,
+      and any `#bead-N` / `:slice` qualifier stripped), tested as a substring of
+      each bead's `external_ref`. This mirrors the read side of the convention
+      `/write-beads` uses when it anchors provisional beads' `external_ref` to
+      the provisional IB path (ds-nv1i).
+    """
+    token = _ib_token(ib)
+    if token is not None:
+        return ("token", token)
+    stem = Path(ib).name
+    for sep in ("#", ":"):
+        stem = stem.split(sep, 1)[0]
+    if stem.endswith(".md"):
+        stem = stem[:-3]
+    stem = stem.strip()
+    if not stem:
+        raise BeadQueryError(
+            f"could not derive an IB-NNN/INT-NNN token or a provisional "
+            f"filename-stem lookup key from: {ib!r}"
+        )
+    return ("literal", stem)
+
+
 def _query_br(ib_token: str, repo_root: Path, runner: Runner) -> list[dict] | None:
     """List beads via `br list --json`. Returns bead dicts, or None on failure."""
     if not shutil.which("br"):
@@ -137,10 +167,10 @@ def find_beads_for_ib(
     """
     run = runner or _default_runner
     repo_root = Path(repo_root)
-    ib_token = _normalize_ib(ib)
+    mode, key = _resolve_lookup(ib)
 
     source = "br"
-    beads = _query_br(ib_token, repo_root, run)
+    beads = _query_br(key, repo_root, run)
     if beads is None:
         source = "jsonl"
         beads = _query_jsonl(repo_root)
@@ -154,9 +184,13 @@ def find_beads_for_ib(
     for bead in beads:
         if not isinstance(bead, dict):
             continue
-        ref = bead.get("external_ref") or bead.get("externalRef") or ""
-        if _ib_token(str(ref)) != ib_token:
-            continue
+        ref = str(bead.get("external_ref") or bead.get("externalRef") or "")
+        if mode == "token":
+            if _ib_token(ref) != key:
+                continue
+        else:  # literal — provisional bare-slug match by filename stem
+            if key not in ref:
+                continue
         status = str(bead.get("status") or "unknown")
         bead_id = str(bead.get("id") or bead.get("bead_id") or "?")
         by_status.setdefault(status, []).append(bead_id)
@@ -165,7 +199,7 @@ def find_beads_for_ib(
         ids.sort()
     total = sum(len(ids) for ids in by_status.values())
     return {
-        "ib": ib_token,
+        "ib": key,
         "by_status": by_status,
         "total": total,
         "source": source,

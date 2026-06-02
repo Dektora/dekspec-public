@@ -4,6 +4,27 @@ All notable changes to DekSpec are documented here. Format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [v0.110.0] — 2026-06-02
+
+### Added — `/dekspec:write-adr --amend` editorial-at-LOCKED mode (ds-qxpq)
+
+Mirrors `/write-intent --amend --editorial` for ADRs: a new `--amend` inline mode records a surface-only correction (Decision-opening prose, `Links`, Related Architecture Elements) with an `editorial` Amendment Log row + `Modified` bump, **without** the `--unlock` → `--lock` cycle and without flipping Status. The shared `artifact_ops.py editorial-amend` helper is now **kind-aware**: ADRs route through a new `classify_adr_diff` whose deny-list (`Status`, supersession fields, `Context`, `Options Considered`, `Consequences`, `Validation`) refuses decision-altering diffs with an ADR-specific message pointing at `--unlock` + `--lock`; Intents keep `classify_intent_diff` + the PROPOSED→DRAFT cascade message.
+
+### Fixed — Intent spec-phase: no-WS bead-gate + concurrent-worktree collision (ds-1k2m, ds-2tky)
+
+- `--accept`'s Bead Authoring Gate now branches on WS/IB presence: a no-WS Intent (refactor/env/doc, WS fan-in 0 → direct-bead at `--decompose`) treats the gate as **N/A** rather than as an unsatisfiable `beads_before_accept: true` (IBs don't exist until `--decompose`, which runs post-ACCEPTED — the prior chicken-and-egg).
+- New `worktree_guard.py` refuses `git checkout -b` of a new Intent branch while HEAD sits on another `int/INT-*` branch (the concurrency collision that leaked one Intent's commits into another's ancestry) and prints the isolated `git worktree add … -b int/INT-NNN main` command instead. Wired into Creation + provisional branch creation.
+
+### Fixed — P3 batch: semver plugin-drift, provisional find-beads, phantom `--bug-reproduction` (ds-ro98, ds-nv1i, ds-16ti)
+
+- `dekspec doctor` plugin-version-drift now selects the **semver-max** cache dir, not the lexicographic max (a stale `0.99.0` no longer false-drifts a real `0.108.0`/`0.109.0`).
+- `find_beads_for_ib.py` accepts **provisional bare-slug** IB paths (literal filename-stem match against `external_ref` when there's no `IB-NNN`/`INT-NNN` token), unblocking the Path A bead-first workflow on provisional IBs; canonical token matching is unchanged.
+- Dropped the phantom `/write-beads --bug-reproduction` invoke from `--decompose` + both Intent templates; per ADR-029 the bug reproduction test **is** the per-Intent Outcome Verification test (red-first), produced via the normal `/write-beads` flow.
+
+### Docs — Sweep stale `install-dekspec.sh` advisory note across 10 `/write-*` skills (ds-7c67)
+
+The shared INT-097 callout in the 10 `/dekspec:write-*` SKILL bodies referenced the (now-removed) `scripts/install-dekspec.sh` with conditional "if your install is pip-only" framing — doubly stale post-ADR-034 (the public mirror + `pipx` pip-from-git is the only path). Replaced each with an unconditional one-liner pointing at the centralized `_lib/vendored_assets.md`.
+
 ## [v0.109.0] — 2026-06-02
 
 ### Removed — Deprecated `dekspec repo upgrade` / `dekspec upgrade` CLI alias + `/dekspec:upgrade` slash command (ds-d063)

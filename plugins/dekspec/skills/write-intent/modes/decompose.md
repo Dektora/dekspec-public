@@ -18,7 +18,7 @@ Reads `<Intent-path>`. Refuses if Status is not `ACCEPTED`. Branches by IB-need 
 
 ### Step 2: Bug-Type Reproduction Scaffold (type: bug only)
 
-For `type: bug`, the first IB / bead is the failing test that proves the Reproduction. Invoke `/write-beads --bug-reproduction <Intent-path>`. The sister skill (P1.7) consumes the Intent's `Reproduction:` block and produces a single bead whose acceptance criterion is "the test runs, asserts the documented failing behavior, and fails on the current code." Capture the bead's path and its eventual test path; substitute the test path into the Intent's Verification block, replacing the `<reproduction-test-path-from-IB-1>` placeholder with the concrete file path. Save.
+For `type: bug`, the first IB / bead is the failing test that proves the Reproduction — and that test **is the Intent's ADR-029 Outcome Verification test** (a single user-observable proof, authored red-first). There is no separate `--bug-reproduction` mode: produce it through the normal `/write-beads <IB-or-Intent-path>` flow as one bead whose acceptance criterion is "the test runs, asserts the documented failing behavior, and fails on the current code (red-first); the fix makes it green." Capture that bead's eventual test path and substitute it into the Intent's Verification block, replacing the `<reproduction-test-path-from-IB-1>` placeholder with the concrete file path (this is the same path named in the `## Outcome Verification` section). Save.
 
 For non-bug types, skip Step 2.
 

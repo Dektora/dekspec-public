@@ -1,6 +1,6 @@
 {
   "name": "dekspec",
-  "version": "0.109.0",
+  "version": "0.110.0",
   "description": "DekSpec consumer plugin: slash-command wrappers for the dekspec CLI, schema-aware authoring agents (AE / ADR / IC / WS / Intent / IB / Mission), and audit/drift hooks. Assumes the dekspec library is pip-installed and content is vendored in the consumer repo.",
   "author": {
     "name": "Dektora"

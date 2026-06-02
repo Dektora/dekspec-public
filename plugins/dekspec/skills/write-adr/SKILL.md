@@ -6,11 +6,11 @@ model: claude-opus-4-7
 reasoning_effort: max
 disable-model-invocation: false
 allowed-tools: Read Write Edit Grep Glob Bash Agent
-argument-hint: [--provisional <slug>] [--help | --teaching | --audit | --review | --accept | --approve | --lock | --unlock | --revise | --supersede] [description or path to ADR]
+argument-hint: [--provisional <slug>] [--help | --teaching | --audit | --review | --accept | --approve | --lock | --unlock | --revise | --supersede | --amend] [description or path to ADR]
 related_skills: [write-ae, write-sv, write-ws, write-ic, write-intent]
 ---
 
-> **Vendored asset paths (INT-097):** Paths below like `dekspec/templates/X-template.md` and `dekspec/dekspec-<doc>.md` reference the consumer-vendored layout. If your install is pip-only (no `scripts/install-dekspec.sh` run), resolve any reference via `dekspec resource template X` or `dekspec resource doc <name>` (consumer-fs override wins when present). See [`_lib/vendored_assets.md`](../_lib/vendored_assets.md) for the full resolution rule.
+> **Vendored asset paths:** Template + doc paths below resolve via `dekspec resource template <name>` / `dekspec resource doc <name>` (wheel-bundled since v0.91.0; consumer-fs override wins when present). See [`_lib/vendored_assets.md`](../_lib/vendored_assets.md) for the full resolution rule.
 
 Write, lock, or unlock an Architectural Decision Record.
 
@@ -45,12 +45,13 @@ See [`_lib/mode_detection_template.md`](../_lib/mode_detection_template.md) for 
 - **Review mode** — `--review` flag. Skip to **Review Mode**.
 - **Revise mode** — `--revise` flag. Skip to **Revise Mode**.
 - **Supersede mode** — `--supersede` flag. Skip to **Supersede Mode**.
+- **Amend mode** — `--amend` flag. Skip to **Amend Mode** (editorial-at-LOCKED; no unlock cycle).
 - **Approve mode** — `--approve` flag. Skip to **Approve Mode**.
 - **Creation mode** — no flag. Proceed to **Input**.
 
 **Routing (per [`_lib/mode_detection_template.md`](../_lib/mode_detection_template.md)):**
 - Substantive-work (fan-out via Agent tool): (no flag), `--accept`, `--revise`
-- Inline (parent context): `--help`, `--teaching`, `--review`, `--audit`, `--lock`, `--unlock`, `--supersede`
+- Inline (parent context): `--help`, `--teaching`, `--review`, `--audit`, `--lock`, `--unlock`, `--supersede`, `--amend`
 
 ## Fan-Out Mode
 
@@ -87,6 +88,7 @@ modes:
   - { flag: "--supersede", args: "<ADR-path>", description: "Create a new ADR that supersedes the given one. Pre-fills context from the old ADR and updates both supersession fields automatically." }
   - { flag: "--lock", args: "<ADR-path>", description: "Lock an ACCEPTED ADR (ACCEPTED → LOCKED). Runs pre-lock audit. Rejects if any check fails." }
   - { flag: "--unlock", args: "<ADR-path>", description: "Unlock a LOCKED ADR (LOCKED → PROPOSED). Runs downstream impact assessment. Requires a reason." }
+  - { flag: "--amend", args: "<ADR-path>", description: "Editorial-at-LOCKED: record a surface-only correction (Decision prose / Links / Related Architecture Elements) with an Amendment Log row, NO unlock cycle, Status untouched. Refuses on diffs to Status / supersession / Context / Options Considered / Consequences / Validation (those need --unlock + --lock). Mirrors /write-intent --amend --editorial. ds-qxpq." }
   - { flag: "--teaching", args: "", description: "Interactive tutorial walking a new author through writing an ADR section-by-section. Distinct from --review (audits existing) and from no-flag creation (assumes the author already knows ADRs)." }
   - { flag: "--help", args: "", description: "Show this help message." }
 examples:
@@ -98,6 +100,7 @@ examples:
   - "/write-adr --supersede dekspec/adrs/ADR-001-inject-embeddings.md"
   - "/write-adr --lock dekspec/adrs/ADR-001-inject-embeddings.md"
   - "/write-adr --unlock dekspec/adrs/ADR-001-inject-embeddings.md"
+  - "/write-adr --amend dekspec/adrs/ADR-001-inject-embeddings.md"
   - "/write-adr --help"
 ```
 
@@ -366,6 +369,30 @@ See [`_lib/lock_unlock.md`](../_lib/lock_unlock.md) §Unlock for the canonical 4
 - **artifact_index_path**: `dekspec/adr-index.md`
 
 Downstream impact scan (run during Step 2 alongside the reason gate): grep all specs, interface contracts, and architecture elements for references to this ADR number; surface the impact list to the engineer before recording the reason. Cascade reminder to surface in Step 4: downstream specs / interface contracts / architecture elements may need review, affected IBs may need regeneration, and the ADR must be re-locked when the substantive change settles.
+
+## Amend Mode (editorial-at-LOCKED, ds-qxpq)
+
+`--amend` records a **surface-only, cross-reference / discoverability** correction to an ADR — at any status, including `LOCKED` — **without** the `--unlock` → edit → `--lock` cycle and **without** flipping Status. It mirrors `/dekspec:write-intent --amend --editorial` (the working precedent). This is an **inline mode** (parent context) — the change is bounded and editorial, so no fan-out.
+
+**Use it for:** cross-reference housekeeping (a referenced concept gets renamed), adding a mantra/principle opening sentence to the `Decision` for discoverability, and forward-cross-link additions (a new downstream ADR/AE the LOCKED ADR should point at). The decision body's semantics must not change.
+
+**Editable surface (only):** the `## Decision` section prose, the `## Links` section, and the Related/Linked Architecture Elements section. **Refused surface:** `Status`, the supersession fields (`*Supersedes:*` / `*Superseded by:*`), `Context`, `Options Considered`, `Consequences`, `Validation` — a change to any of those alters the *decision* and must go through `--unlock` + `--lock`.
+
+### Steps
+
+1. **Validate.** Read the ADR. Confirm it exists. (Any status is amendable editorially — the guard below is what bounds the change, not the status.)
+2. **Apply the editorial edit in place** with the `Edit` tool — touching ONLY the Decision prose / Links / Related Architecture Elements. Never edit the refused sections here.
+3. **Classify + record** by invoking the shared kind-aware helper, which diffs the on-disk ADR against its git-HEAD baseline, REFUSES (non-zero, writes nothing) if the diff touches any refused section, and otherwise appends an `editorial` Amendment Log row + bumps `Modified` (Status untouched):
+
+   ```bash
+   python ../_lib/scripts/artifact_ops.py editorial-amend <ADR-path> \
+     --note "<one-line summary of the editorial change>" [--engineer <email>] [--baseline <path>]
+   ```
+
+   On a non-zero exit, surface the helper's refusal verbatim (it names the offending decision field) and STOP — the engineer routes the change through `--unlock` + `--lock` instead. Do **not** hand-edit the Amendment Log to bypass the guard.
+4. **Closing step.** Run `dekspec audit relink` (the shared closing step) so any newly-added forward cross-links re-derive their backlinks.
+
+**End of Amend Mode.**
 
 ## Input
 
