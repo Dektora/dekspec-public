@@ -48,7 +48,15 @@ examples:
 
 ## Spec Mode
 
-Identify the target Intent `INT-NNN`, then sequence the existing authoring skills (this skill dispatches them; it does not reimplement them):
+Identify the target Intent — **canonical or provisional** (ds-jtfn). Resolve `$ARGUMENTS` with the shared resolver, which accepts a canonical `INT-NNN`, a canonical/provisional Intent path, or a provisional incubation slug:
+
+```
+python ../_lib/scripts/resolve_intent_target.py "<arg>"
+```
+
+It emits `{kind, path, intent_id, status, is_provisional}`. Use the resolved **path** as `<intent>` in every phase below. A provisional target (`is_provisional: true`, no canonical id yet) is fully supported: `--analyze` operates on the provisional content, and `--accept` (Phase 2) runs the INT-082 Provisional Promotion that allocates the canonical `INT-NNN` via `git mv` atomically with the PROPOSED→ACCEPTED transition. From Phase 3 onward the resolved path is the canonical artifact. On the resolver's exit 1, surface stderr and STOP (for an ambiguous multi-Intent incubation, ask for the explicit file path).
+
+Then sequence the existing authoring skills (this skill dispatches them; it does not reimplement them):
 
 ### Phase 1 — Analyze
 

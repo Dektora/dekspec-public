@@ -4,6 +4,16 @@ All notable changes to DekSpec are documented here. Format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [v0.111.0] — 2026-06-02
+
+### Added — `/dekspec:orchestrate-intent` + `/dekspec:spec-intent` accept a provisional Intent as entry (ds-jtfn)
+
+The conductor and spec phase-executor previously resolved only a canonical `INT-NNN`/path, so they could not pick up a provisional incubation (`dekspec/provisional/<slug>/`, no canonical id) — yet the provisional-first default (INT-133) means most Intents start there. A new shared resolver `plugins/dekspec/skills/_lib/scripts/resolve_intent_target.py` resolves `INT-NNN` / canonical path / provisional slug / provisional path → `{kind, path, intent_id, status, is_provisional}` (an ambiguous multi-Intent incubation demands the explicit path). Both conductors' target identification and `--status`/`--verify` use it; a provisional target surfaces a state card noting the canonical id is allocated at the accept gate, and the provisional path is passed to the dispatched executor. No new gate or ADR-021 row was needed — promotion already rides `--accept` Step 3 (INT-082 Provisional Promotion), which `--auto` governs via the existing `analyze-complete` → `accept-clean` pre-conditions.
+
+### Added — Vendored grep-loop review-fix workflow (`_lib/grep_loop_review_workflow.md`, ds-5oc9)
+
+The grep-loop review-fix discipline that the `REVIEW_PR_FAIL` handler leans on existed only as inlined prose plus a non-vendored personal skill (consumers never received it). It is now a dekspec-owned bundled doc at `plugins/dekspec/skills/_lib/grep_loop_review_workflow.md` (MIT, adapted from the David Ondrej / Michael Shimeles `grep-loop-review-workflow` notes): the six review-fix rules, PR-size pre-flight, guardrails/pitfalls, and the dekspec REVIEW_PR bindings (`/code-review --comment` seed, the sidecar, `context.ib_branch` landing, RECOMMEND-only per ADR-026). `review_pr_fail.md` now cites the owned doc instead of duplicating the prose.
+
 ## [v0.110.0] — 2026-06-02
 
 ### Added — `/dekspec:write-adr --amend` editorial-at-LOCKED mode (ds-qxpq)

@@ -63,20 +63,11 @@ The "new commits on top" pattern is what distinguishes this handler from REVIEW_
 
 ## Review-fix loop discipline (grep-loop)
 
-The "new commits on top" step is a **review-fix loop**, not a one-shot patch. It runs the small-PR loop: review → feed findings back → fix → re-run tests → re-review → repeat until clean or blocked. Two feedback sources drive it, and the loop **seeds the first** before any fix lands:
+The "new commits on top" step is a **review-fix loop**, not a one-shot patch: review → feed findings back → fix → re-run tests → re-review → repeat until clean or blocked. The full discipline (the six review-fix rules, the PR-size pre-flight, the human guardrails + common pitfalls, and the dekspec REVIEW_PR bindings) is the dekspec-owned vendored workflow at [`_lib/grep_loop_review_workflow.md`](../grep_loop_review_workflow.md) (MIT, adapted from the David Ondrej / Michael Shimeles `grep-loop-review-workflow` notes) — follow it here. In brief, the dekspec bindings are:
 
-0. **Seed the PR with located findings.** Run `/code-review <effort> --comment <PR-#>` first. This posts the review findings as **inline PR comments** so the fix step has concrete, line-anchored feedback to act on — not just the prose verdict. The dekspec REVIEW_PR sidecar (`context.sidecar_review_path`) supplies the lens verdict + the surfaced (≥80) findings; `/code-review --comment` supplies the line-level diff findings. The fixer addresses both. Choose `<effort>` from the pre-flight PR-size signal (see `/dekspec:review-pr`'s "PR too large?" check): `medium` is the default, `high`/`max` for a dense diff; the loop is most reliable on a small PR.
-
-Then drive the fix with this discipline (each rule guards a known failure mode of an over-eager agent):
-
-1. **Read the PR diff first** — before editing anything. The fix targets the diff that exists, not a remembered one.
-2. **Fix only real, relevant findings** — no unrelated rewrites. A finding that is a false positive or out of this PR's scope is recorded and skipped, not "fixed."
-3. **Add or update a test for each bug fix** when feasible — the loop needs objective checks, not vibes.
-4. **Run the relevant tests / typechecks**, then land the follow-up commits on the IB branch (`context.ib_branch`).
-5. **End with a summary listing the resolved review items** (and any findings deliberately skipped, with the reason).
-6. **Stop only when the PR is clean or when blocked by a decision that needs a human.** Then re-fire `/dekspec:review-pr <PR-#>`.
-
-The loop stays **RECOMMEND-only** at landing: the handler stages this plan and the operator drives the commits + re-fire. The same discipline is what an AUTO-mode dispatch would follow once thresholds are committed.
+- **Seed first** with `/code-review <effort> --comment <PR-#>` (inline PR comments). The REVIEW_PR sidecar (`context.sidecar_review_path`) supplies the lens verdict + the surfaced (≥80) findings; `/code-review --comment` supplies the line-level diff findings — the fixer addresses both. Pick `<effort>` from the `/dekspec:review-pr` PR-size signal (`medium` default, `high`/`max` for a dense diff).
+- **Land follow-up commits on `context.ib_branch`** (commits on top, not a replacement), then re-fire `/dekspec:review-pr <PR-#>`.
+- **RECOMMEND-only at landing (ADR-026):** the handler stages the plan + commits; the operator drives the commits + re-fire. The same discipline is what an AUTO-mode dispatch would follow once thresholds are committed.
 
 ## Pairing per design substrate
 

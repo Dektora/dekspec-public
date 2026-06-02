@@ -26,22 +26,30 @@ argument-hint: [--help | --teaching | --auto | --status | --verify] [description
 
 ### Step 1: Target Identification & State Detection
 
-Identify the target Intent `INT-NNN` passed in `$ARGUMENTS`.
-1. If the input is just an ID (e.g. `INT-036`), locate the file at `dekspec/intents/INT-036-*.md`.
-2. Extract the current status of the Intent from its `## Status` section using `artifact_ops.py status-guard` or direct section parse.
-3. Read the linked AEs, WSes, ICs, and IBs listed in its `## Linked Architecture Elements` and `## Layer impact analysis` sections.
+Identify the target Intent passed in `$ARGUMENTS` — **canonical or provisional** (ds-jtfn). Per the provisional-first default (INT-133) most freshly-authored Intents start in a provisional incubation (`dekspec/provisional/<slug>/`, no canonical `INT-NNN` allocated yet); the conductor drives the WHOLE walk, including the provisional→canonical promotion.
+
+1. **Resolve the target** with the shared resolver, which accepts a canonical `INT-NNN`, a canonical/provisional Intent path, or a provisional incubation slug:
+   ```
+   python ../_lib/scripts/resolve_intent_target.py "<arg-from-$ARGUMENTS>"
+   ```
+   It emits JSON `{kind, path, intent_id, status, is_provisional}`. On exit 1 (unresolved / ambiguous incubation), surface its stderr and STOP — for an ambiguous multi-Intent incubation, ask the engineer for the explicit Intent file path.
+2. Read the resolved file's status (the resolver's `status`, or re-parse `## Status`) and the linked AEs / WSes / ICs / IBs from `## Linked Architecture Elements` + `## Layer impact analysis`.
+3. **If `is_provisional`** — note that the canonical `INT-NNN` is **not allocated yet**; it is assigned at the accept gate's INT-082 Provisional Promotion step. The walk is unchanged otherwise: `analyze` (→ PROPOSED) → `accept` (which promotes the incubation to canonical via the hand-promote / `git mv`, atomically with PROPOSED→ACCEPTED) → `decompose` → … → LOCK. No separate promotion gate exists — promotion rides the existing accept gate, which `--auto` already governs (`analyze-complete` then `accept-clean`, ADR-021).
 
 Present a premium state-detection overview card to the engineer:
 ```markdown
 ================================================================================
 🚀 DEKSPEC INTENT LIFECYCLE ORCHESTRATOR
 ================================================================================
-Intent ID:   [INT-NNN](file:///...)
+Intent ID:   [INT-NNN](file:///...)   (or: PROVISIONAL — canonical id allocated at accept)
 Title:       <Intent Title>
 Branch:      <Target Branch>
 Current Status:  [STATUS]
+Incubation:  <none (canonical) | dekspec/provisional/<slug>/ — promotes at accept>
 ================================================================================
 ```
+
+When the target is provisional, pass the resolved provisional **path** (not a not-yet-existing `INT-NNN`) to the dispatched phase-executor in Gate 1 — `/dekspec:spec-intent <provisional-path>`. The executor's `--analyze` operates on the provisional content; its `--accept` runs the INT-082 promotion. From the post-promotion canonical artifact onward the walk is identical to the canonical-entry case.
 
 ---
 
@@ -246,8 +254,8 @@ one_line:   "Orchestrate an Intent lifecycle from TODO/DRAFT all the way to LOCK
 modes:
   - { flag: "",          args: "<INT-NNN>",        description: "Detect the target Intent's current status and guide it forward through analysis, acceptance, decomposition, pre-coding reviews, chat interviews, and lock propagation." }
   - { flag: "--auto",    args: "<INT-NNN>",        description: "Walk the Intent's lifecycle to LOCKED without engineer prompts. Refuses on first unmet pre-condition; never unlocks; never bypasses --testpass. See ADR-021." }
-  - { flag: "--status",  args: "<INT-NNN>",        description: "Check current status and list all downstream child specs (AEs, WSes, ICs, IBs)." }
-  - { flag: "--verify",  args: "<INT-NNN>",        description: "Verify that all downstream specs are in terminal LOCKED or ACCEPTED statuses post-merge." }
+  - { flag: "--status",  args: "<INT-NNN | provisional-slug | path>", description: "Check current status and list all downstream child specs (AEs, WSes, ICs, IBs). Accepts a provisional incubation slug/path too (resolved via _lib/scripts/resolve_intent_target.py)." }
+  - { flag: "--verify",  args: "<INT-NNN | provisional-slug | path>", description: "Verify that all downstream specs are in terminal LOCKED or ACCEPTED statuses post-merge. Accepts a provisional incubation slug/path too." }
   - { flag: "--teaching", args: "",                 description: "Walk through an interactive tutorial on the lifecycle of DekSpec Intents." }
   - { flag: "--help",    args: "",                  description: "Show this help message." }
 examples:
@@ -255,6 +263,7 @@ examples:
   - "/dekspec:orchestrate-intent --auto INT-078"
   - "/dekspec:orchestrate-intent --status INT-036"
   - "/dekspec:orchestrate-intent --verify INT-079"
+  - "/dekspec:orchestrate-intent my-incubation-slug   # provisional entry — promotes to canonical at the accept gate"
   - "/dekspec:orchestrate-intent --teaching"
   - "/dekspec:orchestrate-intent --help"
 ```
