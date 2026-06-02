@@ -41,13 +41,14 @@ A thin slash command that wraps a `dekspec` CLI verb. No skill exists for these.
 | `/graph-export` | `dekspec dev graph export` |
 | `/man` | Renders `docs/dekspec-overview.md` (no CLI verb; doc-render pattern) |
 | `/migrate` | `dekspec migrate` + inlined advisory walker (hybrid; see Pattern C exception) |
-| `/upgrade` | Standard flow: `pipx install` → `dekspec library sync` (reconcile) → `claude plugin update` (doc-render pattern; the legacy `dekspec repo upgrade` acquisition verb is deprecated per ADR-032) |
 | `/validate-artifact` | `dekspec check validate` |
 
 **Retired commands** (functionality folded into the table above):
 - `/basic-audit` (linkage-only audit) — folded into `/doctor` Stage 1, which runs `dekspec audit doctor` (schema validate + linkage + drift in one pass). Retired v0.98.0.
 - `/doctor-fidelity` (T/D/L fidelity body) — inlined into `/doctor` Stage 2. Retired v0.98.0.
 - `/validate` — renamed to `/validate-artifact` for clarity vs the broader `/doctor` graph audit. Renamed v0.98.0.
+- `/upgrade` — removed once the ADR-032 deprecation window elapsed (ADR-034 killed the in-CLI acquisition model). Acquire out-of-band (`pipx`/pip-from-git + `claude plugin update`) and reconcile via `dekspec library sync`.
+- `/run-coding-session` — renamed to `/exec-coding-session` in INT-098; the stray `run-coding-session.md` file (which had no command frontmatter and only carried INT-123's IB-lifecycle wiring docs) was deleted and its wiring relocated into `exec-coding-session.md`. Retired ds-jhbw.
 
 ### Pattern B — Skill-only authoring
 

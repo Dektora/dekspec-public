@@ -6,7 +6,7 @@ Claude Code plugin for the [DekSpec](https://github.com/Dektora/dekspec) Spec-Dr
 
 | Surface | Description |
 |---|---|
-| **Slash commands** | Ergonomic wrappers around the `dekspec` CLI: `/dekspec:doctor`, `/dekspec:compile`, `/dekspec:graph-export`, `/dekspec:migrate`, `/dekspec:upgrade`, `/dekspec:validate-artifact`, `/dekspec:man` (overview), `/dekspec:send-issue` (file a classified GitHub issue against `Dektora/dekspec` with operator-confirmed preview). |
+| **Slash commands** | Ergonomic wrappers around the `dekspec` CLI: `/dekspec:doctor`, `/dekspec:compile`, `/dekspec:graph-export`, `/dekspec:migrate`, `/dekspec:validate-artifact`, `/dekspec:man` (overview), `/dekspec:send-issue` (file a classified GitHub issue against `Dektora/dekspec` with operator-confirmed preview). |
 | **Authoring agents** | Schema-aware subagents for each artifact type: `ae-author`, `adr-author`, `ic-author`, `ws-author`, `intent-author`, `ib-author`, `mission-author`. Each reads the vendored template, runs a Q&A flow, and produces a conformant artifact. |
 | **Hooks** | Background audit/drift detection that fires on file edits and at session end. Surfaces problems inline without requiring manual `dekspec doctor` runs. |
 
@@ -40,7 +40,7 @@ claude plugin install dekspec@dekspec
 
 (Or paste the equivalent `/plugin marketplace add Dektora/dekspec-public` and `/plugin install dekspec@dekspec` into an interactive Claude Code session.)
 
-The plugin version is pinned to the dekspec library version — installing the plugin at `v0.40.1` matches the library at `v0.40.1`. To upgrade, run the standard flow **in order** (plugin last): re-acquire the engine (`pipx install dekspec==X.Y.Z`), reconcile vendored content with `dekspec library sync`, then `claude plugin update dekspec@dekspec`. The one-command `scripts/install.sh` does all three. (The legacy one-shot `dekspec repo upgrade` acquisition verb is deprecated per ADR-032 — it no longer acquires; it forwards to `dekspec library sync`.)
+The plugin version is pinned to the dekspec library version — installing the plugin at `v0.40.1` matches the library at `v0.40.1`. To upgrade, run the standard flow **in order** (plugin last): re-acquire the engine (`pipx install dekspec==X.Y.Z`), reconcile vendored content with `dekspec library sync`, then `claude plugin update dekspec@dekspec`. The one-command `scripts/install.sh` does all three. (The legacy one-shot `dekspec repo upgrade` acquisition verb was removed once the ADR-032 deprecation window elapsed — ADR-034 killed the in-CLI acquisition model; reconcile via `dekspec library sync`.)
 
 ## Layout
 

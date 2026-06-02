@@ -17,7 +17,7 @@
         "source": "git-subdir",
         "url": "https://github.com/Dektora/dekspec-public.git",
         "path": "plugins/dekspec",
-        "ref": "v0.108.0"
+        "ref": "v0.109.0"
       },
       "homepage": "https://github.com/Dektora/dekspec-public"
     }

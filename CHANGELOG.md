@@ -4,6 +4,21 @@ All notable changes to DekSpec are documented here. Format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [v0.109.0] — 2026-06-02
+
+### Removed — Deprecated `dekspec repo upgrade` / `dekspec upgrade` CLI alias + `/dekspec:upgrade` slash command (ds-d063)
+
+- Removed the `dekspec repo upgrade` / top-level `dekspec upgrade` acquisition alias and the `/dekspec:upgrade` slash command. ADR-032 deprecated the alias as a one-release forward-to-reconcile shim (v0.106); ADR-034 (v0.108) killed the in-CLI acquisition model entirely. With the deprecation window elapsed, the verb and its residual acquisition machinery (`cmd_upgrade`, `_add_upgrade_subparser`, the plugin-version snapshot/downgrade detectors, the install-method/plugin-verb probes) are gone. Acquire the engine + plugin out-of-band (`pipx`/pip-from-git + `claude plugin update`) and reconcile vendored content with `dekspec library sync`.
+
+### Fixed — `/exec-coding-session` synced to the post-MSN-016 (no-factory) reality (ds-3xx1, ds-76sq, ds-5dfj)
+
+- The `exec-coding-session` skill still invoked CLI verbs that **MSN-016** (COMPLETE; governed by **ADR-024**, the no-factory in-process-only execution model) retired wholesale — the package builder (`dekspec package build`), the SQLite lifecycle DB + `dekspec executions` verb (whose contract **IC-004** is DEPRECATED), and the pre-`dekspec exec` `session`/`runs` paths. The skill was never swept, so `/exec-coding-session INT-NNN` failed on the package-build step and the IC-004 lifecycle writes errored on 0.107–0.108. Now: the package-build auto-resolution and `--package` mode are dropped (an IB/Intent arg routes directly into Phase 1 `br ready` discovery); the dead IC-004 lifecycle-DB writes are removed (no replacement verb — the obligations retired with the executor abstraction); `dekspec session …`/`dekspec runs` move to `dekspec exec session …`/`dekspec exec runs`; and the lifecycle-write-only helper `resolve_parent_intent.py` is deleted.
+- `preflight_quality_gates.py` no longer false-STOPs on greenfield IBs: a referenced test file that is missing on disk but **claimed by a bead's "Files to Modify"** is treated as an expected deliverable; the gate STOPs only when a referenced file is missing **and** unclaimed by any bead in the set.
+
+### Removed — Stray `run-coding-session.md` command file (ds-jhbw)
+
+- The frontmatter-less `plugins/dekspec/commands/run-coding-session.md` (the command was renamed to `/exec-coding-session` in INT-098, but the file lingered and INT-123 had written its IB-lifecycle/TESTFAIL wiring docs into it) is deleted; the wiring is relocated into the canonical `exec-coding-session.md`. INT-123's Verification/Components/Outcome references were repointed to the new surface and the Intent re-locked.
+
 ## [v0.108.0] — 2026-06-02
 
 ### Changed — Distribute via a curated public mirror repo; retire Cloudsmith + the latest-resolver (INT-137, ADR-034)

@@ -28,7 +28,7 @@ The CLI grew an explicit group hierarchy (`check / audit / exec / library / dev`
 | `dekspec audit relink` | `audit <graph>` | Re-derive backlinks from forward links. Add `--check` for dry-run. | `dekspec relink` |
 | `dekspec audit doctor --at .` | `audit <graph>` | Full fidelity audit + drift check over a repo's spec tree. | `dekspec doctor` |
 | `dekspec library init` | `library <library-op>` | Scaffold the DekSpec artifact directory tree. | `dekspec repo init` · `dekspec init` |
-| `dekspec library sync` | `library <library-op>` | Reconcile the consumer repo to the installed engine (reconcile-only). | `dekspec repo upgrade` (acquisition removed, INT-135 / ADR-032) |
+| `dekspec library sync` | `library <library-op>` | Reconcile the consumer repo to the installed engine (reconcile-only). | `dekspec repo upgrade` / `dekspec upgrade` (verb removed — ADR-032 window elapsed, ADR-034 acquisition model) |
 | `dekspec library author-target …` | `library <library-op>` | Resolve where a Creation-mode artifact lands (provisional vs canonical). | `dekspec repo author-target` |
 | `dekspec library regen-indexes` | `library <library-op>` | Regenerate `*-index.md` files from the artifact tree. | `dekspec repo regen-indexes` |
 | `dekspec library new-provisional …` | `library <library-op>` | Stamp a new provisional incubation folder. | `dekspec repo new-provisional` |

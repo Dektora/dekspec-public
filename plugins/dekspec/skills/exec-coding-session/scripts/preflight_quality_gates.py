@@ -20,18 +20,25 @@ It collects referenced paths from three places in each IB:
   - `## Acceptance Criteria` / `## Done When` items — `tests/...` paths and
     `*.md` eval-file paths cited inline
 
+**Greenfield exemption.** A referenced test/eval file that is *missing on disk*
+but listed in some IB's `## Files to Modify` table is a deliverable a bead in
+the set will create — not a missing prerequisite. Such files are reported under
+`claimed` and never STOP the session. Only a referenced quality file that is
+missing AND claimed by no IB in the set triggers the STOP (exit 1).
+
 Output (JSON on stdout):
 
     {
       "missing": ["dekspec/templates/checklists/python-quality-checklist.md"],
+      "claimed": ["tests/test_new_feature.py"],
       "present": ["tests/test_foo.py"],
-      "checked": 2,
+      "checked": 3,
       "ok": false
     }
 
 Exit codes:
-  0 — every referenced quality file exists
-  1 — one or more referenced files are missing (the STOP condition)
+  0 — every referenced quality file exists or is claimed by a bead (a deliverable)
+  1 — one or more referenced files are missing AND unclaimed (the STOP condition)
   2 — an IB path itself does not exist or could not be read
 
 Style mirrors `tooling/dekspec/cli.py`. Stdlib-only — vendored into consumer
@@ -123,6 +130,25 @@ def collect_quality_paths(ib_text: str) -> list[str]:
     return sorted(found)
 
 
+def collect_claimed_paths(ib_text: str) -> set[str]:
+    """Extract every path a bead claims to create/modify from one IB.
+
+    These are the first-cell entries of the `## Files to Modify` table — the
+    files the IB's beads are responsible for producing. A referenced quality
+    file that is missing on disk but appears here is a deliverable (greenfield),
+    not a missing prerequisite, so the caller exempts it from the STOP.
+    """
+    claimed: set[str] = set()
+    for match in _FILES_SECTION_RE.finditer(ib_text):
+        for tok in _TABLE_ROW_FIRST_CELL_RE.findall(match.group(1)):
+            tok = tok.strip()
+            # Skip table header / separator rows ("File", "----", etc.).
+            if not tok or " " in tok or "/" not in tok and not tok.endswith(".py"):
+                continue
+            claimed.add(tok)
+    return claimed
+
+
 def check_quality_gates(
     ib_paths: list[str],
     repo_root: Path,
@@ -133,6 +159,7 @@ def check_quality_gates(
     """
     repo_root = Path(repo_root)
     all_paths: set[str] = set()
+    claimed_paths: set[str] = set()
     for raw in ib_paths:
         ib_path = Path(_strip_suffix(raw))
         if not ib_path.is_absolute():
@@ -144,17 +171,27 @@ def check_quality_gates(
         except OSError as exc:
             raise PreflightError(f"failed to read IB {ib_path}: {exc}") from exc
         all_paths.update(collect_quality_paths(text))
+        claimed_paths.update(collect_claimed_paths(text))
 
     missing: list[str] = []
+    claimed: list[str] = []
     present: list[str] = []
     for rel in sorted(all_paths):
         candidate = Path(rel)
         if not candidate.is_absolute():
             candidate = repo_root / rel
-        (present if candidate.is_file() else missing).append(rel)
+        if candidate.is_file():
+            present.append(rel)
+        elif rel in claimed_paths:
+            # Missing on disk but a bead in the set creates it — a deliverable,
+            # not a missing prerequisite. Greenfield-safe: never STOPs.
+            claimed.append(rel)
+        else:
+            missing.append(rel)
 
     return {
         "missing": missing,
+        "claimed": claimed,
         "present": present,
         "checked": len(all_paths),
         "ok": not missing,
@@ -169,9 +206,16 @@ def cmd_check(args: argparse.Namespace) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     print(json.dumps(result, indent=2))
+    if result["claimed"]:
+        print(
+            "note — referenced files missing on disk but claimed by a bead "
+            "(greenfield deliverables, not a STOP):\n"
+            + "\n".join(f"  - {p}" for p in result["claimed"]),
+            file=sys.stderr,
+        )
     if result["missing"]:
         print(
-            "STOP — quality gate files missing:\n"
+            "STOP — quality gate files missing and unclaimed by any bead:\n"
             + "\n".join(f"  - {p}" for p in result["missing"]),
             file=sys.stderr,
         )

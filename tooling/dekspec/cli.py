@@ -94,7 +94,6 @@ LEGACY_COMMANDS = {
     "runs": ("exec", "runs"),
     "aggregate": ("check", "aggregate"),
     "emit": ("check", "emit"),
-    "upgrade": ("repo", "upgrade"),
     "graph": ("dev", "graph"),
     "relink": ("audit", "relink"),
     "init": ("repo", "init"),
@@ -168,28 +167,26 @@ def main(argv: list[str] | None = None) -> int:
     # `dekspec repo <verb>` parses identically to its `library` counterpart
     # but, on dispatch, prints a one-line `[DEPRECATED]` notice and forwards
     # to the SAME handler (no change to logic, flags, or stdout). Removal of
-    # this alias namespace follows the next minor release. `repo upgrade`
-    # keeps its existing INT-135 deprecation-alias→`library sync` behavior and
-    # is NOT re-wrapped (it already prints its own note); the retired
-    # `promote-provisional` stub stays as-is.
+    # this alias namespace follows the next minor release. The retired
+    # `promote-provisional` stub stays as-is. The `upgrade` acquisition verb
+    # was removed (ds-d063): ADR-032 deprecated it as a one-release alias and
+    # ADR-034 killed the in-CLI acquisition model — acquire out-of-band
+    # (`pipx`/pip-from-git) and reconcile via `dekspec library sync`.
     p_repo = sub.add_parser(
         "repo",
         help="DEPRECATED — alias for `dekspec library <verb>` (one release).",
     )
     sub_repo = p_repo.add_subparsers(dest="repo_command", metavar="<repo-command>")
     _add_init_subparser(sub_repo)
-    _add_upgrade_subparser(sub_repo)
     _add_promote_provisional_retired_subparser(sub_repo)
     _add_new_provisional_subparser(sub_repo)
     _add_author_target_subparser(sub_repo)
     _add_regen_indexes_subparser(sub_repo)
     _add_cow_stage_subparser(sub_repo)
     # Wrap each verb's handler to emit the deprecation notice then delegate to
-    # the same handler. `upgrade` is skipped — its `cmd_upgrade` already prints
-    # the INT-135 deprecation note and forwards to `cmd_sync`; double-wrapping
-    # would regress it. `promote-provisional` is skipped — it is a retired
+    # the same handler. `promote-provisional` is skipped — it is a retired
     # stub that already returns a pointer to the hand-promote workflow.
-    _wrap_repo_aliases_with_deprecation(sub_repo, skip={"upgrade", "promote-provisional"})
+    _wrap_repo_aliases_with_deprecation(sub_repo, skip={"promote-provisional"})
 
     # Top-level migrate pipeline (INT-098): one verb that runs verify →
     # migrate-ir → migrate-artifacts in sequence. The underlying three
@@ -212,7 +209,6 @@ def main(argv: list[str] | None = None) -> int:
     _add_runs_subparser(SubParserWrapper(sub, suppress=True))
     _add_aggregate_subparser(SubParserWrapper(sub, suppress=True))
     _add_emit_subparser(SubParserWrapper(sub, suppress=True))
-    _add_upgrade_subparser(SubParserWrapper(sub, suppress=True))
     _add_graph_subparser(SubParserWrapper(sub, suppress=True))
     _add_relink_subparser(SubParserWrapper(sub, suppress=True))
     _add_init_subparser(SubParserWrapper(sub, suppress=True))
@@ -269,9 +265,9 @@ def _add_library_artifact_subparsers(sub: argparse._SubParsersAction) -> None:
 
     Reuses the exact same arg-adders + handler funcs as the `repo` alias
     namespace — no handler logic is duplicated or altered. `library sync`
-    (INT-135) is registered separately by the caller. `upgrade` is NOT
-    registered here: its canonical reconcile form is `library sync`, and it
-    survives only as the `repo upgrade` deprecation alias.
+    (INT-135) is registered separately by the caller. There is no `upgrade`
+    verb: the in-CLI acquisition model was removed (ADR-032 / ADR-034,
+    ds-d063); reconcile via `library sync` after acquiring out-of-band.
     """
     _add_init_subparser(sub)
     _add_new_provisional_subparser(sub)
@@ -306,9 +302,8 @@ def _wrap_repo_aliases_with_deprecation(
 
     The verbs were registered by the shared `_add_*_subparser` funcs, so the
     handler logic is the canonical one — this only prepends the stderr notice.
-    `skip` names verbs that must keep their own dispatch behavior (`upgrade`
-    already prints the INT-135 note + forwards to `library sync`;
-    `promote-provisional` is a retired stub).
+    `skip` names verbs that must keep their own dispatch behavior
+    (`promote-provisional` is a retired stub).
     """
     for verb, parser in sub_repo.choices.items():
         if verb in skip:
@@ -4298,42 +4293,6 @@ def cmd_dekspec_migrate_pipeline(args: argparse.Namespace) -> int:
     return rc
 
 
-def _snapshot_plugin_version() -> str | None:
-    """Return the currently-installed Claude Code plugin version (or
-    None if not installed / unreadable).
-
-    Reads ``~/.claude/plugins/cache/dekspec/dekspec/<version>/``.
-    Reused by ``cmd_upgrade`` to snapshot the plugin version before +
-    after ``claude plugin update`` so a marketplace-lag downgrade can
-    be detected (ds-upgrade-plugin-marketplace-lags-git-tags-nipi).
-    """
-    try:
-        plugin_cache = Path.home() / ".claude" / "plugins" / "cache" / "dekspec" / "dekspec"
-        if not plugin_cache.is_dir():
-            return None
-        installed = sorted(
-            (p.name for p in plugin_cache.iterdir() if p.is_dir()),
-            reverse=True,
-        )
-        return installed[0] if installed else None
-    except Exception:
-        return None
-
-
-def _detect_plugin_downgrade(pre: str | None, post: str | None) -> bool:
-    """Return True iff ``post`` is strictly older than ``pre`` per
-    semver. False on either-side None (first-time install case) and on
-    any parse failure (better to under-report than crash mid-upgrade).
-    """
-    if pre is None or post is None:
-        return False
-    try:
-        from packaging.version import Version
-        return Version(post) < Version(pre)
-    except Exception:
-        return False
-
-
 def _add_sync_args(p: argparse.ArgumentParser) -> None:
     """Shared args for the reconcile verb (`library sync`) and its
     deprecation alias (`repo upgrade`). Reconcile takes NO version,
@@ -4381,127 +4340,6 @@ def _add_sync_subparser(sub: argparse._SubParsersAction) -> None:
     )
     _add_sync_args(p)
     p.set_defaults(func=cmd_sync)
-
-
-def _add_upgrade_subparser(sub: argparse._SubParsersAction) -> None:
-    """`repo upgrade` is a DEPRECATION ALIAS (INT-135 / ADR-032): it prints
-    a one-line deprecation note, performs NO acquisition, and forwards to the
-    reconcile path (`cmd_sync`) so existing callers still reconcile."""
-    p = sub.add_parser(
-        "upgrade",
-        help="DEPRECATED — alias for `dekspec library sync` (reconcile-only).",
-        description=(
-            "DEPRECATED. `repo upgrade` no longer acquires the engine or "
-            "plugin. Acquire out-of-band (`pipx install dekspec` + `claude "
-            "plugin update dekspec@dekspec`); reconcile via `dekspec library "
-            "sync`. This alias prints a deprecation note and forwards to the "
-            "reconcile path. Per ADR-032."
-        ),
-    )
-    _add_sync_args(p)
-    p.set_defaults(func=cmd_upgrade)
-
-
-def _detect_plugin_verb(claude_path: str) -> str:
-    """Return 'update' if dekspec@dekspec is already installed in any scope,
-    else 'install' (for first-time consumers). Per ds-zrp: `claude plugin
-    install` is a silent no-op when already-installed at the same scope, so
-    refreshes against existing consumers MUST use `update`.
-
-    Detection: parse `claude plugin list` output for the literal
-    'dekspec@dekspec' substring. On any subprocess failure (claude CLI
-    missing flag, exits non-zero, unparseable output) we fall back to
-    'install' — first-time installs work, and a misclassified-as-install
-    on an existing consumer is the SAME no-op the bug already produces
-    (i.e., not worse than today's behavior).
-    """
-    try:
-        proc = subprocess.run(
-            [claude_path, "plugin", "list"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-    except (subprocess.SubprocessError, OSError):
-        return "install"
-    if proc.returncode != 0:
-        return "install"
-    return "update" if "dekspec@dekspec" in (proc.stdout or "") else "install"
-
-
-def _detect_install_method(repo_root: Path) -> tuple[str, list[str]] | None:
-    """Detect how to reinstall the dekspec engine after a version bump.
-
-    Returns (label, argv), or None when the engine is not managed via this
-    repo's pyproject.toml — in which case `dekspec upgrade` must NOT install
-    anything.
-
-    A real install target requires a genuine dekspec dependency *pin* in
-    `pyproject.toml` — one of the URL / RANGE / EXACT shapes recognized by
-    `vendoring._PYPROJECT_PIN_*`. A bare occurrence of the word "dekspec"
-    elsewhere in the file (the project's own description, a packaging
-    `exclude` entry) is NOT a pin: matching on it would `pip install -e .`
-    the *consumer repo itself* — the wrong package — and, on a PEP 668
-    system, fail outright. Per ds-upgrade-no-pin-install-fallback.
-
-    When a real pin is present the install is editable (`pip install -e .`):
-    reinstalling the operator's own project re-resolves the just-bumped
-    pin, which covers all three pin shapes uniformly. When no pin is
-    present the engine lives outside this repo (pipx, a separate venv, a
-    system package); the caller skips the install step and says so.
-
-    We always use the SAME `python -m pip` as the currently-executing
-    interpreter (sys.executable + ['-m', 'pip']) so the install lands in
-    the right environment regardless of how dekspec itself was invoked.
-    """
-    from .vendoring import (
-        _PYPROJECT_PIN_EXACT_RE,
-        _PYPROJECT_PIN_RANGE_RE,
-        _PYPROJECT_PIN_URL_RE,
-    )
-
-    pp = repo_root / "pyproject.toml"
-    if not pp.exists():
-        return None
-    text = pp.read_text(encoding="utf-8", errors="replace")
-    has_pin = (
-        _PYPROJECT_PIN_URL_RE.search(text)
-        or _PYPROJECT_PIN_RANGE_RE.search(text)
-        or _PYPROJECT_PIN_EXACT_RE.search(text)
-    )
-    if not has_pin:
-        return None
-    py = [sys.executable, "-m", "pip"]
-    return ("pip install -e .", py + ["install", "-e", str(repo_root)])
-
-
-def _dekspec_cmd() -> list[str]:
-    """argv prefix for invoking the dekspec CLI as a subprocess.
-
-    The post-upgrade steps (migrate pipeline / doctor) run as
-    subprocesses so they pick up the freshly-installed engine. An in-process
-    call would reuse the stale migration registry already imported by the
-    engine that started this `upgrade` run — wrong after a real engine bump.
-    """
-    exe = shutil.which("dekspec")
-    return [exe] if exe else [sys.argv[0]]
-
-
-_DEPRECATION_NOTE = (
-    "repo upgrade is deprecated; acquire via 'pipx install dekspec' + "
-    "'claude plugin update dekspec@dekspec', reconcile via 'dekspec library sync'"
-)
-
-
-def cmd_upgrade(args: argparse.Namespace) -> int:
-    """DEPRECATION ALIAS for `dekspec library sync` (INT-135 / ADR-032).
-
-    Prints a one-line deprecation note, performs NO acquisition (no pip, no
-    `claude plugin`, no network, no version resolution), and forwards to the
-    reconcile path so existing callers still reconcile.
-    """
-    print(_DEPRECATION_NOTE)
-    return cmd_sync(args)
 
 
 def cmd_sync(args: argparse.Namespace) -> int:
