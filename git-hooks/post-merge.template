@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# DekSpec post-merge hook — derived-output drift advisory (MSN-015).
+#
+# Runs after `git merge` (including pull --no-rebase). Checks whether
+# any derived index file (intent-index.md, mission-index.md, etc.) or
+# AGENTS.md is stale vs canonical artifact state. Prints a one-line
+# advisory naming each stale file so the engineer can decide whether
+# to run regen pre-commit.
+#
+# Non-invasive by design: this hook NEVER modifies files. The advisory
+# is a heads-up only; engineers run `dekspec repo regen-indexes` +
+# `dekspec check aggregate agents-md` manually.
+#
+# Escape hatches:
+#
+#   DEKSPEC_SKIP_POSTMERGE=1 git pull ...   # bypass entirely; no advisory
+#
+# Bootstrap leniency: if `dekspec` is not on PATH or the consumer has
+# no `dekspec/` self-spec tree (`init` not run), the hook exits 0
+# silently — the advisory is opt-in for repos that have wired up
+# DekSpec methodology.
+
+set -u
+
+if [ "${DEKSPEC_SKIP_POSTMERGE:-0}" = "1" ]; then
+    exit 0
+fi
+
+# Locate dekspec on PATH; silently no-op if absent (consumer hasn't
+# pip-installed yet).
+if ! command -v dekspec >/dev/null 2>&1; then
+    exit 0
+fi
+
+# Need a dekspec tree to audit against.
+if [ ! -d "dekspec" ]; then
+    exit 0
+fi
+
+# Run regen-indexes in --check mode; non-zero exit signals drift.
+if dekspec repo regen-indexes --check --at . >/dev/null 2>&1; then
+    index_drift=0
+else
+    index_drift=1
+fi
+
+# AGENTS.md aggregator emits to stdout when --output is `-`. Compare
+# against the current AGENTS.md to detect drift.
+agents_drift=0
+if [ -f "AGENTS.md" ]; then
+    aggregated=$(dekspec check aggregate agents-md --at . --output - 2>/dev/null || true)
+    if [ -n "$aggregated" ]; then
+        if ! diff -q <(printf '%s' "$aggregated") AGENTS.md >/dev/null 2>&1; then
+            agents_drift=1
+        fi
+    fi
+fi
+
+if [ "$index_drift" = "1" ] || [ "$agents_drift" = "1" ]; then
+    echo ""
+    echo "[dekspec] post-merge derived-output drift advisory:"
+    if [ "$index_drift" = "1" ]; then
+        echo "  - Derived indexes are stale. Run: dekspec repo regen-indexes"
+    fi
+    if [ "$agents_drift" = "1" ]; then
+        echo "  - AGENTS.md is stale. Run: dekspec check aggregate agents-md"
+    fi
+    echo "  (Set DEKSPEC_SKIP_POSTMERGE=1 to silence this advisory.)"
+    echo ""
+fi
+
+exit 0

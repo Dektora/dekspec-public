@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+# DekSpec pre-commit hook — enforcement gate per MSN-002 / INT-010 + MSN-009 / INT-053.
+#
+# Refuses commits unless `dekspec session start <bead-id>` has opened a
+# session bound to the work. With an active session, a second off-spec
+# drift stage classifies the staged files against the claimed Intent's
+# `Components affected` scope and blocks commits that touch files outside
+# it. Escape hatches:
+#
+#   DEKSPEC_BYPASS_SESSION=1 git commit ...   # skip the session gate; logged
+#   DEKSPEC_VIBECODING=1 git commit ...       # downgrade the off-spec BLOCK
+#                                             #   to a warning; drift is logged
+#   git commit --no-verify                    # standard git escape; logged
+#
+# Off-spec drift stage: runs only after the active-session check passes. It
+# calls `dekspec session vibecoding-check` and blocks a commit touching
+# files outside the claimed Intent's `Components affected` globs. The
+# off-spec commit is recorded into session state either way (block or
+# warn) for the end-of-session `dekspec session report`. If the
+# `vibecoding-check` verb is unavailable (consumer on a pre-INT-052
+# library version) the stage prints a one-line warning and proceeds — it
+# never hard-blocks on its own malfunction.
+#
+# Bootstrap leniency: if the consumer repo has no `dekspec/` self-spec tree
+# (i.e., `dekspec init` has not run yet) the hook prints a warning and
+# exits 0 — `dekspec` is installed but the methodology surface is not yet
+# wired up.
+
+set -u
+
+REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+
+# Bootstrap-leniency check — no self-spec tree yet, warn and exit clean.
+if [ ! -d "$REPO_ROOT/dekspec" ]; then
+    printf 'dekspec: pre-commit (warn-only — `dekspec/` tree absent; run `dekspec init`).\n' >&2
+    exit 0
+fi
+
+# Resolve `dekspec` binary. Honour DEKSPEC_BIN override for tests + smoke.
+DEKSPEC_BIN=${DEKSPEC_BIN:-dekspec}
+
+# Explicit env-var bypass — log + succeed.
+if [ "${DEKSPEC_BYPASS_SESSION:-0}" = "1" ]; then
+    STAGED=$(git diff --cached --name-only 2>/dev/null | tr '\n' ',' | sed 's/,$//')
+    "$DEKSPEC_BIN" session bypass --reason "env-bypass" --files "$STAGED" >/dev/null 2>&1 || true
+    printf 'dekspec: pre-commit bypassed via DEKSPEC_BYPASS_SESSION=1 (logged).\n' >&2
+    exit 0
+fi
+
+# Consult session status — exit 0 if active, exit 1 with hint if not.
+if ! command -v "$DEKSPEC_BIN" >/dev/null 2>&1; then
+    printf 'dekspec: pre-commit (warn-only — `dekspec` binary not on PATH).\n' >&2
+    exit 0
+fi
+
+STATUS_JSON=$("$DEKSPEC_BIN" session status --machine-readable 2>/dev/null)
+STATUS_EXIT=$?
+
+# `dekspec session status --machine-readable` contract (INT-009):
+#   exit 0 + JSON `{"active": true, ...}` when a session is open
+#   exit 2 + JSON `{"active": false, ...}` when no session is open
+if [ "$STATUS_EXIT" != "0" ] || ! printf '%s' "$STATUS_JSON" | grep -q '"active"[[:space:]]*:[[:space:]]*true'; then
+    printf 'dekspec: pre-commit BLOCKED — no active session.\n' >&2
+    printf '\n' >&2
+    printf '  Open a session naming the work:\n' >&2
+    printf '      dekspec session start <bead-id-or-INT-NNN>\n' >&2
+    printf '\n' >&2
+    printf '  Or bypass (logged for audit):\n' >&2
+    printf '      DEKSPEC_BYPASS_SESSION=1 git commit ...\n' >&2
+    printf '      git commit --no-verify                # standard git escape\n' >&2
+    exit 1
+fi
+
+# Off-spec drift stage (MSN-009 / INT-053) — reached only with an active
+# session. Classify the staged files against the claimed Intent's scope.
+STAGED=$(git diff --cached --name-only 2>/dev/null | tr '\n' ',' | sed 's/,$//')
+VIBE_JSON=$("$DEKSPEC_BIN" session vibecoding-check --machine-readable --record --files "$STAGED" 2>/dev/null)
+VIBE_EXIT=$?
+
+# Exit 0 → every staged file in scope; the commit is on-spec.
+if [ "$VIBE_EXIT" = "0" ]; then
+    exit 0
+fi
+
+# Any non-zero exit other than the off-spec code 3 means the verb is
+# unavailable or malfunctioned (e.g. a pre-INT-052 `dekspec`). Warn and
+# proceed — the off-spec stage never hard-blocks on its own malfunction.
+if [ "$VIBE_EXIT" != "3" ]; then
+    printf 'dekspec: pre-commit off-spec stage skipped — `vibecoding-check` unavailable.\n' >&2
+    exit 0
+fi
+
+# VIBE_EXIT == 3 → off-spec drift. Branch on DEKSPEC_VIBECODING.
+if [ "${DEKSPEC_VIBECODING:-0}" = "1" ]; then
+    printf 'dekspec: pre-commit off-spec drift recorded (DEKSPEC_VIBECODING=1).\n' >&2
+    printf '  Off-spec files: %s\n' "$VIBE_JSON" >&2
+    printf '  See `dekspec session report` at session end.\n' >&2
+    exit 0
+fi
+
+printf 'dekspec: pre-commit BLOCKED — off-spec drift.\n' >&2
+printf '\n' >&2
+printf '  Staged files fall outside the claimed Intent'\''s `Components affected`:\n' >&2
+printf '      %s\n' "$VIBE_JSON" >&2
+printf '\n' >&2
+printf '  Two ways forward:\n' >&2
+printf '      1. Expand the claimed Intent'\''s `Components affected` so the work is captured.\n' >&2
+printf '      2. DEKSPEC_VIBECODING=1 git commit ...   # proceed as recorded vibecoding\n' >&2
+printf '      git commit --no-verify                   # standard git escape\n' >&2
+exit 1

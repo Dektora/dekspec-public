@@ -1,0 +1,68 @@
+# Registry IR — JSON Schema (Draft 2020-12)
+#
+# The ID-allocation ledger (INT-020). `dekspec/registry.yaml` is an
+# append-only record of every canonical artifact ID that has been claimed.
+# `dekspec id allocate` consults it to compute the next free ID per kind and
+# appends one entry per newly-allocated artifact. The `L-REGISTRY-APPEND-ONLY`
+# audit rule enforces grow-only semantics.
+#
+# The file is OPTIONAL: when `dekspec/registry.yaml` is absent every code path
+# treats it as an empty registry and no audit rule fires.
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://dekspec.dektora/schemas/v0.1/registry.schema.json"
+title: Registry IR
+description: >-
+  Append-only ledger of allocated DekSpec artifact IDs. One entry per
+  artifact whose canonical `<KIND>-NNN` ID has been claimed. Produced and
+  appended by `dekspec id allocate` / `dekspec id reconcile`; audited by the
+  `L-REGISTRY-APPEND-ONLY` linkage rule.
+
+type: object
+additionalProperties: false
+required:
+  - schema_version
+  - entries
+
+properties:
+  schema_version:
+    description: 'Registry file format version. Today: 0.1.0.'
+    type: string
+    pattern: "^\\d+\\.\\d+\\.\\d+$"
+
+  entries:
+    description: 'Allocated-ID rows, append-only. Order is allocation order.'
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [kind, id, slug, allocated, allocated_by]
+      properties:
+        kind:
+          description: 'Artifact kind prefix.'
+          enum: [ADR, AE, WS, IC, IB, INT, MSN, SP]
+        id:
+          description: 'Canonical artifact ID, e.g. ADR-014.'
+          type: string
+          pattern: "^(ADR|AE|WS|IC|IB|INT|MSN|SP)-\\d{3,}$"
+        slug:
+          description: 'Semantic slug carried across the renumber boundary.'
+          type: string
+          pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
+        allocated:
+          description: 'ISO date the ID was allocated.'
+          type: string
+          format: date
+        allocated_by:
+          description: >-
+            Which serialization point assigned the ID. `git-conflict` is the
+            registry-file path (today's only path); `dekfactory` is reserved
+            for a future remote allocator endpoint.
+          enum: [git-conflict, dekfactory]
+        parent_ws_id:
+          description: >-
+            For IB entries only — the parent Working Spec ID. IB IDs are
+            unique only within their parent WS, so the registry mirrors the
+            SpecGraph composite key. Null / absent for all other kinds.
+          type: ["string", "null"]
+          pattern: "^WS-\\d{3,}$"

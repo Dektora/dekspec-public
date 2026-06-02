@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# DekSpec pre-push hook — enforcement gate per MSN-002 / INT-010.
+#
+# Refuses pushes unless `dekspec session start <bead-id>` has opened a
+# session bound to the work. Escape hatches:
+#
+#   DEKSPEC_BYPASS_SESSION=1 git push ...     # logged to bypass.log
+#   git push --no-verify                      # standard git escape
+#
+# Bootstrap leniency: if the consumer repo has no `dekspec/` self-spec tree
+# (i.e., `dekspec init` has not run yet) the hook prints a warning and
+# exits 0 — `dekspec` is installed but the methodology surface is not yet
+# wired up.
+
+set -u
+
+REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+
+# Bootstrap-leniency check — no self-spec tree yet, warn and exit clean.
+if [ ! -d "$REPO_ROOT/dekspec" ]; then
+    printf 'dekspec: pre-push (warn-only — `dekspec/` tree absent; run `dekspec init`).\n' >&2
+    exit 0
+fi
+
+# Resolve `dekspec` binary. Honour DEKSPEC_BIN override for tests + smoke.
+DEKSPEC_BIN=${DEKSPEC_BIN:-dekspec}
+
+# Explicit env-var bypass — log + succeed.
+if [ "${DEKSPEC_BYPASS_SESSION:-0}" = "1" ]; then
+    "$DEKSPEC_BIN" session bypass --reason "env-bypass-push" --files "" >/dev/null 2>&1 || true
+    printf 'dekspec: pre-push bypassed via DEKSPEC_BYPASS_SESSION=1 (logged).\n' >&2
+    exit 0
+fi
+
+# Consult session status — exit 0 if active, exit 1 with hint if not.
+if ! command -v "$DEKSPEC_BIN" >/dev/null 2>&1; then
+    printf 'dekspec: pre-push (warn-only — `dekspec` binary not on PATH).\n' >&2
+    exit 0
+fi
+
+STATUS_JSON=$("$DEKSPEC_BIN" session status --machine-readable 2>/dev/null)
+STATUS_EXIT=$?
+
+if [ "$STATUS_EXIT" = "0" ] && printf '%s' "$STATUS_JSON" | grep -q '"active"[[:space:]]*:[[:space:]]*true'; then
+    exit 0
+fi
+
+printf 'dekspec: pre-push BLOCKED — no active session.\n' >&2
+printf '\n' >&2
+printf '  Open a session naming the work:\n' >&2
+printf '      dekspec session start <bead-id-or-INT-NNN>\n' >&2
+printf '\n' >&2
+printf '  Or bypass (logged for audit):\n' >&2
+printf '      DEKSPEC_BYPASS_SESSION=1 git push ...\n' >&2
+printf '      git push --no-verify                  # standard git escape\n' >&2
+exit 1

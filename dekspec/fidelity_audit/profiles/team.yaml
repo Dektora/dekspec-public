@@ -1,0 +1,68 @@
+# Audit profile `team` — multi-engineer approval-gate policy (INT-021).
+#
+# Authored 2026-05-21 per MSN-004 / INT-021. The `team` profile materializes
+# the semantic-coordination layer on top of INT-020's mechanical substrate
+# (DRAFT-slug temp IDs + append-only registry + DRAFT-aware audit).
+#
+# Mechanics: `team` inherits the full v1 rule set via `inherits: v1` — the
+# profile loader (`profiles.py`) walks the inheritance chain root-to-leaf and
+# composes rules, so this manifest does NOT re-enumerate the v1 rules. It adds
+# exactly one new rule code, `T-APPROVAL-GATE`, plus a top-level
+# `approval_gates:` block that the rule reads at audit time.
+#
+# `T-APPROVAL-GATE` is profile-aware: it reads `approval_gates` from the active
+# profile. Under `v1` (which declares no `approval_gates`) the rule yields
+# nothing — so solo / lite consumers see no behaviour change. Under `team` the
+# rule enforces, per artifact kind and per status transition, that the target
+# artifact's `## Amendment Log` carries the required count of `review-approval`
+# signature rows recorded between the previous status-transition row and the
+# current one (exclusive of both).
+#
+# `reviewer_role` is ADVISORY in V1 (INT-021 Open Issue resolution): the rule
+# counts signatures regardless of signer role; the role string is documentation
+# only. A future Intent may promote it to enforced via a CODEOWNERS / role
+# integration layer.
+#
+# Consumers opt in by setting `methodology_profile: team` in
+# `.dekspec/config.yaml`, or by passing `--profile team` to `dekspec audit
+# linkage`.
+
+profile: team
+inherits: v1
+
+# Only the new rule code is listed here — the loader merges this with the
+# inherited v1 rules. `T-APPROVAL-GATE` is therefore SILENT under v1 (v1.yaml
+# does not enumerate it) and ACTIVE under team.
+rules:
+  - T-APPROVAL-GATE
+
+# approval_gates — encoded, version-controlled approval policy.
+#
+# Shape: approval_gates.<ArtifactKind>.<FROM_to_TO> = {required_reviewers: N,
+# reviewer_role: <role>}. The artifact-kind key matches the kind label the
+# `T-APPROVAL-GATE` rule resolves for each artifact (ADR / AE / WS / IC /
+# Intent / Mission / Constitution / SecurityProfile). A transition not listed
+# here has no gate — the rule does not fire on it.
+approval_gates:
+  ADR:
+    PROPOSED_to_ACCEPTED: {required_reviewers: 2, reviewer_role: engineer}
+    ACCEPTED_to_LOCKED:   {required_reviewers: 1, reviewer_role: tech-lead}
+  AE:
+    PROPOSED_to_ACCEPTED: {required_reviewers: 2, reviewer_role: engineer}
+    ACCEPTED_to_LOCKED:   {required_reviewers: 1, reviewer_role: tech-lead}
+  WS:
+    PROPOSED_to_ACCEPTED: {required_reviewers: 1, reviewer_role: engineer}
+    ACCEPTED_to_LOCKED:   {required_reviewers: 1, reviewer_role: engineer}
+  IC:
+    PROPOSED_to_ACCEPTED: {required_reviewers: 2, reviewer_role: engineer}
+    ACCEPTED_to_LOCKED:   {required_reviewers: 1, reviewer_role: tech-lead}
+  Intent:
+    PROPOSED_to_ACCEPTED: {required_reviewers: 1, reviewer_role: tech-lead}
+    MERGED_to_LOCKED:     {required_reviewers: 1, reviewer_role: tech-lead}
+  Mission:
+    PROPOSED_to_ACCEPTED: {required_reviewers: 2, reviewer_role: tech-lead}
+  Constitution:
+    PROPOSED_to_ACCEPTED: {required_reviewers: 3, reviewer_role: tech-lead}
+  SecurityProfile:
+    PROPOSED_to_ACCEPTED: {required_reviewers: 2, reviewer_role: tech-lead}
+    ACCEPTED_to_LOCKED:   {required_reviewers: 1, reviewer_role: tech-lead}

@@ -1,0 +1,236 @@
+# Security Profile IR — JSON Schema (Draft 2020-12)
+#
+# Multi-instance L2 artifact at <dekspec-root>/security-profiles/SP-NNN-<slug>.md.
+# Captures a project's typed security posture: allowed dataflows, secret stores,
+# authn methods, supply-chain allowed sources, SAST/DAST tools, and OWASP coverage.
+# A repo may declare a singleton SP-001 covering the whole codebase (bounded_context
+# absent), or multiple per-`bounded_context` SPs (e.g., api-gateway, worker).
+#
+# Per ADR-011 Option B, the SP IR is a sibling to the existing nine IR kinds —
+# the parser does NOT couple to WS internals (no parse_ws, WS_, working_spec,
+# ws_schema references). Downstream consumers (sibling WS-018 soft-layer
+# AGENTS.md emitter, WS-019 mid+hard emitters, WS-020 T-SEC-* audit family)
+# treat SPs as peers alongside ADR / AE / WS / IC, not a special case.
+#
+# Schema closure invariant: `additionalProperties: false` appears at the top
+# level AND on every nested object — the `supply_chain` block and every
+# typed-record row in the six arrays — so a stray `owasp_coverage[].severity`
+# field cannot slip in undetected (ADR-006).
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://dekspec.dektora/schemas/v0.1/security-profile.schema.json"
+title: Security Profile IR
+description: >-
+  Normalized intermediate representation of a Security Profile artifact.
+  Produced by dekspec.constraint_compiler.parser.parse_security_profile();
+  consumed by SpecGraph.security_profiles(), by the CLI validate path, and
+  (in sibling WSes) by the soft / mid / hard emitters and the T-SEC-* audit
+  rule family.
+
+type: object
+additionalProperties: false
+required:
+  - id
+  - title
+  - status
+  - allowed_dataflows
+  - secret_stores
+  - authn_methods
+  - supply_chain
+  - sast_tools
+  - dast_tools
+  - owasp_coverage
+  - ir_schema_version
+
+properties:
+
+  ir_schema_version:
+    description: Version of THIS schema. Pinned at v1; future v0.2.0 widens this and lands its own migration.
+    const: "0.1.0"
+
+  id:
+    description: Canonical SP identifier derived from filename (e.g., SP-001).
+    type: string
+    pattern: "^SP-\\d{3,}$"
+
+  title:
+    description: Engineer-authored one-line title from the markdown H1.
+    type: string
+    minLength: 1
+
+  status:
+    description: SP lifecycle status. DRAFT is intentionally absent — SPs are authored via /write-sp from a populated template; initial committed state is PROPOSED.
+    enum: [PROPOSED, ACCEPTED, LOCKED, SUPERSEDED]
+
+  bounded_context:
+    description: >-
+      Optional sub-context label. Absent = singleton SP covering the whole
+      repo (SP-001 is this shape). Present = a non-empty string identifying
+      a sub-context (e.g., "api-gateway"); downstream audit rules iterate
+      per-context when multiple SPs are present.
+    type: string
+    minLength: 1
+
+  allowed_dataflows:
+    description: 'Typed-record array of allowed dataflows. Empty array is valid (engineer asserts "no allowed dataflows at this layer").'
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [name, source, sink, classification]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        source:
+          type: string
+          minLength: 1
+        sink:
+          type: string
+          minLength: 1
+        classification:
+          type: string
+          minLength: 1
+
+  secret_stores:
+    description: 'Typed-record array of secret stores. Empty array is valid.'
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [name, kind, scope]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        kind:
+          type: string
+          minLength: 1
+        scope:
+          type: string
+          minLength: 1
+
+  authn_methods:
+    description: 'Typed-record array of authentication methods. Empty array is valid.'
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [name, kind, scope]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        kind:
+          type: string
+          minLength: 1
+        scope:
+          type: string
+          minLength: 1
+
+  supply_chain:
+    description: 'Required nested object declaring the supply-chain allow-list. `allowed_sources` may be empty (explicit "we declare no allowed sources" assertion).'
+    type: object
+    additionalProperties: false
+    required: [allowed_sources]
+    properties:
+      allowed_sources:
+        type: array
+        items:
+          type: string
+          minLength: 1
+
+  sast_tools:
+    description: 'Typed-record array of SAST tools. Empty array is valid.'
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [name, language, ruleset]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        language:
+          type: string
+          minLength: 1
+        ruleset:
+          type: string
+          minLength: 1
+
+  dast_tools:
+    description: 'Typed-record array of DAST tools. Empty array is valid.'
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [name, target, schedule]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        target:
+          type: string
+          minLength: 1
+        schedule:
+          type: string
+          minLength: 1
+
+  owasp_coverage:
+    description: 'Row-per-OWASP-ID coverage matrix. Empty array is valid; per-row metadata growth (e.g., adding `severity` for partial mitigations) is a future v0.2.0 amendment.'
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [owasp_id, mitigation_strategy, mapped_tool]
+      properties:
+        owasp_id:
+          type: string
+          minLength: 1
+        mitigation_strategy:
+          type: string
+          minLength: 1
+        mapped_tool:
+          type: string
+          minLength: 1
+
+  source:
+    description: 'Parser-attached provenance. Optional in the schema (engineer-authored required list excludes it per the IR-author contract), present in every parser-produced IR.'
+    type: object
+    additionalProperties: false
+    required: [path, sha256, parser_version, parsed_at]
+    properties:
+      path:
+        type: string
+      sha256:
+        type: string
+        pattern: "^[a-f0-9]{64}$"
+      parser_version:
+        type: string
+        pattern: "^\\d+\\.\\d+\\.\\d+$"
+      parsed_at:
+        type: string
+        format: date-time
+
+  created:
+    type: string
+    format: date
+
+  modified:
+    type: string
+    format: date
+
+  parse_warnings:
+    description: 'Fields the parser could not extract or only partially extracted from markdown. Same convention as the other per-kind IRs.'
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [field, reason, severity]
+      properties:
+        field:
+          type: string
+        reason:
+          type: string
+        severity:
+          enum: [info, warning]

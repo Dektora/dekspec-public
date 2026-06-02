@@ -1,0 +1,50 @@
+# .dekspec/config.yaml — per-repo DekSpec configuration
+#
+# This file is committed to the consumer repo. It declares two orthogonal
+# axes — the "executor cleavage" introduced by INT-018 / MSN-004:
+#
+#   1. WHICH runtime implements your Implementation Briefs (`executor.kind`).
+#   2. HOW MUCH DekSpec ceremony your team applies (`methodology_profile`).
+#
+# `dekspec init` writes this file from a 2-question Q&A. Edit individual
+# keys afterward with `dekspec config get <key>` / `dekspec config set
+# <key> <value>` — both validate against the JSON Schema before any write.
+
+# Config file format version. Today: 0.1.0. Do not hand-edit unless you
+# are migrating the file to a newer schema.
+schema_version: "0.1.0"
+
+executor:
+  # Which runtime powers IB implementation.
+  #   local      — the no-op LocalAgentExecutor default. `dekspec dispatch`
+  #                prints a structured prompt for your local code-builder
+  #                agent (Claude Code, Codex, Cursor, Aider) and exits 0.
+  #                No endpoint, no remote orchestrator.
+  #   inbox      — filesystem-queued dispatch via .dekspec/inbox; a separate
+  #                listener (`dekspec exec listen`) claims and runs packages.
+  #   dekfactory — dispatch to a remote DekFactory orchestrator over HTTP.
+  #                Requires a non-null `endpoint` below.
+  kind: local
+
+  # Base URL of the DekFactory orchestrator. REQUIRED (non-null string)
+  # when `kind: dekfactory`; leave `null` for `kind: local` or `kind: inbox`.
+  endpoint: null
+
+# How much DekSpec ceremony the team applies.
+#   lite — solo / minimal ceremony.
+#   team — the INT-021 approval-gate audit profile (reviewer signatures
+#          enforced on artifact status transitions).
+#   full — every gate.
+methodology_profile: full
+
+# Repository metadata for remote / cross-tenant dispatch (optional).
+# `repo.scope` names the `<owner>/<repo>` slug the dispatching consumer
+# represents on the target forge (e.g. GitHub or GitLab). When unset,
+# `dekspec dispatch` falls back to parsing `git remote get-url origin`;
+# if both fail, dispatch refuses with `missing-repository-scope`.
+# Set this explicitly when running outside a git working tree or when
+# the consumer's `origin` remote does not match the forge identity the
+# remote executor expects (e.g. mirrored fork → upstream dispatch).
+# See IC-006 §Dispatch request `repository_scope`.
+# repo:
+#   scope: "Dektora/dektora"

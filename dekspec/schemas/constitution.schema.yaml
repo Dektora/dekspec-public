@@ -1,0 +1,308 @@
+# Constitution IR — JSON Schema (Draft 2020-12)
+#
+# Singleton at <dekspec-root>/constitution.md. The Constitution is a third
+# L0 artifact alongside System Vision and Domain Glossary; it captures the
+# project's non-negotiable operational commitments (technology stack,
+# quality thresholds, architecture principles, workflow conventions,
+# behavioral boundaries) so worker agents can ground their reasoning in
+# project-level standing rules instead of inventing confident-but-arbitrary
+# defaults. Compiled into AGENTS.md fragments by emit_constitution(ir)
+# (INT-004's scope) so agents cite articles by name in their reasoning
+# output.
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://dekspec.dektora/schemas/v0.1/constitution.schema.json"
+title: Constitution IR
+description: >-
+  Normalized intermediate representation of the singleton Constitution
+  artifact. Produced by dekspec.constraint_compiler.parser.parse_constitution()
+  (IB-002 scope); consumed by emit_constitution(ir) (INT-004 scope) for
+  AGENTS.md fragment composition and by the T-CONSTITUTION + L-CONSTITUTION
+  audit rule families (INT-003 scope). One Constitution per repo; canonical
+  id is CONSTITUTION. The articles array is positional: index N-1 = Article
+  N. Eight articles in canonical order — Project Identity (typed pointer),
+  Technology Stack (text), Quality Standards (text), Architecture Principles
+  (typed adr_ref array), Development Workflow (text), Model Configuration
+  (text), Boundaries (typed adr_ref + ae_ref arrays), Amendments (text).
+  Referential resolution of typed refs (see_also, adr_refs, ae_refs) is
+  audit-layer (L-CONSTITUTION-*); the schema asserts shape only.
+
+type: object
+additionalProperties: false
+required:
+  - ir_schema_version
+  - id
+  - name
+  - source
+  - articles
+
+properties:
+  ir_schema_version:
+    const: "0.1.0"
+
+  id:
+    description: 'Singleton id for the Constitution.'
+    const: "CONSTITUTION"
+
+  name:
+    description: 'Title from the H1 (e.g., "DekSpec" — the project name).'
+    type: string
+    minLength: 1
+
+  source:
+    type: object
+    additionalProperties: false
+    required: [path, sha256, parser_version, parsed_at]
+    properties:
+      path:
+        type: string
+      sha256:
+        type: string
+        pattern: "^[a-f0-9]{64}$"
+      parser_version:
+        type: string
+        pattern: "^\\d+\\.\\d+\\.\\d+$"
+      parsed_at:
+        type: string
+        format: date-time
+
+  status:
+    enum: [TODO, DRAFT, PROPOSED, ACCEPTED, LOCKED, DEPRECATED]
+
+  created:
+    type: string
+    format: date
+
+  modified:
+    type: string
+    format: date
+
+  preamble:
+    description: 'Opening paragraph(s) before any H2, mirroring System Vision''s preamble. Optional.'
+    type: string
+
+  # Positional 8-article tagged union. Each items[N] is locked to a specific
+  # title via const + a specific kind via const, so an out-of-order or
+  # mis-kinded article is rejected at schema-validation time.
+  articles:
+    type: array
+    minItems: 8
+    maxItems: 8
+    prefixItems:
+      # Article 1: Project Identity — typed pointer
+      - type: object
+        additionalProperties: false
+        required: [kind, title, summary, see_also]
+        properties:
+          kind:
+            const: "pointer"
+          title:
+            const: "Project Identity"
+          summary:
+            type: string
+            minLength: 1
+            maxLength: 500
+          see_also:
+            type: string
+            pattern: "^[a-zA-Z0-9_./-]+\\.md$"
+      # Article 2: Technology Stack — text block
+      - type: object
+        additionalProperties: false
+        required: [kind, title, body]
+        properties:
+          kind:
+            const: "text"
+          title:
+            const: "Technology Stack"
+          body:
+            type: string
+            minLength: 1
+      # Article 3: Quality Standards — text block
+      - type: object
+        additionalProperties: false
+        required: [kind, title, body]
+        properties:
+          kind:
+            const: "text"
+          title:
+            const: "Quality Standards"
+          body:
+            type: string
+            minLength: 1
+      # Article 4: Architecture Principles — typed adr_ref array
+      - type: object
+        additionalProperties: false
+        required: [kind, title, adr_refs]
+        properties:
+          kind:
+            const: "ref-array"
+          title:
+            const: "Architecture Principles"
+          adr_refs:
+            type: array
+            items:
+              type: object
+              additionalProperties: false
+              required: [id, rationale]
+              properties:
+                id:
+                  type: string
+                  pattern: "^ADR-\\d{3,}$"
+                rationale:
+                  type: string
+                  minLength: 1
+      # Article 5: Development Workflow — text block
+      - type: object
+        additionalProperties: false
+        required: [kind, title, body]
+        properties:
+          kind:
+            const: "text"
+          title:
+            const: "Development Workflow"
+          body:
+            type: string
+            minLength: 1
+      # Article 6: Model Configuration — text block
+      - type: object
+        additionalProperties: false
+        required: [kind, title, body]
+        properties:
+          kind:
+            const: "text"
+          title:
+            const: "Model Configuration"
+          body:
+            type: string
+            minLength: 1
+      # Article 7: Boundaries — typed adr_ref + ae_ref arrays
+      - type: object
+        additionalProperties: false
+        required: [kind, title, adr_refs, ae_refs]
+        properties:
+          kind:
+            const: "ref-array"
+          title:
+            const: "Boundaries"
+          adr_refs:
+            type: array
+            items:
+              type: object
+              additionalProperties: false
+              required: [id, rationale]
+              properties:
+                id:
+                  type: string
+                  pattern: "^ADR-\\d{3,}$"
+                rationale:
+                  type: string
+                  minLength: 1
+          ae_refs:
+            type: array
+            items:
+              type: object
+              additionalProperties: false
+              required: [id, aspect]
+              properties:
+                id:
+                  type: string
+                  pattern: "^AE-\\d{3,}$"
+                aspect:
+                  type: string
+                  minLength: 1
+      # Article 8: Amendments — text block
+      - type: object
+        additionalProperties: false
+        required: [kind, title, body]
+        properties:
+          kind:
+            const: "text"
+          title:
+            const: "Amendments"
+          body:
+            type: string
+            minLength: 1
+    # `prefixItems` + `minItems: 8` + `maxItems: 8` together pin the array
+    # length to exactly 8 and pin each index to its corresponding schema.
+    items: false
+
+  # INT-125 / ds-zhhk — §Class Lanes structured policy table.
+  # Binds (intent_type, risk_tier) → lane + budget caps + thresholds.
+  # Includes effective_model_snapshot + effective_corpus_volume per row
+  # so calibration drift across model/corpus boundaries is audit-detectable
+  # (Fowler R3 + Wu R2 model-drift gap).
+  class_lanes:
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required:
+        - intent_type
+        - risk_tier
+        - lane
+        - budget_cap_tokens
+        - budget_cap_dollars
+        - max_attempts_per_attempt
+        - max_attempts_per_bead
+        - promotion_threshold_clean_runs
+        - demotion_threshold_reverts
+        - effective_model_snapshot
+        - effective_corpus_volume
+      properties:
+        intent_type:
+          type: string
+        risk_tier:
+          type: string
+        lane:
+          enum: [dark, canary, gated]
+        budget_cap_tokens:
+          type: integer
+        budget_cap_dollars:
+          type: number
+        max_attempts_per_attempt:
+          type: integer
+        max_attempts_per_bead:
+          type: integer
+        promotion_threshold_clean_runs:
+          type: integer
+        demotion_threshold_reverts:
+          type: integer
+        effective_model_snapshot:
+          type: string
+        effective_corpus_volume:
+          type: string
+
+  # INT-125 / ds-zhhk — Amendment Log as first-class IR object.
+  # Promotes the prose log to typed rows so corrections to lane policy
+  # are machine-auditable on the same footing as the content
+  # (Nygard MUST-NOT on prose-only amendment logs).
+  amendment_log:
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [date, type, change]
+      properties:
+        date:
+          type: string
+          format: date
+        type:
+          enum: [editorial, unlock, substantive]
+        change:
+          type: string
+        author:
+          type: string
+
+  parse_warnings:
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [field, reason, severity]
+      properties:
+        field:
+          type: string
+        reason:
+          type: string
+        severity:
+          enum: [info, warning]

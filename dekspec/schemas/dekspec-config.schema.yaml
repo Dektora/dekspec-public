@@ -1,0 +1,81 @@
+# DekSpec per-repo config — JSON Schema (Draft 2020-12)
+#
+# `.dekspec/config.yaml` is the per-repo, committed declaration of the
+# methodology profile. Per ADR-024 (no-factory in-process-only execution
+# model, 2026-05-28), DekSpec runs exclusively in-process inside whichever
+# coding CLI is loaded; there is no executor abstraction and no out-of-
+# process dispatch surface in this library.
+#
+#   - `methodology_profile` — how much DekSpec ceremony the team applies:
+#     `lite` (solo), `team` (the INT-021 approval-gate audit profile), or
+#     `full` (every gate).
+#
+# Written by `dekspec init` (single-question Q&A) and edited per-key by
+# `dekspec config get` / `dekspec config set`. Validated at load time by
+# `tooling/dekspec/dekspec_config.py`.
+#
+# ADR-006 — `additionalProperties: false` at every object level.
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://dekspec.dektora/schemas/v0.1/dekspec-config.schema.json"
+title: DekSpec repo config
+description: >-
+  Per-repo committed config declaring the methodology profile. One file
+  per consumer repo at `.dekspec/config.yaml`.
+
+type: object
+additionalProperties: false
+required:
+  - schema_version
+  - methodology_profile
+
+properties:
+  schema_version:
+    description: 'Config file format version. Today: 0.1.0.'
+    type: string
+    pattern: "^\\d+\\.\\d+\\.\\d+$"
+
+  methodology_profile:
+    description: >-
+      How much DekSpec ceremony the team applies. `lite` — solo / minimal.
+      `team` — the INT-021 approval-gate audit profile. `full` — every gate.
+    enum: [lite, team, full]
+
+  ib_folders:
+    description: >-
+      Optional per-consumer mapping of filesystem folder names relative to
+      the dekspec/impl-briefs/ directory to the maturity bands they contain.
+    type: object
+    additionalProperties:
+      type: array
+      items:
+        type: integer
+        minimum: 0
+        maximum: 5
+
+  repo:
+    description: >-
+      Optional repository metadata. The `scope` sub-field names the
+      GitHub/GitLab namespace+repo the consumer represents (e.g.
+      `Dektora/dektora`).
+    type: object
+    additionalProperties: false
+    properties:
+      scope:
+        description: >-
+          The GitHub/GitLab `<owner>/<repo>` slug the dispatching repo
+          maps to on the target forge (e.g. `Dektora/dektora`).
+        type: string
+        minLength: 1
+
+  index_url:
+    description: >-
+      Optional override for the Python simple-index that `dekspec`
+      version-discovery (`repo upgrade` / `scripts/install.sh` "latest")
+      queries for published wheels. Per ADR-031 the resolution precedence is
+      `index_url` (this field) > `PIP_INDEX_URL` / `PIP_EXTRA_INDEX_URL`
+      (standard pip pointers) > the Cloudsmith public-read default. dekspec is
+      not on PyPI, so the default is Cloudsmith; set this only to point at a
+      mirror or a re-hosted index.
+    type: string
+    minLength: 1

@@ -1,0 +1,301 @@
+# Intent IR — JSON Schema (Draft 2020-12)
+#
+# Per-Intent IR. Sixth artifact-type IR after IC, AE, WS, ADR, IB.
+# Intents express captured engineer intent — what change is being made and
+# why, scoped to a Mission's outcome boundary or as standalone work. They
+# decompose into IBs at /write-intent --decompose.
+#
+# Audit-time enforcement (per audit-v2):
+#   T13 — intent_type from controlled vocabulary (schema-enforced via enum).
+#   T14 — verification populated with ≥1 named cmd check.
+#   T15 — components_affected populated.
+#   T16 — autonomy from controlled vocabulary (schema-enforced via enum).
+#   L7a — linked_architecture_elements references resolve.
+#   L7b — components_affected globs resolve to repo paths.
+#   D19 — no measurable targets in motivation/desired_outcome prose.
+#   D20 — no decision rationale in motivation/desired_outcome prose.
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://dekspec.dektora/schemas/v0.1/intent.schema.json"
+title: Intent IR
+description: >-
+  Normalized intermediate representation of an Intent. Produced by
+  dekspec.constraint_compiler.parser.parse_intent(); consumed by the
+  audit-linkage L7 family + future agents-md emitter.
+
+type: object
+additionalProperties: false
+required:
+  - ir_schema_version
+  - id
+  - name
+  - status
+  - source
+
+properties:
+
+  ir_schema_version:
+    description: Version of THIS schema. Independent of dekspec library version.
+    # Bumped 0.1.0 → 0.2.0 at IB-023 (severity vocabulary unification —
+    # ADR-013): `open_issues[*].severity` enum narrowed from legacy
+    # `{blocking, non_blocking}` to canonical `{P0, P1, P2, P3}`.
+    # Persisted v0.1.0 IR JSON migrates via
+    # Bumped 0.2.0 → 0.3.0 at INT-104 IU-1 (ds-xoah): added optional
+    # `beads_before_accept` boolean field (default true).
+    # `tooling/dekspec/migrations/severity_unification.py`.
+    const: "0.3.0"
+
+  id:
+    description: 'Canonical Intent identifier derived from filename (e.g., INT-042).'
+    type: string
+    pattern: "^INT-\\d{3,}$"
+
+  name:
+    description: 'Verb-first title from the markdown H1.'
+    type: string
+    minLength: 1
+
+  status:
+    description: >-
+      Intent lifecycle status. SUPERSEDED is terminal off-ramp. `TODO` and
+      `TESTFAIL` were retired 2026-05-25 (E3 audit: neither appeared in
+      99-Intent repo history; the `TESTFAIL ↔ TESTPASS` round-trip never
+      fired). Pre-retirement files carrying either value will fail schema
+      validation; transition them to `DRAFT` or `IMPLEMENTING` respectively.
+    enum: [DRAFT, OVERSIZED, PROPOSED, ACCEPTED, IMPLEMENTING, TESTPASS, MERGED, LOCKED, SUPERSEDED]
+
+  source:
+    type: object
+    additionalProperties: false
+    required: [path, sha256, parser_version, parsed_at]
+    properties:
+      path:
+        type: string
+      sha256:
+        type: string
+        pattern: "^[a-f0-9]{64}$"
+      parser_version:
+        type: string
+        pattern: "^\\d+\\.\\d+\\.\\d+$"
+      parsed_at:
+        type: string
+        format: date-time
+
+  intent_type:
+    description: 'Controlled vocabulary per audit-v2 T13. Drives required type-specific fields and the default Verification predicate.'
+    enum: [feature, bug, nfr, adr-driven, refactor, documentation, environment]
+
+  autonomy:
+    description: 'Controlled vocabulary per audit-v2 T16. If `mission` is populated, this MUST NOT exceed the Mission''s autonomy_ceiling (audit-v2 L8).'
+    enum: [manual, low, medium, high]
+
+  risk_tier:
+    description: >-
+      Optional risk-class tag for the Intent. Open-enum + lint-on-boundary
+      (Fowler) — the schema accepts any string; the audit-v2 rule
+      T-INT-RISK-TIER-VALID emits a P3 advisory when the value falls outside
+      the recommended vocabulary. Recommended vocabulary (ds-d0as / Phase 1.B):
+      `default | schema-migration | auth | billing | concurrency |
+      data-residency | external-api-surface`. Absent = no finding.
+    type: string
+
+  beads_before_accept:
+    description: >-
+      Whether the Intent requires beads to be filed and claimed before it
+      transitions to ACCEPTED.  Default true — new Intents go through
+      bead decomposition before accept.  Set to false to opt out (e.g.,
+      pre-Path-A grandfathered Intents).  Extracted from the
+      **Beads before accept:** meta-line by the parser; absent = true.
+    type: boolean
+    default: true
+
+  audit_profile:
+    description: >-
+      Named audit-rule profile this Intent is held to. Default "v1" is the
+      current static rule set in linkage.py. Future profiles tighten via
+      additive rules and parameter overrides; the profile registry lives in
+      tooling/dekspec/fidelity_audit/profiles/ (added in F-3 phase 2). Today's
+      audit engine ignores this field; it is reserved for forward compatibility
+      so artifacts can be authored under tomorrow's stricter ruleset without
+      schema migration.
+    type: string
+    default: "v1"
+    pattern: "^v[0-9]+$"
+
+  branch:
+    description: 'Working branch name (e.g., int/INT-042-slug).'
+    type: string
+
+  mission:
+    description: 'Parent Mission ID, if any. Triggers L8 bidirectional check.'
+    type: object
+    additionalProperties: false
+    properties:
+      id:
+        type: string
+        pattern: "^MSN-\\d{3,}$"
+      path:
+        type: string
+
+  source_provenance:
+    description: 'Free text — Linear issue, Slack thread, incident, code TODO, etc., or "none".'
+    type: string
+
+  superseded_by:
+    description: 'INT-NNN that supersedes this one. Required when status=SUPERSEDED.'
+    type: string
+    pattern: "^INT-\\d{3,}$"
+
+  created:
+    type: string
+    format: date
+
+  modified:
+    type: string
+    format: date
+
+  linked_architecture_elements:
+    description: 'L7a — every Intent must list ≥1 AE-NNN. Each entry shares shape with WS/ADR/IB AE refs.'
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [id]
+      properties:
+        id:
+          type: string
+          pattern: "^AE-\\d{3,}$"
+        description:
+          type: string
+
+  motivation:
+    description: 'Why this change is needed. Prose. Subject to D20 (no rationale) + D19 (no targets).'
+    type: string
+
+  desired_outcome:
+    description: 'What is true after the Intent lands. Subject to D19/D20.'
+    type: string
+
+  type_specific:
+    description: 'Type-specific block. Shape depends on intent_type. Lossy capture — keep verbatim.'
+    type: object
+    additionalProperties: false
+    properties:
+      reproduction:
+        type: string
+        description: 'For type=bug.'
+      metric:
+        type: string
+        description: 'For type=nfr.'
+      target:
+        type: string
+        description: 'For type=nfr.'
+      adr:
+        type: string
+        pattern: "^ADR-\\d{3,}$"
+        description: 'For type=adr-driven.'
+      behavior_equivalence:
+        type: string
+        description: 'For type=refactor.'
+      coverage_gap:
+        type: string
+        description: 'For type=documentation.'
+      environment_change:
+        type: string
+        description: 'For type=environment.'
+
+  components_affected:
+    description: 'L7b — file globs the Intent''s diff is confined to. Required (T15). Each entry must resolve to ≥1 repo path.'
+    type: array
+    items:
+      type: string
+
+  verification:
+    description: 'T14 — ≥1 named cmd check. Run by /write-intent --testpass.'
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [name, cmd]
+      properties:
+        name:
+          type: string
+        cmd:
+          type: string
+
+  open_issues:
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [text]
+      properties:
+        text:
+          type: string
+        source:
+          type: string
+        severity:
+          # Canonical `P0..P3` ladder per ADR-013 (severity vocabulary
+          # unification). Bumped from legacy `{blocking, non_blocking}`
+          # at IB-023; the parser-side alias map in
+          # `dekspec/severity.py` + `_normalize_severity_alias` in
+          # `constraint_compiler/parser.py` translates legacy authored
+          # content to canonical before schema validation runs, so
+          # this enum stays strict.
+          enum: [P0, P1, P2, P3]
+
+  # Outcome verification (INT-112 Slice A / ADR-029).
+  outcome_verification:
+    description: >-
+      Per-Intent outcome test declaration per ADR-029 (LOCKED 2026-05-29).
+      A single user-observable behavior proof landed under strong-TDD
+      timing (red first → green via implementation). Authored at
+      PROPOSED. Audited by T-VERIFICATION-OUTCOME (INT-119) and
+      consumed as a REVIEW_IB lens input (INT-120). Absent + not
+      grandfathered ⇒ advisory P2 finding.
+    type: string
+
+  outcome_verification_grandfathered:
+    description: >-
+      Lazy-grandfather flag for Intents authored before INT-112 Slice A
+      landed. When true the T-VERIFICATION-OUTCOME audit rule (INT-119)
+      does not fire on this Intent for missing outcome_verification.
+      Parser defaults absent meta-line to true for pre-existing Intents,
+      false for new ones (post-INT-112-merge).
+    type: boolean
+
+  # amendment_log.type vocabulary is the minimal Family-A subset.
+  # Intent supersession is recorded via the dedicated `superseded_by`
+  # field, not the amendment log. Migrations don't typically need a
+  # `migration` log entry because Intent lifecycle is short. See
+  # docs/amendment-log-types.md for the canonical reference.
+  amendment_log:
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [date, type, change]
+      properties:
+        date:
+          type: string
+          format: date
+        type:
+          enum: [editorial, unlock, substantive]
+        change:
+          type: string
+        author:
+          type: string
+
+  parse_warnings:
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [field, reason, severity]
+      properties:
+        field:
+          type: string
+        reason:
+          type: string
+        severity:
+          enum: [info, warning]

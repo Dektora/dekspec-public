@@ -1,0 +1,226 @@
+# Audit profile v1 — the baseline rule set as of dekspec v0.38.x.
+#
+# Authored 2026-05-12 per F-3 phase 1 schema field + F-3 phase 2 registry.
+# This manifest enumerates every rule code emitted by linkage.py at the
+# time v0.38.1 shipped. Default profile for all artifacts whose
+# `audit_profile` field is absent or equals "v1".
+#
+# Mechanics: each rule listed under `rules:` is run by linkage.py during
+# `dekspec audit linkage`. Parameters override the rule's defaults — when
+# a rule appears in `parameters:`, the rule's implementation reads from
+# the parameter map; otherwise the hardcoded default in linkage.py wins.
+#
+# Forward compat: v2 / v3 / ... inherit from a parent profile via the
+# `inherits:` key and may add new rule codes, remove existing ones, or
+# override parameters. Removed rules surface as "rule X disabled in
+# profile vN" advisories in audit output; the rule's check is skipped.
+
+profile: v1
+inherits: null
+
+# L2 is intentionally absent and reserved for a future "ADR → ADR
+# non-supersession reference" rule (no such check exists today). Audit
+# output should not flag the gap.
+
+rules:
+  # L-series — linkage integrity (cross-artifact reference + back-pointer)
+  - L1-ADR-AE-MISSING
+  - L1-ADR-AE-EXISTS
+  - L3-WS-AE-MISSING
+  - L3-WS-AE-EXISTS
+  - L4-IC-AE-MISSING
+  - L4-IC-AE-EXISTS
+  - L5-IB-SPEC-MISSING
+  - L5-IB-WS-EXISTS
+  - L5-IB-INTENT-EXISTS
+  - L5-IB-AE-MISSING
+  - L5-IB-AE-EXISTS
+  - L5-IB-DEPENDS-EXISTS
+  - L7-ADR-SUPER-SELF
+  - L7-ADR-SUPER-EXISTS
+  - L7-ADR-SUPER-MIRROR
+  - L7-ADR-SUPER-CYCLE
+  - L7-ADR-SUPER-STATUS
+  - L7a-INT-AE-MISSING
+  - L7a-INT-AE-EXISTS
+  - L7b-INT-COMPONENTS-MISSING
+  - L7b-INT-COMPONENTS-RESOLVE
+  - L8-MSN-INT-EXISTS
+  - L8-MSN-INT-MIRROR
+  - L8-INT-MSN-EXISTS
+  - L8-INT-MSN-MIRROR
+  - L8-INT-AUTONOMY-EXCEEDS
+  # ADR-016 — per-Mission Intent serialization (advisory; >1 active Intent)
+  - L8-MSN-INT-SERIALIZED
+  # ADR-016 Open Issue 1 — repo-wide active-Intent backlog health (advisory;
+  # tunable threshold via the `parameters:` block below)
+  - L14-INT-BACKLOG-ACTIVE
+  # ds-tpmd — artifact-index <-> file Status/Version coherence (advisory)
+  - L15-INDEX-FILE-COHERENCE
+  # INT-105 / ds-xu6g — Path A accept-gate bead traceability (advisory)
+  - L16-INT-BEADS-BEFORE-ACCEPT
+  # INT-119 / ADR-029 — Outcome-test + strong-TDD discipline (P2 advisory).
+  - T-VERIFICATION-OUTCOME
+  # INT-125 / ds-zhhk — Constitution §Class Lanes audit family.
+  - T-CONST-CLASS-LANE-COVERAGE-UNIQUE
+  - T-CONST-CLASS-LANE-THRESHOLDS-WELL-FORMED
+  - L-CONST-CLASS-LANE-INTENT-EXISTS
+  # INT-128 / ds-provisional-promotion-guardrails — stale-canonical
+  # Mission advisory.
+  - T-MISSION-CANONICAL-WITHOUT-CHILD
+  - SI-01-DATE-STALE
+  # ADR-020 / INT-070 — T-STATUS-* status-maturity coherence family.
+  # T-STATUS-INVERSION: edge-structural — a settled artifact (maturity band
+  #   >= ACCEPTED) depends on an unsettled provider (band < ACCEPTED). Gating
+  #   P2 + auto-fixable when the provider can be raised to ACCEPTED; flag-only
+  #   P3 advisory when the provider is a Mission (no ACCEPTED status).
+  # T-STATUS-LAG: realized-work — an artifact below ACCEPTED whose own
+  #   decomposition is demonstrably complete (every child IB LOCKED, or a
+  #   LOCKED Intent produced it). Gating P2 + auto-fixable.
+  - T-STATUS-INVERSION
+  - T-STATUS-LAG
+  - T-STATUS-LOCK-READY
+  - T-STATUS-IB-FOLDER
+  # Skill-catalog hygiene family (Phase B of
+  # INT-provisional-skill-flag-normalization). All P2 mechanical.
+  - T-SKILL-FRONTMATTER-NORMAL
+  - T-SKILL-HELP-MODE-PRESENT
+  - T-SKILL-ARG-HINT-COMPLETE
+  # Provisional incubation visibility (INT-provisional-audit-treatment
+  # per MSN-014). Both P3 advisory; never blocks.
+  - L-PROVISIONAL-TREE-PRESENT
+  - L-PROVISIONAL-STALE
+  # Copy-on-write sibling-collision detection
+  # (INT-082 MVP slice; full write-time guard + accept gate
+  # deferred). P2 semantic.
+  - L-COW-SIBLING-COLLISION
+  # Copy-on-write direct-edit-bypass detection (INT-082 second rule).
+  # P2 mechanical; surfaces canonical files modified vs main while a
+  # pre-ACCEPTED Intent claims them without a provisional sibling.
+  - T-COW-CANONICAL-EDITED
+  - L9-INT-CMD-RESOLVE
+  - L9-MSN-CMD-RESOLVE
+  - L10-GLOSSARY-COVERAGE
+  - L11-MSN-STALE
+  - L12-WS-BLOCKING-PRE-IB-CLEAN
+  # IB-050 / INT-036 — Intent two-path lock coherence (ADR-017)
+  - L13-INT-LOCK-COHERENCE
+  # IB-005 / WS-005 — Constitution L0 singleton linkage integrity
+  - L-CONSTITUTION-ARTICLE-1-SV-REF
+  - L-CONSTITUTION-ARTICLE-4-ADR-REFS
+  - L-CONSTITUTION-ARTICLE-7-BOUNDARY-REFS
+  # LX — parser / corpus integrity
+  - LX-PARSE
+  - LX-DUP
+  # T-series — structural completeness
+  - T-AE-PURPOSE
+  - T-AE-RESPONSIBILITIES
+  - T11-AE-BOUNDARY
+  - T12-AE-VIEWS
+  - T-AE-BOUNDARIES-MISSING
+  - T14-INT-VERIFICATION
+  - T-INT-RISK-TIER-VALID
+  - T-BEAD-FAILURE-CLASS-VALID
+  - T17-MSN-VERIFICATION
+  - T17-MSN-OUTCOME
+  - T17-MSN-ROLLBACK
+  - T20-WS-BUSINESS-RULES
+  - T21-WS-FAILURE-BEHAVIOR
+  - T30-ADR-DECISION
+  - T31-ADR-VALIDATION
+  - T40-IB-GOAL
+  - T41-IB-DONE-WHEN
+  # D-series — content drift routing
+  - D17-AE-NUMERIC-NO-WS-CITE
+  - D18-AE-RATIONALE-NO-ADR-CITE
+  - D19-INT-NUMERIC-NO-WS-CITE
+  - D20-INT-RATIONALE-NO-ADR-CITE
+  # ds-52p D-15 — prose drift on WS / IC / IB (mirrors D17/D18 for those types)
+  - D-15a-WS-RATIONALE-NO-ADR-CITE
+  - D-15b-IC-RATIONALE-NO-ADR-CITE
+  - D-15c-IB-RATIONALE-NO-ADR-CITE
+  - D-15d-IC-NUMERIC-NO-WS-CITE
+  # INT-065 — T-PROSE prose-shape heuristic family (advisory; per-repo
+  # configurable). Evaluates the heuristic *shape* of a prose field against
+  # the five PROSE facets (Precision / Rationale / Outcome / Scope / Example).
+  # Listed-and-active but conservatively thresholded (see `parameters:` below)
+  # — every finding emits at P3 (advisory), so the family never blocks a build.
+  - T-PROSE-WS-BUSINESS-RULE
+  - T-PROSE-WS-FAILURE-BEHAVIOR
+  - T-PROSE-IB-GOAL
+  - T-PROSE-IB-DONE-WHEN
+  - T-PROSE-AE-RESPONSIBILITY
+  # ds-52p D-16 — singleton self-consistency
+  - T-GLOSSARY-DUPLICATE
+  - T-GLOSSARY-MISSING-DEFINITION
+  - T-GLOSSARY-DANGLING-ALIAS
+  - T-VISION-MISSING-WHY
+  - T-VISION-INCOMPLETE
+  # IB-004 / WS-005 — Constitution L0 singleton structural completeness
+  - T-CONSTITUTION-ARTICLE-PRESENT
+  - T-CONSTITUTION-ARTICLE-POPULATED
+  # IB-034 / WS-020 — Security Profile structural completeness + within-SP cross-field consistency
+  - T-SEC-OWASP-COVERAGE-GAP
+  - T-SEC-SUPPLY-CHAIN-EMPTY
+  - T-SEC-SECRET-STORE-ENUM
+  - T-SEC-AUTHN-METHOD-CONSISTENCY
+  # ds-tygt — supply-chain hygiene advisory (14-day new-package rule); sibling to
+  # the SP-IR-pure T-SEC-* family, gated on Security Profile presence, offline.
+  - T-SUPPLY-CHAIN-NEW-DEPENDENCY
+  # INT-020 — DRAFT-slug temp-ID + append-only registry safety nets
+  - L-NO-DRAFT-IN-MAIN
+  - L-REGISTRY-APPEND-ONLY
+
+parameters:
+  L11-MSN-STALE:
+    days_threshold: 90
+
+  # ADR-016 Open Issue 1 — repo-wide active-Intent backlog health. The rule
+  # fires a single advisory (P3) finding when the count of active Intents
+  # (DRAFT through MERGED) repo-wide EXCEEDS `threshold`. The default 10 is a
+  # review-bandwidth heuristic; a consumer dials it per repo by editing only
+  # this value — no code change. When absent, linkage.py falls back to its
+  # `_INT_BACKLOG_ACTIVE_THRESHOLD` module-level default (also 10).
+  L14-INT-BACKLOG-ACTIVE:
+    threshold: 10
+
+  # INT-065 — T-PROSE-* prose-shape family per-rule overrides.
+  #
+  # Each T-PROSE-* rule reads three knobs from its `parameters:` entry; when
+  # a knob is absent the rule falls back to the conservative hardcoded
+  # default in `prose_shape.py` (IB-109). A consumer repo dials any of these
+  # per repo by editing only its audit profile — no code change.
+  #
+  #   threshold  the minimum number of the five PROSE facets a prose item
+  #              must satisfy to PASS. An item below it draws an advisory
+  #              finding. The conservative value 1 means only ZERO-facet,
+  #              genuinely contentless prose is flagged. Raising it (2-5)
+  #              makes the family stricter. `# calibrated by IB-111 against
+  #              the self-spec corpus` — see test_prose_shape_rules.py.
+  #   severity   the finding severity. The MVP floor is `P3` (advisory) —
+  #              the family is warning-only and never blocks a build at P3.
+  #              A consumer may raise it (e.g. `P2`) once calibrated.
+  #   enabled    `false` turns the rule off entirely. (Omitting the rule
+  #              code from the `rules:` list above also filters it out — the
+  #              profile-filter is the canonical off switch; `enabled` is a
+  #              convenience knob that does not require a `rules:` edit.)
+  #
+  # The shipped default is conservative (threshold 1 / severity P3) so the
+  # family stays quiet on a methodology-practicing repo — IB-111's
+  # calibration measured 3 advisory findings on the dekspec/ self-spec
+  # corpus at this setting (2026-05-21).
+  T-PROSE-WS-BUSINESS-RULE:
+    threshold: 1
+    severity: P3
+  T-PROSE-WS-FAILURE-BEHAVIOR:
+    threshold: 1
+    severity: P3
+  T-PROSE-IB-GOAL:
+    threshold: 1
+    severity: P3
+  T-PROSE-IB-DONE-WHEN:
+    threshold: 1
+    severity: P3
+  T-PROSE-AE-RESPONSIBILITY:
+    threshold: 1
+    severity: P3

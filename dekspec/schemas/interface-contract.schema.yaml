@@ -1,0 +1,387 @@
+# Interface Contract IR — JSON Schema (Draft 2020-12)
+#
+# This schema defines the v0.1 IC IR shape consumed by the Constraint Compiler
+# emitters (contract_test, ci_gate). The IR is produced by the parser from
+# markdown source and validated against this schema before any emitter runs.
+#
+# Forward-compatibility notes:
+#   - Reference fields (governing_adrs[].id, parties[].ae_id, serves_intents[])
+#     are opaque ID strings. ADR/AE/Intent IRs land in v0.2+; until then,
+#     references are unresolved string IDs by design.
+#   - affected_paths is an IC-level fallback for v0.1. In v0.2+ when the AE
+#     registry IR ships, the canonical source becomes AE.implements_globs and
+#     this field becomes a deprecated override.
+#
+# The schema is written in YAML for readability; jsonschema accepts YAML
+# loaded into a Python dict. Validators MUST treat unknown top-level keys as
+# errors (additionalProperties: false at root) to catch schema drift early.
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://dekspec.dektora/schemas/v0.1/interface-contract.schema.json"
+title: Interface Contract IR
+description: >-
+  Normalized intermediate representation of an Interface Contract artifact.
+  Produced by dekspec.constraint_compiler.parser; consumed by emitters.
+
+type: object
+additionalProperties: false
+required:
+  - ir_schema_version
+  - id
+  - name
+  - status
+  - version
+  - source
+  - interface_definition
+
+properties:
+
+  ir_schema_version:
+    description: Version of THIS schema the IR conforms to. Independent of dekspec library version.
+    # Bumped 0.1.0 → 0.2.0 at IB-023 (severity vocabulary unification —
+    # ADR-013): `open_issues[*].severity` enum narrowed from legacy
+    # `{blocking, non_blocking}` to canonical `{P0, P1, P2, P3}`.
+    # Persisted v0.1.0 IR JSON migrates via
+    # `tooling/dekspec/migrations/severity_unification.py`.
+    const: "0.2.0"
+
+  id:
+    description: Canonical IC identifier derived from filename (e.g., IC-007).
+    type: string
+    pattern: "^IC-\\d{3,}$"
+
+  name:
+    description: Human title from the markdown H1 (e.g., "Formula Engine Expression Evaluation").
+    type: string
+    minLength: 1
+
+  status:
+    description: Lifecycle state. Compiler emits enforcement only for LOCKED artifacts (v0.1 PoC may relax via --treat-as-locked flag).
+    enum: [TODO, DRAFT, PROPOSED, ACCEPTED, LOCKED, DEPRECATED]
+
+  version:
+    description: Semver of the IC artifact itself (not this IR schema).
+    type: string
+    pattern: "^\\d+\\.\\d+\\.\\d+$"
+
+  created:
+    type: string
+    format: date
+
+  modified:
+    description: Most recent modification date. Markdown may list multiple; parser takes the most recent.
+    type: string
+    format: date
+
+  source:
+    description: Provenance — where this IR was parsed from and by what.
+    type: object
+    additionalProperties: false
+    required: [path, sha256, parser_version, parsed_at]
+    properties:
+      path:
+        type: string
+        description: Absolute path to the markdown source at parse time.
+      sha256:
+        type: string
+        pattern: "^[a-f0-9]{64}$"
+        description: SHA-256 of the source file's bytes. Used by the persistence layer's parse cache.
+      parser_version:
+        type: string
+        pattern: "^\\d+\\.\\d+\\.\\d+$"
+      parsed_at:
+        type: string
+        format: date-time
+
+  silent_failure_domains:
+    description: Which of the five Dektora silent-failure domains this IC's boundary touches.
+    type: array
+    uniqueItems: true
+    items:
+      enum:
+        - transformer_internals
+        - numerical_precision
+        - gpu_multi_process_isolation
+        - graph_consistency
+        - timeline_coherence
+
+  governing_adrs:
+    description: "ADRs that constrain this contract. Forward-compat: opaque ID refs; full resolution lands when ADR IR ships in v0.2+."
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [id]
+      properties:
+        id:
+          type: string
+          pattern: "^ADR-\\d{3,}$"
+        title:
+          type: string
+          description: Cached for human reading; not authoritative once ADR IR exists.
+        summary:
+          type: string
+          description: How this ADR constrains this contract (one sentence).
+
+  purpose:
+    description: Free-prose Purpose section, kept verbatim. Not parsed further; preserved for human review and future LLM-assisted analysis.
+    type: string
+
+  parties:
+    description: Sides of the boundary this contract defines.
+    type: array
+    minItems: 2
+    items:
+      type: object
+      additionalProperties: false
+      required: [role, name]
+      properties:
+        role:
+          enum: [provider, consumer]
+        name:
+          type: string
+          description: Human-facing name (e.g., "Formula Engine").
+        description:
+          type: string
+        ae_id:
+          type: string
+          pattern: "^AE-\\d{3,}$"
+          description: Architecture Element reference (per-party). Optional; the top-level provider_ae / consumer_aes fields are the canonical source after v0.3.1.
+
+  provider_ae:
+    description: 'Top-level Provider AE reference, extracted from the §Parties / ### Provider AE H3 subsection. Single value (one provider per IC by convention). Replaces the v0.2.x parties[].ae_id approach for ICs that use the post-DN→AE-migration template (which puts AE refs in dedicated H3 subsections after the party-bullet list).'
+    type: string
+    pattern: "^AE-\\d{3,}$"
+
+  consumer_aes:
+    description: 'Top-level Consumer AE references, extracted from the §Parties / ### Consumer AEs H3 subsection. List form because Open Host Service contracts have multiple consumers.'
+    type: array
+    items:
+      type: string
+      pattern: "^AE-\\d{3,}$"
+    uniqueItems: true
+
+  relationship_pattern:
+    description: DDD context-mapping pattern.
+    type: object
+    additionalProperties: false
+    required: [pattern]
+    properties:
+      pattern:
+        enum:
+          - open_host_service
+          - customer_supplier
+          - anti_corruption_layer
+          - conformist
+          - shared_kernel
+          - published_language
+      change_impact:
+        type: string
+        description: Free text — who adapts when this interface changes and why.
+
+  shared_conventions:
+    description: Cross-operation conventions that apply to all operations in this contract.
+    type: array
+    items:
+      type: string
+
+  interface_definition:
+    description: >-
+      Polymorphic by 'kind'. The template intentionally allows free-form structure
+      here, so the IR captures structured fields where the parser can extract
+      them and preserves the raw markdown verbatim as a fallback.
+    type: object
+    additionalProperties: false
+    required: [kind, raw_markdown]
+    properties:
+      kind:
+        enum:
+          - http_api
+          - in_process_adapter
+          - consistency_contract
+          - other
+      operations:
+        description: Structured operation list. May be empty if parser couldn't extract; raw_markdown is then the source of truth.
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [name]
+          properties:
+            name:
+              type: string
+              description: Operation name (function name or HTTP route).
+            signature:
+              type: string
+              description: 'Raw signature line preserved verbatim, e.g., "evaluate(formula_string: str, variable_values: dict[str, float]) -> float".'
+            inputs:
+              type: array
+              items:
+                type: object
+                additionalProperties: false
+                required: [name]
+                properties:
+                  name: { type: string }
+                  type: { type: string }
+                  description: { type: string }
+            outputs:
+              type: array
+              items:
+                type: object
+                additionalProperties: false
+                required: [name]
+                properties:
+                  name: { type: string }
+                  type: { type: string }
+                  description: { type: string }
+            preconditions:
+              type: array
+              items: { type: string }
+      raw_markdown:
+        type: string
+        description: Full Interface Definition section verbatim. Always populated; emitters fall back to this when structured operations is empty.
+
+  domain_constraints:
+    description: >-
+      Constraints from the Domain Constraints table. Intended as assertion
+      targets for downstream emitters. As of v0.38.x, no emitter consumes
+      this field — it parses cleanly but is not yet plumbed through to
+      contract_test / ci_gate / agents_md (audit divergence D-10).
+      Authors should still populate it; the field's analyzable across runs
+      and audits, and the agents_md plumbing is on the near-term roadmap.
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [constraint, value]
+      properties:
+        constraint:
+          type: string
+          description: Constraint name (e.g., "CUDA device", "Tensor dtype on wire").
+        value:
+          type: string
+          description: Constraint value (e.g., "float32", "Dedicated device, separate from chat model").
+        rationale:
+          type: string
+
+  error_semantics:
+    description: Rows from the Error Semantics table. Each row becomes a contract-test case.
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [condition]
+      properties:
+        condition:
+          type: string
+          description: Error condition description (e.g., "Formula syntax error").
+        producing_party:
+          type: string
+          description: Which party/system raises (free text — real ICs use values like "Both", "System 2 only").
+        detection:
+          type: string
+        behavior:
+          type: string
+          description: 'Documented behavior. Contract test asserts this. "Silent degradation" is not valid. Optional in the schema so partially-populated rows still validate; the contract_test emitter skips rows missing behavior with a parse warning.'
+        consumer_responsibility:
+          type: string
+
+  consistency_guarantees:
+    description: What the contract guarantees and what it explicitly does not.
+    type: object
+    additionalProperties: false
+    properties:
+      holds:
+        type: array
+        items:
+          type: string
+        description: Guarantees that hold. Each becomes an assertion in the contract test.
+      does_not_hold:
+        type: array
+        items:
+          type: string
+        description: Explicit non-guarantees. Surfaced in test docstrings; not asserted.
+
+  affected_paths:
+    description: >-
+      Path globs the CI gate watches. v0.1: hand-authored in IR or extracted
+      from referenced AEs (when AE registry ships in v0.2+). v0.1 fallback
+      gives the gate emitter something to scope to; deprecated in v0.2+ when
+      AE.implements_globs becomes the canonical source.
+    type: array
+    items:
+      type: string
+
+  open_issues:
+    description: Tracked issues from the Open Issues section. Blocking issues prevent compiler emission for ACCEPTED→LOCKED transitions.
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [text, severity]
+      properties:
+        text:
+          type: string
+        source:
+          type: string
+          description: e.g., "initial draft", "audit", "review", "cascade from ADR-022".
+        severity:
+          # Canonical `P0..P3` ladder per ADR-013 (severity vocabulary
+          # unification). Bumped from legacy `{blocking, non_blocking}`
+          # at IB-023; the parser-side alias map in
+          # `dekspec/severity.py` + `_normalize_severity_alias` in
+          # `constraint_compiler/parser.py` translates legacy authored
+          # content to canonical before schema validation runs, so
+          # this enum stays strict.
+          enum: [P0, P1, P2, P3]
+
+  serves_intents:
+    description: Cross-cutting Intents this contract realizes. Forward-compat opaque IDs; Intent IR is not planned (registry-only).
+    type: array
+    items:
+      type: string
+      pattern: "^Intent-\\d{3,}$"
+
+  # amendment_log.type vocabulary is Family A minus `lock` and
+  # `supersession`. ICs lock once via the normal status flow; further
+  # substantive edits trigger a new IC version, not an unlock + lock
+  # cycle. See docs/amendment-log-types.md.
+  amendment_log:
+    description: Post-LOCKED change log entries. Editorial entries don't trigger recompilation; substantive entries do.
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [date, type, change]
+      properties:
+        date:
+          type: string
+          format: date
+        type:
+          enum: [editorial, unlock, substantive, fill]
+        change:
+          type: string
+        author:
+          type: string
+
+  parse_warnings:
+    description: >-
+      Fields the parser couldn't extract or only partially extracted from
+      markdown. Captured in the IR (not just emitted to logs) so they're
+      analyzable across runs — e.g., quantifying parser TBD-rate over time
+      to drive template-tightening priorities. NOT a parser failure;
+      validation succeeds with parse_warnings populated.
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [field, reason, severity]
+      properties:
+        field:
+          type: string
+          description: JSON Pointer to the affected IR field (e.g., "/interface_definition/operations").
+        reason:
+          type: string
+          description: Why parsing was incomplete (e.g., "Interface Definition prose contains no detectable signature lines").
+        severity:
+          enum: [info, warning]

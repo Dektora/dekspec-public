@@ -1,0 +1,365 @@
+# Architecture Element IR — JSON Schema (Draft 2020-12)
+#
+# Per-AE IR. The "AE registry" is a directory of these — one file per
+# architecture element. Mirrors interface-contract.schema.yaml's shape
+# conventions (additionalProperties: false everywhere; minimal required set;
+# parse_warnings field analyzable across runs; opaque ID refs for forward-compat).
+#
+# v0.2 introduces this IR. New load-bearing field vs. the template:
+#   implements_globs — file globs (relative to consumer repo root) that this AE
+#                      is implemented by. The Constraint Compiler uses it to
+#                      derive affected_paths for any IC/WS that references this
+#                      AE as Provider/Consumer/Source AE. Replaces v0.1's
+#                      --affected-paths CLI scaffold.
+#
+# Source-of-truth for implements_globs is an open design choice (template field
+# vs. sidecar file vs. repo-level config) — see CHANGELOG / open issues. The
+# schema only specifies the IR field; the parser layer chooses how to populate
+# it.
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://dekspec.dektora/schemas/v0.1/architecture-element.schema.json"
+title: Architecture Element IR
+description: >-
+  Normalized intermediate representation of an Architecture Element artifact.
+  Produced by dekspec.constraint_compiler.parser.parse_ae(); consumed by
+  emitters and (eventually) by IC/WS parsers that resolve AE references.
+
+type: object
+additionalProperties: false
+required:
+  - ir_schema_version
+  - id
+  - name
+  - status
+  - subtype
+  - source
+
+properties:
+
+  ir_schema_version:
+    description: Version of THIS schema the IR conforms to. Independent of dekspec library version.
+    # Bumped 0.1.0 → 0.2.0 at IB-044 (INT-034 / ADR-015 — derive backlinks
+    # from forward links). The stored `related_*s` backlink projections
+    # (`related_adrs` / `related_wss` / `related_ics` / `related_ibs` /
+    # `related_aes` / `related_intents`) under `linked_artifacts` are
+    # retired: backlinks are now derived from the union of forward links
+    # and emitted by `dekspec relink`, not schema-validated input.
+    # Persisted v0.1.0 IR JSON migrates via the IB-045 migration module.
+    const: "0.2.0"
+
+  id:
+    description: Canonical AE identifier derived from filename (e.g., AE-014).
+    type: string
+    pattern: "^AE-\\d{3,}$"
+
+  name:
+    description: Human title from the markdown H1 (e.g., "Configurable Formula Engine").
+    type: string
+    minLength: 1
+
+  status:
+    description: Lifecycle state. Compiler emits enforcement only for LOCKED artifacts (v0.1 PoC may relax via --treat-as-locked flag).
+    enum: [TODO, DRAFT, PROPOSED, ACCEPTED, LOCKED, DEPRECATED]
+
+  subtype:
+    description: "C4-aligned architectural subtype (Numbered Governance Rule 1, audit T10). Stored as snake_case slug for stable machine matching."
+    enum:
+      - system
+      - subsystem
+      - container
+      - component
+      - pipeline
+      - data_model
+      - cross_cutting_concern
+      - platform_concern
+      - interface_surface
+      - workflow_process
+
+  classification:
+    description: "Subdomain classification calibrating audit intensity (Core / Supporting / Generic)."
+    enum: [Core, Supporting, Generic]
+
+  created:
+    type: string
+    format: date
+
+  modified:
+    description: Most recent modification date. Markdown may list multiple; parser takes the most recent.
+    type: string
+    format: date
+
+  former_dn:
+    description: 'Migration provenance — the legacy DN ID this AE was migrated from (DN→AE migration 2026-04-27). Numeric continuity preserved (DN-014 → AE-014).'
+    type: string
+    pattern: "^DN-\\d{3,}$"
+
+  source:
+    description: Provenance — where this IR was parsed from and by what.
+    type: object
+    additionalProperties: false
+    required: [path, sha256, parser_version, parsed_at]
+    properties:
+      path:
+        type: string
+        description: Absolute path to the markdown source at parse time.
+      sha256:
+        type: string
+        pattern: "^[a-f0-9]{64}$"
+        description: SHA-256 of the source file's bytes. Used by the persistence layer's parse cache.
+      parser_version:
+        type: string
+        pattern: "^\\d+\\.\\d+\\.\\d+$"
+      parsed_at:
+        type: string
+        format: date-time
+
+  linked_artifacts:
+    description: >-
+      §Linked Artifacts projection. The stored `related_*s` backlink fields
+      (related_adrs / related_wss / related_ics / related_ibs / related_aes /
+      related_intents) were retired at IB-044 (INT-034 / ADR-015): backlinks
+      are derived from the union of forward links and rendered by
+      `dekspec relink`, not schema-validated input. The `Related *` lines in
+      artifact markdown remain as `dekspec relink` output; the parser no
+      longer projects them into the IR. Only `owners` (author-maintained
+      ownership metadata, not a backlink) remains.
+    type: object
+    additionalProperties: false
+    properties:
+      owners:
+        type: array
+        items:
+          type: string
+          description: Free text — name, role, or team.
+
+  purpose_and_scope:
+    description: Free-prose §Purpose and Scope, kept verbatim. Not parsed further; preserved for human review and future LLM-assisted analysis.
+    type: string
+
+  responsibilities:
+    description: Bullet list of architecturally significant load-bearing responsibilities (not exhaustive feature list).
+    type: array
+    items:
+      type: string
+
+  boundaries_and_non_goals:
+    description: 'What is inside this slice and what is outside. Mandatory section per Numbered Governance Rule 2 / audit T11 (the schema does not enforce minItems on non_goals — that''s the parser/audit layer''s job, since AEs at DRAFT status may be incomplete).'
+    type: object
+    additionalProperties: false
+    properties:
+      inside:
+        type: array
+        items:
+          type: string
+      non_goals:
+        type: array
+        description: 'Items the AE explicitly does NOT cover. T11 hard-fails at PROPOSED if zero non-goals; here the schema accepts zero so DRAFT-state AEs validate.'
+        items:
+          type: object
+          additionalProperties: false
+          required: [text]
+          properties:
+            text:
+              type: string
+            why:
+              type: string
+              description: Rationale for the exclusion. T11 hard-fails if missing on at least one non-goal.
+
+  boundaries:
+    description: >-
+      Optional typed three-tier boundary block (always_do / ask_first /
+      never_do) per ADR-014 — a machine-readable statement of what the
+      AE-bounded subsystem always does, asks the engineer about first,
+      and never does. An AE three-tier boundary takes precedence over a
+      Constitution Article on the same axis. The field is OPTIONAL: an AE
+      without a `boundaries` block is valid (the absence is surfaced by
+      the advisory T-AE-BOUNDARIES-MISSING audit rule, not a schema error).
+    type: object
+    additionalProperties: false
+    properties:
+      always_do:
+        type: array
+        description: Clauses naming what the AE-bounded subsystem always does.
+        items:
+          type: string
+      ask_first:
+        type: array
+        description: >-
+          Clauses the agent surfaces to the engineer before proceeding —
+          advisory rendered text only at MVP, no enforcement hook.
+        items:
+          type: string
+      never_do:
+        type: array
+        description: Clauses naming what the AE-bounded subsystem never does.
+        items:
+          type: string
+
+  relationships_and_dependencies:
+    description: Pre-structured 4-direction dependency view. Every AE should populate all four (use empty array or "none" string explicitly when empty).
+    type: object
+    additionalProperties: false
+    properties:
+      consumes:
+        type: array
+        items:
+          type: string
+      produces:
+        type: array
+        items:
+          type: string
+      depends_on:
+        type: array
+        items:
+          type: string
+      consumed_by:
+        type: array
+        items:
+          type: string
+      indirect_governing_adrs:
+        description: Optional sub-bullet — peripheral ADRs that don't count against the L1-ADR-SCOPE 2-8 direct-body rule. Each carries a one-line rationale.
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [id]
+          properties:
+            id:
+              type: string
+              pattern: "^ADR-\\d{3,}$"
+            rationale:
+              type: string
+
+  views:
+    description: 'C4 view(s) that materially clarify this AE. For structural subtypes (system / subsystem / container / pipeline / platform_concern), at least one view normally expected (T12). If absent, absence_justification must be populated.'
+    type: object
+    additionalProperties: false
+    properties:
+      diagrams:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [kind]
+          properties:
+            kind:
+              enum: [context, container, component, dynamic, deployment]
+            description:
+              type: string
+            source_ref:
+              type: string
+              description: Path to mermaid / structurizr DSL source if any.
+            inline:
+              type: string
+              description: Inline mermaid source if not externalized.
+      absence_justification:
+        type: string
+        description: Required for structural subtypes if no diagram present (T12).
+
+  runtime_behavior:
+    description: '(Optional, subtype-dependent) Architecturally significant runtime scenarios. Pipeline / Workflow / many Container AEs populate this.'
+    type: string
+
+  data_and_state:
+    description: '(Optional, subtype-dependent) Data structures, invariants, lifecycle, persistence concerns. Data Model AEs always populate this.'
+    type: string
+
+  deployment_operational_shape:
+    description: '(Optional, subtype-dependent) Runtime topology, environment dependencies, supervision, scaling shape. Platform Concern AEs always populate this.'
+    type: string
+
+  constraints_and_quality_notes:
+    description: Architectural constraints that aren't measurable requirements. Measurable quality requirements (latency, throughput, SLOs) belong in Working Specs, not here (D17 hard-fails).
+    type: string
+
+  open_questions:
+    description: Tracked design-level questions and planned follow-ons. Code-gap items belong in the divergence ledger or `br`, not here.
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [text, severity]
+      properties:
+        text:
+          type: string
+        source:
+          type: string
+        severity:
+          enum: [blocking, non_blocking]
+
+  # amendment_log.type vocabulary is Family A minus `supersession`. AEs
+  # don't formally supersede each other (a deprecated AE is deleted or
+  # marked DEPRECATED in `status`). See docs/amendment-log-types.md.
+  amendment_log:
+    description: Post-LOCKED change log. Editorial entries don't trigger recompilation; substantive entries do.
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [date, type, change]
+      properties:
+        date:
+          type: string
+          format: date
+        type:
+          enum: [editorial, unlock, substantive, fill, migration, lock]
+        change:
+          type: string
+        author:
+          type: string
+
+  # ------------------------------------------------------------------------- #
+  # Legacy DN-era sections — preserved for AEs migrated 2026-04-27 that still
+  # carry these. The current template (post-DN→AE migration) does not include
+  # them; the schema accepts them so existing AEs validate without rewrite.
+  # v0.3+ may deprecate via parse_warnings nudge.
+  # ------------------------------------------------------------------------- #
+
+  what_success_looks_like:
+    description: '(LEGACY, DN-era) Concrete observable outcomes. Now folded into Purpose and Scope / Responsibilities under the AE template, but preserved here for migrated AEs.'
+    type: array
+    items:
+      type: string
+
+  key_concepts:
+    description: '(LEGACY, DN-era) Free-prose §Key Concepts. Now folded into Purpose and Scope / Constraints and Quality Notes, but preserved for migrated AEs.'
+    type: string
+
+  # ------------------------------------------------------------------------- #
+  # Constraint Compiler integration — load-bearing for v0.2+ CI gate scoping
+  # ------------------------------------------------------------------------- #
+
+  implements_globs:
+    description: >-
+      File globs (relative to consumer repo root) that this AE is implemented
+      by. The Constraint Compiler reads this when an IC/WS references the AE
+      as Provider/Consumer/Source AE, and uses it to populate affected_paths
+      in the emitted CI gate. Replaces v0.1's --affected-paths CLI scaffold.
+
+      v0.2 source-of-truth in markdown is an open design decision (new ##
+      Implements section vs. Linked Artifacts sub-bullet vs. sidecar file vs.
+      repo-level config). Schema accepts the field unconditionally; the
+      parser layer decides how to populate it.
+    type: array
+    items:
+      type: string
+
+  parse_warnings:
+    description: >-
+      Fields the parser couldn't extract or only partially extracted from
+      markdown. Captured in the IR (not just emitted to logs) so they're
+      analyzable across runs — same convention as IC IR.
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [field, reason, severity]
+      properties:
+        field:
+          type: string
+          description: JSON Pointer to the affected IR field.
+        reason:
+          type: string
+        severity:
+          enum: [info, warning]

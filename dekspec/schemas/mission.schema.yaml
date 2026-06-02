@@ -1,0 +1,241 @@
+# Mission IR — JSON Schema (Draft 2020-12)
+#
+# Per-Mission IR. Seventh artifact-type IR. Missions are the highest-level
+# coordination artifact: they bind a set of Intents to a single user-observable
+# outcome, with explicit out-of-scope, flag strategy, kill criteria, and a
+# Mission Verification predicate that gates COMPLETING → COMPLETE.
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://dekspec.dektora/schemas/v0.1/mission.schema.json"
+title: Mission IR
+description: >-
+  Normalized intermediate representation of a Mission artifact. Produced by
+  dekspec.constraint_compiler.parser.parse_mission(); consumed by the L8
+  Mission ↔ Intent bidirectional audit rules, the L11 stale-ACTIVE
+  advisory, and (planned) AGENTS.md mission-status fragment. Missions are
+  the highest-level coordination artifact — they bind a set of Intents to
+  one user-observable outcome with explicit out-of-scope, flag strategy,
+  kill criteria, and a verification predicate that gates
+  COMPLETING → COMPLETE.
+
+type: object
+additionalProperties: false
+required:
+  - ir_schema_version
+  - id
+  - name
+  - status
+  - source
+
+properties:
+  ir_schema_version:
+    const: "0.2.0"
+
+  id:
+    type: string
+    pattern: "^MSN-\\d{3,}$"
+
+  name:
+    type: string
+    minLength: 1
+
+  status:
+    enum: [TODO, ACTIVE, COMPLETING, COMPLETE, KILLED, SUPERSEDED]
+
+  audit_profile:
+    description: >-
+      Named audit-rule profile this Mission is held to. Default "v1". See
+      intent.schema.yaml::audit_profile for the full convention. Today's
+      audit engine ignores this field; reserved for forward compatibility.
+    type: string
+    default: "v1"
+    pattern: "^v[0-9]+$"
+
+  source:
+    type: object
+    additionalProperties: false
+    required: [path, sha256, parser_version, parsed_at]
+    properties:
+      path:
+        type: string
+      sha256:
+        type: string
+        pattern: "^[a-f0-9]{64}$"
+      parser_version:
+        type: string
+        pattern: "^\\d+\\.\\d+\\.\\d+$"
+      parsed_at:
+        type: string
+        format: date-time
+
+  owner:
+    type: string
+
+  created:
+    type: string
+    format: date
+
+  modified:
+    type: string
+    format: date
+
+  autonomy_ceiling:
+    enum: [manual, low, medium, high]
+
+  outcome:
+    description: 'User-observable outcome paragraph.'
+    type: string
+
+  mission_verification:
+    description: 'T17-MSN — ≥1 named cmd check defining "Mission complete".'
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [name, cmd]
+      properties:
+        name:
+          type: string
+        cmd:
+          type: string
+
+  out_of_scope:
+    type: array
+    items:
+      type: string
+
+  flag_strategy:
+    description: 'Feature flag guarding partial-rollout state. May be `none`.'
+    type: object
+    additionalProperties: false
+    properties:
+      flag_name:
+        type: string
+      default_state:
+        type: string
+      who_flips_it_on:
+        type: string
+      removal_plan:
+        type: string
+
+  rollback_plan:
+    description: >-
+      Structured rollback predicate. `trigger` is prose explaining the
+      circumstances that invoke rollback; `steps` is an ordered named cmd
+      list parallel to `mission_verification`, executable un-attended.
+      Schema bumped from prose `string` to this shape at v0.2.0 (ds-zuy)
+      to enable dark-factory Mission lifecycle. Legacy v0.1.0 prose is
+      preserved by the migration as `steps[0] = {name: "_legacy_prose",
+      cmd: "echo SKIP_LEGACY_ROLLBACK <prose>"}` so downstream consumers
+      fail loud, not silent.
+    type: object
+    additionalProperties: false
+    required: [trigger, steps]
+    properties:
+      trigger:
+        type: string
+      steps:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [name, cmd]
+          properties:
+            name:
+              type: string
+            cmd:
+              type: string
+
+  kill_criteria:
+    description: >-
+      Observable abandonment conditions, each a named cmd check parallel
+      to `mission_verification`. Schema bumped from `array of string` to
+      this shape at v0.2.0 (ds-zuy). Legacy v0.1.0 prose is preserved by
+      the migration as `{name: "_legacy_prose_N", cmd: "echo
+      SKIP_LEGACY_KILL <prose>"}` entries.
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [name, cmd]
+      properties:
+        name:
+          type: string
+        cmd:
+          type: string
+
+  first_intent:
+    description: 'INT-NNN identifier or sketch placeholder (e.g., "INT-???").'
+    type: string
+
+  intent_queue:
+    description: 'Ordered list of Intents under this Mission.'
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        type:
+          type: string
+        status:
+          type: string
+        notes:
+          type: string
+
+  discovered_prerequisites:
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [text]
+      properties:
+        text:
+          type: string
+        source:
+          type: string
+        resolution:
+          type: string
+
+  notes:
+    type: string
+
+  # amendment_log.type vocabulary is Family B (mission state-transition
+  # lifecycle) plus the one Family-A crossover (`editorial`). The log is
+  # the source-of-truth for the Mission lifecycle audit timeline. Note:
+  # Mission uses `supersede` (verb) where ADRs use `supersession` (noun)
+  # — naming inconsistency tracked for future unification.
+  # See docs/amendment-log-types.md for the canonical reference.
+  amendment_log:
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [date, type, change]
+      properties:
+        date:
+          type: string
+          format: date
+        type:
+          enum: [activate, review, complete, kill, supersede, editorial]
+        change:
+          type: string
+        author:
+          type: string
+
+  parse_warnings:
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [field, reason, severity]
+      properties:
+        field:
+          type: string
+        reason:
+          type: string
+        severity:
+          enum: [info, warning]

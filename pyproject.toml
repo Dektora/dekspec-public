@@ -1,0 +1,106 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dekspec"
+dynamic = ["version"]
+description = "Spec-Driven Development framework for AI-augmented engineering: typed artifact IRs, audit engine, AGENTS.md aggregator, and Claude Code skills."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Proprietary" }
+authors = [{ name = "Dektora" }]
+keywords = [
+    "dekspec",
+    "dektora",
+    "spec-driven-development",
+    "sdd",
+    "agentic",
+    "claude-code",
+    "ai-augmented-engineering",
+    "constraint-compiler",
+    "audit",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: Other/Proprietary License",
+    "Operating System :: POSIX",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Build Tools",
+    "Topic :: Software Development :: Documentation",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Software Development :: Testing",
+    "Typing :: Typed",
+]
+dependencies = [
+    "pyyaml>=6.0",
+    "jsonschema>=4.0",
+    "mcp>=0.1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/Dektora/dekspec"
+Repository = "https://github.com/Dektora/dekspec"
+Changelog = "https://github.com/Dektora/dekspec/blob/main/CHANGELOG.md"
+Issues = "https://github.com/Dektora/dekspec/issues"
+Documentation = "https://github.com/Dektora/dekspec/blob/main/README.md"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.4",
+]
+
+[project.scripts]
+dekspec = "dekspec.cli:main"
+dekspec-mcp = "dekspec.mcp.server:main"
+
+[tool.setuptools.packages.find]
+where = ["tooling"]
+include = ["dekspec*"]
+
+[tool.setuptools.package-data]
+"dekspec" = ["py.typed"]
+"dekspec.schemas" = ["*.yaml"]
+"dekspec.fidelity_audit.profiles" = ["*.yaml"]
+# Wheel-bundled vendored content (templates + cherry-picked docs +
+# the `_lib` shared scripts the engine imports at runtime).
+# Populated at build time by setup.py::VendoringBuildPy from project-root
+# templates/ + docs/ + plugins/dekspec/skills/_lib/. See
+# tooling/dekspec/_vendored/__init__.py and ds-md9 / INT-023 / IB-038.
+# User-facing skill bodies (write-*, archeology, exec-coding-session,
+# etc.) are NOT vendored — they ship exclusively through the Claude
+# Code plugin marketplace per AE-006.
+"dekspec._vendored" = ["templates/**/*", "docs/**/*", "skills/_lib/**/*"]
+
+[tool.setuptools.dynamic]
+version = { attr = "dekspec.__version__" }
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.pytest.ini_options]
+# Only look in tests/. Without this, pytest auto-discovers `*_test.py`
+# files anywhere — and the emitters/contract_test.py module gets
+# wrongly collected as a test when the package is also installed
+# (e.g., after `pip install dist/*.whl` during release smoke-testing).
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+markers = [
+    # ds-a11: end-to-end smokes that subprocess `dekspec upgrade` against
+    # local mock servers and fake `claude`/`pip` shims. Catch regressions
+    # in the consumer-facing upgrade flow (auto-resolve, pin shape
+    # recognition, plugin verb dispatch, slash-command prose) that unit
+    # tests can't see because they mock the very layer being tested.
+    "e2e: end-to-end upgrade-flow smoke tests (see tests/test_upgrade_e2e.py)",
+]

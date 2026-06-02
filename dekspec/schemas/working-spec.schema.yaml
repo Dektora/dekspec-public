@@ -1,0 +1,504 @@
+# Working Spec IR — JSON Schema (Draft 2020-12)
+#
+# Per-WS IR. Mirrors the IC + AE IR shape conventions
+# (additionalProperties: false everywhere; minimal required set;
+# parse_warnings analyzable across runs; opaque ID refs for forward-compat).
+#
+# Current emit-side coverage (audited 2026-05-11):
+#   - what_this_does   -> agents_md.emit_ws() WS-header summary    [LIVE]
+#   - business_rules   -> agents_md.emit_ws() Business rules block [LIVE]
+#   - failure_behavior -> agents_md.emit_ws() Failure behaviors    [LIVE]
+#
+# Parsed but no emitter currently consumes (audit divergence D-10):
+#   - domain_constraints — parses cleanly, no agents_md / contract_test /
+#     ci_gate path reads it. Planned: agents_md fragment + (eventual)
+#     lint-rule generation; until then this field is informational.
+#   - silent_failure_domains, expertise_audit, governing_adrs,
+#     interface_contracts, what_this_does_not_do, interfaces,
+#     governing_formulas, open_issues, contracts, refactor_targets,
+#     eval_hooks, amendment_log — see D-10 for the per-field disposition
+#     pass; each is either headed toward an emitter or scheduled for
+#     schema removal in a future minor release.
+#
+# Cross-artifact integration (v0.3+):
+#   - related_architecture_elements feeds resolve_aes() to derive
+#     affected_paths from each AE's implements_globs.
+#   - interface_contracts.consumed feeds future IC.consumers backlinks.
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://dekspec.dektora/schemas/v0.1/working-spec.schema.json"
+title: Working Spec IR
+description: >-
+  Normalized intermediate representation of a Working Spec artifact.
+  Produced by dekspec.constraint_compiler.parser.parse_ws(); consumed by
+  v0.4+ emitters (AGENTS.md fragment, acceptance-criteria contract tests).
+
+type: object
+additionalProperties: false
+required:
+  - ir_schema_version
+  - id
+  - name
+  - status
+  - source
+
+properties:
+
+  ir_schema_version:
+    description: Version of THIS schema. Independent of dekspec library version.
+    # Bumped 0.1.0 → 0.2.0 at IB-023 (severity vocabulary unification —
+    # ADR-013): `open_issues[*].severity` enum narrowed from legacy
+    # `{blocking_pre_ib, blocking_pre_code, non_blocking}` to canonical
+    # `{P0, P1, P2, P3}`. Persisted v0.1.0 IR JSON migrates via
+    # `tooling/dekspec/migrations/severity_unification.py`.
+    const: "0.2.0"
+
+  id:
+    description: Canonical WS identifier derived from filename (e.g., WS-016).
+    type: string
+    pattern: "^WS-\\d{3,}$"
+
+  name:
+    description: Human title from the markdown H1 (e.g., "Scoring Formulas").
+    type: string
+    minLength: 1
+
+  status:
+    enum: [TODO, DRAFT, PROPOSED, ACCEPTED, LOCKED, DEPRECATED]
+
+  audit_profile:
+    description: >-
+      Named audit-rule profile this WS is held to. Default "v1". See
+      intent.schema.yaml::audit_profile for the full convention. Today's
+      audit engine ignores this field; reserved for forward compatibility.
+    type: string
+    default: "v1"
+    pattern: "^v[0-9]+$"
+
+  role:
+    description: 'Optional WS role marker. `refactoring-ws` enables the §Refactor Targets section per ws-audit proposal R2 Δ-WS-18. Absent or `regular` for behavior-spec WSes.'
+    enum: [regular, refactoring-ws]
+
+  created:
+    type: string
+    format: date
+
+  modified:
+    type: string
+    format: date
+
+  source:
+    type: object
+    additionalProperties: false
+    required: [path, sha256, parser_version, parsed_at]
+    properties:
+      path:
+        type: string
+      sha256:
+        type: string
+        pattern: "^[a-f0-9]{64}$"
+      parser_version:
+        type: string
+        pattern: "^\\d+\\.\\d+\\.\\d+$"
+      parsed_at:
+        type: string
+        format: date-time
+
+  silent_failure_domains:
+    description: 'Which of the five Dektora silent-failure domains this WS lives in. Same enum as IC IR.'
+    type: array
+    uniqueItems: true
+    items:
+      enum:
+        - transformer_internals
+        - numerical_precision
+        - gpu_multi_process_isolation
+        - graph_consistency
+        - timeline_coherence
+
+  expertise_audit:
+    description: 'Rows from the §Expertise Audit Record table — which expert roles were triggered.'
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [role, triggered]
+      properties:
+        role:
+          type: string
+          description: Free text — the role label from the table row.
+        triggered:
+          enum: ["yes", "no", "n/a"]
+        trigger_rule:
+          type: string
+        rationale:
+          type: string
+
+  related_architecture_elements:
+    description: 'L3 linkage — every WS must link to at least one AE (audit-time enforcement; schema does not enforce minItems so DRAFT WSes validate). Forward-compat opaque ID refs.'
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [id]
+      properties:
+        id:
+          type: string
+          pattern: "^AE-\\d{3,}$"
+        description:
+          type: string
+          description: 'Which aspect of the AE''s description this WS measures or constrains.'
+
+  governing_adrs:
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [id]
+      properties:
+        id:
+          type: string
+          pattern: "^ADR-\\d{3,}$"
+        title:
+          type: string
+        summary:
+          type: string
+
+  interface_contracts:
+    description: 'IC bindings — consumed contracts this WS calls into; defined contracts whose boundary this WS materializes. Forward-compat opaque ID refs.'
+    type: object
+    additionalProperties: false
+    properties:
+      consumed:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [id]
+          properties:
+            id:
+              type: string
+              pattern: "^IC-\\d{3,}$"
+            short_name:
+              type: string
+      defined:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [id]
+          properties:
+            id:
+              type: string
+              pattern: "^IC-\\d{3,}$"
+            short_name:
+              type: string
+
+  what_this_does:
+    description: 'Free-prose §What This Does section. The mandatory Mechanism: sentence is captured separately if extractable.'
+    type: object
+    additionalProperties: false
+    properties:
+      prose:
+        type: string
+      mechanism:
+        type: string
+        description: 'The single Mechanism: sentence — verb + artifact + boundary + state change.'
+
+  what_this_does_not_do:
+    description: 'Free prose plus per-domain exclusions.'
+    type: object
+    additionalProperties: false
+    properties:
+      prose:
+        type: string
+      exclusions:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [text]
+          properties:
+            domain:
+              type: string
+              description: 'The silent-failure domain this exclusion is keyed to (free text since the template uses **[Domain]:** markers).'
+            text:
+              type: string
+
+  interfaces:
+    description: '§Interfaces composite — three sub-tables.'
+    type: object
+    additionalProperties: false
+    properties:
+      data_interfaces:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [interface]
+          properties:
+            interface:
+              type: string
+            direction:
+              type: string
+            type_shape_dtype:
+              type: string
+            source_or_consumer:
+              type: string
+            guarantees:
+              type: string
+      process_interfaces:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [boundary]
+          properties:
+            boundary:
+              type: string
+            transport:
+              type: string
+            device:
+              type: string
+            serialization:
+              type: string
+            failure_mode:
+              type: string
+      dependencies:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [dependency]
+          properties:
+            dependency:
+              type: string
+            interface:
+              type: string
+            failure_behavior:
+              type: string
+
+  domain_constraints:
+    description: 'Rows from the §Domain Constraints table. Constraint, value, scope, rationale.'
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [constraint, value]
+      properties:
+        constraint:
+          type: string
+        value:
+          type: string
+        scope:
+          type: string
+          description: '`all-IBs` (must appear in every IB derived from this spec) or `IB-specific` (carried only into the touching IB). Free string in the schema.'
+        rationale:
+          type: string
+
+  governing_formulas:
+    description: 'Configurable formula table per ADR-022. Optional section.'
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [formula]
+      properties:
+        formula:
+          type: string
+        expression:
+          type: string
+        variables:
+          type: string
+        units_or_scale:
+          type: string
+        valid_range:
+          type: string
+        validated_by:
+          type: string
+          description: 'caller / this component / config loader. Free string.'
+
+  business_rules:
+    description: 'Numbered, testable assertions tagged with their silent-failure domain (or "general").'
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [number, rule]
+      properties:
+        number:
+          type: integer
+          minimum: 1
+        domain:
+          type: string
+          description: 'Free text — `general` for non-domain-specific rules, otherwise the domain slug or label as written.'
+        rule:
+          type: string
+
+  failure_behavior:
+    description: 'Rows from the §Failure Behavior table. Detection must be observable + synchronous (raise / assert / metric+raise).'
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [failure]
+      properties:
+        failure:
+          type: string
+        detection:
+          type: string
+        assertion_type:
+          type: string
+          description: 'raise / assert / metric+raise. Free string in the schema; emitter / audit enforces the canonical set.'
+        behavior:
+          type: string
+        recovery:
+          type: string
+
+  open_issues:
+    description: 'Tracked design-level questions. Code-gap items belong in the divergence ledger or `br`, not here.'
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [text, severity]
+      properties:
+        text:
+          type: string
+        source:
+          type: string
+        severity:
+          # Canonical `P0..P3` ladder per ADR-013 (severity vocabulary
+          # unification). Bumped from legacy
+          # `{blocking_pre_ib, blocking_pre_code, non_blocking}` at
+          # IB-023; the parser-side alias map in
+          # `dekspec/severity.py` + `_normalize_severity_alias` in
+          # `constraint_compiler/parser.py` translates legacy authored
+          # content to canonical before schema validation runs, so
+          # this enum stays strict.
+          enum: [P0, P1, P2, P3]
+
+  contracts:
+    description: 'The four conditional contract sections. Each is required when its corresponding domain constraint is populated (audit-time, not schema-time).'
+    type: object
+    additionalProperties: false
+    properties:
+      model_behavior:
+        type: object
+        additionalProperties: false
+        properties:
+          injection_layer: { type: string }
+          position_id_construction: { type: string }
+          kv_cache_behavior: { type: string }
+          attention_mask: { type: string }
+          generation_trigger: { type: string }
+          raw_markdown:
+            type: string
+            description: 'Full section verbatim as fallback when structured fields aren''t extractable.'
+      graph_behavior:
+        type: object
+        additionalProperties: false
+        properties:
+          read_path: { type: string }
+          write_path: { type: string }
+          flush_trigger: { type: string }
+          flush_failure_behavior: { type: string }
+          phantom_detection: { type: string }
+          tenant_isolation: { type: string }
+          raw_markdown: { type: string }
+      timeline_behavior:
+        type: object
+        additionalProperties: false
+        properties:
+          read_path: { type: string }
+          write_path: { type: string }
+          flush_failure_behavior: { type: string }
+          topic_boundary_validation: { type: string }
+          decay_reference: { type: string }
+          pre_quantized_copy_staleness: { type: string }
+          tenant_isolation: { type: string }
+          raw_markdown: { type: string }
+      quantization:
+        type: object
+        additionalProperties: false
+        properties:
+          input_dtype: { type: string }
+          output_dtype: { type: string }
+          bit_depths: { type: string }
+          max_reconstruction_error: { type: string }
+          round_trip_fidelity: { type: string }
+          constant_tensor_handling: { type: string }
+          raw_markdown: { type: string }
+
+  refactor_targets:
+    description: 'Conditional — only present when role == refactoring-ws (per ws-audit proposal R2 Δ-WS-18). Each row enumerates a file/module touched and which BR# it preserves.'
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [file_or_module]
+      properties:
+        file_or_module:
+          type: string
+        scope_defining_change:
+          type: string
+        behavioral_invariant_br:
+          type: string
+          description: 'Free text — typically "BR 3, BR 5" referencing the Business Rules section''s numbered entries.'
+
+  eval_hooks:
+    description: 'Probabilistic eval definitions for model-output behaviors. Deterministic behaviors live in IB Done When checklists, not here.'
+    type: array
+    items:
+      type: string
+
+  # amendment_log.type vocabulary is Family A minus `supersession`.
+  # WSes have a normal LOCKED lifecycle but don't formally supersede each
+  # other. See docs/amendment-log-types.md for the canonical reference.
+  amendment_log:
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [date, type, change]
+      properties:
+        date:
+          type: string
+          format: date
+        type:
+          enum: [editorial, unlock, substantive, fill, migration, lock]
+        change:
+          type: string
+        author:
+          type: string
+
+  # ------------------------------------------------------------------------- #
+  # Cross-artifact resolution — populated by resolve_aes()
+  # ------------------------------------------------------------------------- #
+
+  affected_paths:
+    description: >-
+      File globs (relative to consumer repo root) that the WS''s ICs / CI gate
+      should scope to. Populated from the union of related_architecture_elements[]''s
+      AE.implements_globs at resolve time. v0.3 hand-authoring scaffold supports
+      direct CLI override via --affected-paths.
+    type: array
+    items:
+      type: string
+
+  parse_warnings:
+    description: >-
+      Fields the parser couldn't extract or only partially extracted from
+      markdown. Same convention as IC + AE IRs.
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [field, reason, severity]
+      properties:
+        field:
+          type: string
+        reason:
+          type: string
+        severity:
+          enum: [info, warning]

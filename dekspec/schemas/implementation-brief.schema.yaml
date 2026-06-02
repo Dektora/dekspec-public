@@ -1,0 +1,291 @@
+# IB IR — JSON Schema (Draft 2020-12)
+#
+# Per-IB IR. Mirrors the IC + AE + WS + ADR IR shape conventions
+# (additionalProperties: false; minimal required set; parse_warnings
+# analyzable across runs; opaque ID refs for forward-compat).
+#
+# IBs are the most leaf-ward DekSpec artifact: a per-implementation-task
+# brief that decomposes a Working Spec into a single coherent unit of code
+# work. Each IB declares its parent WS (the Spec line) + an optional
+# dependency list (other IB IDs that must complete first). The library
+# uses IBs to derive transitive AE linkage (IB → WS → related AEs).
+#
+# IBs do NOT directly drive CI gate scoping (no affected_paths field) —
+# that surface remains IC + WS via implements_globs union.
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://dekspec.dektora/schemas/v0.1/implementation-brief.schema.json"
+title: IB IR
+description: >-
+  Normalized intermediate representation of an Implementation Brief.
+  Produced by dekspec.constraint_compiler.parser.parse_ib(); consumed by
+  the audit linkage L5 family + future per-IB AGENTS.md fragment emitter.
+
+type: object
+additionalProperties: false
+required:
+  - ir_schema_version
+  - id
+  - name
+  - status
+  - source
+
+properties:
+
+  ir_schema_version:
+    description: Version of THIS schema. Independent of dekspec library version.
+    # Bumped 0.1.0 → 0.2.0 at IB-023 (severity vocabulary unification —
+    # ADR-013): `open_issues[*].severity` enum narrowed from legacy
+    # `{blocking, non_blocking}` to canonical `{P0, P1, P2, P3}`.
+    # Persisted v0.1.0 IR JSON migrates via
+    # `tooling/dekspec/migrations/severity_unification.py`.
+    # Bumped 0.2.0 → 0.3.0 at INT-102 IU-1 (ds-2zoj): IB status enum
+    # gains five review-pipeline states (REVIEW_IB, REVIEW_IB_FAIL,
+    # REVIEW_PR, REVIEW_PR_FAIL, TESTFAIL) + optional
+    # `review_grandfathered: bool` field (MSN-017 two-tier review).
+    # Pre-existing IBs are stamped review_grandfathered=true by the
+    # IU-2 migration (ds-20su).
+    const: "0.3.0"
+
+  id:
+    description: Canonical IB identifier derived from filename (e.g., IB-001).
+    type: string
+    pattern: "^IB-\\d{3,}$"
+
+  name:
+    description: 'Title from the markdown H1 (e.g., "Implementation Brief: Harness Foundation").'
+    type: string
+    minLength: 1
+
+  status:
+    description: 'IB status. The lifecycle directory (queued/active/completed) is reflected in source.path; status is what the IB body declares.'
+    # Extended at INT-102 IU-1 (ds-2zoj) — MSN-017 two-tier review pipeline.
+    # New states: REVIEW_IB (IB queued for IB-level review),
+    # REVIEW_IB_FAIL (IB review found a blocking gap),
+    # REVIEW_PR (PR queued for PR-level review),
+    # REVIEW_PR_FAIL (PR review found a blocking gap),
+    # TESTFAIL (CI / pytest regressed).
+    enum: [TODO, DRAFT, PROPOSED, ACCEPTED, LOCKED, QUEUED, ACTIVE, COMPLETED,
+           REVIEW_IB, REVIEW_IB_FAIL, REVIEW_PR, REVIEW_PR_FAIL, TESTFAIL]
+
+  audit_profile:
+    description: >-
+      Named audit-rule profile this IB is held to. Default "v1". See
+      intent.schema.yaml::audit_profile for the full convention. Today's
+      audit engine ignores this field; reserved for forward compatibility.
+    type: string
+    default: "v1"
+    pattern: "^v[0-9]+$"
+
+  review_grandfathered:
+    description: >-
+      True iff this IB pre-dates the MSN-017 two-tier review pipeline
+      (INT-102) and is therefore exempt from REVIEW_IB / REVIEW_PR
+      gating. Stamped by the IU-2 migration (ds-20su) on pre-existing
+      IBs. New IBs authored after INT-102 lock leave this field
+      false (the default), meaning they MUST pass review.
+      Extracted from the IB header via
+      `**Review grandfathered:** true|false`; absent meta-line means
+      false.
+    type: boolean
+    default: false
+
+  source:
+    type: object
+    additionalProperties: false
+    required: [path, sha256, parser_version, parsed_at]
+    properties:
+      path:
+        type: string
+      sha256:
+        type: string
+        pattern: "^[a-f0-9]{64}$"
+      parser_version:
+        type: string
+        pattern: "^\\d+\\.\\d+\\.\\d+$"
+      parsed_at:
+        type: string
+        format: date-time
+
+  spec:
+    description: 'Parent Working Spec — the IB''s authoritative source. Required by L5 audit. Forward-compat opaque ID ref.'
+    type: object
+    additionalProperties: false
+    required: [id]
+    properties:
+      id:
+        type: string
+        pattern: "^WS-\\d{3,}$"
+      path:
+        type: string
+        description: 'Original path string from the **Spec:** line (may be a typo per `working-working-specs/`); kept for round-trip fidelity.'
+
+  intent:
+    description: 'Parent Intent (v5+ /write-intent --decompose IBs). Free-text path string or null. Legacy IBs and stand-alone WS-driven IBs use "none" here.'
+    type: object
+    additionalProperties: false
+    properties:
+      id:
+        type: string
+        pattern: "^INT-\\d{3,}$"
+      path:
+        type: string
+        description: 'Original path string from the **Intent:** line. Kept verbatim for round-trip fidelity.'
+
+  source_aes:
+    description: 'Architecture Elements this IB implements or changes. Canonical L5 IB→AE linkage source per the IB template (post-v5). At least one required by audit-time linkage integrity. Forward-compat opaque ID refs.'
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [id]
+      properties:
+        id:
+          type: string
+          pattern: "^AE-\\d{3,}$"
+        description:
+          type: string
+
+  depends_on:
+    description: 'IBs that must complete before this one can start. Cycles caught at audit time (future L8).'
+    type: array
+    items:
+      type: string
+      pattern: "^IB-\\d{3,}$"
+
+  production_gate:
+    description: 'Free-text gate: what production state this IB targets, or "none".'
+    type: string
+
+  goal:
+    description: 'Single-paragraph statement of what this IB delivers.'
+    type: string
+
+  out_of_scope:
+    description: 'Bullets explicitly outside the IB''s remit, often pointing at the IB that owns each.'
+    type: array
+    items:
+      type: string
+
+  governing_adrs:
+    description: 'ADRs the IB cites as constraints. Forward-compat opaque ID refs.'
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [id]
+      properties:
+        id:
+          type: string
+          pattern: "^ADR-\\d{3,}$"
+        description:
+          type: string
+
+  files_to_modify:
+    description: 'Table extracted from §Files to Modify. Each row is a single file scope (new/edit) the IB authorizes.'
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [file]
+      properties:
+        file:
+          type: string
+        change:
+          type: string
+
+  do_not_touch:
+    description: 'Bullets enumerating files/areas the IB explicitly forbids modifying.'
+    type: array
+    items:
+      type: string
+
+  done_when:
+    description: 'Acceptance criteria — typically a checklist (each entry an assertion the IB''s caller can verify).'
+    type: array
+    items:
+      type: string
+
+  constraints_and_decisions:
+    description: >-
+      Reconciled implementation rules — the single authoritative source for
+      what to do (per the IB template's §Constraints & Decisions section).
+      Each entry pairs a short topic with the rule's prose. Extracted from
+      `- **topic:** rule` bullets in the markdown body. Empty / placeholder
+      sections produce a parse_warning rather than populating this field.
+      Lossy capture is acceptable; prose stays verbatim where structure is
+      ambiguous. Promoted from author-scratch-pad → canonical in v0.40.0
+      (ds-ibx, closes audit divergence D-11 IB portion).
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [topic, rule]
+      properties:
+        topic:
+          type: string
+          minLength: 1
+        rule:
+          type: string
+          minLength: 1
+
+  domain_constraints:
+    description: >-
+      Project-specific cross-cutting constraints applied at this IB's
+      boundary (dtype, compute device, read/write paths, precision
+      thresholds, etc.). Extracted from the §Domain Constraints markdown
+      table (columns: constraint, value). Rows whose value is "n/a" or a
+      bracket-placeholder are dropped — keep this list to actually-binding
+      constraints only. Promoted from author-scratch-pad → canonical in
+      v0.40.0 (ds-ibx, closes audit divergence D-11 IB portion).
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [constraint, value]
+      properties:
+        constraint:
+          type: string
+          minLength: 1
+        value:
+          type: string
+          minLength: 1
+
+  open_issues:
+    description: 'Open questions left for the engineer to resolve, often blocking ACCEPTED status.'
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [text]
+      properties:
+        text:
+          type: string
+        source:
+          type: string
+        severity:
+          # Canonical `P0..P3` ladder per ADR-013 (severity vocabulary
+          # unification). Bumped from legacy `{blocking, non_blocking}`
+          # at IB-023; the parser-side alias map in
+          # `dekspec/severity.py` + `_normalize_severity_alias` in
+          # `constraint_compiler/parser.py` translates legacy authored
+          # content to canonical before schema validation runs, so
+          # this enum stays strict.
+          enum: [P0, P1, P2, P3]
+
+  parse_warnings:
+    description: >-
+      Fields the parser couldn't extract or only partially extracted from
+      markdown. Same convention as IC + AE + WS + ADR IRs.
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [field, reason, severity]
+      properties:
+        field:
+          type: string
+        reason:
+          type: string
+        severity:
+          enum: [info, warning]

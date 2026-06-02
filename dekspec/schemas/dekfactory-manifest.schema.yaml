@@ -1,0 +1,230 @@
+# DekFactory Manifest — JSON Schema (Draft 2020-12)
+#
+# Describes the YAML document a DekFactory server publishes at
+# `<endpoint_base>/.well-known/dekspec-manifest.yaml`. Per INT-019, the
+# DekSpec consumer fetches this manifest before dispatch to learn the
+# dispatch endpoint path, the status-polling template, the accepted auth
+# kinds, and the per-server capability set. The advertised
+# `protocol_version` literal pins the IC-006 dispatch payload IC version
+# the server implements; the consumer refuses dispatch if the literal
+# is outside the DekSpec-supported set.
+#
+# This is NOT a DekSpec IR schema (no `id` / `status` / Amendment Log).
+# It is the wire schema for a downstream HTTP service's discovery
+# document; the DekSpec-side IR contract for the dispatch envelope lives
+# in `dekspec/interface-contracts/IC-006-dekfactory-dispatch-payload.md`.
+#
+# Closure: `additionalProperties: false` at every nesting level so a
+# stray field on the manifest fails validation rather than being
+# silently ignored (matches ADR-006 / security-profile.schema.yaml).
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://dekspec.dektora/schemas/v0.1/dekfactory-manifest.schema.json"
+title: DekFactory Manifest
+description: >-
+  Wire schema for the YAML document a DekFactory server publishes at
+  `<endpoint_base>/.well-known/dekspec-manifest.yaml`. Consumed by
+  `dekspec.executor.dekfactory_manifest.fetch_manifest` (INT-019).
+
+type: object
+additionalProperties: false
+required:
+  - protocol_version
+  - endpoint_base
+  - dispatch_path
+  - status_path_template
+  - accepted_auth_kinds
+  - capabilities
+  - server_version
+  - last_updated
+
+properties:
+  protocol_version:
+    type: string
+    description: >-
+      Literal pinning the IC the server implements. Supported values are
+      `dekfactory-ic-006/v1` (IC-006 dispatch payload v1, which itself
+      concretizes IC-004 §Capability 1), `dekfactory-ic-006/v2`
+      (INT-092 / ADR-022: adds optional `base_branch` field to the
+      dispatch payload + three sender-side push-first refusal codes),
+      and `dekfactory-ic-006/v3` (INT-093 / ADR-023: adds optional
+      top-level `registered_executor_identities` array to the manifest
+      envelope + sender-side `EXECUTOR_OVERRIDE_NOT_ADMITTED` refusal
+      code; forward-compatible — v1/v2 servers and v1/v2 callers
+      continue to interoperate). Consumers refuse dispatch when this is
+      outside the supported set (`UnsupportedProtocolVersionError`).
+    pattern: "^[a-z][a-z0-9-]*-ic-[0-9]{3,}/v[0-9]+$"
+
+  endpoint_base:
+    type: string
+    format: uri
+    description: >-
+      Absolute URL of the DekFactory server (e.g. `https://df.example.com`).
+      All other paths in this manifest are resolved relative to this base.
+    pattern: "^https?://"
+
+  dispatch_path:
+    type: string
+    description: >-
+      Path component appended to `endpoint_base` for dispatch POSTs.
+      Example: `/api/v1/dispatch`. Must start with `/`.
+    pattern: "^/"
+
+  status_path_template:
+    type: string
+    description: >-
+      Path template used to poll for job status. The literal `{job_id}`
+      substring is substituted with the job ID returned from dispatch.
+      Example: `/api/v1/jobs/{job_id}`.
+    pattern: "^/.*\\{job_id\\}"
+
+  accepted_auth_kinds:
+    type: array
+    minItems: 1
+    uniqueItems: true
+    items:
+      type: string
+      enum:
+        - bearer-token
+        - api-key
+        - oauth2-client-credentials
+        - service-account
+    description: >-
+      Auth handshake kinds the server accepts. The consumer picks the
+      first kind it can satisfy from `.dekspec/config.yaml::auth`.
+
+  capabilities:
+    type: object
+    additionalProperties: false
+    description: >-
+      Server-advertised capability set (IC-005 §Capability A
+      capabilities-advertisement realization). All fields optional;
+      defaults documented inline. Future additive capabilities land
+      here under MINOR version bumps of the protocol literal.
+    properties:
+      dataflow:
+        type: string
+        enum: [git-canonical, payload-canonical]
+        description: >-
+          `git-canonical` (default, MSN-004 Option A): the consumer's repo
+          is the source of truth; payload contains a git ref the server
+          clones. `payload-canonical` (future): payload contains the full
+          parsed IR with no git round-trip.
+      dispatch_modes:
+        type: array
+        uniqueItems: true
+        minItems: 1
+        items:
+          type: string
+          enum: [sync, async-poll, async-webhook]
+        description: >-
+          Modes the server supports. V1 mandates at least `async-poll`
+          (the `dekspec dispatch status` flow). `async-webhook` is the
+          deferred follow-on per INT-019 §Open Issues row 2.
+      max_concurrent_jobs:
+        type: integer
+        minimum: 1
+        description: >-
+          Server-side concurrency hint. Informational only; the consumer
+          does not enforce this — the server returns HTTP 503 when over
+          limit (per IC-006 §Error Semantics).
+      autonomy_supported:
+        type: array
+        uniqueItems: true
+        minItems: 1
+        items:
+          type: string
+          enum: [manual, low, medium, high]
+        description: >-
+          Autonomy levels the server is willing to run. Mirrors IC-005
+          §Capability A `autonomy_supported`. Consumer refuses dispatch
+          when the Intent's autonomy is not in this list.
+      max_payload_bytes:
+        type: integer
+        minimum: 1
+        description: >-
+          Upper bound on `dispatch` request body size the server accepts.
+          Informational; the server returns HTTP 413 when over limit.
+
+  server_version:
+    type: string
+    description: >-
+      Informational server version string (e.g. `dekfactory-0.3.1`).
+      Logged by the consumer; not used for negotiation (the
+      `protocol_version` field is what gates compatibility).
+
+  last_updated:
+    type: string
+    format: date-time
+    description: >-
+      ISO-8601 timestamp the server last regenerated this manifest.
+      Consumers use this to detect manifest changes across cache TTLs.
+
+  registered_executor_identities:
+    type: array
+    uniqueItems: false
+    description: >-
+      *(v3, optional)* Server-advertised set of runner identities the
+      server admits as `--executor-override` values (INT-093 / ADR-023).
+      Each element is a typed record `{identity, capability_tags,
+      key_sourcing, residency_posture}` (all four sub-fields required
+      when the record is present). Absent / empty list means the server
+      does not advertise admitted identities — the consumer-side
+      override cross-check degrades to a stderr warning (pre-v3
+      MINOR-evolution behavior preserved for back-compat). When present
+      and non-empty, the consumer refuses-typed with
+      `EXECUTOR_OVERRIDE_NOT_ADMITTED` if a `dekspec exec dispatch
+      --executor-override <identity>` invocation names an identity not
+      in this set, BEFORE the HTTP POST. Sender-side responsibility per
+      ADR-023.
+    items:
+      type: object
+      additionalProperties: false
+      required:
+        - identity
+        - capability_tags
+        - key_sourcing
+        - residency_posture
+      properties:
+        identity:
+          type: string
+          minLength: 1
+          description: >-
+            Runner identity (e.g. `dekfactory-v1`, `openhands-v1`).
+            Stable, machine-readable. Must match the `executor_identity`
+            value the consumer threads into the dispatch POST body.
+        capability_tags:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
+          description: >-
+            Free-form tags advertising the identity's specialization
+            (e.g. `["python", "typescript"]`, `["gpu", "long-context"]`).
+            Used by the consumer for routing hints; not parsed
+            semantically by the IC. Empty array permitted.
+        key_sourcing:
+          type: string
+          enum:
+            - server-side
+            - byok
+            - none
+          description: >-
+            Where the identity sources its API keys from. `server-side`:
+            server holds keys; `byok`: consumer must supply per-dispatch
+            credentials; `none`: identity needs no external API keys.
+            Surfaced to the operator so they know whether
+            `--executor-override` carries any auth implication.
+        residency_posture:
+          type: string
+          enum:
+            - us
+            - eu
+            - global
+            - on-prem
+          description: >-
+            Where the identity's compute physically runs. Surfaced for
+            routing decisions when data-residency matters. `global`
+            means the operator gets no specific guarantee; `on-prem`
+            means the identity runs in the consumer's own infrastructure.

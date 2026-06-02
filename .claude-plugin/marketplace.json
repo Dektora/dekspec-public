@@ -1,0 +1,25 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "dekspec",
+  "description": "DekSpec library marketplace — Spec-Driven Development tooling, methodology, and authoring aids for the Dektora family of projects.",
+  "owner": {
+    "name": "Dektora"
+  },
+  "plugins": [
+    {
+      "name": "dekspec",
+      "description": "Consumer-facing plugin: slash commands, authoring agents, and audit hooks for DekSpec. Wraps the dekspec CLI and complements vendored content. Install this on every consumer repo.",
+      "author": {
+        "name": "Dektora"
+      },
+      "category": "development",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/Dektora/dekspec-public.git",
+        "path": "plugins/dekspec",
+        "ref": "v0.108.0"
+      },
+      "homepage": "https://github.com/Dektora/dekspec-public"
+    }
+  ]
+}

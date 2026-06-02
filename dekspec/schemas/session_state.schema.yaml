@@ -1,0 +1,183 @@
+# Session State — JSON Schema (Draft 2020-12)
+#
+# Runtime state record for an open session under MSN-002. NOT an L1–L4 IR —
+# this schema describes a runtime JSON artifact written on every
+# `dekspec session start`, not a typed spec artifact in the Constraint
+# Compiler pipeline. No parser, no SpecGraph accessor, no CLI validate
+# dispatch — the schema lives here for discoverability and to inherit
+# the `additionalProperties: false` closure discipline (ADR-006).
+#
+# Canonical state-file location:
+#   XDG_STATE_HOME/dekspec/<repo-hash>/session.json
+# where <repo-hash> = sha256(<absolute-repo-path>)[:12], computed against
+# the realpath of the git toplevel. Worktree-aware: all worktrees of one
+# main repo resolve to the same hash and share one session view.
+# `XDG_STATE_HOME` falls back to `~/.local/state` when unset (POSIX XDG
+# Base Directory Specification §2). Colocated `bypass.log` (append-only
+# NDJSON) carries the canonical bypass audit trail; the in-line
+# `bypass_reasons` field on this schema mirrors those rows for fast
+# `status()` access.
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://dekspec.dektora/schemas/v0.1/session_state.schema.json"
+title: Session State
+description: >-
+  Runtime state record for an open DekSpec session. Written by
+  dekspec.session_lifecycle.start() at session open, mutated incrementally
+  during the session (commits, files_touched, bypass tracking), closed by
+  end(). Lives at XDG_STATE_HOME/dekspec/<repo-hash>/session.json with
+  <repo-hash> = sha256(absolute_repo_path)[:12] (worktree-aware so all
+  worktrees of one main repo share a session view). NOT an L1–L4 IR; not
+  registered in the Constraint Compiler parser dispatch, the
+  _detect_artifact_kind CLI table, or any SpecGraph accessor. Session
+  identity binding records both an optional bound_bead_id and an optional
+  bound_intent_id; routing at start() populates bound_intent_id when the
+  caller-supplied id matches ^INT-\\d{3,}$ and bound_bead_id otherwise.
+
+type: object
+additionalProperties: false
+required:
+  - session_id
+  - branch
+  - start_ts
+  - operator
+  - commits
+  - files_touched
+  - bypass_count
+  - bypass_reasons
+  - ir_schema_version
+
+properties:
+  session_id:
+    description: 'UUID identifying the session. Generated via uuid.uuid4() at start().'
+    type: string
+    format: uuid
+
+  bound_bead_id:
+    description: >-
+      Optional bead id this session is bound to. Populated when start()'s
+      caller-supplied id does not match the Intent regex. Pattern
+      ^[a-z0-9-]+$ matches the canonical br bead-id shape.
+    type: string
+    pattern: "^[a-z0-9-]+$"
+
+  bound_intent_id:
+    description: >-
+      Optional Intent id this session is bound to. Populated when start()'s
+      caller-supplied id matches ^INT-\\d{3,}$.
+    type: string
+    pattern: "^INT-\\d{3,}$"
+
+  branch:
+    description: 'Working branch name at session start.'
+    type: string
+    minLength: 1
+
+  start_ts:
+    description: 'RFC3339 UTC timestamp at start() return.'
+    type: string
+    format: date-time
+
+  end_ts:
+    description: 'RFC3339 UTC timestamp at end() return. Null while session is active.'
+    type: string
+    format: date-time
+
+  operator:
+    description: 'Operator identity (typically git config user.email).'
+    type: string
+    minLength: 1
+
+  commits:
+    description: 'Commit SHAs landed during the session. May be empty.'
+    type: array
+    items:
+      type: string
+
+  files_touched:
+    description: 'Repo-relative paths modified during the session. May be empty.'
+    type: array
+    items:
+      type: string
+
+  bypass_count:
+    description: 'Count of session-bypass events (DEKSPEC_BYPASS_SESSION=1 or --no-verify).'
+    type: integer
+    minimum: 0
+
+  bypass_reasons:
+    description: >-
+      In-line mirror of bypass-log NDJSON rows for fast status() access.
+      Canonical audit trail is the colocated bypass.log file.
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required:
+        - ts
+        - session_id
+        - operator
+        - files
+        - reason
+      properties:
+        ts:
+          type: string
+          format: date-time
+        session_id:
+          oneOf:
+            - type: string
+              format: uuid
+            - type: "null"
+        operator:
+          type: string
+          minLength: 1
+        files:
+          type: array
+          items:
+            type: string
+        reason:
+          type: string
+          minLength: 1
+
+  off_spec_commits:
+    description: >-
+      Off-spec (vibecoding) drift records appended by emit_off_spec under
+      MSN-009 — one row per commit touching files outside the claimed
+      Intent's Components affected scope, or per commit with no claimed
+      bead. Optional + defaults to []; existing session files without the
+      field load clean (back-compatible additive field).
+    type: array
+    default: []
+    items:
+      type: object
+      additionalProperties: false
+      required:
+        - ts
+        - commit_sha
+        - off_spec_files
+        - claimed_intent
+        - reason
+      properties:
+        ts:
+          type: string
+          format: date-time
+        commit_sha:
+          description: 'Commit SHA, or the literal "pending" for pre-commit-hook records.'
+          type: string
+          minLength: 1
+        off_spec_files:
+          type: array
+          items:
+            type: string
+        claimed_intent:
+          description: 'Resolved claimed-Intent id, or null when unresolved.'
+          type:
+            - string
+            - "null"
+        reason:
+          description: 'vibecoding_guard reason — off-spec / no-claimed-intent / unresolved-intent.'
+          type: string
+          minLength: 1
+
+  ir_schema_version:
+    const: "0.1.0"

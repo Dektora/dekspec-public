@@ -1,0 +1,262 @@
+# ADR IR — JSON Schema (Draft 2020-12)
+#
+# Per-ADR IR. Mirrors the IC + AE + WS IR shape conventions
+# (additionalProperties: false; minimal required set; parse_warnings
+# analyzable across runs; opaque ID refs for forward-compat).
+#
+# Current emit-side coverage (audited 2026-05-11):
+#   - id, name, status, decision (and the related-AE backlinks via
+#     supersession.supersedes / superseded_by) -> agents_md.emit_adr().
+#
+# Parsed but no emitter currently consumes (audit divergence D-10):
+#   - deciders, context_and_decision_drivers, options_considered (the
+#     meatiest ADR section), consequences.{positive, negative},
+#     validation.observable_confirmation, links, open_issues,
+#     amendment_log, supersession.supersedes.
+#   Per-field disposition pass scheduled for the post-v0.38.0 IR-pipeline
+#   tightening PR — each will either land in the agents_md fragment or
+#   be removed from the schema in a forward-compatible migration.
+#
+# Per the playbook, ADRs do NOT drive CI gate scoping (no affected_paths
+# field). Future plans: structural lint rules over codebase-wide invariants
+# extracted from `decision` + `consequences.negative` — design pending.
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://dekspec.dektora/schemas/v0.1/adr.schema.json"
+title: ADR IR
+description: >-
+  Normalized intermediate representation of an Architecture Decision Record.
+  Produced by dekspec.constraint_compiler.parser.parse_adr(); consumed by
+  v0.4+ emitters (AGENTS.md fragment, structural lint rule).
+
+type: object
+additionalProperties: false
+required:
+  - ir_schema_version
+  - id
+  - name
+  - status
+  - source
+
+properties:
+
+  ir_schema_version:
+    description: Version of THIS schema. Independent of dekspec library version.
+    # Bumped 0.1.0 → 0.2.0 at IB-023 (severity vocabulary unification —
+    # ADR-013): `open_issues[*].severity` enum narrowed from legacy
+    # `{blocking, non_blocking}` to canonical `{P0, P1, P2, P3}`.
+    # Persisted v0.1.0 IR JSON migrates via
+    # `tooling/dekspec/migrations/severity_unification.py`.
+    const: "0.2.0"
+
+  id:
+    description: Canonical ADR identifier derived from filename (e.g., ADR-022).
+    type: string
+    pattern: "^ADR-\\d{3,}$"
+
+  name:
+    description: Verb-first title from the markdown H1 (e.g., "Use Qwen3-VL model family").
+    type: string
+    minLength: 1
+
+  status:
+    description: 'ADR-specific status set including SUPERSEDED (terminal). When SUPERSEDED, supersession.superseded_by must be populated.'
+    enum: [TODO, DRAFT, PROPOSED, ACCEPTED, LOCKED, DEPRECATED, SUPERSEDED]
+
+  source:
+    type: object
+    additionalProperties: false
+    required: [path, sha256, parser_version, parsed_at]
+    properties:
+      path:
+        type: string
+      sha256:
+        type: string
+        pattern: "^[a-f0-9]{64}$"
+      parser_version:
+        type: string
+        pattern: "^\\d+\\.\\d+\\.\\d+$"
+      parsed_at:
+        type: string
+        format: date-time
+
+  supersession:
+    description: 'ADR supersession links. Forward-compat opaque ID refs.'
+    type: object
+    additionalProperties: false
+    properties:
+      supersedes:
+        type: array
+        items:
+          type: string
+          pattern: "^ADR-\\d{3,}$"
+      superseded_by:
+        type: array
+        items:
+          type: string
+          pattern: "^ADR-\\d{3,}$"
+
+  related_architecture_elements:
+    description: 'L2 linkage — every ADR must link to at least one AE (audit-time enforcement; schema does not enforce minItems so DRAFT ADRs validate). Same shape as WS''s. Forward-compat opaque ID refs. Pre-DN→AE-migration ADRs may be missing this; backfill expected at next edit.'
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [id]
+      properties:
+        id:
+          type: string
+          pattern: "^AE-\\d{3,}$"
+        description:
+          type: string
+          description: 'Which aspect of the AE''s description this ADR shapes.'
+
+  created:
+    type: string
+    format: date
+
+  modified:
+    type: string
+    format: date
+
+  date:
+    description: 'When the decision was made. May predate `created` (when the ADR document was written).'
+    type: string
+    format: date
+
+  deciders:
+    description: 'Free text — names, roles, or agents that approved the decision.'
+    type: string
+
+  context_and_decision_drivers:
+    description: '§Context and Decision Drivers — prose narrative + structured driver bullets + optional technical_story link.'
+    type: object
+    additionalProperties: false
+    properties:
+      context_prose:
+        type: string
+      decision_drivers:
+        type: array
+        items:
+          type: string
+      technical_story:
+        type: string
+        description: 'Free text — issue link, bead ID, spec ref, or "none".'
+
+  decision:
+    description: 'The canonical decision statement. Drift rules (D1-D9) apply at audit time, not at IR-validation time.'
+    type: string
+
+  options_considered:
+    description: 'Optional. Each option carries pros/cons specific to this system''s context.'
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        pros:
+          type: array
+          items:
+            type: string
+        cons:
+          type: array
+          items:
+            type: string
+
+  consequences:
+    type: object
+    additionalProperties: false
+    properties:
+      positive:
+        type: array
+        items:
+          type: string
+      negative:
+        type: array
+        items:
+          type: string
+
+  validation:
+    description: 'Post-template-revision-2026-04-24 ADRs use the split structure (observable_confirmation + reconsideration_triggers); pre-revision ADRs are grandfathered with combined raw_prose.'
+    type: object
+    additionalProperties: false
+    properties:
+      observable_confirmation:
+        type: string
+      reconsideration_triggers:
+        type: string
+      raw_prose:
+        type: string
+        description: 'Combined-prose form for grandfathered pre-2026-04-24 ADRs.'
+
+  links:
+    description: 'Free-text references — related ADRs, specs, probes, external URLs.'
+    type: array
+    items:
+      type: string
+
+  open_issues:
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [text, severity]
+      properties:
+        text:
+          type: string
+        source:
+          type: string
+        severity:
+          # Canonical `P0..P3` ladder per ADR-013 (severity vocabulary
+          # unification). Bumped from legacy `{blocking, non_blocking}`
+          # at IB-023; the parser-side alias map in
+          # `dekspec/severity.py` + `_normalize_severity_alias` in
+          # `constraint_compiler/parser.py` translates legacy authored
+          # content to canonical before schema validation runs, so
+          # this enum stays strict.
+          enum: [P0, P1, P2, P3]
+
+  # amendment_log.type vocabulary is the union of Family A
+  # (locked-artifact maintenance: editorial/unlock/substantive/fill/
+  # migration/lock/supersession). See docs/amendment-log-types.md for
+  # the canonical reference + per-IR rationale. ADRs use the full
+  # Family-A enum because they may be unlocked + substantively edited
+  # and they have formal supersession via the L7 audit rule.
+  amendment_log:
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [date, type, change]
+      properties:
+        date:
+          type: string
+          format: date
+        type:
+          enum: [editorial, unlock, substantive, fill, migration, lock, supersession]
+        change:
+          type: string
+        author:
+          type: string
+
+  parse_warnings:
+    description: >-
+      Fields the parser couldn't extract or only partially extracted from
+      markdown. Same convention as IC + AE + WS IRs.
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [field, reason, severity]
+      properties:
+        field:
+          type: string
+        reason:
+          type: string
+        severity:
+          enum: [info, warning]

@@ -1,0 +1,1 @@
+(stub — INT-088 IU-3 inlined the --auto safety logic in SKILL.md rather than creating _lib helpers. This .keep keeps the directory present so INT-088's `Components affected:` glob `plugins/dekspec/skills/orchestrate-intent/_lib/**` resolves at L7b. If real _lib helpers land later, this stub stays harmless.)

@@ -1,0 +1,51 @@
+# Audit profile `lite` — the trimmed rule set for solo / non-autonomous engineers.
+#
+# Authored 2026-05-21 per MSN-006 / INT-024 / IB-112. The `lite` profile is
+# the audit-engine half of the dekspec lite methodology profile — an
+# opinionated, trimmed surface for a solo engineer governing a single-repo
+# personal project, where the full multi-agent autonomous-build ceremony
+# exceeds the work being governed.
+#
+# Mechanics: `lite` inherits the full v1 rule set via `inherits: v1` — the
+# profile loader (`profiles/__init__.py`) walks the inheritance chain
+# root-to-leaf and composes rules, so this manifest does NOT re-enumerate
+# the v1 rules. It expresses the lite posture purely by *dropping*
+# non-critical rules (`remove:`) and *relaxing* rule parameters
+# (`parameters:`) — never by adding rules or tightening severities.
+#
+# STRICT SUBSET invariant: `lite` is a strict subset of `v1`. Running
+# `dekspec audit linkage --at . --profile lite` never produces a finding
+# the `v1` profile did not also produce. `tests/test_lite_profile.py`
+# asserts this against the library's own `dekspec/` tree.
+#
+# HARD-PRESERVED under lite: `T-SEC-*` (Security Profile structural checks)
+# and `L8-INT-AUTONOMY-EXCEEDS` (autonomy-ceiling enforcement) are never
+# dropped and never relaxed — security and autonomy invariants the library
+# cannot waive even for solo work. They remain in the inherited v1 set and
+# are deliberately absent from the `remove:` list below.
+#
+# Consumers opt in by setting `methodology_profile: lite` in
+# `.dekspec/config.yaml`, or by passing `--profile lite` to
+# `dekspec audit linkage` / `dekspec doctor`.
+
+profile: lite
+inherits: v1
+
+# Dropped rules — the `D-15*` rationale-drift family. Solo work is less
+# likely to back-cite an ADR / WS for every rationale sentence, and the
+# advisory noise outweighs the signal for a single-engineer repo. These are
+# non-critical D-series advisories; dropping them keeps `lite` a strict
+# subset of `v1`.
+remove:
+  - D-15a-WS-RATIONALE-NO-ADR-CITE
+  - D-15b-IC-RATIONALE-NO-ADR-CITE
+  - D-15c-IB-RATIONALE-NO-ADR-CITE
+  - D-15d-IC-NUMERIC-NO-WS-CITE
+
+# Relaxed parameters — a solo-cadence Mission can lie quiet longer between
+# touches than a multi-engineer one, so the stale-Mission advisory waits
+# twice as long before firing. The rule itself is unchanged; only its
+# `days_threshold` parameter is overridden (90 -> 180).
+parameters:
+  L11-MSN-STALE:
+    days_threshold: 180

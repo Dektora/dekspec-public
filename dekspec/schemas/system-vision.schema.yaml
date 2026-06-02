@@ -1,0 +1,101 @@
+# System Vision IR — JSON Schema (Draft 2020-12)
+#
+# Singleton at <dekspec-root>/system-vision.md. Captures the system's
+# user-observable purpose and the "what we are NOT building" anti-scope.
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://dekspec.dektora/schemas/v0.1/system-vision.schema.json"
+title: System Vision IR
+description: >-
+  Normalized intermediate representation of the singleton System Vision
+  artifact. Produced by dekspec.constraint_compiler.parser.parse_vision();
+  consumed by (planned) AGENTS.md system-vision fragment and the L10
+  glossary-coverage scoping pass. One Vision per repo; canonical id is
+  SYSTEM-VISION. Captures the system's user-observable purpose and the
+  explicit "what we are NOT building" anti-scope.
+
+type: object
+additionalProperties: false
+required:
+  - ir_schema_version
+  - id
+  - name
+  - source
+
+properties:
+  ir_schema_version:
+    const: "0.1.0"
+
+  id:
+    description: 'Singleton id for the System Vision.'
+    const: "SYSTEM-VISION"
+
+  name:
+    description: 'Title from the H1 (e.g., "Dektora").'
+    type: string
+    minLength: 1
+
+  source:
+    type: object
+    additionalProperties: false
+    required: [path, sha256, parser_version, parsed_at]
+    properties:
+      path:
+        type: string
+      sha256:
+        type: string
+        pattern: "^[a-f0-9]{64}$"
+      parser_version:
+        type: string
+        pattern: "^\\d+\\.\\d+\\.\\d+$"
+      parsed_at:
+        type: string
+        format: date-time
+
+  status:
+    enum: [TODO, DRAFT, PROPOSED, ACCEPTED, LOCKED, DEPRECATED]
+
+  created:
+    type: string
+    format: date
+
+  modified:
+    type: string
+    format: date
+
+  preamble:
+    description: 'The opening paragraph(s) before any H2 — typically the elevator-pitch statement.'
+    type: string
+
+  what_this_is:
+    type: string
+
+  who_this_is_for:
+    type: string
+
+  why_this_exists:
+    type: string
+
+  what_success_looks_like:
+    type: array
+    items:
+      type: string
+
+  what_we_are_not_building:
+    type: array
+    items:
+      type: string
+
+  parse_warnings:
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [field, reason, severity]
+      properties:
+        field:
+          type: string
+        reason:
+          type: string
+        severity:
+          enum: [info, warning]
