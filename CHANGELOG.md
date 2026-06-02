@@ -4,6 +4,12 @@ All notable changes to DekSpec are documented here. Format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [v0.112.0] — 2026-06-02
+
+### Fixed — `update_index` appends into the data table, not a leading legend (ds-update-index-wrong-table-shape-z765)
+
+`artifact_ops.py::update_index`'s no-existing-row append path derived both the row shape and the insert position from the **first** markdown table in the file. An index that opens with a legend table — `intent-index.md`'s `| Status | Meaning |` lifecycle legend (2 columns, header col 0 literally `Status`) — produced a malformed row: `n_cols` came from the legend (2, not the 8-col data table), the Status-column finder matched the legend's col-0 `Status`, and the status then **overwrote the id cell** (`| <STATUS> ||`), inserted at the file's last table (Archive) rather than the shape-source table. Repeated calls appended one garbage row each and never created the real data row (silent, exit 0). Fix: a new `_find_data_table` selects the first table whose `Status` column is at index > 0 (skipping ≤2-col `Status`/`Meaning` legend tables; falls back to the first table for legacy 3-column indexes), and the append derives its shape **and** inserts into that same data table; a `status_col == 0` guard ensures the status can never overwrite the id cell.
+
 ## [v0.111.0] — 2026-06-02
 
 ### Added — `/dekspec:orchestrate-intent` + `/dekspec:spec-intent` accept a provisional Intent as entry (ds-jtfn)

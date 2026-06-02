@@ -975,14 +975,19 @@ def update_index(index_path: Path, art_id: str, status: str) -> str:
     #      found, place the status in cell 1 (legacy 3-column behavior).
     # Refuse-typed if the index has no header row to derive shape from.
 
-    header_idx, _sep_idx = _find_header_and_separator(lines)
-    if header_idx is None:
+    # Derive shape from — and insert into — the DATA table (skipping any
+    # leading legend table). The shape-source and insert-target MUST be the
+    # same table, else the row gets the wrong width / wrong Status column and
+    # lands under the wrong table (ds-update-index-wrong-table-shape-z765).
+    table = _find_data_table(lines)
+    if table is None:
         raise ValueError(
             f"{index_path}: cannot append row for {art_id} — no markdown "
             "table header row found to derive column shape from. "
             "An index with no `| Column | ... |` + `|---|...|` header "
             "cannot accept a typed append."
         )
+    header_idx, _sep_idx, last_row_idx = table
 
     header_cells = lines[header_idx].rstrip("\n").split("|")
     # cells[0] and cells[-1] are the empty pre/post-pipe segments. Interior
@@ -1002,26 +1007,22 @@ def update_index(index_path: Path, art_id: str, status: str) -> str:
         status_col = 1 if n_cols >= 2 else 0
 
     # Construct row: interior cell 0 = artifact id, status_col = status,
-    # all others empty.
+    # all others empty. Guard: never let the status overwrite the id cell —
+    # if status_col resolved to 0 (degenerate / single-column table), keep
+    # the id and drop the status rather than emit a `| <STATUS> |` row.
     interior = [""] * n_cols
     if n_cols >= 1:
         interior[0] = f" {art_id} "
-    if 0 <= status_col < n_cols:
+    if status_col is not None and 0 < status_col < n_cols:
         interior[status_col] = f" {status_up} "
     row = "|" + "|".join(interior) + "|\n"
 
-    # Insert after the last table row to keep the appended row grouped
-    # with its table.
-    last_tbl = -1
-    for i, line in enumerate(lines):
-        if line.lstrip().startswith("|"):
-            last_tbl = i
-    if last_tbl == -1:
-        lines.append(row)
-    else:
-        if not lines[last_tbl].endswith("\n"):
-            lines[last_tbl] += "\n"
-        lines.insert(last_tbl + 1, row)
+    # Insert after the data table's last row so the appended row stays grouped
+    # with that table (not at the file's last table, which may be a different
+    # table such as the Archive block).
+    if not lines[last_row_idx].endswith("\n"):
+        lines[last_row_idx] += "\n"
+    lines.insert(last_row_idx + 1, row)
     index_path.write_text("".join(lines), encoding="utf-8")
     return f"{index_path}: appended new {art_id} row -> Status {status_up}"
 
@@ -1053,6 +1054,54 @@ def _find_header_and_separator(lines: list[str]) -> tuple[int | None, int | None
         if all(set(c.strip()) <= set("-:") and "-" in c for c in sep_cells):
             return i, j
     return None, None
+
+
+def _find_data_table(
+    lines: list[str],
+) -> tuple[int, int, int] | None:
+    """Return (header_idx, sep_idx, last_row_idx) for the index's DATA table.
+
+    An index file may open with a legend table (e.g. `| Status | Meaning |`,
+    2 columns, first column literally `Status`) before the real data table.
+    The append path must derive its row shape from — and insert into — the
+    SAME table, the data table, not the legend (ds-update-index-wrong-table-
+    shape-z765). The data table is the first whose header has a `Status`
+    column at index > 0 (a legend's `Status` is in column 0); legend-shaped
+    tables (≤2 cols with a leading `Status`/`Meaning` header) are skipped.
+    Falls back to the first table in the file when none qualifies, so a
+    legacy 3-column `| id | | status |` index still appends. `last_row_idx`
+    is the last contiguous `|`-row of the chosen table's block.
+    """
+    n = len(lines)
+    first_table: tuple[int, int, int] | None = None
+    i = 0
+    while i < n:
+        if not lines[i].lstrip().startswith("|"):
+            i += 1
+            continue
+        j = i + 1
+        while j < n and not lines[j].strip():
+            j += 1
+        sep_cells = lines[j].strip().split("|")[1:-1] if j < n and lines[j].strip().startswith("|") else []
+        if not (sep_cells and all(set(c.strip()) <= set("-:") and "-" in c for c in sep_cells)):
+            i += 1
+            continue
+        # `i` is a header row, `j` its separator. Find the block end.
+        k = j + 1
+        last = j
+        while k < n and lines[k].lstrip().startswith("|"):
+            last = k
+            k += 1
+        interior = [c.strip() for c in lines[i].rstrip("\n").split("|")[1:-1]]
+        low = [c.lower() for c in interior]
+        if first_table is None:
+            first_table = (i, j, last)
+        status_idx = next((idx for idx, c in enumerate(low) if c == "status"), None)
+        is_legend = len(interior) <= 2 and (low[:1] == ["status"] or "meaning" in low)
+        if status_idx is not None and status_idx > 0 and not is_legend:
+            return (i, j, last)
+        i = k
+    return first_table
 
 
 # --------------------------------------------------------------------------
