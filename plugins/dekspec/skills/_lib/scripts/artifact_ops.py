@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import json
 import re
 import sys
 from pathlib import Path
@@ -1128,6 +1129,94 @@ def find_refs(art_id: str, root: Path | None = None) -> list[str]:
 
 
 # --------------------------------------------------------------------------
+# check-retro-lock — the bead-closure gate for /write-intent --lock Path C
+# (retroactive post-merge lock; INT-142, bead ds-zyef).
+#
+# Path C lets a zero-downstream direct-bead Intent whose work already merged to
+# main reach LOCKED. This helper enforces the bead-closure portion of that gate
+# deterministically: every bead the Intent names in its `## Layer impact
+# analysis` must be `closed` in the beads JSONL. It validates each bead-shaped
+# token against the beads DB so hyphenated prose ("write-intent") is not gated,
+# and requires at least one resolvable closed bead so an Intent with no beads
+# cannot rubber-stamp itself into LOCKED via Path C.
+# --------------------------------------------------------------------------
+
+# A bead id is lowercase `<prefix>-<suffix>` (e.g. `ds-zyef`); the all-caps
+# artifact ids (INT-142, AE-006) never match. Suffix >= 3 chars rules out
+# `fan-in`. Candidates are still filtered against the beads DB below, so a
+# prose token that merely fits the shape is ignored unless it is a real bead.
+_BEAD_TOKEN_RE = re.compile(r"\b[a-z][a-z0-9]*-[a-z0-9]{3,}\b")
+
+
+def _beads_status_map(beads_file: Path) -> dict[str, str]:
+    """Parse a beads JSONL file into `{bead_id: status}` (last record wins)."""
+    out: dict[str, str] = {}
+    with beads_file.open(encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            bid = rec.get("id")
+            if bid:
+                out[bid] = (rec.get("status") or "").lower()
+    return out
+
+
+def check_retro_lock(
+    intent_path: Path, beads_file: Path | None = None
+) -> tuple[bool, str]:
+    """Verify every bead in the Intent's Layer impact analysis is closed.
+
+    Returns `(ok, message)`. `ok` is True only when at least one bead from the
+    `## Layer impact analysis` resolves to the beads DB and every resolved bead
+    has status `closed`. Bead-shaped tokens absent from the DB are ignored.
+    """
+    text = intent_path.read_text(encoding="utf-8")
+    lines = _section_lines(text, "Layer impact analysis")
+    if not lines:
+        return False, (
+            f"{intent_path}: no '## Layer impact analysis' section — cannot "
+            f"determine the bead set for a Path C retroactive lock."
+        )
+    if beads_file is None:
+        beads_file = _repo_root(intent_path.parent) / ".beads" / "issues.jsonl"
+    if not beads_file.is_file():
+        return False, f"{intent_path}: beads file not found at {beads_file}"
+
+    status_map = _beads_status_map(beads_file)
+    seen: set[str] = set()
+    beads: list[str] = []
+    for tok in _BEAD_TOKEN_RE.findall("".join(lines)):
+        if tok in status_map and tok not in seen:
+            seen.add(tok)
+            beads.append(tok)
+
+    if not beads:
+        return False, (
+            f"{intent_path}: no bead in the Layer impact analysis resolves to a "
+            f"record in {beads_file} — a Path C retroactive lock requires at "
+            f"least one closed bead as evidence the work landed."
+        )
+
+    open_beads = sorted(b for b in beads if status_map.get(b) != "closed")
+    if open_beads:
+        detail = ", ".join(f"{b}={status_map.get(b)!r}" for b in open_beads)
+        return False, (
+            f"{intent_path}: Path C retroactive lock refused — "
+            f"{len(open_beads)} of {len(beads)} Layer-impact bead(s) not "
+            f"closed: {detail}."
+        )
+    return True, (
+        f"{intent_path}: Path C bead-closure gate PASS — all {len(beads)} "
+        f"Layer-impact bead(s) closed ({', '.join(sorted(beads))})."
+    )
+
+
+# --------------------------------------------------------------------------
 # CLI
 # --------------------------------------------------------------------------
 
@@ -1212,6 +1301,23 @@ def _build_parser() -> argparse.ArgumentParser:
 
     p_ref = sub.add_parser("find-refs", help="grep dekspec/ for an id")
     p_ref.add_argument("art_id", metavar="ID")
+
+    p_crl = sub.add_parser(
+        "check-retro-lock",
+        help=(
+            "verify every bead in an Intent's Layer impact analysis is closed "
+            "— the bead-closure gate for /write-intent --lock Path C "
+            "(retroactive post-merge lock)"
+        ),
+    )
+    p_crl.add_argument("path", type=Path)
+    p_crl.add_argument(
+        "--beads-file",
+        dest="beads_file",
+        default=None,
+        type=Path,
+        help="path to the beads JSONL (default: <repo>/.beads/issues.jsonl)",
+    )
 
     return parser
 
@@ -1305,6 +1411,14 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"no references to {args.art_id} found", file=sys.stderr)
                 return 1
             return 0
+
+        if args.command == "check-retro-lock":
+            ok, msg = check_retro_lock(args.path, args.beads_file)
+            if ok:
+                print(msg)
+                return 0
+            print(msg, file=sys.stderr)
+            return 1
     except (ValueError, FileNotFoundError, OSError) as exc:
         print(f"artifact_ops: {exc}", file=sys.stderr)
         return 1

@@ -4,6 +4,20 @@ All notable changes to DekSpec are documented here. Format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [v0.114.0] — 2026-06-09
+
+### Added — `/write-intent --lock` Path C: retroactive post-merge lock for direct-bead Intents (INT-142, ds-aov7)
+
+A sanctioned `--lock` path for a zero-downstream direct-bead Intent whose work already merged to `main`. Such an Intent could previously reach neither Path A (no live `int/` branch left to `--testpass`) nor ADR-017 Path B (no downstream WS/IC/IBs), so it sat at `MERGED` indefinitely and hand-editing Status to `LOCKED` is guardrail-forbidden. Path C gates on: `MERGED` + zero downstream Implementation Briefs + every bead in the Intent's Layer impact analysis closed + the Verification predicate re-passing from `main`. The bead-closure portion is enforced by a new deterministic `artifact_ops.py check-retro-lock <Intent-path>` helper (validates bead-shaped tokens against the beads DB, so hyphenated prose is ignored, and requires ≥1 resolvable closed bead), wired into `modes/lock.md`. The L13 lock-coherence rule is unchanged — it already stays silent on a zero-downstream LOCKED Intent (INT-036 OI-3). Scoped to this one facet of ds-aov7; the sibling `verification.manual` skip (ds-cjqi) and `--supersede` flag (ds-9hma) are tracked separately.
+
+### Fixed — release pipeline: marketplace-ref gate + frozen mirror tag (ds-dv6r)
+
+Two latent release-pipeline defects surfaced shipping v0.113.0 (the plugin half needed manual recovery despite engine/vendored/plugin.json all correct). (1) `.claude-plugin/marketplace.json::source.ref` — the ref `claude plugin update` actually resolves — was an unchecked version location: the release version check asserted only tag/`__version__`/CHANGELOG, so a stale ref shipped silently. The check is now a *quad* (adds the marketplace ref) and a `bump-version.py --check` step gates every hardcoded mirror against `__version__`. (2) The mirror-sync tag push was skip-if-exists/non-force, so re-pointing a release tag (a documented recovery) advanced mirror `main` but left the mirror *tag* frozen at its first-creation commit. The tag-alignment decision is extracted into `scripts/mirror_tag_align.sh` (force-align to HEAD unless already there; true duplicate fires — ds-rqj5 — left untouched), called by `release.yml` and covered by a `test_upgrade_e2e.py` re-point regression test. Also synced the README / EXAMPLES / methodology version mirrors that the v0.113.0 release left at v0.112.0.
+
+### Fixed — self-spec: cleared MSN-019 daughter audit drift (ds-ranf)
+
+The eat-own-cooking dogfood gate (`dekspec audit doctor`) had been red since the MSN-019 daughters landed: 7 P2 findings on the LOCKED Intents INT-139/140/141 — `§Linked Architecture Elements` bullets used an unparseable `- AE-NNN (Name; STATUS) —` paren format (`L7a-INT-AE-MISSING`, reformatted to the parser's `- AE-NNN: Name —` colon form), empty `verification: []` blocks (`T14-INT-VERIFICATION`, backfilled), and unfilled Outcome Verification placeholders (`T-VERIFICATION-OUTCOME`, declared against the shipped tests). Fixed via the sanctioned `--unlock` → edit → `--lock` (Path B) round-trip; `audit linkage` P2 7→0, `audit doctor` back to `ADVISORY`. No behavioral change to shipped code.
+
 ## [v0.113.0] — 2026-06-09
 
 > **MSN-019 — the Spec Reviewer + ContextSpec substrate.** Three serialized daughter Intents (INT-139 → INT-140 → INT-141, ADR-016) generalize the dekfactory Phase-0 single-role reviewer prototype into a first-class, parser-validated, six-role reviewer substrate. All additive (ADR-011 Option B zero-coupling) — existing `--review` modes, audit rules, and the MSN-017 SQLite review-flywheel are untouched.
