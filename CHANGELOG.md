@@ -4,6 +4,26 @@ All notable changes to DekSpec are documented here. Format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [v0.113.0] — 2026-06-09
+
+> **MSN-019 — the Spec Reviewer + ContextSpec substrate.** Three serialized daughter Intents (INT-139 → INT-140 → INT-141, ADR-016) generalize the dekfactory Phase-0 single-role reviewer prototype into a first-class, parser-validated, six-role reviewer substrate. All additive (ADR-011 Option B zero-coupling) — existing `--review` modes, audit rules, and the MSN-017 SQLite review-flywheel are untouched.
+
+### Added — `context_spec` IR kind: the 11th first-class IR kind (INT-139)
+
+A new IR kind generalizing per-role reviewer input-scoping into an addressable, parser-validated artifact. Ships `tooling/dekspec/schemas/context-spec.schema.yaml` (closed under `additionalProperties: false` at every level), `parse_context_spec(path)` in `constraint_compiler/parser.py` (purely additive, modeled on `parse_security_profile` per ADR-011 Option B; re-exported from `constraint_compiler/__init__.py`), `SCHEMA_FILENAMES`/`LATEST_VERSIONS` registry rows, the `CS-` migration ID-prefix, `templates/context-spec-template.md` (AE-007 convention), and six canonical instances `dekspec/context-specs/role-{specifier,spec-reviewer,implementer,code-reviewer,verifier,auditor}.md` (CS-001…006). `dekspec check validate --kind contextspec <path>` validates them via the CLI. Generalizes `dekfactory/.../reviewer_context_spec.schema.json` (INT-075 Phase 0; AE-014 §4.2 adversarial-separation invariant) to all six pipeline-role identities. Governed by AE-004 + AE-007.
+
+### Added — shared `Reviewer<ArtifactType>` dispatcher + IC-016 contract (INT-140)
+
+A new dispatcher module `tooling/dekspec/spec_review/reviewer.py` (sibling of — and non-colliding with — the LOCKED MSN-017 `tooling/dekspec/review/`): `Reviewer.dispatch(context_spec: dict, artifact) -> list[Finding]`, IO-free (the caller parses the ContextSpec via the LOCKED `parse_context_spec` and passes the typed dict; `dispatch` performs no file IO), routing on the dict's `role_identity` and returning the LOCKED AE-003 `Finding` dataclass verbatim at default severity P2. The boundary is pinned in **IC-016** (`reviewer-dispatcher-contract`, v1.0.0, LOCKED): the signature, the finding-shape, and the P2 default-severity contract that the six consuming `--review` modes register against. Governed by AE-006 + AE-003.
+
+### Added — six `/write-*` `--review` modes dispatch through a shared reviewer lib + `SPEC-REVIEW` audit family (INT-141)
+
+A new shared `plugins/dekspec/skills/_lib/reviewer_mode.md` `--review`-mode contract that all six `/write-*` skills (`write-intent`, `write-ws`, `write-ic`, `write-ae`, `write-adr`, `write-ibs`) now dispatch through — loading the `spec-reviewer` ContextSpec, invoking `Reviewer.dispatch`, and routing the returned findings into the audit surface — instead of each carrying ad-hoc reviewer prose (existing interactive walkthroughs preserved). A new additive audit-rule family `tooling/dekspec/fidelity_audit/spec_review_rules.py` (`spec_review_rules(graph, profile)`, mirroring `prose_shape_rules`, extended into `audit_linkage`) registers the `SPEC-REVIEW` rule code in the `v1`/`lite`/`team` profiles at P2 and surfaces a hand-authored artifact's missing-derivation-source ambiguity (a spec deriving from an Architecture Element absent from review scope) as a P2 finding through the LOCKED AE-003 surface. **Behavior note:** a newly-authored or `--unlock`-revised WS/IC that references an absent AE now surfaces a `SPEC-REVIEW` P2 (approval-blocking) finding at `audit`/`--analyze` time; existing LOCKED artifacts are not retroactively reviewed. Governed by AE-006 + AE-003.
+
+### Fixed — MSN-019 Mission Verification predicate corrections + `run_verification.py` generic-token workaround
+
+Five of MSN-019's 16 Mission Verification predicates were authored speculatively at Mission-creation (before the substrate existed) and did not match the shipped CLI surface: `audit doctor` has no `--min-severity` flag and prints no rule codes (corrected to `audit linkage --at <fixture> --dekspec-root . --min-severity P2 --json | grep SPEC-REVIEW`); the IC status grep `^Status.*LOCKED` never matched the `## Status` / bare-`LOCKED` IC format (corrected to a bare-line match); and a clean-repo `--at .` finding-grep was repointed at the acceptance fixture. Two predicates also tripped `write-mission/scripts/run_verification.py`'s placeholder guard (`re.compile(r"<[^>]+>")`), which rejects any `cmd:` containing a literal generic-typed token such as `Reviewer<ArtifactType>` as an unresolved `<placeholder>`; worked around with a regex (`Reviewer.ArtifactType`). The guard should be hardened upstream to whitelist known literals or only fire on lowercase-kebab `<placeholder>` forms.
+
 ## [v0.112.0] — 2026-06-02
 
 ### Fixed — `update_index` appends into the data table, not a leading legend (ds-update-index-wrong-table-shape-z765)

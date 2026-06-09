@@ -150,6 +150,12 @@ rules:
   - T-PROSE-IB-GOAL
   - T-PROSE-IB-DONE-WHEN
   - T-PROSE-AE-RESPONSIBILITY
+  # INT-141 / IB-126 — SPEC-REVIEW reviewer-dispatch family; P2 advisory.
+  # Routes the spec-reviewer review path (role-spec-reviewer.md §Escalation
+  # Triggers) into the audit surface via spec_review_rules.spec_review_rules.
+  # Single family code; all findings emit at P2 (no per-rule graduation).
+  # lite.yaml + team.yaml inherit v1, so this flows through both.
+  - SPEC-REVIEW
   # ds-52p D-16 — singleton self-consistency
   - T-GLOSSARY-DUPLICATE
   - T-GLOSSARY-MISSING-DEFINITION

@@ -25,6 +25,7 @@ from . import __version__
 from .constraint_compiler import (
     ADRParseError,
     AEParseError,
+    CSParseError,
     GlossaryParseError,
     IBParseError,
     ICParseError,
@@ -40,6 +41,7 @@ from .constraint_compiler import (
     parse_adr,
     parse_ae,
     parse_constitution,
+    parse_context_spec,
     parse_glossary,
     parse_ib,
     parse_intent,
@@ -2577,7 +2579,7 @@ def _add_validate_subparser(sub: argparse._SubParsersAction) -> None:
         "--kind",
         choices=[
             "ic", "ae", "ws", "adr", "ib", "intent", "mission",
-            "sp", "vision", "glossary", "constitution",
+            "sp", "contextspec", "vision", "glossary", "constitution",
         ],
         help=(
             "Override filename-based kind inference. Useful when the artifact "
@@ -2610,6 +2612,7 @@ def cmd_validate(args: argparse.Namespace) -> int:
         "ic": parse, "ae": parse_ae, "ws": parse_ws, "adr": parse_adr,
         "ib": parse_ib, "intent": parse_intent, "mission": parse_mission,
         "sp": parse_security_profile,
+        "contextspec": parse_context_spec,
         "vision": parse_vision, "glossary": parse_glossary,
         "constitution": parse_constitution,
     }
@@ -2618,6 +2621,7 @@ def cmd_validate(args: argparse.Namespace) -> int:
         ICParseError, AEParseError, WSParseError, ADRParseError,
         IBParseError, IntentParseError, MissionParseError,
         SPParseError,
+        CSParseError,
         VisionParseError, GlossaryParseError,
         ConstitutionParseError,
     )

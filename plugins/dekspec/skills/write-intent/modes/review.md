@@ -24,6 +24,15 @@ For each section in this order, summarize, ask, and apply:
 
 For each `yes, revise` response, run the Edit tool to apply the engineer's stated change in-place. For each `no, leave as is` response, move on.
 
+### Step 2.5: Spec-Reviewer dispatch
+
+This special-case hook attaches at the validate/exit boundary — after the Step 2 section walkthrough and before the Step 3 re-validate. It ADDS an adversarial Spec-Reviewer pass alongside the walkthrough; it does NOT replace it. Perform the shared `reviewer_mode` four-step dispatch (see [`_lib/reviewer_mode.md`](../../_lib/reviewer_mode.md)):
+
+1. Load the `spec-reviewer` ContextSpec: `from dekspec.constraint_compiler.parser import parse_context_spec; context_spec = parse_context_spec("dekspec/context-specs/role-spec-reviewer.md")` (`context_spec["role_identity"] == "spec-reviewer"` — the same ContextSpec all six `--review` modes load).
+2. Take the `ReviewerIntent` artifact this `--review` mode already holds (the Intent at `<Intent-path>`; the caller owns this IO, the dispatcher is IO-free).
+3. Dispatch through the shared surface: `from dekspec.spec_review.reviewer import Reviewer; findings = Reviewer().dispatch(context_spec, artifact)` (`-> list[Finding]`, per IC-016).
+4. Present each returned `Finding` to the engineer at its severity (default `P2` — approval-blocking, not auto-merge) alongside the Step 2 walkthrough sections. Do not reshape the records; they route into the AE-003 surface via the `SPEC-REVIEW` audit-rule family (`dekspec.spec_review.reviewer` → `spec_review_rules`).
+
 ### Step 3: Re-run schema validation
 
 After walkthrough edits, re-parse via `parse_intent` to confirm the file still parses cleanly. If schema validation fails, surface the error and revert (`git checkout` the file) — the review session must end in a valid state.

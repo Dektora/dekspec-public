@@ -265,6 +265,7 @@ def _artifact_type_from_id(artifact_id: str) -> str:
         "INT-": "intent",
         "MSN-": "mission",
         "SP-": "security_profile",
+        "CS-": "context_spec",
         "DOMAIN-GLOSSARY": "domain_glossary",
         "SYSTEM-VISION": "system_vision",
         "CONSTITUTION": "constitution",

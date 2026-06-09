@@ -113,7 +113,7 @@ def audit_linkage(
     # for callers that pass an explicit (already-resolved) profile name.
     # `prose_shape` is also imported lazily — it imports `Finding` from this
     # module, so a top-level import would form a circular import.
-    from . import prose_shape
+    from . import prose_shape, spec_review_rules
     from .profiles import load_profile
 
     active_profile = load_profile(profile or "v1")
@@ -157,6 +157,8 @@ def audit_linkage(
     findings.extend(_d15_prose_drift_wsicib(graph))
     # T-PROSE-* prose-shape heuristic family (INT-065 / IB-109) — advisory.
     findings.extend(prose_shape.prose_shape_rules(graph, active_profile))
+    # SPEC-REVIEW reviewer-dispatch family (INT-141 / IB-126) — advisory P2.
+    findings.extend(spec_review_rules.spec_review_rules(graph, active_profile))
     findings.extend(_t_glossary_self_consistency(graph))
     findings.extend(_t_vision_completeness(graph))
     findings.extend(_t_constitution_article_present(graph))

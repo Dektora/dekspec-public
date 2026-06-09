@@ -1,0 +1,160 @@
+# Context Spec IR — JSON Schema (Draft 2020-12)
+#
+# Multi-instance L1-substrate artifact at <dekspec-root>/context-specs/role-<role>.md.
+# Captures a role identity's input-scoping contract: the artifact paths, schema
+# fragments, and domain-glossary subset a given role's context window is scoped
+# to, plus the escalation triggers under which that role escalates rather than
+# decides. Exactly six canonical instances ship — one per role identity in the
+# `role_identity` enum closure (specifier, spec-reviewer, implementer,
+# code-reviewer, verifier, auditor).
+#
+# This is the first-class generalization of the dekfactory Phase 0 prototype
+# reviewer_context_spec.schema.json (INT-075 IU-2; AE-014 §4.2 adversarial-
+# separation invariant): one hard-coded Code-Reviewer role becomes a typed,
+# parser-validated, ID-addressable IR kind.
+#
+# Per ADR-011 Option B, the ContextSpec IR is a sibling to the existing IR
+# kinds — the parser does NOT couple to Working-Spec internals (no references
+# to the Working-Spec parse function, its symbol prefix, schema, or graph
+# projection) and does NOT couple to Security-Profile internals. The static
+# zero-coupling audit (test_adr_011_conformance_zero_coupling) scans this file
+# for those literal symbols, so they are paraphrased here deliberately.
+#
+# Schema closure invariant (ADR-006 / AE-014 §4.2 generalization):
+# `additionalProperties: false` appears at the top level AND on every nested
+# object — every `escalation_triggers` row object — so a stray key cannot slip
+# into a role's context window undetected. The top-level closure is the schema-
+# level enforcement that a role carries EXACTLY its scoped inputs and no more.
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://dekspec.dektora/schemas/v0.1/context-spec.schema.json"
+title: Context Spec IR
+description: >-
+  Normalized intermediate representation of a ContextSpec artifact.
+  Produced by dekspec.constraint_compiler.parser.parse_context_spec();
+  consumed by the CLI validate path and (in sibling MSN-019 daughters) by the
+  Reviewer<ArtifactType> dispatcher and the /write-* --review role-identity
+  resolution. Declares a role identity's input-scoping contract.
+
+type: object
+additionalProperties: false
+required:
+  - ir_schema_version
+  - id
+  - title
+  - status
+  - role_identity
+  - artifact_path_scope
+  - schema_fragment_scope
+  - glossary_subset_scope
+  - escalation_triggers
+
+properties:
+
+  ir_schema_version:
+    description: Version of THIS schema. Pinned at v1; future v0.2.0 widens this and lands its own migration.
+    const: "0.1.0"
+
+  id:
+    description: Canonical ContextSpec identifier sourced from the `## ID` body section (e.g., CS-001). The canonical filename is role-keyed (role-<role>.md), not ID-keyed.
+    type: string
+    pattern: "^CS-\\d{3,}$"
+
+  title:
+    description: Engineer-authored one-line title from the markdown H1.
+    type: string
+    minLength: 1
+
+  status:
+    description: ContextSpec lifecycle status. DRAFT is intentionally absent — ContextSpecs are authored via the template from a populated form; initial committed state is PROPOSED.
+    enum: [PROPOSED, ACCEPTED, LOCKED, SUPERSEDED]
+
+  role_identity:
+    description: >-
+      The role identity this ContextSpec scopes. The closure of valid role
+      identities — exactly six values, one canonical instance per value.
+    type: string
+    enum: [specifier, spec-reviewer, implementer, code-reviewer, verifier, auditor]
+
+  artifact_path_scope:
+    description: >-
+      The artifact globs/paths this role's context window is scoped to. Empty
+      array is valid (engineer asserts "no artifact-path scope at this role").
+    type: array
+    items:
+      type: string
+      minLength: 1
+
+  schema_fragment_scope:
+    description: >-
+      The schema fragments / IR kinds this role sees. Empty array is valid.
+    type: array
+    items:
+      type: string
+      minLength: 1
+
+  glossary_subset_scope:
+    description: >-
+      The domain-glossary terms scoped into this role's context. Empty array is valid.
+    type: array
+    items:
+      type: string
+      minLength: 1
+
+  escalation_triggers:
+    description: >-
+      The conditions under which this role escalates rather than decides. Each
+      row is a closed (condition, action) object. Empty array is valid.
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [condition, action]
+      properties:
+        condition:
+          type: string
+          minLength: 1
+        action:
+          type: string
+          minLength: 1
+
+  source:
+    description: 'Parser-attached provenance. Optional in the schema (engineer-authored required list excludes it per the IR-author contract), present in every parser-produced IR.'
+    type: object
+    additionalProperties: false
+    required: [path, sha256, parser_version, parsed_at]
+    properties:
+      path:
+        type: string
+      sha256:
+        type: string
+        pattern: "^[a-f0-9]{64}$"
+      parser_version:
+        type: string
+        pattern: "^\\d+\\.\\d+\\.\\d+$"
+      parsed_at:
+        type: string
+        format: date-time
+
+  created:
+    type: string
+    format: date
+
+  modified:
+    type: string
+    format: date
+
+  parse_warnings:
+    description: 'Fields the parser could not extract or only partially extracted from markdown. Same convention as the other per-kind IRs.'
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [field, reason, severity]
+      properties:
+        field:
+          type: string
+        reason:
+          type: string
+        severity:
+          enum: [info, warning]

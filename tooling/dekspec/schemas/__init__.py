@@ -78,6 +78,7 @@ SCHEMA_FILENAMES: dict[str, str] = {
     "mission": "mission.schema.yaml",
     "domain_glossary": "domain-glossary.schema.yaml",
     "security_profile": "security-profile.schema.yaml",
+    "context_spec": "context-spec.schema.yaml",
     "system_vision": "system-vision.schema.yaml",
     "constitution": "constitution.schema.yaml",
     "registry": "registry.schema.yaml",
@@ -110,6 +111,9 @@ LATEST_VERSIONS: dict[str, str] = {
     "mission": "0.2.0",
     "domain_glossary": "0.1.0",
     "security_profile": "0.1.0",
+    # context_spec (INT-139 / IB-124, MSN-019 daughter A) — the 11th IR kind:
+    # a role identity's input-scoping contract. First version.
+    "context_spec": "0.1.0",
     "system_vision": "0.1.0",
     "constitution": "0.1.0",
     # registry (INT-020) — the append-only ID-allocation ledger.

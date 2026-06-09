@@ -4358,3 +4358,171 @@ def _validate_security_profile(ir: dict[str, Any]) -> None:
             "Parsed Security Profile IR failed schema validation:\n"
             + "\n".join(msgs)
         )
+
+
+# --------------------------------------------------------------------------- #
+# ContextSpec IR (IB-124 / INT-139, MSN-019 daughter A)
+#
+# The 11th DekSpec IR kind — generalizes the dekfactory Phase 0 prototype
+# reviewer_context_spec.schema.json into a first-class, parser-validated,
+# ID-addressable IR. Additive per ADR-011 Option B: zero edits to any existing
+# parse_* function or shared helper; no references to WS or Security-Profile
+# internals. The one shape divergence from parse_security_profile: `id` is
+# sourced from the `## ID` body section (the canonical filename is role-keyed,
+# `role-<role>.md`, not ID-keyed), not from the filename.
+# --------------------------------------------------------------------------- #
+
+_CS_IR_SCHEMA_VERSION = "0.1.0"
+_CS_ID_RE = re.compile(r"\bCS-\d{3,}\b")
+_CS_H1_TITLE = re.compile(r"^#\s+(.+?)\s*$", re.MULTILINE)
+
+
+class CSParseError(Exception):
+    """Raised when a ContextSpec markdown fails parsing or schema validation."""
+
+
+def parse_context_spec(path: str | Path) -> dict[str, Any]:
+    """Parse a ContextSpec markdown file into a validated IR.
+
+    Walks H2 sections of the markdown; extracts id from the `## ID` body
+    section (NOT the filename — the canonical filename is role-keyed,
+    `role-<role>.md`); title from H1; status / role_identity from per-field H2
+    sections; the four input-scoping fields (artifact_path_scope,
+    schema_fragment_scope, glossary_subset_scope, escalation_triggers) via
+    per-field `_extract_cs_*` helpers; attaches provenance; validates the
+    assembled dict against `context-spec.schema.yaml`.
+
+    Raises CSParseError on schema-validation failure (wraps the underlying
+    jsonschema.ValidationError messages); re-raises OSError /
+    UnicodeDecodeError from the file read unchanged.
+    """
+    src = Path(path).resolve()
+    text = src.read_text(encoding="utf-8")
+    sections = _split_sections(text)
+
+    ir: dict[str, Any] = {
+        "ir_schema_version": _CS_IR_SCHEMA_VERSION,
+        "id": _extract_cs_id(sections),
+        "title": _extract_cs_title(text),
+        "status": _extract_cs_status(sections),
+        "role_identity": _extract_cs_role_identity(sections),
+        "artifact_path_scope": _extract_cs_scope(
+            sections.get("Artifact Path Scope", "")
+        ),
+        "schema_fragment_scope": _extract_cs_scope(
+            sections.get("Schema Fragment Scope", "")
+        ),
+        "glossary_subset_scope": _extract_cs_scope(
+            sections.get("Glossary Subset Scope", "")
+        ),
+        "escalation_triggers": _extract_cs_escalation_triggers(
+            sections.get("Escalation Triggers", "")
+        ),
+        "source": {
+            "path": str(src),
+            "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+            "parser_version": PARSER_VERSION,
+            "parsed_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        },
+    }
+
+    _maybe_set(ir, "created", _extract_first_date(sections.get("Created", "")))
+    _maybe_set(ir, "modified", _extract_first_date(sections.get("Modified", "")))
+
+    _validate_context_spec(ir)
+    return ir
+
+
+def _extract_cs_id(sections: dict[str, str]) -> str:
+    body = sections.get("ID", "")
+    m = _CS_ID_RE.search(body)
+    if not m:
+        raise CSParseError(
+            "Could not extract a ContextSpec id — expected a '## ID' section "
+            "with a token matching CS-NNN (id lives in the body, not the "
+            "role-keyed filename)."
+        )
+    return m.group(0)
+
+
+def _extract_cs_title(text: str) -> str:
+    m = _CS_H1_TITLE.search(text)
+    if not m:
+        raise CSParseError(
+            "Missing or malformed H1 — expected '# <title>'."
+        )
+    return m.group(1).strip()
+
+
+def _extract_cs_status(sections: dict[str, str]) -> str:
+    body = sections.get("Status", "")
+    for line in body.splitlines():
+        s = line.strip()
+        if not s or s.startswith("*"):
+            continue
+        # First non-decoration token — passed through verbatim (no casefold)
+        # so the schema enum rejects mixed-case typos like `proposed` cleanly.
+        token = s.split()[0].strip("`*_-")
+        if token:
+            return token
+    raise CSParseError(
+        "Could not extract a Status value — expected '## Status' section with "
+        "a token from {PROPOSED, ACCEPTED, LOCKED, SUPERSEDED}."
+    )
+
+
+def _extract_cs_role_identity(sections: dict[str, str]) -> str:
+    body = sections.get("Role Identity", "")
+    for line in body.splitlines():
+        s = line.strip()
+        if not s or s.startswith("*"):
+            continue
+        token = s.split()[0].strip("`*_-")
+        if token:
+            return token
+    raise CSParseError(
+        "Could not extract a Role Identity value — expected '## Role Identity' "
+        "section with one of {specifier, spec-reviewer, implementer, "
+        "code-reviewer, verifier, auditor}."
+    )
+
+
+def _extract_cs_scope(body: str) -> list[str]:
+    """Extract a bullet-list input-scoping field (strips surrounding backticks
+    from each item; empty list when the section is absent or empty)."""
+    return [item.strip("`").strip() for item in _extract_bullets(body) if item.strip()]
+
+
+def _extract_cs_escalation_triggers(body: str) -> list[dict[str, str]]:
+    """Parse the `## Escalation Triggers` bullets into closed (condition,
+    action) rows. Each bullet is `condition: <c> | action: <a>`."""
+    rows: list[dict[str, str]] = []
+    for bullet in _extract_bullets(body):
+        parts = [p.strip() for p in bullet.split("|")]
+        fields: dict[str, str] = {}
+        for part in parts:
+            if ":" not in part:
+                continue
+            key, _, value = part.partition(":")
+            key = key.strip().lower()
+            if key in ("condition", "action"):
+                fields[key] = value.strip()
+        if "condition" in fields and "action" in fields:
+            rows.append({"condition": fields["condition"], "action": fields["action"]})
+    return rows
+
+
+def _validate_context_spec(ir: dict[str, Any]) -> None:
+    from ..schemas import load_schema as _load
+
+    schema = _load("context_spec")
+    validator = Draft202012Validator(schema)
+    errors = sorted(validator.iter_errors(ir), key=lambda e: list(e.absolute_path))
+    if errors:
+        msgs = []
+        for e in errors:
+            ptr = "/" + "/".join(str(p) for p in e.absolute_path)
+            msgs.append(f"  {ptr}: {e.message}")
+        raise CSParseError(
+            "Parsed ContextSpec IR failed schema validation:\n" + "\n".join(msgs)
+        )
