@@ -2740,6 +2740,15 @@ _INT_AE_REF = re.compile(r"^[-*]\s*(?:\*\*)?(AE-\d{3,})(?:\*\*)?\s*[:\-—]\s*(?
 _INT_GLOB_BULLET = re.compile(r"^[-*]\s*`([^`]+)`(?:[ \t]+.*)?$", re.MULTILINE)
 _INT_FENCED_YAML = re.compile(r"```(?:yaml)?\s*\n(.*?)\n```", re.DOTALL)
 _INT_VERIF_ENTRY = re.compile(r"-\s+name:\s*(.+?)\n\s+cmd:\s*(.+?)(?=\n\s*-|\n*$)", re.DOTALL)
+# ds-cjqi: optional per-check manual-attestation keys (trailing lines inside
+# the entry captured by _INT_VERIF_ENTRY's cmd group).
+_INT_VERIF_MANUAL = re.compile(r"^\s*manual:\s*(\S+)\s*$", re.MULTILINE)
+_INT_VERIF_MANUAL_RATIONALE = re.compile(
+    r"^\s*manual_rationale:\s*(.*?)\s*$", re.MULTILINE
+)
+# ds-9hma / ADR-035: a Superseded-By successor may be an Intent or a Mission
+# (non-LOCKED absorption case).
+_SUPERSEDED_BY_ID = re.compile(r"\b(?:INT|MSN)-\d{3,}\b")
 
 
 class IntentParseError(Exception):
@@ -2802,7 +2811,7 @@ def parse_intent(path: str | Path) -> dict[str, Any]:
         ir["source_provenance"] = src_prov
 
     superseded_by = ctx.sections.get("Superseded-By", "").strip()
-    m = re.search(r"\bINT-\d{3,}\b", superseded_by)
+    m = _SUPERSEDED_BY_ID.search(superseded_by)
     if m:
         ir["superseded_by"] = m.group(0)
 
@@ -3030,19 +3039,47 @@ def _extract_intent_components_affected(body: str) -> list[str]:
     return out
 
 
-def _extract_intent_verification(body: str) -> list[dict[str, str]]:
+def _extract_intent_verification(body: str) -> list[dict[str, Any]]:
     if not body.strip():
         return []
     yaml_match = _INT_FENCED_YAML.search(body)
     if not yaml_match:
         return []
     yaml_body = yaml_match.group(1)
-    out: list[dict[str, str]] = []
+    out: list[dict[str, Any]] = []
     for m in _INT_VERIF_ENTRY.finditer(yaml_body):
         name = m.group(1).strip().strip("`'\"")
-        cmd = m.group(2).strip().strip("`'\"")
-        if name and cmd:
-            out.append({"name": name, "cmd": cmd})
+        cmd_raw = m.group(2)
+        # ds-cjqi: a check may carry `manual: true` + `manual_rationale:`
+        # after the cmd line. The legacy entry regex swallows trailing keys
+        # into the cmd capture; split them back out here so the cmd stays
+        # clean and the manual fields surface in the IR.
+        manual_m = _INT_VERIF_MANUAL.search(cmd_raw)
+        rationale_m = _INT_VERIF_MANUAL_RATIONALE.search(cmd_raw)
+        cut = min(
+            (x.start() for x in (manual_m, rationale_m) if x),
+            default=len(cmd_raw),
+        )
+        cmd = cmd_raw[:cut].strip().strip("`'\"")
+        if not (name and cmd):
+            continue
+        entry: dict[str, Any] = {"name": name, "cmd": cmd}
+        manual_val = (
+            manual_m.group(1).strip().strip("`'\"").lower() if manual_m else ""
+        )
+        if manual_val in {"true", "yes"}:
+            rationale = (
+                rationale_m.group(1).strip().strip("`'\"") if rationale_m else ""
+            )
+            if not rationale:
+                raise IntentParseError(
+                    f"Verification check '{name}': manual: true requires a "
+                    "non-empty manual_rationale (why the cmd cannot run "
+                    "locally and how it is verified instead)"
+                )
+            entry["manual"] = True
+            entry["manual_rationale"] = rationale
+        out.append(entry)
     return out
 
 

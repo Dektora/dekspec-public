@@ -47,6 +47,7 @@ If diff confinement passes, proceed to Step 3.
 
 For each named check in the Verification block:
 
+0. **Manual checks (ds-cjqi).** If the check carries `manual: true`, do **NOT** execute its `cmd:`. Require a non-empty `manual_rationale:` on the check — if missing, refuse and stop (surface the check name; the engineer adds the rationale or removes `manual:`). The canonical enforcement lives in `tooling/dekspec/constraint_compiler/parser.py::_extract_intent_verification`, which raises on `manual: true` without a rationale — mirror its semantics. For a valid manual check, record a per-check result row of `MANUAL-TESTPASS` carrying the rationale (instead of exit-code/duration), then continue to the next check. Manual checks never fail and never trigger the fast-fail below; they are attested, not executed. Use for predicates needing infrastructure the local box lacks (e.g. a GPU smoke stack on a CPU dev box).
 1. Run the `cmd:` from the repo root.
 2. Capture exit code + first 50 lines of stdout + first 50 lines of stderr.
 3. Record `name`, `cmd`, `exit-code`, `duration` in a per-check result row (kept in memory; written to the Verification block only on completion).
@@ -57,9 +58,9 @@ If **any** check exits non-zero, stop on first failure (do not run subsequent ch
 2. Status stays at `IMPLEMENTING` (the `TESTFAIL` Status flip retired 2026-05-25). The TESTFAIL record above is the persisted captured-failure log.
 3. Surface the failing check + captured stderr. The engineer fixes via the existing bead chain (existing or new beads), then re-runs `--testpass`.
 
-If **all** checks exit zero:
+If **all** executable checks exit zero:
 
-1. For each check, append a per-check pass entry into the Verification block (the engineer can verify the run record).
+1. For each check, append a per-check pass entry into the Verification block (the engineer can verify the run record). Manual checks appear as `MANUAL-TESTPASS: <manual_rationale>` rows.
 2. Flip Status to `TESTPASS`, bump Modified, and append the Amendment Log row — run `python ../_lib/scripts/artifact_ops.py transition <Intent-path> --from IMPLEMENTING --to TESTPASS --note "All Verification checks green; diff confinement clean; transitioned IMPLEMENTING to TESTPASS via /write-intent --testpass" --engineer <engineer-or-agent>` (surface stderr on non-zero exit and STOP).
 3. Update `dekspec/intent-index.md` — run `python ../_lib/scripts/artifact_ops.py update-index dekspec/intent-index.md --id INT-NNN --status TESTPASS` (surface stderr on non-zero exit).
 4. Surface the next-step message: merge `int/INT-NNN-<slug>` into `main` and then run `/write-intent --lock <path>`.

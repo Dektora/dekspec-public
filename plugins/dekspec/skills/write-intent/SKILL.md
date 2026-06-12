@@ -1,12 +1,12 @@
 ---
 name: write-intent
-description: Author, analyze, accept, decompose, testpass, lock, unlock, sync, audit, review, or amend an Intent (INT-NNN) — a single LOCKable, machine-verifiable unit of cross-component work. Use when the engineer has a committed direction the system intends to land. Phase 1 (Parts A + B) + Phase 3 flags (--sync / --audit / --review / --amend) all implemented.
+description: Author, analyze, accept, decompose, testpass, lock, unlock, sync, audit, review, amend, or supersede an Intent (INT-NNN) — a single LOCKable, machine-verifiable unit of cross-component work. Use when the engineer has a committed direction the system intends to land. Phase 1 (Parts A + B) + Phase 3 flags (--sync / --audit / --review / --amend) all implemented.
 mode: lite
 model: claude-opus-4-7
 reasoning_effort: max
 disable-model-invocation: false
 allowed-tools: Read Write Edit Grep Glob Bash Agent
-argument-hint: [--canonical] [--provisional <slug>] [--help | --teaching | --audit | --review | --analyze | --accept | --approve | --decompose | --testpass | --lock | --unlock | --sync | --amend [--editorial] | --lite] [description or path to Intent]
+argument-hint: [--canonical] [--provisional <slug>] [--help | --teaching | --audit | --review | --analyze | --accept | --approve | --decompose | --testpass | --lock | --unlock | --sync | --supersede [--by <INT-NNN|MSN-NNN>] | --amend [--editorial] | --lite] [description or path to Intent]
 related_skills: [orchestrate-intent, write-ws, write-ibs, write-beads, write-mission]
 ---
 
@@ -54,6 +54,7 @@ Parse `$ARGUMENTS` for the mode flag, then **load the corresponding per-mode bod
 - **Lock mode** — `--lock` flag, expects a path to an Intent eligible for locking via either sufficient path (ADR-017). Load [`modes/lock.md`](modes/lock.md).
 - **Unlock mode** — `--unlock` flag, expects a path to an Intent in LOCKED. Load [`modes/unlock.md`](modes/unlock.md).
 - **Sync mode** — `--sync` flag, expects a path to an Intent in LOCKED. Load [`modes/sync.md`](modes/sync.md).
+- **Supersede mode** — `--supersede` flag (+ `--by <INT-NNN|MSN-NNN>`), expects a path to a non-LOCKED pre-implementation Intent (DRAFT / OVERSIZED / PROPOSED / ACCEPTED) absorbed by a named successor artifact (ADR-035). Load [`modes/supersede.md`](modes/supersede.md).
 - **Audit mode** — `--audit` flag, expects a path to an Intent in any non-terminal status. Load [`modes/audit.md`](modes/audit.md).
 - **Review mode** — `--review` flag, expects a path to an Intent in DRAFT, PROPOSED, or ACCEPTED. Load [`modes/review.md`](modes/review.md).
 - **Amend mode** — `--amend` flag, expects a path to an Intent in any non-terminal status. Load [`modes/amend.md`](modes/amend.md).
@@ -64,7 +65,7 @@ Parse `$ARGUMENTS` for the mode flag, then **load the corresponding per-mode bod
 
 **Routing (per [`_lib/mode_detection_template.md`](../_lib/mode_detection_template.md)):**
 - Substantive-work (fan-out via Agent tool): (no flag), `--analyze`, `--accept`
-- Inline (parent context): `--help`, `--teaching`, `--review`, `--audit`, `--lock`, `--unlock`, `--sync`, `--testpass`, `--amend`, `--decompose`, `--approve`, `--lite`
+- Inline (parent context): `--help`, `--teaching`, `--review`, `--audit`, `--lock`, `--unlock`, `--sync`, `--supersede`, `--testpass`, `--amend`, `--decompose`, `--approve`, `--lite`
 
 ## Mode Index
 
@@ -78,6 +79,7 @@ Parse `$ARGUMENTS` for the mode flag, then **load the corresponding per-mode bod
 | Lock | `--lock` | [modes/lock.md](modes/lock.md) | Promote to LOCKED via ADR-017 Path A (MERGED) or Path B (downstream WS/IC/IBs ≥ ACCEPTED). |
 | Unlock | `--unlock` | [modes/unlock.md](modes/unlock.md) | Reason-gated LOCKED → PROPOSED for editorial corrections (precursor to a re-`--lock`). |
 | Sync | `--sync` | [modes/sync.md](modes/sync.md) | Post-merge cleanup walkthrough — mark checklist items, surface new ones, apply small edits. |
+| Supersede | `--supersede` (+ `--by <INT-NNN\|MSN-NNN>`) | [modes/supersede.md](modes/supersede.md) | Non-LOCKED pre-implementation Intent absorbed by a named successor → SUPERSEDED + index Archive move (ADR-035). Refuses LOCKED / in-flight / shipped / terminal. |
 | Audit | `--audit` | [modes/audit.md](modes/audit.md) | Read-only health check — every check the lifecycle modes enforce, mutates nothing. |
 | Review | `--review` | [modes/review.md](modes/review.md) | Interactive section-by-section walkthrough; engineer applies/declines edits per section. |
 | Amend | `--amend` (+ optional `--editorial`) | [modes/amend.md](modes/amend.md) | Structured mid-flight substantive change with invariant re-check + Status cascade. With `--editorial`: appends a `Type=editorial` Amendment Log row, refuses on behavioral-field diffs, does NOT cascade Status (INT-088 IU-1). |
@@ -118,6 +120,7 @@ modes:
   - { flag: "--lock", args: "<Intent-path>", description: "Lock mode — see modes/lock.md." }
   - { flag: "--unlock", args: "<Intent-path>", description: "Unlock mode — see modes/unlock.md." }
   - { flag: "--sync", args: "<Intent-path>", description: "Sync mode — see modes/sync.md." }
+  - { flag: "--supersede", args: "<Intent-path> --by <INT-NNN|MSN-NNN>", description: "Supersede mode — non-LOCKED pre-implementation Intent absorbed by a named successor → SUPERSEDED (ADR-035). See modes/supersede.md." }
   - { flag: "--audit", args: "<Intent-path>", description: "Audit mode — see modes/audit.md." }
   - { flag: "--review", args: "<Intent-path>", description: "Review mode — see modes/review.md." }
   - { flag: "--amend", args: "<Intent-path>", description: "Amend mode — see modes/amend.md." }

@@ -1514,6 +1514,31 @@ The matrix is guidance, not enforcement. Consumer repos may calibrate per their 
 
 The B-axis (Behavior rules) and the broader P-axis (Policy rules beyond P-citation) are documented placeholders. Specific rules are authored case-by-case as the rule families mature; today the loop respects whichever rules the audit profile (v1, team, lite) declares.
 
+## Recurring Rituals
+
+Operator rituals that recur on a calendar or event cadence rather than belonging to any Mission. Each is engineer-driven; none is automated — governance response to evidence is human work.
+
+### Class-lane evolution ritual
+
+> Origin: Dark Execution Phase 2.J (CUT from the phase list as "not a phase, a recurring ritual"). Consumes the Constitution §Class Lanes table, the failure-class aggregator (§Post-mortem ritual), and the consumer repo's per-class run metrics (e.g. a dashboard's `per_class_revert_rate` family).
+
+**Cadence:** every 30 days once an operator-UX/metrics surface ships in the consumer repo, the engineer reviews aggregate per-class metrics and promotes or demotes classes in Constitution §Class Lanes.
+
+**Promotion criteria** (a class moves one lane toward `dark` only when ALL hold — combined signal, clean-runs alone are insufficient):
+
+- ≥ 15 clean runs over the trailing 30 days
+- Zero reverts in the window
+- Code Reviewer + Verifier collectively caught ≥ 95% of the issues human reviewers (still gating gated classes) flagged
+- Near-miss rate below the repo's threshold (a clean merge that needed a late catch is a near-miss, not a clean signal)
+- Inter-reviewer agreement rate above the repo's target
+
+**Demotion criteria** (any one suffices):
+
+- Failure-taxonomy trend warrants demotion (`dekspec audit failure-classes` shows a worsening class pattern)
+- 1 revert in a `dark`-lane class triggers immediate review of that class's lane assignment
+
+**Path:** engineer-driven `/dekspec:write-constitution --amend --editorial` on §Class Lanes — a single markdown edit plus an Amendment Log row. **No automation:** no agent proposes, applies, or schedules lane amendments; the ritual is an operator reading evidence and making a governance call.
+
 ## Provisional vs. Canonical (INT-128 → ADR-030 / INT-133)
 
 > Per **INT-128** (LOCKED 2026-05-30) and **ADR-030 / INT-133** (2026-06-01). INT-128 first made the asymmetric cost of canonical vs. provisional authoring explicit (MSN-011 case) and added a soft ask→route prompt to `/dekspec:write-mission`. **ADR-030 (INT-133) then made provisional the hard default for BOTH `/dekspec:write-intent` and `/dekspec:write-mission` Creation modes** — canonical-direct authoring now requires an explicit `--canonical` opt-out. Read this before invoking either Creation skill.

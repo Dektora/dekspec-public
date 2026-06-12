@@ -142,9 +142,12 @@ properties:
     type: string
 
   superseded_by:
-    description: 'INT-NNN that supersedes this one. Required when status=SUPERSEDED.'
+    description: >-
+      Successor artifact that supersedes this Intent. Required when
+      status=SUPERSEDED. INT-NNN (successor Intent) or, per ADR-035
+      (non-LOCKED absorption), MSN-NNN (absorbing Mission).
     type: string
-    pattern: "^INT-\\d{3,}$"
+    pattern: "^(?:INT|MSN)-\\d{3,}$"
 
   created:
     type: string
@@ -222,6 +225,26 @@ properties:
           type: string
         cmd:
           type: string
+        manual:
+          type: boolean
+          description: >-
+            ds-cjqi — when true, /write-intent --testpass does NOT execute
+            the cmd; the check is attested manually (predicate needs infra
+            the local box lacks, e.g. a GPU smoke stack on a CPU dev box).
+            Requires manual_rationale; --testpass records a MANUAL-TESTPASS
+            row instead of an exit code.
+        manual_rationale:
+          type: string
+          description: >-
+            Why this check cannot be executed locally and how it is
+            verified instead. Required when manual is true.
+      if:
+        properties:
+          manual:
+            const: true
+        required: [manual]
+      then:
+        required: [manual_rationale]
 
   open_issues:
     type: array

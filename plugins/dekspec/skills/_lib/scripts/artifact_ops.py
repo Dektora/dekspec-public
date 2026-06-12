@@ -1217,6 +1217,85 @@ def check_retro_lock(
 
 
 # --------------------------------------------------------------------------
+# supersede — /write-intent --supersede (ds-9hma, doctrine in ADR-035)
+# --------------------------------------------------------------------------
+
+_SUPERSEDE_ALLOWED = frozenset({"DRAFT", "OVERSIZED", "PROPOSED", "ACCEPTED"})
+_SUPERSEDE_IN_FLIGHT = frozenset({"IMPLEMENTING", "TESTPASS", "MERGED"})
+_SUCCESSOR_ID_RE = re.compile(r"^(?:INT|MSN)-\d{3,}$")
+
+
+def supersede(
+    path: Path,
+    by: str,
+    engineer: str | None,
+    today: str | None = None,
+) -> str:
+    """Transition a non-LOCKED, pre-implementation Intent to SUPERSEDED.
+
+    Per ADR-035: allowed only from DRAFT / OVERSIZED / PROPOSED / ACCEPTED,
+    and only with a NAMED successor artifact (INT-NNN or MSN-NNN) recorded
+    in Superseded-By. Refuses LOCKED (the ADR-028 successor-Intent override
+    path, out of scope here), in-flight/shipped statuses (IMPLEMENTING /
+    TESTPASS / MERGED — finish the lifecycle, lock via an ADR-017 path, or
+    peel off scope), and already-SUPERSEDED.
+    """
+    by = by.strip()
+    if not _SUCCESSOR_ID_RE.match(by):
+        raise ValueError(
+            f"{path}: supersede refused — successor must be a named artifact "
+            f"id (INT-NNN or MSN-NNN), got {by!r}. ADR-035's distinguishing "
+            "test is a named successor that absorbed the direction."
+        )
+    today = today or datetime.date.today().isoformat()
+    text = path.read_text(encoding="utf-8")
+    actual = read_status(text)
+    if actual == "LOCKED":
+        raise ValueError(
+            f"{path}: supersede refused — Status is LOCKED. Overriding "
+            "LOCKED, binding work is the ADR-028 successor-Intent path, "
+            "out of scope for --supersede."
+        )
+    if actual in _SUPERSEDE_IN_FLIGHT:
+        raise ValueError(
+            f"{path}: supersede refused — Status is {actual} (work in "
+            "flight or shipped). Finish the lifecycle, lock via an ADR-017 "
+            "path, or peel off scope instead."
+        )
+    if actual == "SUPERSEDED":
+        raise ValueError(
+            f"{path}: supersede refused — Status is already SUPERSEDED "
+            "(terminal)."
+        )
+    if actual not in _SUPERSEDE_ALLOWED:
+        raise ValueError(
+            f"{path}: supersede refused — Status {actual} is not in the "
+            f"ADR-035 allowed set ({', '.join(sorted(_SUPERSEDE_ALLOWED))})."
+        )
+    new_text = _replace_status(text, "SUPERSEDED")
+    replaced = _replace_in_section(new_text, "Superseded-By", by)
+    if replaced is None:
+        raise ValueError(
+            f"{path}: no '## Superseded-By' section to record the successor "
+            "in — add the section (see the Intent template) and re-run."
+        )
+    new_text = _replace_modified(replaced, today)
+    resolved_email = engineer or _git_user_email() or "unknown"
+    new_text = _append_amendment_row(
+        new_text,
+        today,
+        f"Superseded by {by} (ADR-035 non-LOCKED absorption); "
+        f"transitioned {actual} to SUPERSEDED via /write-intent --supersede.",
+        resolved_email,
+    )
+    path.write_text(new_text, encoding="utf-8")
+    return (
+        f"{path}: Status {actual} -> SUPERSEDED, Superseded-By -> {by}, "
+        f"Modified -> {today}"
+    )
+
+
+# --------------------------------------------------------------------------
 # CLI
 # --------------------------------------------------------------------------
 
@@ -1302,6 +1381,23 @@ def _build_parser() -> argparse.ArgumentParser:
     p_ref = sub.add_parser("find-refs", help="grep dekspec/ for an id")
     p_ref.add_argument("art_id", metavar="ID")
 
+    p_sup = sub.add_parser(
+        "supersede",
+        help=(
+            "transition a non-LOCKED pre-implementation Intent to SUPERSEDED "
+            "with a named successor (INT-NNN or MSN-NNN) — /write-intent "
+            "--supersede per ADR-035 (ds-9hma)"
+        ),
+    )
+    p_sup.add_argument("path", type=Path)
+    p_sup.add_argument(
+        "--by",
+        required=True,
+        help="the successor artifact id (INT-NNN or MSN-NNN) that absorbed "
+        "the Intent's direction",
+    )
+    p_sup.add_argument("--engineer", default=None)
+
     p_crl = sub.add_parser(
         "check-retro-lock",
         help=(
@@ -1383,6 +1479,16 @@ def main(argv: list[str] | None = None) -> int:
                     args.note,
                     args.engineer,
                     baseline_text=baseline_text,
+                )
+            )
+            return 0
+
+        if args.command == "supersede":
+            print(
+                supersede(
+                    args.path,
+                    args.by,
+                    args.engineer,
                 )
             )
             return 0

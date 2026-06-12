@@ -4,6 +4,18 @@ All notable changes to DekSpec are documented here. Format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [v0.115.0] — 2026-06-12
+
+> Closes out **ds-aov7**: the two facets deferred from INT-142's scope split (2026-06-09) — the `verification.manual` per-check skip (ds-cjqi) and the `/write-intent --supersede` flag (ds-9hma) — now both shipped.
+
+### Added — per-check manual attestation in the Verification predicate (ds-cjqi)
+
+A Verification check may now carry `manual: true` + `manual_rationale: <why>`. `/write-intent --testpass` does **not** execute such a check's `cmd:` — it requires the rationale (refusing without one) and records a `MANUAL-TESTPASS` row carrying the rationale instead of an exit code; manual checks never trigger the fast-fail. For predicates needing infrastructure the local box lacks (e.g. a GPU smoke stack on a CPU dev box) — sanctioned in operating guidance, previously unimplemented (`--testpass` hard-ran every cmd). Deterministic surface: `intent.schema.yaml` adds the two optional fields with an `if/then` requiring the rationale when `manual: true`, and `parser._extract_intent_verification` exposes both fields (stripping them from the cmd capture) and raises on `manual: true` without a non-empty rationale. `modes/testpass.md` Step 3 + the Intent template document the semantics.
+
+### Added — `/write-intent --supersede` + ADR-035 non-LOCKED absorption carve-out (ds-9hma)
+
+The bead's architectural blocker (conflict with LOCKED ADR-028) is resolved by **ADR-035** (LOCKED): a non-LOCKED, pre-implementation Intent (`DRAFT`/`OVERSIZED`/`PROPOSED`/`ACCEPTED`) whose committed direction was absorbed by a **named successor artifact** (`INT-NNN` or `MSN-NNN`) may transition to `SUPERSEDED` — a refinement alongside ADR-028, not a supersession of it (PEEL-OFF stays the OVERSIZED default; LOCKED-override stays the successor-Intent path). The new `--supersede <Intent-path> --by <INT-NNN|MSN-NNN>` mode (`modes/supersede.md`) drives a new deterministic `artifact_ops.py supersede` helper: enforces the allowed status set (refusing `LOCKED`, `IMPLEMENTING`/`TESTPASS`/`MERGED`, already-`SUPERSEDED`, and unnamed successors), rewrites `## Superseded-By`, bumps Modified, appends the Amendment Log row; the skill mode then moves the index row from Active queue to Archive. The Intent IR `superseded_by` field (schema + parser) now accepts `MSN-NNN` successors (was INT-only).
+
 ## [v0.114.0] — 2026-06-09
 
 ### Added — `/write-intent --lock` Path C: retroactive post-merge lock for direct-bead Intents (INT-142, ds-aov7)

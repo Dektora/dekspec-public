@@ -223,6 +223,9 @@ The risk tier is **complementary** to Autonomy and Intent type: type classifies 
 # Verification predicate for this Intent.
 # Each entry: { name: <human-readable check>, cmd: <executable command> }
 # All checks must pass for `--testpass` to succeed.
+# Optional per check: `manual: true` + `manual_rationale: <why>` — the cmd is
+# NOT executed by --testpass; a MANUAL-TESTPASS row is recorded instead. Use
+# only for predicates needing infrastructure the local box lacks (ds-cjqi).
 verification:
   - name: full-suite-green
     cmd: pytest -q
