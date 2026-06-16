@@ -4,6 +4,14 @@ All notable changes to DekSpec are documented here. Format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [v0.117.0] — 2026-06-16
+
+> Patch release: fixes per-host `install.sh` delivery for non-Claude hosts — a defect in the v0.116.0 platform-aware installer surfaced by a live install test.
+
+### Fixed — non-Claude `install.sh --platform <host>` emitted an empty tree
+
+`dekspec install --platform <host>` sources its skill/command/hook tree from `plugins/dekspec`, which is **not bundled in the wheel** (ADR-009 — the plugin ships to Claude via the marketplace). On a wheel/pipx install the per-host emit therefore wrote only the `extensions` marker and no skills, commands, or hooks. `scripts/install.sh` now shallow + sparse-clones `plugins/dekspec` from the mirror at the install ref and passes it as `--source`, so non-Claude hosts (**codex / antigravity / cursor / copilot / pi**) receive the full per-host tree. The Claude marketplace path is unchanged.
+
 ## [v0.116.0] — 2026-06-16
 
 > Large feature release covering five clusters landed since v0.115.0. No breaking changes (minor bump). New surfaces: **9 skills**, **5 ADRs** (ADR-036…040), **AE-010**, **5 audit rules**, and host-portable install.

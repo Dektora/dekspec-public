@@ -148,7 +148,24 @@ else
   echo "=== 3/3 Per-host delivery (dekspec install --platform ${PLATFORM}) ==="
   # Emit the per-host skill/command/hook tree into the cwd (INT-147). Writes
   # files only — never executes. The host picks the tree up natively.
-  dekspec install --platform "$PLATFORM"
+  #
+  # The plugin source (skills/commands/hooks) is NOT bundled in the wheel
+  # (ADR-009 — it ships to Claude via the marketplace), so the just-installed
+  # engine has no local plugin tree to emit from. Fetch the plugin from the
+  # mirror at the SAME ref and pass it as --source. Shallow, blob-filtered,
+  # sparse to just `plugins/` for speed; cleaned up on exit.
+  PLUGIN_SRC="$(mktemp -d)"
+  trap 'rm -rf "$PLUGIN_SRC"' EXIT
+  echo "Fetching plugin source from ${MIRROR_REPO}@${REF}…"
+  git -c advice.detachedHead=false clone --quiet --depth 1 --branch "$REF" \
+    --filter=blob:none --sparse "$MIRROR_GIT_URL" "$PLUGIN_SRC/repo"
+  git -C "$PLUGIN_SRC/repo" sparse-checkout set plugins/dekspec >/dev/null
+  PLUGIN_DIR="$PLUGIN_SRC/repo/plugins/dekspec"
+  if [[ ! -d "$PLUGIN_DIR" ]]; then
+    echo "Error: plugin tree not found at ${MIRROR_REPO}@${REF} (plugins/dekspec)." >&2
+    exit 1
+  fi
+  dekspec install --platform "$PLATFORM" --source "$PLUGIN_DIR"
 fi
 echo
 
