@@ -57,6 +57,18 @@ See [`_lib/mode_detection_template.md`](../_lib/mode_detection_template.md) for 
 - Substantive-work (fan-out via Agent tool): (no flag), `--accept`, `--revise`
 - Inline (parent context): `--help`, `--teaching`, `--review`, `--audit`, `--lock`, `--unlock`
 
+## Interview Rigor (default-on)
+
+This skill **composes the owned [`interview-me`](../interview-me/SKILL.md) skill** (INT-167 / D13) — it does not re-author the interview prose, and there is no `--grill` flag. When the engineer's input is fuzzy or underspecified, invoke `/dekspec:interview-me <AE-NNN | description>` so the engineer is interviewed one decision-tree question at a time, with a recommended answer per question, repo-exploration for discoverable answers, glossary + governing ADR/AE citation with conflict-flagging, fuzzy-term sharpening, and scenario-based stress-testing of asserted relationships.
+
+**Trigger (pinned, INT-167 Open Issues):**
+
+- **Auto-engages** in **Creation** (no-flag) and **`--revise`** authoring modes when the input is fuzzy/underspecified.
+- **Auto-skips** on editorial/trivial passes — these are not fuzzy-input authoring.
+- **Escape:** the `--no-interview` modifier skips the interview on demand even on a fuzzy authoring pass.
+
+At interview end, read the hand-off log `dekspec/.scratch/interview-me/<artifact-id>.md` and fold its resolved decisions into the AE being authored. `interview-me` never writes the artifact itself — the host skill (this one) folds the decisions in.
+
 ## Fan-Out Mode
 
 See [`_lib/fan_out.md`](../_lib/fan_out.md) for the canonical ds-di2 orchestrator/subagent contract. Manifest for this skill:

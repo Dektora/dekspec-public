@@ -15,7 +15,7 @@ The `ds-di2` architectural directive (2026-05-19) split every authoring / audit 
 - The substantive-vs-inline mode tablature for that skill.
 - The four-bullet rationale (context isolation, indirect quality test, parallelism, per-artifact model selection).
 - Step 1 ("Bundle context") preamble describing deterministic-order collection.
-- Step 2 ("Dispatch via the Agent tool") preamble + the fenced prompt template skeleton.
+- Step 2 ("Dispatch via the seam") preamble + the fenced prompt template skeleton.
 - Step 3 ("Validate + report") preamble + the do-not-silently-retry rule.
 - The terminal "Subagent failure handling" paragraph.
 
@@ -31,9 +31,9 @@ This file is the source of truth. Each consuming SKILL.md cites it, supplies a s
 
 Every skill that fans out splits into two layers:
 
-- **Orchestrator (the SKILL.md body, parent session).** Parses `$ARGUMENTS`, runs cheap mechanical preconditions, bundles every input the subagent will need, dispatches the subagent via the `Agent` tool, and validates / reports on whatever the subagent returns. The orchestrator never drafts artifact prose, never runs the artifact's content audit against a partial draft, and never writes the artifact file directly — those are the subagent's job.
+- **Orchestrator (the SKILL.md body, parent session).** Parses `$ARGUMENTS`, runs cheap mechanical preconditions, bundles every input the subagent will need, dispatches the subagent through the harness seam (`run_fanout` / `get_adapter(host).dispatch_subagents`, which on the Claude harness is realized by the `Agent` tool), and validates / reports on whatever the subagent returns. The orchestrator never drafts artifact prose, never runs the artifact's content audit against a partial draft, and never writes the artifact file directly — those are the subagent's job.
 
-- **Subagent (fresh context, dispatched via `Agent`).** Runs in a context with no parent-session history; anything not in its prompt is invisible to it. Produces the artifact at the bundled output path, runs the bundled validation command, and returns a one-paragraph summary plus any blocking findings. If the bundled context is insufficient to produce a clean artifact, the subagent returns an explicit `INSUFFICIENT_INPUT: <what is missing>` signal rather than guessing.
+- **Subagent (fresh context, dispatched through the seam).** Runs in a context with no parent-session history; anything not in its prompt is invisible to it. Produces the artifact at the bundled output path, runs the bundled validation command, and returns a one-paragraph summary plus any blocking findings. If the bundled context is insufficient to produce a clean artifact, the subagent returns an explicit `INSUFFICIENT_INPUT: <what is missing>` signal rather than guessing.
 
 The fan-out is the **default** path for the modes the skill's manifest names under `substantive_modes`. The modes the manifest names under `inline_modes` (queries, status walks, interactive flows, engineer-facing prose, deferred-by-design modes) run inline in the parent session and never fan out.
 
@@ -53,7 +53,7 @@ Every consuming SKILL.md's `## Fan-Out Mode` section follows the same three-step
 
 ### Step 1: Bundle context (orchestrator, parent session)
 
-The orchestrator gathers every input the subagent will need, in deterministic order, before invoking the `Agent` tool. Fan-out fails its purpose if the subagent has to ask back for missing materials.
+The orchestrator gathers every input the subagent will need, in deterministic order, before dispatching through the seam. Fan-out fails its purpose if the subagent has to ask back for missing materials.
 
 The skill-side manifest enumerates the bundle items under `bundle_list`. Every entry is either an absolute path the subagent will `Read`, or an inline value (literal text, JSON object, list of paths) the orchestrator pastes into the prompt. The substrate-side rules for bundling:
 
@@ -62,9 +62,11 @@ The skill-side manifest enumerates the bundle items under `bundle_list`. Every e
 - **Run cheap mechanical preconditions inline before dispatch.** Examples: singleton-precheck (refuse if a singleton artifact already exists at a non-DEPRECATED status); L12 status-gate (refuse to dispatch an IB-decomposition against a non-ACCEPTED Working Spec); ID-allocation (compute the next free `<KIND>-NNN` from the index). If a precondition fails, the orchestrator surfaces the failure to the engineer and does not dispatch.
 - **If a required bundle item is missing** (e.g., the template file is not vendored, the parent WS is not at ACCEPTED, the engineer guidance is empty in `--revise`), STOP before dispatching and surface the gap. Do not dispatch the subagent against an incomplete bundle.
 
-### Step 2: Dispatch via the `Agent` tool (orchestrator, parent session)
+### Step 2: Dispatch via the seam (orchestrator, parent session)
 
-Invoke the `Agent` tool with three required parameters:
+Dispatch is **host-neutral**: it goes through the harness seam, not directly at any one host's tool. The orchestrator calls `dekspec.harness.run_fanout(tasks, host=<host>, ...)` (equivalently `get_adapter(host).dispatch_subagents(tasks, ...)`), and the resolved adapter realizes the dispatch on whatever host is running — **Claude** realizes it via the `Agent` tool, **Codex** via its multi-agent surface, **Antigravity** via dynamic subagents, **Cursor** via async/nested subagents. The substrate authors describe the dispatch once; the seam guarantees the same result-shape and index-alignment (result[i] ↔ tasks[i]) on every host. On the Claude harness the concrete mechanism below — invoking the `Agent` tool with the three parameters — *is* how the seam realizes a dispatch, so the contract reads identically:
+
+Realize each subagent dispatch (on Claude, via the `Agent` tool) with three required parameters:
 
 - **`subagent_type`** — the value from the skill's manifest. Use the artifact-specific `dekspec:<kind>-author` type if one exists; fall back to `general-purpose` if no dedicated type is registered yet (write-constitution, write-evals, write-sp, write-sv, write-tests currently use `general-purpose`).
 - **`description`** — a short label naming the mode + target (e.g., `"author AE-NNN"`, `"accept <path>"`, `"revise <path>"`, `"decompose WS-NNN into IBs"`, `"write tests for BEAD-NNN"`).
@@ -108,7 +110,7 @@ produce a clean artifact, return:
 rather than guessing — do NOT invent facts.
 ```
 
-For batch fan-outs (e.g., `write-tests --all` dispatches one subagent per bead; `write-ibs` may dispatch one subagent per IB in the decomposition): the orchestrator iterates the batch and dispatches in parallel, then collects the per-subagent reports and emits a batch summary.
+For batch fan-outs (e.g., `write-tests --all` dispatches one subagent per bead; `write-ibs` may dispatch one subagent per IB in the decomposition): the orchestrator passes the whole task set through the seam (`run_fanout(tasks, parallel=True, ...)`), which dispatches in parallel and returns index-aligned per-subagent results; the orchestrator collects the per-subagent reports and emits a batch summary.
 
 ### Step 3: Validate + surface cleanly (orchestrator, parent session)
 

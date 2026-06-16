@@ -65,7 +65,7 @@ The orchestration shell bundles the following inputs and projects per-lens slice
 | `parent_intent.components_affected` | The Intent's component globs, for scope-creep lens. |
 | `source_ae_paths` | Paths to source Architecture Elements. |
 | `glossary` | `dekspec/domain-glossary.md` for glossary-discipline lens. |
-| `bead_decomposition` | Bead manifest from `/write-beads --audit`. |
+| `bead_decomposition` | Bead manifest from `/write-code-beads --audit`. |
 | `audit_doctor` | Cached `dekspec audit doctor --json --at .` snapshot. |
 
 The orchestration shell pulls these once and caches; each lens sees only its declared slice.
@@ -85,9 +85,9 @@ In parallel the structured verdict is persisted to the SQLite flywheel at `$XDG_
 
 ## Lens pack
 
-The 13 REVIEW_IB lenses live in `plugins/dekspec/skills/review-ib/lenses.md`. The pack covers:
+The 14 REVIEW_IB lenses live in `plugins/dekspec/skills/review-ib/lenses.md`. The pack covers:
 
-- **Spec discipline** — scope-creep, acceptance-falsifiability, test-plan-coverage, source-spec-fidelity, ambiguity-audit, constraint-completeness.
+- **Spec discipline** — scope-creep, acceptance-falsifiability, test-plan-coverage, source-spec-fidelity, interface-depth, ambiguity-audit, constraint-completeness.
 - **Operational discipline** — dependency-readiness, rollout-risk-plan, glossary-discipline.
 - **Bead discipline** — bead-coverage, bead-granularity, bead-dependency-graph, bead-to-ib-fidelity.
 
@@ -110,6 +110,7 @@ The orchestration shell aggregates per-lens findings under ADR-026's asymmetric-
 ## Cross-references
 
 - ADR-026 (load-bearing decision).
+- ADR-036 (deep-modules principle — source of the `interface-depth` lens; Constitution Article 4 cites it).
 - AE-006 (Skills Library — this skill's host AE).
 - INT-105 (LOCKED — the shared orchestration shell this skill consumes).
 - INT-107 (sibling — `/dekspec:review-pr`, post-impl half of the two-tier pipeline).

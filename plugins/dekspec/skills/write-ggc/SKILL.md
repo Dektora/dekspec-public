@@ -1,12 +1,12 @@
 ---
 name: write-ggc
-description: Manage the Glossary, Guidance, and Corrections pipeline — log misinterpretations, track recurrences, auto-promote to the domain glossary, add terms directly, and audit terminology health across the system.
+description: Manage the Glossary, Guidance, and Corrections pipeline — extract glossary-term candidates from a corpus (no auto-write), log misinterpretations, track recurrences, auto-promote to the domain glossary, add terms directly, and audit terminology health across the system.
 mode: lite
 model: claude-opus-4-7
 reasoning_effort: max
 disable-model-invocation: false
 allowed-tools: Read Write Edit Grep Glob Bash Agent
-argument-hint: [--provisional <slug>] [--help | --teaching | --audit | --review | --log | --add-term] [correction text, term details, or path]
+argument-hint: [--provisional <slug>] [--help | --teaching | --extract | --audit | --review | --log | --add-term] [correction text, term details, or path]
 related_skills: [write-ws, write-adr, write-ae, write-ic, write-ibs]
 ---
 
@@ -28,12 +28,13 @@ Fan-out is **deliberately deferred** for `write-ggc` (see ds-di2 OI-2 and [`_lib
 
 - **subagent_type**: n/a (deferred)
 - **substantive_modes**: [] (no modes fan out today)
-- **inline_modes**: [`--help`, `--teaching`, `--log`, `--add-term`, `--audit`, `--review`] — every mode runs inline in the parent session.
+- **inline_modes**: [`--help`, `--teaching`, `--extract`, `--log`, `--add-term`, `--audit`, `--review`] — every mode runs inline in the parent session.
 
 **Reasoning** (per the substrate's deferral rationale):
 
 - `--log` is multi-turn correction work. Step 3 (Match Against Existing Entries) explicitly pauses on partial matches to ask the engineer whether two corrections are the same; Step 5 (Auto-Promote) mutates the glossary based on recurrence-count state that lives in the g&c file and must be read/written transactionally with the engineer's confirmation context.
 - `--add-term` has a synonym-match step (Step 3) that waits for engineer response before deciding whether to add a separate entry or update an existing one.
+- `--extract` requires PER-CANDIDATE engineer confirmation before routing any candidate into `--add-term` / `--log`; that engineer-in-the-loop triage is exactly the signal a fresh-context subagent would lose.
 - `--review` and `--audit` are already on the preserve-inline list per `ds-di2`.
 - `--teaching` and `--help` are engineer-facing prose, never fanned out.
 
@@ -49,6 +50,7 @@ Parse `$ARGUMENTS` for flags. If a flag is present, strip it and enter the corre
 
 - **Help mode** — `--help` flag. Skip to **Help Mode**.
 - **Teaching mode** — `--teaching` flag. Skip to **Teaching Mode**.
+- **Extract mode** — `--extract` flag. Skip to **Extract Mode**.
 - **Log mode** — `--log` flag. Skip to **Log Mode**.
 - **Add-term mode** — `--add-term` flag. Skip to **Add-Term Mode**.
 - **Audit mode** — `--audit` flag. Skip to **Audit Mode**.
@@ -64,6 +66,7 @@ See [`_lib/help_mode_template.md`](../_lib/help_mode_template.md) for the canoni
 skill_name: "/write-ggc"
 one_line:   "Manage the Glossary, Guidance, and Corrections pipeline"
 modes:
+  - { flag: "--extract", args: "[corpus path | text]", description: "Extraction capture stage. Scans a corpus (conversation + governed-artifact folders) for glossary-term candidates and PROPOSES a 3-way disposition per candidate: canonical-now (handoff to --add-term), ambiguous (seed a --log correction), or drop. NEVER writes the glossary and never auto-promotes; requires per-candidate engineer confirmation before routing into the existing --add-term / --log paths. Corpus boundary: IN = conversation + dekspec/{architecture-elements,intents,missions,adrs,working-specs,interface-contracts,impl-briefs}/; OUT = source code, tooling/, plugins/ code, comments." }
   - { flag: "--log", args: "<details>", description: "Log a new correction or add a recurrence to an existing one. If the recurrence count reaches the promotion threshold (3), auto-promotes the entry to the domain glossary. Details can be inline text or structured fields: correction: what was wrong and what is right source: which artifact and context category: Terminology | Architecture | Numeric Ranges | Embedding Types | Document Hierarchy" }
   - { flag: "--add-term", args: "<details>", description: "Add a term directly to the glossary, bypassing the recurrence pipeline. Use for front-loaded terms the engineer knows are canonical. Checks for duplicates and synonym conflicts before adding." }
   - { flag: "--audit", args: "", description: "Comprehensive health check: g&c structural health, promotion pipeline, glossary integrity, g&c ↔ glossary consistency, cross-artifact compliance, terminology normalization (synonym detection across artifacts and code), and pipeline wiring." }
@@ -73,6 +76,7 @@ modes:
 examples:
   - "/write-ggc --log \"Assembly was described as compressing nodes in WS-010 draft. Assembly does not compress — it only concatenates pre-budgeted segments. Category: Architecture\""
   - "/write-ggc --add-term \"Term: shadow timeline. Definition: In-memory cache in front of PostgreSQL for timeline data. NOT this: not a secondary cache. Code convention: shadow_timeline. Category: Graph & Storage\""
+  - "/write-ggc --extract \"<conversation or governed-artifact corpus>\""
   - "/write-ggc --audit"
   - "/write-ggc --review"
   - "/write-ggc --help"
@@ -105,6 +109,80 @@ The GGC pipeline supports two distinct write paths. Teaching Mode walks both con
 2. **`--add-term` path:** glossary-entry shape. Explain duplicate + synonym checks. Show one exemplar entry from `dekspec/domain-glossary.md`. Prompt the engineer to draft an example term; validate the entry shape; do NOT actually write it.
 
 On exit, summarize the contract the engineer just learned plus the two real-mode commands they would run to actually log a correction or add a term. Teaching Mode here departs from the canonical ritual's "write artifact to disk at DRAFT status" close because GGC entries are append-only into existing files; there is no draft state.
+
+## Extract Mode
+
+Extraction is the **capture stage** that sits in FRONT of the two existing promotion paths. It scans a corpus for glossary-term candidates and PROPOSES a disposition for each — it adds **no new writer and no new promotion threshold**. Every actual write still flows through `--add-term` (direct glossary add) or `--log` (the 3-recurrence pipeline); those two remain the ONLY glossary writers.
+
+### Hard invariant — no auto-write
+
+Extraction **NEVER writes `dekspec/domain-glossary.md` directly, and there is NO auto-`--add-term`.** The capture stage only PROPOSES dispositions; nothing reaches the glossary without per-candidate engineer confirmation routed through the existing paths. State this to the engineer up front. The runnable teeth for this invariant live in `tests/test_write_ggc_extraction_no_autowrite.py` (the helper is byte-checked to leave the glossary unchanged).
+
+### Corpus boundary (pinned)
+
+- **IN** — the supplied conversation text + the governed-artifact folders: `dekspec/architecture-elements/`, `dekspec/intents/`, `dekspec/missions/`, `dekspec/adrs/`, `dekspec/working-specs/`, `dekspec/interface-contracts/`, `dekspec/impl-briefs/`.
+- **OUT** — source code, `tooling/`, `plugins/` code, and code comments (codebase-audit overlap, D20).
+
+Do not widen the corpus past this boundary; source-symbol normalization is the codebase-audit's job, not the glossary capture stage's.
+
+### Step 1: Assemble the Corpus
+
+Gather the IN-boundary text: the current conversation/correction context plus any governed-artifact files the engineer points at (restricted to the folders above). Never read source code, `tooling/`, or `plugins/` code into the corpus.
+
+### Step 2: Run the No-Auto-Write Helper
+
+Run `scripts/extract_candidates.py` (in this skill's folder) with the assembled corpus, e.g.
+
+```bash
+scripts/extract_candidates.py "<corpus text>" --glossary dekspec/domain-glossary.md
+```
+
+(or pipe the corpus on stdin). The helper is deterministic and **read-only** with respect to the glossary — `--glossary` is consulted only to drop candidates the glossary already covers; it is never written. It returns JSON mapping each candidate to a 3-way disposition with a routing payload:
+
+- **`canonical-now`** (`route: --add-term`) — a de-facto term used consistently with no conflicting senses and not already in the glossary. Payload is an `--add-term` handoff.
+- **`ambiguous`** (`route: --log`) — a term used with conflicting / overloaded senses. It must NOT be promoted as a single canonical term; it earns promotion only via the existing 3-recurrence `--log` pipeline. Payload is a `--log` correction seed.
+- **`drop`** — noise (low-frequency, stopword-dominated, or already covered). Discarded.
+
+### Step 3: Present Candidates and Triage Per-Candidate
+
+Present each non-dropped candidate with its proposed disposition and the helper's rationale, then **require PER-CANDIDATE engineer confirmation** before any routing:
+
+```
+EXTRACTION CANDIDATES (proposed — nothing written yet)
+───────────────────────────────────────
+[1/N] "[candidate]"  →  proposed: [canonical-now | ambiguous]
+      [helper rationale]
+      Route on confirm: [--add-term | --log]
+───────────────────────────────────────
+Confirm (canonical-now → --add-term), reclassify (→ --log), or drop?
+```
+
+Wait for the engineer's decision on each candidate. The engineer may override the proposed disposition (e.g. reclassify a `canonical-now` as `ambiguous`, or drop a candidate entirely). Nothing is written until they confirm.
+
+### Step 4: Route Confirmed Candidates Into the Existing Paths
+
+For each candidate the engineer confirms:
+
+- **canonical-now** → invoke the existing **Add-Term Mode** (`--add-term`) with the handoff payload. That path runs its own duplicate/synonym check (Add-Term Step 3) and is the writer.
+- **ambiguous** → invoke the existing **Log Mode** (`--log`) with the correction seed. The term enters the recurrence pipeline and is promoted only when it crosses the 3-recurrence threshold — never directly.
+- **drop** → discard; no write.
+
+Extraction itself performs no glossary write — it only hands confirmed candidates to `--add-term` / `--log`.
+
+### Step 5: Report
+
+```
+EXTRACTION CAPTURE COMPLETE
+Candidates proposed: [N]  (canonical-now [a], ambiguous [b], drop [c])
+Routed to --add-term: [list]
+Seeded via --log:     [list]
+Dropped:              [count]
+
+The glossary was not written by extraction. Confirmed candidates were routed
+to the existing --add-term / --log paths, which remain the only writers.
+```
+
+**End of Extract Mode.**
 
 ## Log Mode
 

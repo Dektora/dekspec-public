@@ -19,7 +19,7 @@ AI coding agents fill ambiguity with confident, plausible, wrong decisions. By r
 | **L1 Design** | Vision, principles, decisions | System Vision, Architecture Elements (AE), ADRs, Domain Glossary | `/write-ae`, `/write-adr`, `/dekspec:archeology` |
 | **L2 Specification** | Behavioral contracts | Working Specs (WS), Interface Contracts (IC) | `/write-ws`, `/write-ic` |
 | **L3 Implementation** | Decomposed work plans | Implementation Briefs (IB) | `/write-ibs` |
-| **L4 Construction** | Atomic coding tasks | Beads, Tests, Evals | `/write-beads`, `/write-tests`, `/write-evals`, `/exec-coding-session` |
+| **L4 Construction** | Atomic coding tasks | Beads, Tests, Evals | `/write-code-beads`, `/write-tests`, `/write-evals`, `/exec-coding-session` |
 
 **Intent (`INT-NNN`) and Mission (`MSN-NNN`) anchor at L1 and span downward through L2-L4.** They link to L1 AEs, spawn L3 IBs, may revise L2 WSs / ICs, and carry L4-surface `verification` / `rollback` / `kill_criteria` commands. The operating guide covers their audit rule classes (L7a / L7b / L8 / L9).
 
@@ -41,7 +41,7 @@ For the arc42 chapter mapping, C4 diagram lexicon, and skill routing tables, see
 2. DESIGN      /write-ae <description>   /write-adr <decision>          → AE, ADRs
 3. SPECIFY     /write-ws <description>   /write-ic <boundary> (if needed) → WS, IC
 4. PLAN        /write-ibs <spec>                                         → IBs
-5. PREPARE     /write-beads <IB>   /write-tests   /write-evals (if model output)
+5. PREPARE     /write-code-beads <IB>   /write-tests   /write-evals (if model output)
 6. BUILD       /exec-coding-session   — agents execute beads in parallel worktrees
 7. REVIEW      /present --review     — serve draft/proposed artifacts for review
 ```
@@ -70,7 +70,7 @@ IBs also use directory lifecycle: `queued/` --> `active/` --> `completed/`
 | `/write-ws` | Write L2 behavioral specs with expert role passes |
 | `/write-ic` | Define cross-component boundary contracts |
 | `/write-ibs` | Decompose specs into L3 work packages |
-| `/write-beads` | Convert IBs into atomic L4 work units |
+| `/write-code-beads` | Convert IBs into atomic L4 work units |
 | `/write-tests` | Write deterministic tests from acceptance criteria |
 | `/write-evals` | Write probabilistic evals for model output |
 | `/exec-coding-session` | Orchestrate parallel AI coding agents |
@@ -104,7 +104,7 @@ Every skill supports `--help` for full usage details, modes, and examples.
 ## Key Principles
 
 - **Resolve everything before code.** All ambiguities, conflicts, decisions, and domain questions are resolved in L1-L3. The coding agent only lays down code. Unclear beads = upstream process failure.
-- **Beads are self-contained.** The coding agent reads ONLY the bead. `/write-beads` distills ADR decisions, IC constraints, and spec context from the IB into the bead's Constraints & Decisions.
+- **Beads are self-contained.** The coding agent reads ONLY the bead. `/write-code-beads` distills ADR decisions, IC constraints, and spec context from the IB into the bead's Constraints & Decisions.
 - **High cohesion, low coupling.** Each IB has one purpose, one primary failure domain. IBs interact through data interfaces only.
 - **Changes cascade downward.** L1 changes cascade: specs resync, IBs `--resync`, beads `--rebuild`, tests rewrite.
 

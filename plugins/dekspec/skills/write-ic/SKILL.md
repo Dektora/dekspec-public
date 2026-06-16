@@ -83,7 +83,7 @@ one_line:   "Create, audit, review, revise, accept, lock, or unlock Interface Co
 modes:
   - { flag: "", args: "<description>", description: "Create a new Interface Contract from the engineer's description or a spec reference (\"from WS-NNN\")." }
   - { flag: "--audit", args: "<IC-path>", description: "Read-only quality check: error semantics coverage, consistency guarantees, domain constraints, ADR consistency, and version number." }
-  - { flag: "--review", args: "<IC-path>", description: "Walk through open issues interactively. Present each issue with context and a recommendation. Engineer resolves, defers, or dismisses each." }
+  - { flag: "--review", args: "<IC-path>", description: "Walk through open issues interactively. Present each issue with context and a recommendation. Engineer resolves, defers, or dismisses each. Adds an adversarial Spec-Reviewer pass and an interface-depth lens (ADR-036 / Constitution Article 4)." }
   - { flag: "--revise", args: "<IC-path> <notes>", description: "Incorporate engineer review notes. Re-runs conflict detection on changed sections. Notes: inline text or path to notes file." }
   - { flag: "--accept", args: "<IC-path>", description: "Promote a PROPOSED Interface Contract to ACCEPTED (PROPOSED → ACCEPTED). Runs final audit; refuses if any check fails. Passing the flag counts as deliberate engineer approval — no additional confirmation is asked." }
   - { flag: "--lock", args: "<IC-path>", description: "Lock an ACCEPTED Interface Contract (ACCEPTED → LOCKED). Runs pre-lock audit. Rejects if any check fails." }
@@ -171,6 +171,15 @@ Arguments: the contract path.
    b. Take the `ReviewerIC` artifact this `--review` mode already holds (the contract at the provided path; the caller owns this IO, the dispatcher is IO-free).
    c. Dispatch through the shared surface: `from dekspec.spec_review.reviewer import Reviewer; findings = Reviewer().dispatch(context_spec, artifact)` (`-> list[Finding]`, per IC-016).
    d. Present each returned `Finding` to the engineer at its severity (default `P2` — approval-blocking, not auto-merge) as additional review items alongside the open issues below. Do not reshape the records; they route into the AE-003 surface via the `SPEC-REVIEW` audit-rule family (`dekspec.spec_review.reviewer` → `spec_review_rules`).
+6.6. **Interface-depth lens** (adversarial — per **ADR-036** deep-modules principle + **Constitution Article 4**). This is the contract-review half of the depth check; its sibling is the `interface-depth` lens in the brief-review pipeline (`plugins/dekspec/skills/review-ib/lenses.md`). Run it as a non-sycophantic pass over the contract's `## Interface Definition`, `## Error Semantics`, and `## Consistency Guarantees`:
+   - **Question:** Is this contract DEEP — a small, simple surface (few operations, lean parameter lists) hiding a substantial amount of implementation behavior — or SHALLOW: a surface nearly as complex as the implementation it fronts, leaking invariants, ordering, and error-handling onto the parties that call it?
+   - **Attack patterns** (find a match; do not give a friendly read):
+     - the interface exposes many operations where a few would compose to the same effect
+     - an operation carries a long, branchy parameter list that pushes mode-selection onto the caller
+     - a pass-through / thin operation that adds no behavior over the layer it wraps
+     - a party is forced to know internal ordering, invariants, or error states to call the surface correctly
+     - the surface (operations + parameters + error vocabulary) is nearly as complex as what it hides (shallow-module smell)
+   - **What it flags:** a shallow interface is a smell — recommend **deepening** (push complexity behind a smaller surface) or **combining** operations before the contract advances status. Depth+stability also determine downstream test quality: tests bind to this boundary per **ADR-036**, so a shallow or unstable contract directly degrades the tests written against it. Surface the smell only when a party is demonstrably forced to absorb internal complexity; depth is judgement, not a checkable predicate. Log any unresolved depth concern as a new `## Open Issues` entry (Source: `review`, Severity `P2`) so it walks through the loop below.
 7. For each unchecked issue, in order:
    a. Present the issue:
       ```
@@ -369,7 +378,27 @@ When in doubt, write the contract. The cost of an unnecessary contract is low; t
    - **Error Semantics** — every error condition at the boundary, with behavior for both parties
    - **Consistency Guarantees** — what holds AND what does NOT hold
    - **Amendment Log** — empty on initial creation
-2. Present draft for engineer review — engineer should verify parties, shared conventions, error semantics, and consistency guarantees
+2. **Deep-module design pass (per Constitution Article 4 / ADR-036).** Do not merely transcribe the boundary — *design* it for depth. A contract whose surface is nearly as complex as the implementation behind it is a **shallow module**: every caller pays the cost of that surface. Before presenting the draft, run the Ousterhout questions over the Interface Definition + operations:
+   - Can I reduce the number of operations/methods exposed at this boundary?
+   - Can I simplify the parameters each operation takes?
+   - Can I hide more complexity *inside* — invariants, ordering requirements, retry/error handling — so callers learn one compact surface instead of reconstructing the rules?
+   - Is this interface nearly as complex as the implementation it fronts? If so it is shallow — deepen it (push complexity inward) or combine adjacent operations before locking.
+
+   **Tests bind to this boundary (ADR-036).** Downstream test quality is a direct function of this contract's depth and stability: a deep, stable IC is mocked once at the boundary and stays mocked; a shallow or churning one leaks implementation detail into every test that stands in for it. This is extra reason to get the boundary deep and right *before* it locks.
+
+   **Interface-for-testability.** Prefer dependencies the consumer side receives (injected / passed in) over ones it constructs internally, and prefer operation-specific, SDK-style operations over one generic conduit (a single `do(request)` that switches on a mode field). Both make the boundary mockable at test time — which is exactly the boundary-only mocking discipline ADR-036 expects.
+
+   **Design-twice multiplicity (stakes-scaled).** Depth-checking *one* candidate interface is not the same as generating genuinely different designs and choosing the deepest among them — the first surface a designer reaches for is rarely the deepest. Scale the pass by stakes; this is a Phase-2 judgment call, **not a flag**:
+   - **Trivial / low-blast-radius boundary** — keep the single deep-module pass above (the Ousterhout questions over one candidate). No multiplicity needed.
+   - **Non-trivial / high-blast-radius boundary** — run the **three-agent design-twice pass** below. Treat a boundary as high-blast-radius when it binds **≥2 consumer parties** OR declares **≥2 governing ADRs** (the same heuristic the `T-IC-OPTIONS-MISSING` audit rule uses, so skill and audit agree); these are the boundaries where locking the first design is most expensive, because a shallow surface leaks complexity onto every caller and every downstream test (tests mock at the seam — ADR-036).
+
+     **The pass:** spawn **three parallel design agents** (via the `Agent` tool), each drafting the Interface Definition under one **fixed** governing constraint:
+     1. **minimize-method-count** — the smallest possible operation surface.
+     2. **maximize-flexibility** — the most configurable/composable surface.
+     3. **optimize-the-common-case** — the surface tuned for the dominant call path.
+
+     Then **compare** the three on deep-module criteria — no leaked invariants/ordering, a clear seam, a minimal surface hiding maximal complexity, deep-not-shallow per ADR-036 — and **synthesize** the deepest result (which may borrow from more than one candidate). Record the comparison in the contract's **`## Options Considered / Rejected Rationale`** section: the three designs, why each was kept or rejected, and the deep-module reason the surviving surface is deepest. This is the section the `T-IC-OPTIONS-MISSING` P3 advisory expects populated on a high-blast-radius IC; its quality (genuine divergence of the three designs, an honest comparison, a deepest-synthesis pick) is REVIEW_IB / REVIEW_PR-graded per ADR-026, not a shell predicate.
+3. Present draft for engineer review — engineer should verify parties, shared conventions, error semantics, and consistency guarantees
 
 ## Phase 3: ADR Check
 
@@ -495,6 +524,8 @@ python ../_lib/scripts/artifact_ops.py approve <IC-path> --target-status <STATUS
 - Don't author or accept inline — Creation, `--accept`, and `--revise` are substantive paths that MUST dispatch a `dekspec:ic-author` subagent via Fan-Out Mode; the parent session only does the mechanical status walk.
 - Don't classify a `--revise` change as interface-affecting without bumping the version and resetting an ACCEPTED/LOCKED contract back to PROPOSED.
 - Don't leave the consistency guarantee one-sided — state what holds AND what explicitly does NOT hold; omit the section only for stateless request-response with no shared state.
+- Don't ship a shallow interface — one whose surface (operations + parameters) is nearly as complex as what it hides. That pushes the complexity onto every caller, and since tests bind to this boundary (ADR-036), onto every downstream test too. Deepen it per Constitution Article 4: fewer operations, simpler parameters, more complexity hidden inside.
+- Don't expose one generic conduit operation, or make the consumer construct its own dependencies, when an operation-specific (SDK-style) surface with injected dependencies would be mockable at the boundary — the latter is what makes ADR-036's boundary-only mocking work.
 - Don't claim a canonical `IC-NNN` ID when the work spans an incubation that hasn't reached ACCEPTED — use `--provisional <slug>` instead.
 
 ## Verification Checklist

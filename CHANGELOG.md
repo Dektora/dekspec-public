@@ -4,6 +4,37 @@ All notable changes to DekSpec are documented here. Format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [v0.116.0] — 2026-06-16
+
+> Large feature release covering five clusters landed since v0.115.0. No breaking changes (minor bump). New surfaces: **9 skills**, **5 ADRs** (ADR-036…040), **AE-010**, **5 audit rules**, and host-portable install.
+
+### Added — harness abstraction + multi-host adapters (MSN-021, ADR-037, AE-010)
+
+A host-abstraction seam (`get_adapter(host)`) plus first-party adapters for **codex / antigravity / cursor / copilot / pi**, the fan-out seam wiring, and an install emitter. `scripts/install.sh` is now platform-aware (`install.sh [VERSION] [--platform <host>]`): host-agnostic steps 1–3 (resolve ref → pipx install → `dekspec library sync`) then per-host delivery — `claude` via the managed marketplace, every other host via `dekspec install --platform <host>` emitting the per-host skill/command/hook tree.
+
+### Added — architecture-deepening + over-decomposition detection (ADR-038, ADR-039)
+
+New `audit-codebase`, `deepen-codebase-architecture`, and `orchestrate-deepening` skills (APOSD-grounded concentration-raising), plus over-decomposition detection by cohesion + facade-ratio (ADR-038) and Pareto-band module-depth classification with a floor (ADR-039). Adds the `codebase-audit` / `codebase-slice-discovery` surfaces and the `T-TO-MISSION` rule.
+
+### Added — behavior-first TDD + deep-module discipline (ADR-036)
+
+Codifies behavior-first / strong-TDD timing and deep-module preference as a governing decision (PR #97), feeding the review pipeline + detector wiring (PR #98).
+
+### Added — agentic-workflow best-practices adoption (MSN-020, ADR-040)
+
+Native, zero-external-dependency adoption of proven agentic-workflow best practices:
+- **6 new skills:** `interview-me` (docs-anchored one-question-at-a-time interview rigor, default-on/skippable in write-intent/mission/ae/adr); `diagnose` (deterministic repro-signal-first → promotes a bug Intent); `prototype` (throwaway exploration → `dekspec/.scratch/prototypes/`, findings route to governed artifacts); `write-issue-beads` (non-coding bead lifecycle: ingest → vertical-slice decompose → product-gated escalation → backlog grooming); `setup-dekspec` (initial `.dekspec/config.yaml` config front-end via `dekspec exec config`); `rotation-handoff` (native session continuity — structured, secret-redacted handoff to `dekspec/.scratch/`, read back at session start; `PreCompact`/`SessionEnd` registered so compaction rotations are captured; zero `claude-mem` dependency).
+- **`write-beads` renamed to `write-code-beads`** (coding-pure, no alias).
+- **`write-ggc`** gains a no-auto-write extraction capture stage (mines glossary-term candidates from conversation + governed artifacts, 3-way canonical/ambiguous/drop triage, never writes the glossary directly).
+- **`write-intent`** gains problem/user framing, an optional Non-Goals section for Mission-less Intents, and a behavior-preserving-vs-changing refactor split; **`write-ic`** gains a Phase-2 design-twice pass + an Options Considered/Rejected section.
+- **Cross-cutting file-locality `dekspec/.scratch/` convention** (ADR-040): ephemeral skill output → gitignored `.scratch/`; in-formulation → `dekspec/provisional/`; finalized → committed governed folders. Retrofitted the three repo-root `*-workspace/`-emitting skills.
+- **Installable hook templates:** a Python quality gate (pre-commit/ruff/pytest/dekspec-doctor) + a destructive-git-command deny guard, installed via `setup-dekspec`.
+- **3 new P3 advisory audit rules:** `T-INT-NON-GOALS-MISSING`, `T-BUG-REPRO-GATE`, `T-IC-OPTIONS-MISSING`.
+
+### Added — vendored utility skills
+
+Nine `jeffhaskin-` utility skills vendored (two infra skills gated from the public mirror).
+
 ## [v0.115.0] — 2026-06-12
 
 > Closes out **ds-aov7**: the two facets deferred from INT-142's scope split (2026-06-09) — the `verification.manual` per-check skip (ds-cjqi) and the `/write-intent --supersede` flag (ds-9hma) — now both shipped.

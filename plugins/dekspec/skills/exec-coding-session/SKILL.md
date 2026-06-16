@@ -7,7 +7,7 @@ reasoning_effort: high
 disable-model-invocation: true
 allowed-tools: Read Bash Agent
 argument-hint: [<ib-path-or-id> | --confirm-dispatch | --dry-run | --help] [optional engineer guidance]
-related_skills: [write-beads, write-tests, orchestrate-intent, review-pr]
+related_skills: [write-code-beads, write-tests, orchestrate-intent, review-pr]
 ---
 
 Orchestrate a parallel coding session across multiple beads.
@@ -271,11 +271,12 @@ You are implementing bead [ID]: [title]
 1. **Interface-first:** Write public interface signatures only — no implementation yet
 2. **Source before guessing:** When you implement against a library/SDK/framework, search its real source before writing code — do NOT guess API names or signatures. If a path is listed under Dependency Source, grep it first; otherwise consult the official repo. If the API still can't be resolved from source, surface it as an expertise gap rather than guessing.
 3. Implement the interfaces
-4. **Tests:**
-   - If pre-written tests exist: remove `@pytest.mark.skip` markers and run them — all must pass. Then write additional tests for behaviors discovered during implementation that aren't covered.
+4. **Tests (the *vertical* half of behavior-first TDD — ADR-036 hybrid-B):**
+   - If pre-written tests exist: remove `@pytest.mark.skip` markers and run them — all must pass. These are the independent up-front floor from `/write-tests`; do NOT rewrite or weaken them.
    - If no pre-written tests: write tests for all deterministic behavior.
+   - Then, *as you implement*, add tests **one at a time** for behavior the code reveals — red → green per behavior — bounded to this bead's IB file list. These additions supplement the up-front floor; they never replace or soften it. Each added test must assert observable behavior through the public interface (not internal shape), the same bar the floor is held to.
 5. Run evals if they exist
-6. **Cleanup pass (best-effort, behavior-preserving):** With tests green, scan the files you changed for duplicated mechanics you introduced — repeated API calls, parsing, validation, or business logic. Extract them into a local reusable helper; keep domain policy in the calling route/action/component; keep the diff small. Re-run tests — they MUST still pass. If cleanup would require touching a file outside this bead's IB file list (e.g. a shared service module), do NOT do it — note it as a follow-up in your output. If any cleanup risks a behavior change, skip it and keep the working version.
+6. **Refactor pass (behavior-preserving, bounded — Constitution Article 4 / ADR-036):** With tests green, look for refactor candidates across the files you changed. Two kinds: (a) **extract duplication** — repeated API calls, parsing, validation, or business logic → a local reusable helper, keeping domain policy in the calling route/action/component; and (b) **deepen modules** — move complexity *behind* a simpler interface. A module whose interface is nearly as complex as its implementation is shallow (Article 4); combine or deepen it so callers see a small interface over the real work. Keep domain policy at the call site and keep the diff small. **Never refactor while a test is RED — get to green first.** Re-run tests after each change — they MUST still pass. If deepening or extraction would require touching a file outside this bead's IB file list (e.g. a shared service module), do NOT do it inline — surface it as a follow-up in your output. If any change risks altering behavior, skip it and keep the working version.
 7. Run `ubs` on all changed files — fix any findings
 8. Commit all changes with message: "bead [ID]: [title]"
 
@@ -289,6 +290,10 @@ STOPPED — awaiting engineer decision
 
 **When bead/IB constraints conflict with each other or with existing code:**
 CONFLICT — [describe the contradiction]. Cannot resolve from bead/IB alone.
+STOPPED — awaiting engineer decision
+
+**When the bead's declared interface is shallow or wrong** (it leaks complexity or invariants to callers such that a clean implementation isn't possible within it) — surface it rather than silently building around it. A shallow interface is a smell per Constitution Article 4; do not absorb the leak into your implementation.
+SHALLOW INTERFACE — Bead: [ID] | The declared interface forces callers to [carry which complexity/invariant] | A clean implementation needs [the deeper interface or contract change]
 STOPPED — awaiting engineer decision
 
 ## Rules
@@ -321,7 +326,7 @@ BEAD: [ID]
 FILES_CHANGED: [list]
 TESTS: [pass/fail summary]
 EVALS: [pass/fail/skipped]
-CLEANUP: [extracted N local helpers | none needed | deferred: <cross-file follow-up>]
+REFACTOR: [extracted N helpers / deepened M modules | none needed | deferred: <cross-file follow-up>]
 UBS: [clean/findings]
 BLOCKERS: [none, or description]
 ```

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Create a bead in the `br` tracker from a structured JSON bead spec.
 
-`/write-beads` Creation sequence asks the model, in prose, to hand-author a
+`/write-code-beads` Creation sequence asks the model, in prose, to hand-author a
 `br create` invocation followed by three `br update` heredocs (`--description`,
 `--design`, `--acceptance-criteria`). That is mechanical: the bead content is
 fully decided by the time it is emitted; only the shell plumbing remains.

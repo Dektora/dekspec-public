@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Report an Implementation Brief's status and where it lives on disk.
 
-`/write-beads` Safety Check asks the model, in prose, two deterministic
+`/write-code-beads` Safety Check asks the model, in prose, two deterministic
 questions about an IB before it decomposes the brief into beads:
 
   1. Is the IB's `**Status:**` field set to `ACCEPTED`?

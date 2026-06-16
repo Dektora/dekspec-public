@@ -7,7 +7,7 @@ reasoning_effort: max
 disable-model-invocation: false
 allowed-tools: Read Write Edit Grep Glob Bash Agent
 argument-hint: [--provisional <slug>] [--help | --teaching | --audit | --review | --accept | --approve | --lock | --resync | --revise | --dry-run] [path to finalized spec or existing IB] [engineer notes or path to notes file]
-related_skills: [write-ws, write-ic, write-beads, write-tests, orchestrate-intent]
+related_skills: [write-ws, write-ic, write-code-beads, write-tests, orchestrate-intent]
 ---
 
 > **Vendored asset paths:** Template + doc paths below resolve via `dekspec resource template <name>` / `dekspec resource doc <name>` (wheel-bundled since v0.91.0; consumer-fs override wins when present). See [`_lib/vendored_assets.md`](../_lib/vendored_assets.md) for the full resolution rule.
@@ -74,7 +74,7 @@ See [`_lib/fan_out.md`](../_lib/fan_out.md) for the canonical ds-di2 orchestrato
   - Decomposition: one or more `dekspec/impl-briefs/IB-NNN-<slug>-brief.md` files in the flat `dekspec/impl-briefs/` directory, each at `Status: PROPOSED`.
   - Accept: the existing IB path, mutated in place to `Status: ACCEPTED` with an Amendment-Log row appended.
   - Revise: the existing IB path, mutated in place, with `Engineer review` reset and (if new ambiguity surfaced) new `## Open Issues` entries.
-- **validation**: `dekspec check validate <absolute-path-to-IB> --json` per IB. Worker runs and includes the result in its return summary; orchestrator re-runs as trust-but-verify (worker's claim is suggestive; the validate call is authoritative). Validation/surface contract: see [`_lib/validate_and_surface.md`](../_lib/validate_and_surface.md). Failure-mode routing: `insufficient_context` → surface gap verbatim, do NOT retry blindly; `structural_escalation` → present per Phase 4 step 16 ("requires re-decomposition"), wait for engineer decision; `audit_failure` → present failing checks (worker already iterated up to 2 rounds per Phase 4 step 17; further iteration requires engineer judgment); `clean` → present per-IB summary (mirrors Engineer Review Gate report), serve per **Serve for Review** section, instruct engineer on next steps (accept → `/write-beads`). In all cases, do NOT swallow worker errors — the raw return is a first-class signal about material quality.
+- **validation**: `dekspec check validate <absolute-path-to-IB> --json` per IB. Worker runs and includes the result in its return summary; orchestrator re-runs as trust-but-verify (worker's claim is suggestive; the validate call is authoritative). Validation/surface contract: see [`_lib/validate_and_surface.md`](../_lib/validate_and_surface.md). Failure-mode routing: `insufficient_context` → surface gap verbatim, do NOT retry blindly; `structural_escalation` → present per Phase 4 step 16 ("requires re-decomposition"), wait for engineer decision; `audit_failure` → present failing checks (worker already iterated up to 2 rounds per Phase 4 step 17; further iteration requires engineer judgment); `clean` → present per-IB summary (mirrors Engineer Review Gate report), serve per **Serve for Review** section, instruct engineer on next steps (accept → `/write-code-beads`). In all cases, do NOT swallow worker errors — the raw return is a first-class signal about material quality.
 
 **End of Fan-Out Mode — the inline sections below (Workflow, IB Decomposition Principles, Decomposition Checklist, Conflict Detection, Fidelity Audit, etc.) are the AUTHORITATIVE SPEC the worker follows. Do NOT execute them in the orchestrator's context.**
 
@@ -152,16 +152,16 @@ Proceed with the ✅ IBs? (yes / no)
 
 ```
 ✅ N IB(s) promoted PROPOSED → ACCEPTED.
-   Next: run /write-beads on each accepted IB in dependency order.
+   Next: run /write-code-beads on each accepted IB in dependency order.
 ```
 
-If all queued IBs are now ACCEPTED, the report ends with: *"All IBs accepted. Run `/write-beads` on each IB in numbered order."*
+If all queued IBs are now ACCEPTED, the report ends with: *"All IBs accepted. Run `/write-code-beads` on each IB in numbered order."*
 
 **End of Accept Mode — do not continue to the decomposition workflow.**
 
 ## Lock Mode
 
-Promote a single IB from ACCEPTED → LOCKED. This is the gate downstream consumers (write-beads, write-tests) check via `_assert_ib_locked` — without this step those skills refuse the IB and point the engineer here.
+Promote a single IB from ACCEPTED → LOCKED. This is the gate downstream consumers (write-code-beads, write-tests) check via `_assert_ib_locked` — without this step those skills refuse the IB and point the engineer here.
 
 Unlike `/write-intent --lock`, IBs do **not** have an engineer-judgment reason-gate or an ADR-017 Path-A/Path-B split. IBs are spec-graph artifacts whose Lock gate is mechanical: parent WS must be at status `ACCEPTED` or higher, every sibling IB in the same cohort (same parent WS) must be at status `ACCEPTED` or higher, and the IB's own fidelity audit must re-run clean.
 
@@ -201,7 +201,7 @@ Arguments: a single IB path (no glob — Lock Mode operates on one IB at a time)
       Parent WS: <WS-id> (<status>)
       Cohort: <N> sibling IB(s), all at ACCEPTED or higher
       Audit: clean
-      Next: this IB is now LOCKED — author beads from it via `/write-beads <IB-path>`.
+      Next: this IB is now LOCKED — author beads from it via `/write-code-beads <IB-path>`.
    ```
 
    If the cohort still has ACCEPTED-only siblings (none yet LOCKED besides this one), append:
@@ -263,7 +263,7 @@ Arguments: the IB path.
       - **Revise** — apply the agreed change to the IB body, then check off the issue with resolution note
       - **Defer** — leave unchecked, optionally update the issue description with new context
       - **Dismiss** — check off with strikethrough and dismissal note: `- [x] ~~[Issue]~~ — **Source:** ... — **Severity:** ... — **Dismissed:** [today] [reason]`
-8. Update **Modified** date. If any IB body changes were made, reset the `Engineer review` field to `[ ] Not yet reviewed — do not run /write-beads until checked` (changes invalidate prior approval).
+8. Update **Modified** date. If any IB body changes were made, reset the `Engineer review` field to `[ ] Not yet reviewed — do not run /write-code-beads until checked` (changes invalidate prior approval).
 9. Run **Conflict Detection** and **Fidelity Audit** on the revised IB if any body changes were made.
 10. Present summary:
     ```
@@ -275,7 +275,7 @@ Arguments: the IB path.
     
     [If blocking issues remain]: ⚠️  [N] blocking issues remain — IB should not be approved.
     [If no blocking issues remain]: ✅ No blocking issues remain — IB is ready for engineer approval.
-    [If body changes were made]: Engineer review has been reset — re-approve before /write-beads.
+    [If body changes were made]: Engineer review has been reset — re-approve before /write-code-beads.
     ```
 
 **End of Review Mode — do not continue to the decomposition workflow.**
@@ -657,6 +657,19 @@ Coupling should be as loose as possible. Data coupling (passing simple data betw
 - **Stability principle.** IBs with high fan-in (many other IBs depend on them) should be the simplest and most stable. Foundation IBs that define shared types should contain minimal logic. Conversely, IBs with high fan-out (depend on many other IBs) are inherently riskier and should be scrutinized for scope creep.
 - **Fan-out limit.** An IB that depends on more than 3 other IBs is a red flag — it may be trying to orchestrate too much. Consider whether it can be split or whether some dependencies are artificial.
 
+### Deep-Module Design Pass (Constitution Article 4 / ADR-036)
+
+The interface an IB exposes to its dependents — the types, signatures, and return values downstream IBs consume — should be *designed for depth*, not merely transcribed from the cut. A boundary whose exposed surface is nearly as complex as the implementation behind it is a **shallow module**: every dependent IB (and every test that mocks it) pays the cost of that surface. After drafting candidate boundaries, run the Ousterhout questions over each IB's exposed interface:
+
+- Can I reduce the number of functions/operations a dependent IB must call against this one?
+- Can I simplify the parameters those signatures take?
+- Can I hide more complexity *inside* this IB — invariants, ordering, error handling — so dependents learn one compact surface instead of reconstructing the rules?
+- Is the exposed interface nearly as complex as this IB's implementation? If so it is shallow — deepen it (push complexity inward, narrow the surface) or fold it into an adjacent IB before the boundary hardens.
+
+This is the design counterpart to **Narrow dependency surface** above: narrowing says expose *the minimum*; the depth pass says make that minimum *carry its weight* — a deep boundary is both narrow and complexity-hiding.
+
+**Interface-for-testability.** Prefer dependencies an IB *receives* (injected / passed in via a constructor or function argument) over ones it constructs internally, and prefer operation-specific (SDK-style) signatures over one generic conduit that switches on a mode flag. Both are what make the IB's boundary mockable at test time — the boundary-only mocking discipline ADR-036 expects, and the same property that lets a dependent IB be tested without this IB's implementation (the cohesion test above).
+
 ### Decomposition Checklist
 
 Run after drafting candidate IBs, before presenting the dependency graph to the engineer:
@@ -680,6 +693,8 @@ Run after drafting candidate IBs, before presenting the dependency graph to the 
 - [ ] No transitive leakage — IB-3 does not need IB-1's internals to use IB-2's output
 - [ ] No IB depends on more than 3 other IBs (fan-out check — investigate if exceeded)
 - [ ] High fan-in IBs (many dependents) are simple and stable — they define interfaces, not complex logic
+- [ ] Each IB's exposed interface is deep, not shallow — its surface (operations + parameters dependents call) is meaningfully simpler than the implementation it fronts (deep-module design pass, Constitution Article 4 / ADR-036)
+- [ ] Dependencies an IB needs are injected (passed in), not constructed internally, and the boundary is operation-specific (SDK-style) rather than one generic conduit — so it is mockable at the boundary (ADR-036)
 
 **Graph checks:**
 - [ ] Dependency graph is a DAG (no cycles)
@@ -831,7 +846,7 @@ Number IBs sequentially to encode dependency order — the number is not cosmeti
 - Before assigning numbers, map the full dependency graph: which IBs produce outputs that others require?
 - IBs with no dependencies come first. IBs that depend on earlier IBs get higher numbers.
 - If two IBs are independent (no dependency either direction), order them by risk — higher-risk or more foundational work gets the lower number.
-- The number sequence is the recommended `/write-beads` and implementation order. An engineer should be able to work top-to-bottom without encountering a missing dependency.
+- The number sequence is the recommended `/write-code-beads` and implementation order. An engineer should be able to work top-to-bottom without encountering a missing dependency.
 
 ## Save
 
@@ -871,8 +886,8 @@ When a spec changes after IBs have been written, use the `--resync` flag to upda
 
 | State | Action |
 |---|---|
-| IBs in `queued/` only (no beads) | `/write-ibs --resync <affected IBs>` → re-accept → `/write-beads` |
-| Beads exist but no code has run | Resync IBs → delete open beads (`br delete <ids>`) → `br sync` → re-accept → `/write-beads` in numbered order |
+| IBs in `queued/` only (no beads) | `/write-ibs --resync <affected IBs>` → re-accept → `/write-code-beads` |
+| Beads exist but no code has run | Resync IBs → delete open beads (`br delete <ids>`) → `br sync` → re-accept → `/write-code-beads` in numbered order |
 | Beads `in_progress` or `closed` | STOP — coding has started. Make an explicit decision: continue with current IBs, revert, or file correction beads. Do not resync silently. |
 
 If the spec change is fundamental enough that resyncing individual IBs is insufficient, delete all IBs and re-run the full decomposition: `/write-ibs <spec-path>`.
@@ -909,9 +924,9 @@ Instruct the engineer:
 
 "To accept: run `/write-ibs --accept <IB path or glob>` to re-run the full audit and mark accepted if all checks pass. `--approve` is retained as an alias.
 
-Run `/write-beads` on one IB at a time, in numbered order, after each is accepted."
+Run `/write-code-beads` on one IB at a time, in numbered order, after each is accepted."
 
-Do NOT suggest running /write-beads until at least the first IB is accepted. Subsequent IBs can be reviewed and beaded independently.
+Do NOT suggest running /write-code-beads until at least the first IB is accepted. Subsequent IBs can be reviewed and beaded independently.
 
 ## Provisional Mode
 
@@ -984,6 +999,8 @@ One or more IB files in `dekspec/impl-briefs/`, each with **Status** set to `PRO
 - Don't keep iterating per-IB content fixes past 2 rounds or decomposition past 3 — persistent failures mean the boundary or the spec is wrong; escalate to the engineer as a re-decomposition issue instead of forcing a save.
 - Don't restructure only the failing IB after a re-decomposition — restart Phase 4 for the entire affected dependency set, since numbers, order, and file assignments shift.
 - Don't `--lock` an IB whose parent WS is below ACCEPTED or whose cohort siblings aren't all ≥ ACCEPTED — the mechanical Lock gate refuses it; lock the cohort in implementation order as gates settle.
+- Don't ship a shallow interface — one whose exposed surface (operations + parameters dependents call) is nearly as complex as what it hides. That pushes the complexity onto every dependent IB and every test that mocks it; deepen it per Constitution Article 4 / ADR-036 (fewer operations, simpler parameters, more complexity hidden inside).
+- Don't make an IB construct its own dependencies or expose one generic conduit when injected dependencies and an operation-specific (SDK-style) surface would be mockable at the boundary — the latter is what makes ADR-036's boundary-only mocking (and independent testability) work.
 - Don't invent Golden I/O values for numerical IBs — the engineer or a reference implementation supplies them; STOP and ask if they're missing.
 
 ## Verification Checklist
@@ -995,7 +1012,7 @@ One or more IB files in `dekspec/impl-briefs/`, each with **Status** set to `PRO
 - [ ] No IB that failed the fidelity audit was saved; failing IBs were escalated to the engineer, not silently shipped.
 - [ ] Every saved/revised IB is at `Status: PROPOSED` (decomposition/resync/revise) or the correct promoted status (`--accept` → ACCEPTED, `--lock` → LOCKED) with an Amendment-Log row appended.
 - [ ] `dekspec audit relink` was run against the repo root after the artifact writes (the mandatory Closing Step).
-- [ ] The Engineer Review Gate summary was presented and the engineer was instructed to `--accept` before any `/write-beads`.
+- [ ] The Engineer Review Gate summary was presented and the engineer was instructed to `--accept` before any `/write-code-beads`.
 
 ## Closing Step
 

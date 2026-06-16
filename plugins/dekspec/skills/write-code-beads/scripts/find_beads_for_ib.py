@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Find existing beads whose `external_ref` matches a given IB, by status.
 
-`/write-beads` performs this lookup three times in prose:
+`/write-code-beads` performs this lookup three times in prose:
 
   - Safety Check  — "are there already open beads for this IB?"
   - Audit Mode    — "which beads belong to this IB to re-audit?"
@@ -96,7 +96,7 @@ def _resolve_lookup(ib: str) -> tuple[str, str]:
       by **literal** — `mode="literal"`, `key` = the filename stem (dir, `.md`,
       and any `#bead-N` / `:slice` qualifier stripped), tested as a substring of
       each bead's `external_ref`. This mirrors the read side of the convention
-      `/write-beads` uses when it anchors provisional beads' `external_ref` to
+      `/write-code-beads` uses when it anchors provisional beads' `external_ref` to
       the provisional IB path (ds-nv1i).
     """
     token = _ib_token(ib)

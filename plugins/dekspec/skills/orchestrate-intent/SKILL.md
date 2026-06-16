@@ -18,7 +18,12 @@ argument-hint: [--help | --teaching | --auto | --status | --verify] [description
 - **Help mode** — `--help` flag. Skip to **Help Mode**.
 - **Teaching mode** — `--teaching` flag. Skip to **Teaching Mode**.
 - **Auto mode** — `--auto` flag. Skip to **Auto Mode (`--auto`)**. Walks PROPOSED → ACCEPTED → DECOMPOSE → IMPLEMENTING → TESTPASS → LOCK without engineer prompts; refuses on first unmet pre-condition; never unlocks; never bypasses `--testpass`. See [ADR-021](../../../../dekspec/adrs/ADR-021-orchestrate-intent-auto-safety-contract.md).
-- **Orchestrate mode** — default mode (no flag or passing an ID/path). Proceed to **Orchestrate Mode**.
+- **Status mode** — `--status` flag. Skip to **Status Mode (`--status`)**. Read-only: report the target's current status + list every downstream child spec. Mutates nothing.
+- **Verify mode** — `--verify` flag. Skip to **Verify Mode (`--verify`)**. Read-only: assert every downstream child spec sits in a terminal status (`LOCKED`/`ACCEPTED`) post-merge. Mutates nothing.
+- **Orchestrate mode** — default mode (no recognized flag; an ID/path with no flag enters here). Proceed to **Orchestrate Mode**.
+
+> [!IMPORTANT]
+> `--status` and `--verify` are **read-only** and MUST short-circuit here *before* Orchestrate Mode's catch-all. An ID/path alone (no flag) is the only thing that enters the stateful Orchestrate walk — a recognized flag always wins. Never start the interactive lifecycle walk for a `--status`/`--verify` invocation.
 
 ---
 
@@ -241,6 +246,59 @@ The card is **informational, NOT gating** — the walk has already terminated wh
 - **MUST NOT** skip `/write-intent --testpass`. The Verification block is unconditional.
 - **MUST NOT** silently auto-relock artifacts. Lock propagation happens through `/write-intent --lock`'s existing LOCK Propagation Ceremony (default Orchestrate Mode §E), not through `--auto` reaching around it.
 - **MUST NOT** partial-advance and then ask the engineer mid-walk. The walker either runs the full pre-flighted sequence or refuses up-front; there is no hybrid mode.
+
+---
+
+## Status Mode (`--status`)
+
+Read-only. Reports the target Intent's current status and enumerates every downstream child spec. **Mutates nothing** — no transitions, no unlocks, no index writes.
+
+1. Resolve the target with the shared resolver (canonical `INT-NNN`, canonical/provisional path, or provisional incubation slug):
+   ```
+   python ../_lib/scripts/resolve_intent_target.py "<arg-from-$ARGUMENTS>"
+   ```
+   It emits JSON `{kind, path, intent_id, status, is_provisional}`. On exit 1 (unresolved / ambiguous), surface its stderr and STOP.
+2. Read the resolved file's `## Status` and gather all linked AEs/WSes/ICs/IBs from `## Linked Architecture Elements` + `## Layer impact analysis`.
+3. Render a read-only card and STOP — do not enter the conductor loop:
+   ```markdown
+   ================================================================================
+   📊 INTENT STATUS — [INT-NNN](file:///...)   (or: PROVISIONAL slug <slug>)
+   ================================================================================
+   Title:           <Intent Title>
+   Current Status:  [STATUS]
+   Incubation:      <none (canonical) | dekspec/provisional/<slug>/>
+   --------------------------------------------------------------------------------
+   Downstream child specs:
+     AE:  <AE-NNN [status], …  | none>
+     WS:  <WS-NNN [status], …  | none>
+     IC:  <IC-NNN [status], …  | none>
+     IB:  <IB-NNN [status], …  | none>
+   ================================================================================
+   ```
+
+---
+
+## Verify Mode (`--verify`)
+
+Read-only. Asserts every downstream child spec sits in a terminal status (`LOCKED` or `ACCEPTED`) — the post-merge completeness check. **Mutates nothing.**
+
+1. Resolve the target with `resolve_intent_target.py` (as in Status Mode).
+2. Gather all downstream AEs/WSes/ICs/IBs from `## Layer impact analysis` + the index files.
+3. For each child, read its status. PASS if every child is `LOCKED` or `ACCEPTED`; FAIL otherwise.
+4. Render a verdict card and STOP — do not enter the conductor loop or attempt any promotion:
+   ```markdown
+   ================================================================================
+   ✅/❌ INTENT VERIFY — [INT-NNN](file:///...)
+   ================================================================================
+   Verdict: <PASS — all downstream specs terminal | FAIL — N lingering>
+   --------------------------------------------------------------------------------
+   | Child | Status | Terminal? |
+   |---|---|---|
+   | AE-NNN | LOCKED | ✅ |
+   | IB-NNN | DRAFT  | ❌ |
+   ================================================================================
+   ```
+   On FAIL, name each non-terminal child and the lock skill that would advance it (`/write-<kind> --lock …`); do not run it — `--verify` only reports.
 
 ---
 

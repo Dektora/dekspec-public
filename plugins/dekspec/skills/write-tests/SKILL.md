@@ -1,12 +1,12 @@
 ---
 name: write-tests
-description: Write deterministic test cases from bead acceptance criteria before the coding session. Use after /write-beads, before /exec-coding-session.
+description: Author the independent, behavior-first acceptance-test floor for a bead — public-interface tests under strong-TDD red-first timing, derived from the spec, before the coding session. Use after /write-code-beads, before /exec-coding-session.
 mode: lite
 model: claude-opus-4-7
 reasoning_effort: high
 allowed-tools: Read Write Edit Bash
 argument-hint: [--help | --teaching | --audit | --all | --integration | --revise] [BEAD-NNN or IB-path] [notes]
-related_skills: [write-beads, exec-coding-session, write-evals, write-ibs]
+related_skills: [write-code-beads, exec-coding-session, write-evals, write-ibs]
 disable-model-invocation: false
 ---
 
@@ -57,9 +57,9 @@ See [`_lib/fan_out.md`](../_lib/fan_out.md) for the canonical ds-di2 orchestrato
   2. Bead context chain (IB / WS / Intent / files-under-test) — run `python ../_lib/scripts/resolve_bead_context.py <bead-id>`; bundle the JSON output. It resolves, deterministically: `ib_path` (the parent IB — bead-level spec context + failure-behavior constraints the subagent derives error-path tests from), `ws_path` (the parent Working Spec — the **authoritative source of acceptance criteria + business rules**), `intent_id` (the parent Intent), and `files` (the files under test, from the IB's `## Files to Modify` table — subagent reads to derive imports / signatures / types). If `ws_path` is `null` or the `notes` array flags a broken hop, surface it as a bundle gap and refuse to dispatch. Pre-implementation source files may not exist yet — the subagent derives expected interfaces from the IB's spec context.
   3. Engineer guidance — `$ARGUMENTS` verbatim (extra notes after the bead/IB arg; for `--revise`, engineer's revision notes inline or file path; for `--integration`, the IB path).
   4. Project context — `dekspec/project-context.md` (the SDET role the subagent must adopt).
-  5. Constraints — the **Test Derivation Rules**, **Test File Format**, and **Rules** sections of this skill (deterministic-only; one criterion → ≥1 test; real assertions / stub implementations marked `@pytest.mark.skip(reason="pre-implementation — coding agent removes skip")`; edge cases from domain constraints + error paths from IB failure-behavior; import paths from bead's Files (not invented); mock external dependencies only — never internal modules; Test File Format block).
+  5. Constraints — the **Test Derivation Rules**, **Test File Format**, **Rules**, and **Red-Genuineness Check** sections of this skill (deterministic-only; one criterion → ≥1 test; real assertions / stub implementations marked `@pytest.mark.skip(reason="pre-implementation — coding agent removes skip")`; edge cases from domain constraints + error paths from IB failure-behavior; import paths from bead's Files (not invented); mock external dependencies only — never internal modules; Test File Format block; and the Red-Genuineness Check — transiently unskip + run each test to confirm it fails because its assertion fired, not via a spurious non-zero exit or an import error).
 - **expected_output_path**: `tests/bead/test_<bead-slug>.py` (default + `--all` + `--revise`); `tests/integration/test_<ib-slug>.py` (`--integration`). For `--all`, one path per bead in the batch.
-- **validation**: `pytest --collect-only <output-path>` — confirms syntactic validity + that all tests collect (skip markers fine; collection errors not). Validation/surface contract: see [`_lib/validate_and_surface.md`](../_lib/validate_and_surface.md) — test files have no `dekspec check validate --kind` form, so `pytest --collect-only` is the equivalent gate; non-zero exit → surface verbatim and stop, do not silently retry. Mode-specific post-checks: every acceptance criterion in the parent bead is referenced by ≥1 test docstring (default + `--all` + `--revise`); every bead-to-bead boundary in the IB has a data-contract test (`--integration`); parent bead's `--acceptance-criteria` updated to reference the test file (default + `--all`); no pre-existing passing tests deleted (`--revise`).
+- **validation**: `pytest --collect-only <output-path>` — confirms syntactic validity + that all tests collect (skip markers fine; collection errors not). This is a *syntactic* gate only; it never runs an assertion, so pair it with the **Red-Genuineness Check** (transiently unskip + run each test to confirm a genuine red) before reporting back. Validation/surface contract: see [`_lib/validate_and_surface.md`](../_lib/validate_and_surface.md) — test files have no `dekspec check validate --kind` form, so `pytest --collect-only` is the equivalent gate; non-zero exit → surface verbatim and stop, do not silently retry. Mode-specific post-checks: every acceptance criterion in the parent bead is referenced by ≥1 test docstring (default + `--all` + `--revise`); every bead-to-bead boundary in the IB has a data-contract test (`--integration`); parent bead's `--acceptance-criteria` updated to reference the test file (default + `--all`); no pre-existing passing tests deleted (`--revise`).
 
 For **`--all`**: the orchestrator iterates the batch (per the existing All Mode steps 1–5), then fans out one subagent **per bead** in parallel; collects subagent reports and emits the batch summary in step 7 of All Mode.
 
@@ -95,7 +95,7 @@ extra_sections:
       - "Integration:    tests/integration/test_<ib-slug>.py"
   - heading: "WORKFLOW"
     body:
-      - "1. Create beads:    /write-beads <IB>"
+      - "1. Create beads:    /write-code-beads <IB>"
       - "2. Write evals:     /write-evals <bead>         (if model output)"
       - "3. Write tests:     /write-tests <bead>          (for each bead)"
       - "4. Integration:     /write-tests --integration <IB>  (optional)"
@@ -263,6 +263,23 @@ Wait for engineer confirmation.
 - **No mocking internal implementation.** Tests call the public interface. Mock only external dependencies (HTTP calls, database, model server).
 - **Import paths from the bead's Files list.** Use the actual file paths to derive import statements.
 
+### Scoping Role-Pass
+
+After deriving the assertions for a criterion (Test Derivation Rules above), run the **scoping role-pass** over them before saving. The role-pass keeps each test's fence **as tight as the bead's intent and no tighter** — it borrows the intention-test scoping discipline (INT-151) and *reinforces*, rather than replaces, the existing `fence-durable` and `fence-golden-path` norms. Apply all three steps to every derived assertion:
+
+1. **Fallback test per assertion.** For each acceptance-derived assertion, also emit a **fallback test** — a looser companion that pins the user-observable *behavior* the criterion actually promises, independent of the specific mechanism the strict assertion happens to encode. The fallback test is the one that survives a legitimate refactor; the strict assertion is allowed to be more brittle only when the mechanism itself is the contract.
+
+2. **Over-spec mirror check.** Mirror each assertion against a hypothetical *satisfactory-but-different* implementation: would a correct implementation that made a legitimate, in-spec choice differently still pass this assertion? If a satisfactory implementation could legitimately violate the assertion, the assertion is over-specified — **delete it** (or demote it to the fallback behavior it was really guarding). The over-spec mirror check is what prevents incidental implementation mechanics from being frozen into the test suite.
+
+3. **REQUIRED / GIVEN / INCIDENTAL classifier.** Stamp every *retained* assertion with the mechanism it pins:
+   - **REQUIRED** — the behavior is part of the contract; the test must pin it tightly. Keep.
+   - **GIVEN** — a precondition / fixture the test depends on but does not itself assert as the outcome. Keep, but scope it to setup, not to the behavioral assertion.
+   - **INCIDENTAL** — an implementation detail (a log string format, an internal call order, a private field name) that a satisfactory implementation could change. An assertion that pins an INCIDENTAL mechanism must not survive the over-spec mirror check — drop it.
+
+   Record the stamp as a short inline comment on each retained assertion (e.g. `# REQUIRED: return value is the canonical id`) so the fence altitude is auditable.
+
+The output of the role-pass is the set of assertions that survive the mirror check, each carrying a REQUIRED/GIVEN/INCIDENTAL stamp, plus one fallback test per behavioral criterion.
+
 ### Test File Format
 
 ```python
@@ -373,11 +390,31 @@ IB path: the argument after `--integration`.
 
 ## Rules
 
+### What this skill is (ADR-036 / Constitution Article 3)
+
+This skill authors the **independent, behavior-first acceptance-test floor** for a bead — the up-front, public-interface suite that proves observable behavior, written before the coding session under strong-TDD red-first timing. It owns the *independent* floor; the implementer adds discovered-behavior tests **vertically** during `/exec-coding-session` (hybrid-vertical TDD, ADR-036). Because this skill writes the suite **horizontally** (the whole floor up front, not via a vertical implement-as-you-go loop), it is *more* prone to testing imagined shape instead of real behavior. Guard against that: every test must assert an **observable behavior through the public interface**, and the Red-Genuineness Check below must confirm the *assertion* fires (not merely that some shape exists).
+
+### The SDET's per-cycle rules (ADR-036)
+
+Apply these to every test you write:
+
+1. A test describes **behavior**, not implementation.
+2. A test exercises the **public interface only**.
+3. A test **survives an internal refactor that changes no behavior** — if a rename or restructuring with no behavior change breaks it, it tested the wrong thing.
+4. Each test is **minimal and focused** — one behavior, one logical assertion.
+5. *(Loosened for up-front authoring)* **Cover every acceptance criterion the bead names, but invent no behavior the spec does not call for.** The vertical implementer (rule 5's tighter form) adds tests as behavior is discovered; here you cover the named criteria and stop.
+
+Rules 1–4 are firm. Rule 5 is the only one loosened by the up-front context.
+
+### Public-boundary binding (the load-bearing rule)
+
+Anchor each test to the **Interface Contract / public surface** wherever one exists — bind to a brief's internal signatures only when the bead is a genuinely internal unit with **no public boundary**. Binding to the public surface is what keeps a test surviving internal churn (rule 3) and stops the suite from being held hostage to the quality of an internal interface that may still change.
+
 - Tests are the spec in code form. They are derived from acceptance criteria, not invented.
 - Never weaken a test to make it pass — if a test fails, the implementation is wrong.
 - Pre-written tests use `pytest.mark.skip` — the coding agent removes the skip as it implements.
 - Tests call public interfaces only. No testing private methods or internal state.
-- Mock external dependencies (HTTP, database, model server). Do not mock internal modules.
+- Mock at **system boundaries only** — external services, persistence, time, randomness, file system — never internal collaborators. Design those boundary interfaces *for* mockability: inject dependencies (pass deps in, don't construct them inside the unit), and prefer SDK-style operation-specific surfaces over one generic fetcher, so each mock returns one shape and the test setup carries no conditional logic.
 - Every acceptance criterion must have at least one test. If a criterion is untestable, surface it to the engineer.
 - Integration tests are optional but recommended for IBs with 3+ beads.
 - Test files are working code — they must parse and be discoverable by pytest even before implementation (all tests skip cleanly).
@@ -387,15 +424,33 @@ IB path: the argument after `--integration`.
 - Don't write probabilistic / tolerance-based output checks here — route model-quality and non-deterministic assertions to `/dekspec:write-evals`; this skill is deterministic-only.
 - Don't invent import paths or function signatures — derive them from the bead's Files list and the IB spec context; never guess a module path the bead doesn't name.
 - Don't ship tests that pass on green at write time — pre-implementation tests must carry `@pytest.mark.skip(reason="pre-implementation — coding agent removes skip")` so the coding agent owns turning them green.
+- Don't ship a **false red** — a test marked skip still has to fail *for the right reason* once unskipped. `pytest --collect-only` only proves the file parses; it never runs the assertion, so a test that passes spuriously or fails for the wrong reason sails through and the coding agent inherits a test that proves nothing. Run the Red-Genuineness Check below before the collect gate.
+- Don't assert a bare non-zero exit for a "should-fail / should-gate" test — an *unrecognized* flag or arg makes the CLI exit non-zero (argparse exits 2) on its own, so `assert rc != 0` passes for the wrong reason. Pin the failure to the feature: also assert the error text is NOT `unrecognized arguments` / `invalid choice`, or assert the specific exit code / message the feature is contracted to produce.
+- Don't let an import error masquerade as the red — `from pkg.notyet import thing` failing at import time makes the whole test error before the assertion runs, which looks red but tests the import, not the behavior. Import lazily inside the test (or via the public CLI / a subprocess) so the *assertion* is what fails.
 - Don't mock internal modules to force a test to collect — mock only external dependencies (HTTP, database, model server); a test that mocks the unit under test proves nothing.
+- Don't assert on **shape instead of behavior** (ADR-036 / Constitution Article 3) — red flags: asserting on call counts or call order; verifying through a side channel (e.g. querying the DB directly) instead of the public interface; testing private methods or internal state; a test that breaks on a rename with no behavior change. The litmus test: *if it breaks on an internal refactor that changed no behavior, it tested the wrong thing.*
 - Don't weaken or delete a pre-existing passing test to resolve a conflict (`--revise`) — add or amend; tests are the spec, not an obstacle.
 - Don't skip the `--acceptance-criteria` backlink update (default + `--all`) — an orphaned test file the bead can't point to fails the post-check.
 - Don't drop an untestable acceptance criterion silently — surface it to the engineer rather than leaving a coverage gap.
+
+## Red-Genuineness Check
+
+The `@pytest.mark.skip` markers exist so a half-built suite collects cleanly and never breaks CI before the feature lands — they are **not** a substitute for confirming each test is genuinely red. ADR-029 strong-TDD turns on the test failing *for the intended reason* first; a skipped test that has never been run can hide a false red (passes spuriously, or errors at import before the assertion). Close that hole before the collect gate:
+
+For each pre-implementation test you wrote, in a scratch copy of the file (never the shipped one):
+
+1. Remove that test's `@pytest.mark.skip` marker.
+2. Run it: `PYTHONPATH=<repo>/tooling python3 -m pytest <scratch-file>::<test> -q` (or invoke the public CLI / subprocess the test targets).
+3. Confirm it **FAILS, and the failure is the assertion firing** — not a collection/import error, and not a spurious pass. Apply the two traps from Common Pitfalls: a bare non-zero exit can come from argparse rejecting an unknown flag (exit 2), and an import error can mask the assertion entirely. If the test passes or errors for the wrong reason, fix the test (pin the failure to the feature's contracted behavior) and re-run until the red is genuine.
+4. Discard the scratch copy — the shipped test keeps its skip marker for the coding agent to remove.
+
+Record one line per test in your report: `<test> → red (assertion fired)` or the correction you made. This is the step that makes the suite a real red-first contract rather than a parked stub.
 
 ## Verification Checklist
 
 - [ ] Every acceptance criterion in the parent bead is referenced by at least one test docstring (default / `--all` / `--revise`).
 - [ ] Every test that exercises unimplemented code carries the `@pytest.mark.skip(reason="pre-implementation — …")` marker.
+- [ ] **Red-Genuineness Check done** — each pre-implementation test was transiently unskipped and run, and confirmed to fail because its assertion fired (not a collection/import error, not a spurious non-zero exit).
 - [ ] `pytest --collect-only <output-path>` exits zero — the test file parses and all tests collect.
 - [ ] All import paths trace to the bead's Files list or IB spec context (none invented).
 - [ ] Only external dependencies are mocked; no internal module under test is mocked.

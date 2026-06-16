@@ -225,6 +225,17 @@ def audit_linkage(
     # INT-128 / ds-provisional-promotion-guardrails — fires P3 advisory
     # on canonical Missions stale TODO without children.
     findings.extend(_t_mission_canonical_without_child(graph))
+    # INT-168 (δ / MSN-020) — fires P3 advisory on a non-terminal,
+    # Mission-less Intent whose body lacks a `## Non-Goals` section.
+    findings.extend(_t_intent_missing_non_goals(graph))
+    # INT-169 (ε / MSN-020) — fires P3 advisory on a >=ACCEPTED non-terminal
+    # `type: bug` Intent that carries neither a populated Reproduction
+    # section nor a Non-Reproducible Waiver section.
+    findings.extend(_t_bug_missing_repro_gate(graph))
+    # INT-171 (η / MSN-020) — fires P3 advisory on a non-terminal,
+    # high-blast-radius IC (>=2 consumers OR >=2 governing ADRs) whose body
+    # lacks a populated `## Options Considered / Rejected Rationale` section.
+    findings.extend(_t_ic_missing_options(graph))
 
     # Filter to rules enabled by the active profile. Rules not enumerated
     # in profile.rules are dropped silently (the underlying check still ran;
@@ -2346,7 +2357,7 @@ def _l12_ws_blocking_pre_ib_clean(graph: SpecGraph) -> list[Finding]:
     P1 is the canonical severity for the `blocking_pre_ib` /
     `blocking_pre_code` / `blocking` artifact-side aliases (per ADR-013) —
     these signal unresolved spec-blocking questions that must be settled
-    BEFORE downstream work (IB authoring, `/write-beads`, coding)
+    BEFORE downstream work (IB authoring, `/write-code-beads`, coding)
     proceeds. The Working Spec template documents this contract at line
     166: "Zero `blocking (pre-IB)` open issues must remain when
     `/write-ibs` is invoked." This rule realises that documented contract
@@ -5236,6 +5247,7 @@ _SKILL_CLASS_DEFAULTS: dict[str, dict[str, str]] = {
     "write-mission":      {"mode": "full", "reasoning_effort": "max",  "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Grep Glob Bash Agent"},
     # dispatch (high-risk; disable-model-invocation: true)
     "exec-coding-session":     {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "true",  "allowed-tools": "Read Bash Agent"},
+    "orchestrate-deepening":   {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "true",  "allowed-tools": "Read Bash Agent"},
     "factory-dispatch-intent":  {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "true",  "allowed-tools": "Read Bash Agent"},
     "factory-listen":           {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "true",  "allowed-tools": "Read Bash Agent"},
     # diagnostic (read-mostly CLI-wrap probes; slash-invocation only, no sub-agent spawn)
@@ -5243,18 +5255,27 @@ _SKILL_CLASS_DEFAULTS: dict[str, dict[str, str]] = {
     # recovery
     "archeology":              {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Grep Glob Bash"},
     "brownfield-ingest":       {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Grep Glob Bash"},
+    # architecture (read-mostly source-architecture analysis; spawn Explore/Design-It-Twice sub-agents, propose-only)
+    "deepen-codebase-architecture": {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Grep Glob Bash Agent"},
+    "audit-codebase": {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Grep Glob Bash Agent"},
     # audit class row retired v0.98.0 (doctor-fidelity inlined into /doctor Stage 2)
     # review (read-only adversarial reviewers; reasoning_effort max, spawn lens sub-agents, no Write/Edit)
     "review-ib":          {"mode": "lite", "reasoning_effort": "max",  "disable-model-invocation": "false", "allowed-tools": "Read Grep Glob Bash Agent"},
     "review-pr":          {"mode": "lite", "reasoning_effort": "max",  "disable-model-invocation": "false", "allowed-tools": "Read Grep Glob Bash Agent"},
     # utility
-    "write-beads":        {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
+    "write-code-beads":        {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
+    "write-issue-beads":       {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
     "orchestrate-intent": {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
     "spec-intent":        {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
     "land-intent":        {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
     "using-dekspec":      {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
+    "setup-dekspec":      {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
+    "interview-me":       {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
+    "diagnose":           {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
+    "prototype":          {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
     "write-evals":        {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
     "write-tests":        {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
+    "rotation-handoff":   {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
 }
 
 # Default model across all skill classes (CLAUDE.md §Agent-model-policy).
@@ -5918,7 +5939,7 @@ def _l16_int_beads_before_accept(graph: SpecGraph) -> list[Finding]:
                         f"`{rel_path}`). Path A methodology requires at "
                         f"least one bead to be filed before the Intent "
                         f"walks past ACCEPTED. Fix: file beads via "
-                        f"`/write-beads`, or set `beads_before_accept: "
+                        f"`/write-code-beads`, or set `beads_before_accept: "
                         f"false` if this Intent is grandfathered."
                     ),
                     fix_kind="semantic",
@@ -6166,6 +6187,274 @@ def _t_mission_canonical_without_child(graph) -> list[Finding]:
                 f"TODO for ≥{_T_MISSION_CANONICAL_WINDOW_DAYS} days with "
                 "zero child Intents. Recommend moving to "
                 "dekspec/provisional/<slug>/ or killing if YAGNI."
+            ),
+            fix_kind="semantic",
+        ))
+    return out
+
+
+# Statuses at which an Intent's authoring is settled; the Non-Goals
+# forward-authoring discipline no longer applies (retroactively flagging
+# already-shipped Intents would add advisory noise with no remediation
+# value). INT-168 (δ / MSN-020).
+_INT_NON_GOALS_TERMINAL_STATUSES = frozenset(
+    {"LOCKED", "MERGED", "SUPERSEDED", "DEPRECATED"}
+)
+
+# Detects an authored `## Non-Goals` H2 section in an Intent body.
+_INT_NON_GOALS_HEADING_RE = re.compile(r"^##\s+Non-Goals\b", re.MULTILINE)
+
+
+def _t_intent_missing_non_goals(graph) -> list[Finding]:
+    """T-INT-NON-GOALS-MISSING (P3 advisory) — fires when a NON-TERMINAL,
+    Mission-less Intent's body lacks a `## Non-Goals` section.
+
+    A standalone Intent (no parent Mission) has no Mission `Out-of-scope`
+    contract to own its non-goals, so scope creep on a solo Intent goes
+    uncaught. The optional `## Non-Goals` template section (INT-168) fills
+    that gap; this rule nudges authors toward it.
+
+    Silent when:
+      - the Intent declares a parent Mission (``intent.get('mission')``
+        truthy — its Out-of-scope owns non-goals, and duplicating them on
+        the Intent is explicitly discouraged), or
+      - the Intent already carries a populated ``## Non-Goals`` section, or
+      - the Intent is at a terminal status (LOCKED / MERGED / SUPERSEDED /
+        DEPRECATED) — Non-Goals is a forward-authoring discipline, not a
+        retroactive lint on already-shipped work.
+
+    P3-advisory + non-gating per ADR-018: it never blocks a build and stays
+    out of the P0/P1/P2 doctor gate. INT-168 (δ / MSN-020), D5/D6.
+    """
+    out: list[Finding] = []
+    for intent in graph.intents():
+        # Mission-declaring Intents are exempt — the Mission owns non-goals.
+        if intent.get("mission"):
+            continue
+        status = str(intent.get("status") or "").upper()
+        if status in _INT_NON_GOALS_TERMINAL_STATUSES:
+            continue
+        source_path = (intent.get("source") or {}).get("path", "")
+        if not source_path:
+            continue
+        try:
+            body = Path(source_path).read_text(encoding="utf-8")
+        except OSError:
+            continue
+        if _INT_NON_GOALS_HEADING_RE.search(body):
+            continue
+        out.append(Finding(
+            rule="T-INT-NON-GOALS-MISSING",
+            artifact_id=intent.get("id", "<unknown>"),
+            severity="P3",
+            message=(
+                f"Mission-less Intent {intent.get('id')} has no `## Non-Goals` "
+                "section. A standalone Intent has no parent Mission Out-of-scope "
+                "to own its non-goals; add an optional `## Non-Goals` section to "
+                "pin what this Intent will not do (or link a parent Mission)."
+            ),
+            fix_kind="semantic",
+        ))
+    return out
+
+
+# Statuses at which a bug Intent's authoring is settled; the repro-gate
+# forward-authoring discipline no longer applies (retroactively flagging
+# already-shipped bug Intents — both self-spec bug Intents INT-023/INT-089 are
+# LOCKED — would add advisory noise with no remediation value). INT-169
+# (ε / MSN-020).
+_BUG_REPRO_TERMINAL_STATUSES = frozenset(
+    {"LOCKED", "MERGED", "SUPERSEDED", "DEPRECATED"}
+)
+
+# Statuses below the ACCEPTED gate: the deterministic repro is expected to be
+# produced during the accept→decompose ramp, so a pre-ACCEPTED bug Intent is
+# not yet obligated to carry one. INT-169 (ε / MSN-020).
+_BUG_REPRO_PRE_ACCEPT_STATUSES = frozenset({"DRAFT", "PROPOSED"})
+
+# Detects a populated `### bug — Reproduction` / `### bug — Non-Reproducible
+# Waiver` H3 section: the heading (with or without backticks around `bug`)
+# followed by at least one non-blank content line before the next H2/H3.
+_BUG_REPRO_SECTION_RE = re.compile(
+    r"^###\s+`?bug`?\s+—\s+Reproduction\b[^\n]*\n"
+    r"(?:[ \t]*\n)*"          # optional blank lines
+    r"(?=[ \t]*\S)"          # then a non-blank line …
+    r"(?![ \t]*#{2,3}\s)",   # … that is not itself an H2/H3 heading
+    re.MULTILINE,
+)
+_BUG_WAIVER_SECTION_RE = re.compile(
+    r"^###\s+`?bug`?\s+—\s+Non-Reproducible\s+Waiver\b[^\n]*\n"
+    r"(?:[ \t]*\n)*"
+    r"(?=[ \t]*\S)"
+    r"(?![ \t]*#{2,3}\s)",
+    re.MULTILINE,
+)
+
+
+def _t_bug_missing_repro_gate(graph) -> list[Finding]:
+    """T-BUG-REPRO-GATE (P3 advisory) — fires when a NON-TERMINAL,
+    ``>= ACCEPTED`` ``type: bug`` Intent carries neither a populated
+    ``### bug — Reproduction`` section nor a populated
+    ``### bug — Non-Reproducible Waiver`` section.
+
+    A bug fix that lands without a deterministic, agent-runnable repro signal
+    (or an explicit waiver explaining why one could not be built) has nothing
+    durable to gate the fix or to seed the red-first outcome test. The
+    ``diagnose`` skill (INT-169) exists to produce that repro before the bug
+    Intent is filled; this rule nudges authors toward one of the two valid
+    end-states.
+
+    Silent when:
+      - the Intent is not a ``bug`` (``intent_type != 'bug'`` — feature /
+        refactor / chore Intents have no Reproduction obligation), or
+      - the Intent already carries a populated Reproduction section, or
+      - the Intent already carries a populated Non-Reproducible Waiver
+        section, or
+      - the Intent is at a terminal status (LOCKED / MERGED / SUPERSEDED /
+        DEPRECATED) — a forward-authoring discipline, not a retroactive lint
+        on already-shipped bug Intents, or
+      - the Intent is below the ACCEPTED gate (DRAFT / PROPOSED) — the repro
+        is expected during the accept→decompose ramp.
+
+    P3-advisory + non-gating per ADR-018: it never blocks a build and stays
+    out of the P0/P1/P2 doctor gate. INT-169 (ε / MSN-020), D9/D11.
+    """
+    out: list[Finding] = []
+    for intent in graph.intents():
+        # Only bug Intents carry a Reproduction obligation.
+        if str(intent.get("intent_type") or "").lower() != "bug":
+            continue
+        status = str(intent.get("status") or "").upper()
+        # Terminal → settled; pre-ACCEPTED → not yet obligated.
+        if status in _BUG_REPRO_TERMINAL_STATUSES:
+            continue
+        if status in _BUG_REPRO_PRE_ACCEPT_STATUSES:
+            continue
+        source_path = (intent.get("source") or {}).get("path", "")
+        if not source_path:
+            continue
+        try:
+            body = Path(source_path).read_text(encoding="utf-8")
+        except OSError:
+            continue
+        if _BUG_REPRO_SECTION_RE.search(body):
+            continue
+        if _BUG_WAIVER_SECTION_RE.search(body):
+            continue
+        out.append(Finding(
+            rule="T-BUG-REPRO-GATE",
+            artifact_id=intent.get("id", "<unknown>"),
+            severity="P3",
+            message=(
+                f"Bug Intent {intent.get('id')} is at status {status} but "
+                "carries neither a populated `### bug — Reproduction` section "
+                "nor a `### bug — Non-Reproducible Waiver` section. Run "
+                "`/diagnose` to build a deterministic repro before the fix "
+                "lands, or record a Non-Reproducible Waiver explaining why one "
+                "could not be constructed."
+            ),
+            fix_kind="semantic",
+        ))
+    return out
+
+
+# Statuses at which an IC's authoring is settled; the Options-Considered
+# forward-authoring discipline no longer applies (retroactively flagging
+# already-shipped LOCKED ICs would add advisory noise with no remediation
+# value). INT-171 (η / MSN-020).
+_IC_OPTIONS_TERMINAL_STATUSES = frozenset(
+    {"LOCKED", "MERGED", "SUPERSEDED", "DEPRECATED"}
+)
+
+# High-blast-radius heuristic thresholds (pinned at INT-171 --decompose). An IC
+# is high-blast-radius — and so obligated to record the design-twice comparison
+# — when it binds at least this many consumer parties OR declares at least this
+# many governing ADRs. Both are structured IR fields, so the heuristic is
+# deterministic. A future audit profile may dial these via `parameters:`.
+_IC_OPTIONS_MIN_CONSUMERS = 2
+_IC_OPTIONS_MIN_GOVERNING_ADRS = 2
+
+# Detects a populated `## Options Considered / Rejected Rationale` H2 section:
+# the heading followed by at least one non-blank content line that is not
+# itself an H2/H3 heading (an empty heading does not count as populated).
+_IC_OPTIONS_SECTION_RE = re.compile(
+    r"^##\s+Options\s+Considered\s*/\s*Rejected\s+Rationale\b[^\n]*\n"
+    r"(?:[ \t]*\n)*"          # optional blank lines
+    r"(?=[ \t]*\S)"          # then a non-blank line …
+    r"(?![ \t]*#{2,3}\s)",   # … that is not itself an H2/H3 heading
+    re.MULTILINE,
+)
+
+
+def _ic_is_high_blast_radius(ic) -> bool:
+    """An IC is high-blast-radius when it binds ``>= _IC_OPTIONS_MIN_CONSUMERS``
+    consumer parties OR declares ``>= _IC_OPTIONS_MIN_GOVERNING_ADRS`` governing
+    ADRs. INT-171 (η / MSN-020) pinned heuristic.
+    """
+    parties = ic.get("parties") or []
+    consumer_count = sum(
+        1
+        for p in parties
+        if str((p or {}).get("role") or "").lower() != "provider"
+    )
+    governing_adr_count = len(ic.get("governing_adrs") or [])
+    return (
+        consumer_count >= _IC_OPTIONS_MIN_CONSUMERS
+        or governing_adr_count >= _IC_OPTIONS_MIN_GOVERNING_ADRS
+    )
+
+
+def _t_ic_missing_options(graph) -> list[Finding]:
+    """T-IC-OPTIONS-MISSING (P3 advisory) — fires when a NON-TERMINAL,
+    HIGH-BLAST-RADIUS Interface Contract's body lacks a populated
+    ``## Options Considered / Rejected Rationale`` section.
+
+    High-blast-radius boundaries — those many parties bind to, where tests mock
+    at the seam (ADR-036) — are the ones whose first design is most expensive to
+    lock blindly. The write-ic Phase-2 design-twice pass (INT-171) competes three
+    designs and records the comparison in this section; this rule nudges authors
+    of high-stakes ICs toward populating it before the contract advances.
+
+    Silent when:
+      - the IC already carries a populated Options Considered section, or
+      - the IC is low-blast-radius (fewer than ``_IC_OPTIONS_MIN_CONSUMERS``
+        consumers AND fewer than ``_IC_OPTIONS_MIN_GOVERNING_ADRS`` governing
+        ADRs) — the single deep-module pass is sufficient at that stake, or
+      - the IC is at a terminal status (LOCKED / MERGED / SUPERSEDED /
+        DEPRECATED) — a forward-authoring discipline, not a retroactive lint on
+        already-shipped contracts.
+
+    P3-advisory + non-gating per ADR-018: it never blocks a build and stays out
+    of the P0/P1/P2 doctor gate. INT-171 (η / MSN-020), D16.
+    """
+    out: list[Finding] = []
+    for ic in graph.ics():
+        status = str(ic.get("status") or "").upper()
+        if status in _IC_OPTIONS_TERMINAL_STATUSES:
+            continue
+        if not _ic_is_high_blast_radius(ic):
+            continue
+        source_path = (ic.get("source") or {}).get("path", "")
+        if not source_path:
+            continue
+        try:
+            body = Path(source_path).read_text(encoding="utf-8")
+        except OSError:
+            continue
+        if _IC_OPTIONS_SECTION_RE.search(body):
+            continue
+        out.append(Finding(
+            rule="T-IC-OPTIONS-MISSING",
+            artifact_id=ic.get("id", "<unknown>"),
+            severity="P3",
+            message=(
+                f"High-blast-radius IC {ic.get('id')} (>= "
+                f"{_IC_OPTIONS_MIN_CONSUMERS} consumers or >= "
+                f"{_IC_OPTIONS_MIN_GOVERNING_ADRS} governing ADRs) has no "
+                "populated `## Options Considered / Rejected Rationale` "
+                "section. Record the write-ic Phase-2 design-twice comparison "
+                "(the competing designs and why the surviving one is deepest) "
+                "so the boundary is not locked on its first design."
             ),
             fix_kind="semantic",
         ))

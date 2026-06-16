@@ -3,7 +3,7 @@
 [← back to dispatcher](../SKILL.md)
 
 
-Skips the `--analyze` and `/write-beads` phases for **single-IU, single-component** Intents and hands the Intent itself directly to `/exec-coding-session` as the work unit. `--testpass` is **retained** — the diff-confinement gate is real and worth preserving even for single-IU work; only the bead ceremony is bypassed.
+Skips the `--analyze` and `/write-code-beads` phases for **single-IU, single-component** Intents and hands the Intent itself directly to `/exec-coding-session` as the work unit. `--testpass` is **retained** — the diff-confinement gate is real and worth preserving even for single-IU work; only the bead ceremony is bypassed.
 
 **Source.** INT-088 IU-2, bead `ds-49mc` (parent critique bead `ds-write-intent-lite-single-iu-path-k5cl`). The `--lite` discipline contract is documented inline (OI-C deferred — no ADR governs this bead beyond ADR-013).
 
@@ -51,13 +51,13 @@ python plugins/dekspec/skills/_lib/scripts/artifact_ops.py lite-mark <Intent-pat
 
 The helper is idempotent — re-running it on an already-marked Intent leaves the file byte-equivalent.
 
-### Step 3: Skip `--analyze` + `--decompose` + `/write-beads`
+### Step 3: Skip `--analyze` + `--decompose` + `/write-code-beads`
 
 These phases are intentionally NOT run on the Lite path:
 
 - **`--analyze` skipped** — single-IU is by definition not OVERSIZED; the analyze-time size-cap re-check is moot when caps are 1 by construction.
 - **`--decompose` skipped** — no IBs to author and no per-IU branching to perform when there is exactly one IU.
-- **`/write-beads` skipped** — the Intent file itself is the work unit. The Intent's `## Components affected` + `## Verification` + `## Desired Outcome` blocks supply the equivalent of a bead's Goal + Files + Acceptance Criteria.
+- **`/write-code-beads` skipped** — the Intent file itself is the work unit. The Intent's `## Components affected` + `## Verification` + `## Desired Outcome` blocks supply the equivalent of a bead's Goal + Files + Acceptance Criteria.
 
 ### Step 4: Status walk
 

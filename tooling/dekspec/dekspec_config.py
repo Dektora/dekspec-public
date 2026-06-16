@@ -24,7 +24,10 @@ Public API:
 - `set_key(repo_root, dotted_key, value)` — atomic per-key write +
   re-validate.
 
-Recognised dotted keys: `schema_version`, `methodology_profile`, `repo.scope`.
+Recognised dotted keys: `schema_version`, `methodology_profile`, `repo.scope`,
+and the setup-dekspec fields (INT-174) `issue_tracker`,
+`ephemeral_scratch_dir`, `glossary_path`, `triage_labels.hitl`,
+`triage_labels.afk`, `triage_labels.buckets`.
 """
 from __future__ import annotations
 
@@ -64,6 +67,14 @@ DEKSPEC_CONFIG_KEYS: tuple[str, ...] = (
     "schema_version",
     "methodology_profile",
     "repo.scope",
+    # setup-dekspec fields (INT-174). `set_key` auto-vivifies the nested
+    # `triage_labels` object, so the dotted sub-keys need no extra machinery.
+    "issue_tracker",
+    "ephemeral_scratch_dir",
+    "glossary_path",
+    "triage_labels.hitl",
+    "triage_labels.afk",
+    "triage_labels.buckets",
 )
 
 

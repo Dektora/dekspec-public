@@ -328,7 +328,7 @@ See [`_lib/lock_unlock.md`](../_lib/lock_unlock.md) §Unlock for the canonical 4
 - **status_after**: PROPOSED
 - **artifact_index_path**: `dekspec/working-spec-index.md`
 
-Downstream impact scan (run during Step 2 alongside the reason gate): check `dekspec/impl-briefs/` for IBs referencing this spec, then `.beads/beads.jsonl` for beads referencing those IBs; surface the impact list to the engineer before recording the reason. If any beads are `in_progress` or `closed`, surface an extra warning ("active or completed beads exist downstream; unlocking and changing this spec may invalidate completed work") before continuing. Cascade reminder to surface in Step 4: affected IBs need `/write-ibs --resync <affected IBs>` then `/write-ibs --accept <IBs>`, affected beads need `/write-beads <IB>`, and the spec must be re-locked via `/write-ws --lock <path>` when the substantive change settles.
+Downstream impact scan (run during Step 2 alongside the reason gate): check `dekspec/impl-briefs/` for IBs referencing this spec, then `.beads/beads.jsonl` for beads referencing those IBs; surface the impact list to the engineer before recording the reason. If any beads are `in_progress` or `closed`, surface an extra warning ("active or completed beads exist downstream; unlocking and changing this spec may invalidate completed work") before continuing. Cascade reminder to surface in Step 4: affected IBs need `/write-ibs --resync <affected IBs>` then `/write-ibs --accept <IBs>`, affected beads need `/write-code-beads <IB>`, and the spec must be re-locked via `/write-ws --lock <path>` when the substantive change settles.
 
 ## Input
 
@@ -497,7 +497,7 @@ If the path is not claimed by any pre-ACCEPTED Intent, the verb errors unless yo
 - Serialize role passes — each reads what the previous one added
 - The template (`dekspec/templates/working-spec-template.md`) must be completely filled out. Every section, every placeholder. If information is missing, ask the engineer before proceeding — do not guess or leave blanks.
 - **Working specs must be independent and self-contained.** A spec must stand alone — a coding agent reading only that spec and the ADRs/architecture elements it references must be able to implement the component correctly. Do NOT reference other working specs. If this spec's component has an interface with another component, describe the interface contract from THIS component's perspective (what it produces, what it consumes, what guarantees it requires). Do not say "see WS-NNN for details" — instead, state the contract directly. Working specs may reference ADRs and architecture elements, which are shared architectural context.
-- **Cascade awareness:** If this spec changes after Implementation Briefs exist, all affected IBs must be regenerated via `/write-ibs` and all affected beads recreated via `/write-beads`.
+- **Cascade awareness:** If this spec changes after Implementation Briefs exist, all affected IBs must be regenerated via `/write-ibs` and all affected beads recreated via `/write-code-beads`.
 
 ## Output
 

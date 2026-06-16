@@ -82,7 +82,7 @@ See [`_lib/fan_out.md`](../_lib/fan_out.md) for the canonical ds-di2 orchestrato
   5. Parent Architecture Element — if `$ARGUMENTS` names a `bounded_context` (e.g., `api-gateway`, `worker`), the matching AE under `dekspec/architecture-elements/`. For singleton SPs (`bounded_context` absent, typically SP-001), pass the root AE (`AE-001-dekspec.md` or project equivalent) for dataflow coverage validation. If no AE applies, pass the empty list and document the absence.
   6. Related artifacts from the spec graph (paths only): every existing SP under `dekspec/security-profiles/` (singleton-vs-multi-context consistency + OWASP coverage matrix alignment); `dekspec/constitution.md` Article 5 (Development Workflow — SAST/DAST/secret-store/supply-chain commitments to compile into typed-record arrays); `dekspec/domain-glossary.md` (L10 advisory).
   7. Engineer guidance — `$ARGUMENTS` verbatim, including structured cues (`bounded_context:`, `singleton`, notes path for `--revise`).
-  8. Constraints — schema closed-shape; loud-placeholder discipline (every `<engineer-fills-here>` replaced or the row deleted before `dekspec validate` passes); singleton-vs-multi-context gate (if SP-001 singleton exists, new SP MUST declare `bounded_context`); honest-empty typed-record arrays allowed (keep H2 + table header); `ir_schema_version: 0.1.0`; status walk legality (Create→PROPOSED; Accept: PROPOSED→ACCEPTED; Revise: any non-terminal, append Amendment Log entry).
+  8. Constraints — schema closed-shape; loud-placeholder discipline (every `<engineer-fills-here>` replaced or the row deleted before `--accept` — enforced by an explicit `grep '<engineer-fills-here>'` scan, NOT by `dekspec check validate`, which is schema-only); singleton-vs-multi-context gate (if SP-001 singleton exists, new SP MUST declare `bounded_context`); honest-empty typed-record arrays allowed (keep H2 + table header); `ir_schema_version: 0.1.0`; status walk legality (Create→PROPOSED; Accept: PROPOSED→ACCEPTED; Revise: any non-terminal, append Amendment Log entry).
 - **expected_output_path**: `dekspec/security-profiles/SP-NNN-<slug>.md` (Create — next free SP-NNN) or the input path (Accept / Revise — subagent edits in place).
 - **validation**: `dekspec check validate <output-path>`. Validation/surface contract: see [`_lib/validate_and_surface.md`](../_lib/validate_and_surface.md) — on non-zero exit, surface verbatim and stop, do not silently retry. Mode-specific post-checks: Create — SP file exists with `status: PROPOSED`, `ir_schema_version: 0.1.0`, index row added (if maintained); Accept — Status flipped PROPOSED→ACCEPTED + `lifecycle` Amendment Log entry; Revise — `substantive` or `editorial` Amendment Log entry summarizing changes.
 
@@ -130,7 +130,7 @@ See [`_lib/teaching_mode.md`](../_lib/teaching_mode.md) for the canonical 4-step
 
 - For **Bounded Context**, walk the engineer through the singleton-vs-multi-context decision before accepting input — a repo declares either a singleton SP-001 (bounded_context absent) or multiple per-bounded-context SPs.
 - For each typed-record array section (Allowed Dataflows, Secret Stores, etc.), explain the canonical record shape before prompting.
-- **Loud-placeholder discipline:** the template seeds every typed-record array with a `<engineer-fills-here>` placeholder row. Surface this discipline during the ritual — every placeholder must be replaced with real content or the row deleted before `dekspec validate` passes. On exit, flag any remaining placeholder rows as deferred sections that MUST be removed before `--accept`.
+- **Loud-placeholder discipline:** the template seeds every typed-record array with a `<engineer-fills-here>` placeholder row. Surface this discipline during the ritual — every placeholder must be replaced with real content or the row deleted before `--accept`. The gate is an explicit `grep '<engineer-fills-here>'` scan (Analyze Mode step 2), NOT `dekspec check validate` (which is schema-only and passes live placeholders). On exit, flag any remaining placeholder rows as deferred sections that MUST be removed before `--accept`.
 - The SP is written to disk at PROPOSED status (not DRAFT); the engineer audits with `--analyze` (the skill's substitute for `--audit`) before `--accept`.
 - **Supply-chain hygiene (ds-tygt):** when walking **Supply Chain**, surface the two operating rules that pair with the profile (they are operator discipline, not schema fields): (1) the **14-day new-package rule** — never lean on a dependency pinned to a version published < 14 days ago without explicit human approval; the `T-SUPPLY-CHAIN-NEW-DEPENDENCY` audit advisory (P3) flags this from an offline `.dekspec/package-publish-dates.json` cache when present; (2) the **breach-scan reflex** — when a breach trends for a package, scan local projects for that package/version and pin away before resuming. Both are documented in the template's Supply Chain section.
 
@@ -194,20 +194,31 @@ populate it). Set `status: PROPOSED`. Set `ir_schema_version: 0.1.0`.
 
 Run `dekspec check validate dekspec/security-profiles/SP-NNN-<slug>.md`. If
 validation fails, surface the schema error to the engineer and loop on
-Step 4. If validation passes, commit the SP at PROPOSED. Add a row to
-the SP index (if one exists; otherwise the index lives implicitly in
-the directory listing).
+Step 4. **Then run the placeholder gate explicitly** —
+`grep -n '<engineer-fills-here>' dekspec/security-profiles/SP-NNN-<slug>.md` —
+because `dekspec check validate` is schema-only and does **not** catch live
+placeholders; if any row matches, loop on Step 4 until every placeholder is
+replaced or its row deleted. If validation passes AND the placeholder scan is
+clean, commit the SP at PROPOSED. Add a row to the SP index (if one exists;
+otherwise the index lives implicitly in the directory listing).
 
 ## Analyze Mode
 
 Read-only health check. Runs the same schema-validation predicate that
 `--accept` would run, but mutates nothing.
 
-### Steps
+### Steps (Analyze)
 
 1. Read the SP. Run `parse_security_profile(path)`; surface any
    schema-validation error verbatim.
-2. Walk the typed-record arrays. Surface empty arrays as
+2. **Placeholder scan (the loud-placeholder gate — NOT enforced by `dekspec check validate`).**
+   `dekspec check validate` is schema/structural only; it does **not** scan cell
+   contents, so a live `<engineer-fills-here>` row passes validation silently.
+   Run an explicit scan: `grep -n '<engineer-fills-here>' <SP-path>`. If any row
+   matches, surface each as a **blocking** finding ("unfilled placeholder at
+   line N — replace with a real typed record or delete the row before
+   `--accept`"). This scan is the skill's own enforcement of the discipline.
+3. Walk the typed-record arrays. Surface empty arrays as
    informational (`allowed_dataflows: [] — engineer asserts no
    allowed dataflows; sibling WS-020 T-SEC-ALLOWED-DATAFLOWS-COMPLETE
    may flag this`).
@@ -411,7 +422,7 @@ If the path is not claimed by any pre-ACCEPTED Intent, the verb errors unless yo
 ## Common Pitfalls
 
 - Don't author a second SP without a `bounded_context` when SP-001 singleton already exists — run `scripts/singleton_gate.py` first and refuse until the engineer names a context; two `bounded_context`-absent SPs is an unresolvable cardinality conflict.
-- Don't leave `<engineer-fills-here>` placeholder rows in the file — either replace them with real typed records or delete the row entirely (keeping the H2 + table header), because `dekspec check validate` fails on a live placeholder.
+- Don't leave `<engineer-fills-here>` placeholder rows in the file — either replace them with real typed records or delete the row entirely (keeping the H2 + table header). Note: `dekspec check validate` is schema-only and does **not** catch live placeholders — enforce the gate with an explicit `grep -n '<engineer-fills-here>' <SP-path>` scan in Analyze + before `--accept`.
 - Don't delete a whole typed-record section to represent "no commitments" — ship the array honest-empty (keep H2 + header) so the section still documents what could populate it; an absent section is not the same as an asserted-empty one.
 - Don't unlock an SP to `PROPOSED` — SPs are the documented variance and unlock to `ACCEPTED` (one edit away from re-lock); routing through `lock_unlock.md`'s default would corrupt the status walk.
 - Don't combine `--lock` with `--provisional` — provisional artifacts lack the linkage-walker visibility LOCKED requires; route to LOCKED only through the hand-promote workflow.
@@ -420,7 +431,7 @@ If the path is not claimed by any pre-ACCEPTED Intent, the verb errors unless yo
 ## Verification Checklist
 
 - [ ] Singleton-vs-multi-context gate ran (`scripts/singleton_gate.py`) and the SP's `bounded_context` presence matches its verdict.
-- [ ] `dekspec check validate <SP-path>` exits 0 — no live `<engineer-fills-here>` placeholder rows remain.
+- [ ] `dekspec check validate <SP-path>` exits 0, AND the explicit placeholder scan (`grep -n '<engineer-fills-here>' <SP-path>`) is empty — validate is schema-only and does not catch placeholders, so the grep is the real gate.
 - [ ] Every typed-record array is either populated or honest-empty (H2 + table header retained, no whole section deleted).
 - [ ] `status` and `ir_schema_version: 0.1.0` reflect the mode run (Create → PROPOSED; Accept → ACCEPTED; Lock → LOCKED; Unlock → ACCEPTED; Supersede → source SUPERSEDED + successor PROPOSED).
 - [ ] An Amendment Log entry was appended for every status-changing mode, using the correct lowercase lifecycle type (`lifecycle` / `lock` / `unlock` / `substantive` / `editorial`).

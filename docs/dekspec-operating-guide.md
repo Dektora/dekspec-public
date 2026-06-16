@@ -84,7 +84,7 @@ When the mantra changes (rare; treated as a Constitution amendment), the table i
   → /write-ibs    spec → one or more Implementation Briefs
                                     ─────────────────────────────────
                                     Layer 4 — Construction
-  → /write-beads                   one IB → one or more beads + fidelity audit
+  → /write-code-beads                   one IB → one or more beads + fidelity audit
   → /write-evals                    (before coding — beads with model output only)
   → /write-tests                    (before coding — TDD stubs from acceptance criteria)
   → /dekspec:review-ib              PRE-impl gate (REVIEW_IB): spec packet + bead decomposition → GO / NO-GO
@@ -103,7 +103,7 @@ Each step is a registered Claude Code skill in `.claude/skills/`. Invoke by name
 1. **Frame & commit (the driver)** — `/write-mission` if the work plausibly spans >1 Intent; `/write-intent` the committed direction. Every Intent ≥ ACCEPTED ships an `outcome_verification`: one user-observable proof under strong-TDD timing (test red first → impl greens it → no other test files touched; ADR-029).
 2. **Architecture inputs (on demand)** — `/write-ae` the architecture slice and `/write-adr` any undocumented decision *only if new*; the Intent links ≥1 Source AE (L5), so these are usually referenced/extended, not authored fresh each time.
 3. **Decompose (derivative)** — `/write-intent --decompose` fans the Intent into Working Specs + Implementation Briefs; `/write-ws` carries behavior contracts (role passes + critic), `/write-ibs` produces the IBs, `/write-ic` pins any cross-component boundary surfaced. Code-bearing IBs must declare `## Reuse Inventory` ("use X, don't reimplement"); `dekspec check lint-ib` enforces it.
-4. **Pre-build (derivative, per IB)** — `/write-beads` (one IB → beads + fidelity audit); `/write-evals` (model-output beads); `/write-tests` (TDD stubs from acceptance criteria).
+4. **Pre-build (derivative, per IB)** — `/write-code-beads` (one IB → beads + fidelity audit); `/write-evals` (model-output beads); `/write-tests` (TDD stubs from acceptance criteria).
 5. **Pre-implementation review** — at `REVIEW_IB` (post-ACCEPTED, pre-IMPLEMENTING): `/dekspec:review-ib <IB-ID>` — an Opus-tier orchestrator skill — fans 13 fresh-context adversarial lenses over the spec packet + bead decomposition (math-olympiad shell), a blind aggregator scores them, any single lens ≥80 confidence vetoes. Verdict **GO / NO-GO / INSUFFICIENT_EVIDENCE**; includes the outcome-tdd lens (git-blame: did the outcome test land red first?). Auto-fires on the `REVIEW_IB` transition (INT-108 handler) or invoked manually. No code yet → no fix-loop.
 6. **Implement** — `/exec-coding-session` packages the Intent/IB and fans the ready bead set into parallel isolated worktrees; lands an IB-aggregate PR with green CI.
 7. **Post-implementation review** — at `REVIEW_PR` (beads CLOSED, CI green, PR open): `/dekspec:review-pr <PR-#>` reviews the diff against the IB it claims to implement via the same shell. Verdict **MERGE / NO-MERGE / INSUFFICIENT_EVIDENCE**. Oversized diff → split into one reviewable IB-aggregate per concern, don't review.
@@ -389,7 +389,7 @@ The `/write-intent` skill owns the full Intent lifecycle. Phase 1 flags (all imp
 - **(no flag)** — Creation Mode. Author a new Intent from the engineer's description; enforce serialization; create the int/ branch; populate Autonomy + Verification from the type defaults.
 - **`--analyze`** — Top-down coverage check, bottom-up archaeology (delegates to `/dekspec:archeology --scan` plus the optional 5-phase deeper-investigation mental model in Scan Mode), 5 hard size caps, type-specific field validation, WS-fan-in per IU, drift checks (audit-v2 D19 / D20), Mission Autonomy ceiling validation. Promotes DRAFT → PROPOSED on clean run, DRAFT → OVERSIZED on cap exceedance.
 - **`--accept`** — Engineer-only gate; PROPOSED → ACCEPTED.
-- **`--decompose`** — Scaffold IBs (multi-WS IUs, via `/write-ibs`) and direct beads (single-WS IUs, via `/write-beads`); for `type: bug`, scaffold the failing-test bead as IB-1 via `/write-beads --bug-reproduction`. ACCEPTED → IMPLEMENTING.
+- **`--decompose`** — Scaffold IBs (multi-WS IUs, via `/write-ibs`) and direct beads (single-WS IUs, via `/write-code-beads`); for `type: bug`, scaffold the failing-test bead as IB-1 via `/write-code-beads --bug-reproduction`. ACCEPTED → IMPLEMENTING.
 - **`--testpass`** — Diff confinement + Verification predicate evaluation; IMPLEMENTING → TESTPASS on clean, or Status stays IMPLEMENTING on failure (TESTFAIL record appended to the captured-failure log; the `TESTFAIL` Status flip retired 2026-05-25).
 - **`--lock`** — Post-merge from `main`; MERGED → LOCKED; archive in `intent-index.md`; append to Mission Intent queue if applicable.
 
@@ -809,7 +809,7 @@ Layer 2 change (spec revised)
     via /write-ibs
   → Delete all open beads for affected IBs
     (br delete BEAD-NNN — IB change is a start-over)
-  → Re-run /write-beads
+  → Re-run /write-code-beads
     (fidelity audit runs automatically — no separate step)
   → Proceed to /exec-coding-session
 
@@ -827,7 +827,7 @@ Only open beads can be deleted. If any bead is `in_progress` or `closed`, coding
 |---------|---------------------------|-----------|
 | Layer 1 change (ADR / Architecture Element revised) | manual (engineer-driven); review propagates through `/write-ws --audit` and `/write-ic --audit` on downstream artifacts | `dekspec-operating-guide.md` §Changing Artifacts After Downstream Work Exists |
 | Layer 2 change (Working Spec revised, IBs already exist) | `/write-ibs --resync` | `.claude/skills/write-ibs/SKILL.md` §Resync Mode |
-| Layer 3 change (IB revised, beads already exist) | `/write-beads --rebuild` | `.claude/skills/write-beads/SKILL.md` §Rebuild Mode |
+| Layer 3 change (IB revised, beads already exist) | `/write-code-beads --rebuild` | `.claude/skills/write-code-beads/SKILL.md` §Rebuild Mode |
 | Interface Contract unlocked | `/write-ic --unlock` then downstream impact check | `.claude/skills/write-ic/SKILL.md` |
 | ADR superseded | `/write-adr` (supersession fields) + manual cascade into dependent specs | `.claude/skills/write-adr/SKILL.md` |
 
@@ -867,11 +867,11 @@ Beads are Layer 4 — Construction. Crossing from Layer 3 (Implementation Briefs
 
 A bead is the atomic work unit for a coding agent. One bead = one session = one commit-cluster on the IB branch; the IB itself is the unit that opens a PR to main (ADR-025).
 
-Beads come from Implementation Briefs via `/write-beads`. **The goal is simple: the bead must contain everything a competent coding agent needs to do its job nearly perfectly — without reading any other document, asking any clarifying question, or making any domain assumption.** Domain expertise lives in the bead. The coding agent is fungible because the bead is complete.
+Beads come from Implementation Briefs via `/write-code-beads`. **The goal is simple: the bead must contain everything a competent coding agent needs to do its job nearly perfectly — without reading any other document, asking any clarifying question, or making any domain assumption.** Domain expertise lives in the bead. The coding agent is fungible because the bead is complete.
 
 ### Bead Format
 
-Beads are created via the `br` CLI using `/write-beads`. The canonical bead format uses structured markdown across three `br update` fields (`--description`, `--design`, `--acceptance-criteria`). See `.claude/skills/write-beads/SKILL.md` for the full field mapping and creation sequence.
+Beads are created via the `br` CLI using `/write-code-beads`. The canonical bead format uses structured markdown across three `br update` fields (`--description`, `--design`, `--acceptance-criteria`). See `.claude/skills/write-code-beads/SKILL.md` for the full field mapping and creation sequence.
 
 **Summary of bead structure:**
 - **`--description`**: Goal, Files, Constraints and Decisions, Domain Constraints, Escalation
@@ -892,7 +892,7 @@ br land-plane                          # end-of-session cleanup
 
 ### Bead Fidelity Audit
 
-The fidelity audit runs automatically as the final step of `/write-beads`
+The fidelity audit runs automatically as the final step of `/write-code-beads`
 before any bead is written to the queue. It cannot be skipped. All beads
 from a run are audited together — failures across all beads are reported
 before any corrections are made, so the engineer can batch the fixes.
@@ -901,10 +901,10 @@ The audit verifies description verbatim, domain constraints complete,
 ADRs listed, evals matched, acceptance complete, files correct, interface
 contracts listed.
 
-Bead fidelity auditing is available via `/write-beads --audit <BEAD-NNN|"all">`.
-See `.claude/skills/write-beads/SKILL.md` for the full audit checklist.
+Bead fidelity auditing is available via `/write-code-beads --audit <BEAD-NNN|"all">`.
+See `.claude/skills/write-code-beads/SKILL.md` for the full audit checklist.
 
-**Re-running `/write-beads` after an IB fix:**
+**Re-running `/write-code-beads` after an IB fix:**
 
 An IB change is a start-over. Delete all beads for this IB and recreate
 from scratch — the new IB may produce a different count, scope, or
@@ -913,7 +913,7 @@ dependency structure. Do not attempt to preserve or patch existing beads.
 ```bash
 br delete BEAD-NNN BEAD-NNN    # delete ALL beads for this IB
 br sync
-# Fix the IB, then re-run /write-beads
+# Fix the IB, then re-run /write-code-beads
 ```
 
 **If any bead is `in_progress` or `closed`:** this is a process violation.
@@ -1013,7 +1013,7 @@ The orchestrator runs `br ready --json` to find unblocked beads, then for each c
 
 Before dispatch, the orchestrator verifies dependency merges are present — if a bead depends on another bead from the same session, that worktree branch is merged first. Then all independent beads are launched as sub-agents in a **single message**, each with `isolation: "worktree"`.
 
-Each sub-agent receives the full bead JSON, eval files, pre-written test files, and checklists. The sub-agent does NOT read the IB, ADRs, interface contracts, or the Working Spec — all relevant decisions were reconciled into the bead's Constraints and Decisions at generation time by `/write-beads`. The bead is the sole authority during construction; the IB is upstream source material that has already been distilled into the bead.
+Each sub-agent receives the full bead JSON, eval files, pre-written test files, and checklists. The sub-agent does NOT read the IB, ADRs, interface contracts, or the Working Spec — all relevant decisions were reconciled into the bead's Constraints and Decisions at generation time by `/write-code-beads`. The bead is the sole authority during construction; the IB is upstream source material that has already been distilled into the bead.
 
 **Sub-agent workflow:**
 
@@ -1401,9 +1401,9 @@ Provisional artifacts live under `dekspec/provisional/<incubation-slug>/`. When 
 
 *The engineer invokes `/write-ibs`. The Planning Agent reads the spec and ADR-001, then produces two Implementation Briefs. IB-1 implements the binary serialization library and the core round-trip logic. IB-2 integrates it at each call site — one per service process. IB-1 is foundational; IB-2 depends on it technically. No production gate is needed between them — this is a pure technical dependency, and the round-trip fidelity evals cover the correctness concern. The engineer reviews both IBs, confirms the domain constraints are complete (tensor dtype explicit, CUDA device stated, precision threshold carried from the spec), and approves.*
 
-### */write-beads*
+### */write-code-beads*
 
-*The engineer invokes `/write-beads` for each IB. IB-1 produces BEAD-001 and BEAD-002 — one for the serialization core, one for the deserialization and reconstruction logic. IB-2 produces BEAD-003 and BEAD-004 — one per call site integration. BEAD-003 and BEAD-004 both carry `depends_on: ["BEAD-002"]` and can run in parallel once BEAD-002 closes. The fidelity audit runs automatically — all four beads pass. The Eval Agent is not invoked here because IPC serialization round-trip fidelity is deterministic — the coding agent will write those tests during the session.*
+*The engineer invokes `/write-code-beads` for each IB. IB-1 produces BEAD-001 and BEAD-002 — one for the serialization core, one for the deserialization and reconstruction logic. IB-2 produces BEAD-003 and BEAD-004 — one per call site integration. BEAD-003 and BEAD-004 both carry `depends_on: ["BEAD-002"]` and can run in parallel once BEAD-002 closes. The fidelity audit runs automatically — all four beads pass. The Eval Agent is not invoked here because IPC serialization round-trip fidelity is deterministic — the coding agent will write those tests during the session.*
 
 ### */exec-coding-session*
 

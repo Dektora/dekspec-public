@@ -79,3 +79,53 @@ properties:
       mirror or a re-hosted index.
     type: string
     minLength: 1
+
+  # --- setup-dekspec fields (INT-174) ------------------------------------- #
+  # All four are OPTIONAL (absent from `required`) so configs written before
+  # INT-174 still validate under `additionalProperties: false` (ADR-006).
+  # Front-ended by the `setup-dekspec` skill via `dekspec config get/set`.
+
+  issue_tracker:
+    description: >-
+      Which issue tracker this repo uses, consumed by the bead/issue-authoring
+      flows. `br` — the in-repo beads-rust tracker; `github` / `gitlab` — the
+      remote forge issue tracker; `local` — a local/offline tracker.
+    enum: [br, github, gitlab, local]
+
+  ephemeral_scratch_dir:
+    description: >-
+      Where ephemeral skill output (interview logs, hand-off notes) lands,
+      relative to the repo root. Defaults to `dekspec/.scratch/` (the
+      gitignored disposable hand-off zone landed by INT-165).
+    type: string
+    minLength: 1
+
+  glossary_path:
+    description: >-
+      Path (relative to the repo root) to the domain glossary the authoring
+      and interview skills cite. Defaults to `dekspec/domain-glossary.md`.
+    type: string
+    minLength: 1
+
+  triage_labels:
+    description: >-
+      The triage-label vocabulary the issue/bead-authoring flows consume.
+      `hitl` / `afk` name the human-in-the-loop vs autonomous labels; `buckets`
+      is the ordered list of triage-bucket labels.
+    type: object
+    additionalProperties: false
+    properties:
+      hitl:
+        description: 'Label marking an item that needs a human in the loop.'
+        type: string
+        minLength: 1
+      afk:
+        description: 'Label marking an item safe to run autonomously (away-from-keyboard).'
+        type: string
+        minLength: 1
+      buckets:
+        description: 'Ordered list of triage-bucket label names.'
+        type: array
+        items:
+          type: string
+          minLength: 1

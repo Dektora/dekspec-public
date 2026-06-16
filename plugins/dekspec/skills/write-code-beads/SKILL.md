@@ -1,5 +1,5 @@
 ---
-name: write-beads
+name: write-code-beads
 description: Convert an Implementation Brief into beads (atomic work units). Use after an IB has been finalized and approved.
 mode: lite
 model: claude-opus-4-7
@@ -21,7 +21,7 @@ Convert an Implementation Brief into beads.
 ## Starter Prompt
 
 ```prompt
-/dekspec:write-beads dekspec/impl-briefs/IB-014-graph-injection-brief.md
+/dekspec:write-code-beads dekspec/impl-briefs/IB-014-graph-injection-brief.md
 
 This IB was just accepted via /write-ibs --accept. Decompose it into open beads
 (one bead = one session = one PR), run the fidelity audit, wire up the blocks
@@ -37,7 +37,7 @@ Parse `$ARGUMENTS` for flags. If `--help` is present, skip to **Help Mode**. If 
 See [`_lib/help_mode_template.md`](../_lib/help_mode_template.md) for the canonical Help rendering contract. Manifest for this skill:
 
 ```yaml
-skill_name: "/write-beads"
+skill_name: "/write-code-beads"
 one_line:   "Create, audit, or rebuild beads from Implementation Briefs"
 modes:
   - { flag: "", args: "<IB-path>", description: "Create beads from an approved IB. Runs fidelity audit automatically before writing beads." }
@@ -45,18 +45,18 @@ modes:
   - { flag: "--rebuild", args: "<IB-path>", description: "Delete all open beads for this IB and re-create them from scratch. Guards against in_progress or closed beads — those require engineer decision." }
   - { flag: "--help", args: "", description: "Show this help message." }
 examples:
-  - "/write-beads dekspec/impl-briefs/IB-001-component-brief.md"
-  - "/write-beads --audit BEAD-42"
-  - "/write-beads --audit all"
-  - "/write-beads --rebuild dekspec/impl-briefs/IB-001-component-brief.md"
-  - "/write-beads --help"
+  - "/write-code-beads dekspec/impl-briefs/IB-001-component-brief.md"
+  - "/write-code-beads --audit BEAD-42"
+  - "/write-code-beads --audit all"
+  - "/write-code-beads --rebuild dekspec/impl-briefs/IB-001-component-brief.md"
+  - "/write-code-beads --help"
 extra_sections:
   - heading: "WORKFLOW"
     body:
       - "1. Accept IB:     /write-ibs --accept <IB>"
-      - "2. Create beads:  /write-beads <IB>"
-      - "3. Audit beads:   /write-beads --audit <bead-id>  (after IB changes or spot checks)"
-      - "4. Rebuild beads: /write-beads --rebuild <IB>     (after IB resync or revision)"
+      - "2. Create beads:  /write-code-beads <IB>"
+      - "3. Audit beads:   /write-code-beads --audit <bead-id>  (after IB changes or spot checks)"
+      - "4. Rebuild beads: /write-code-beads --rebuild <IB>     (after IB resync or revision)"
       - "5. Code:          /exec-coding-session"
 ```
 
@@ -90,7 +90,7 @@ For each bead, verify:
 - [ ] **Goal is single sentence** — states the observable outcome, not a summary of the IB
 - [ ] **Out of Scope populated** — at least one boundary listed in `--design`
 - [ ] **Do Not Touch populated** — populated or explicitly states "None — [reason]"
-- [ ] **External ref set** — `external_ref` matches the IB path
+- [ ] **External ref set** — `external_ref` resolves to the IB (bare path for a lone bead; `IB-NNN:<unit-slug>` for each bead of a multi-bead set, so siblings don't collide)
 
 ### Output
 
@@ -151,7 +151,7 @@ If no path is provided, list all `.md` files in `dekspec/impl-briefs/` and ask t
 
 Before proceeding:
 
-- Run `scripts/ib_status_check.py <IB path>` — it returns JSON `{status, path_kind, path}`. Surface stderr on non-zero exit. If `status` is not `ACCEPTED` — STOP. Do not proceed. Tell the engineer: "This IB has not been accepted. Run `/write-ibs --accept <path>` before running /write-beads."
+- Run `scripts/ib_status_check.py <IB path>` — it returns JSON `{status, path_kind, path}`. Surface stderr on non-zero exit. If `status` is not `ACCEPTED` — STOP. Do not proceed. Tell the engineer: "This IB has not been accepted. Run `/write-ibs --accept <path>` before running /write-code-beads."
 - If `path_kind` is `active` — warn: "This IB is currently in an active coding session. Continue or abort?"
 - If `path_kind` is `completed` — warn: "This IB has already been completed. Creating new beads for it is unusual. Continue or abort?"
 - Run `scripts/find_beads_for_ib.py <IB path>` — it returns JSON `{ib, by_status, total, source}`. Surface stderr on non-zero exit. If `by_status.open` is non-empty — warn: "Open beads already exist for this IB. Continuing will create duplicates. Continue or abort?"
@@ -183,8 +183,17 @@ Beads are created using `br` CLI commands, NOT by writing raw JSONL. The bead co
 | Priority     | `--priority`     | `P0` through `P3`                       |
 | Status       | `--status`       | `open`                                  |
 | Domain tags  | `--labels`       | Comma-separated: `injection,cuda,graph` |
-| IB reference | `--external-ref` | `IB-NNN-[component]-brief.md`           |
+| IB reference | `--external-ref` | `IB-NNN-[component]-brief.md` (one bead) · `IB-NNN:<unit-slug>` (multi-bead) |
 | Type         | `--type`         | `task`                                  |
+
+> **One IB → many beads: disambiguate the `external_ref`.** `br` rejects a
+> `--external-ref` value it has already seen, so a literal IB path collides on the
+> *second* bead of a multi-bead decomposition (`br create` fails). Give each
+> sibling bead a unique ref with the `:<unit-slug>` qualifier — `IB-027:schema`,
+> `IB-027:parser`, `IB-027:cli` — never a bare repeated `IB-027-…-brief.md`. The
+> qualifier is cosmetic to grouping: `find_beads_for_ib.py` matches on the
+> `IB-NNN` token and ignores the `:slice`, so all three still resolve to IB-027.
+> A single-bead IB can use the bare path; only multi-bead sets need the suffix.
 
 
 `**br update` fields (structured markdown):**
@@ -295,7 +304,7 @@ For each bead, assemble a JSON bead spec and pass it to the script:
   "type": "task",
   "status": "open",
   "labels": ["injection", "cuda"],
-  "external_ref": "IB-NNN-[component]-brief.md",
+  "external_ref": "IB-NNN-[component]-brief.md",   // multi-bead set: use "IB-NNN:<unit-slug>" so siblings don't collide
   "description": "## Goal\n...\n\n## Files\n...\n\n## Constraints and Decisions\n...\n\n## Domain Constraints\n...\n\n## Escalation\n...",
   "design": "## Do Not Touch\n...\n\n## Out of Scope\n...\n\n## Governing ADRs\n...\n\n## Interface Contracts\n...",
   "acceptance_criteria": "## Acceptance Criteria\n...\n\n## Evals\n...",
@@ -322,7 +331,7 @@ Runs before any bead is written to the queue:
 - [ ] Acceptance criteria include verification type for each item
 - [ ] Acceptance criteria are complete (match IB's Done When checklist)
 - [ ] Files listed in `--description` are correct (exist in repo, match IB)
-- [ ] `--external-ref` is set to the IB path
+- [ ] `--external-ref` is set to the IB (bare path for a lone bead; `IB-NNN:<unit-slug>` per bead for a multi-bead set)
 
 Report all failures across all beads before corrections. Engineer batches fixes.
 
@@ -335,7 +344,7 @@ An IB change is a start-over:
 ```bash
 br delete BEAD-ID BEAD-ID    # delete ALL beads for this IB
 br sync
-# Fix the IB, then re-run /write-beads
+# Fix the IB, then re-run /write-code-beads
 ```
 
 ### Output
@@ -358,5 +367,5 @@ Beads created in `br` database and synced to `.beads/beads.jsonl` via `br sync`.
 - [ ] `find_beads_for_ib.py` was run and showed no `in_progress`/`closed` beads (otherwise the run was STOPPED and escalated).
 - [ ] The full Fidelity Audit checklist ran and every item passed before any bead was emitted.
 - [ ] Each bead is single-PR scoped with a one-sentence Goal, and all fields are populated from the IB (no placeholders, no external-file substitutes).
-- [ ] Every bead's `--external-ref` is set to the IB path.
+- [ ] Every bead's `--external-ref` resolves to the IB — bare path for a lone bead, `IB-NNN:<unit-slug>` per bead for a multi-bead set (siblings must not share an identical ref or `br create` rejects the duplicate).
 - [ ] Beads were created via `scripts/emit_bead.py`, dependencies wired with `br dep add`, and `br sync` was run.

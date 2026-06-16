@@ -9,7 +9,7 @@
 
 A spec-driven-development framework for AI-augmented engineering. Turns the markdown artifacts your team already writes — ADRs, Architecture Elements, Working Specs, Interface Contracts, Implementation Briefs, Intents, Missions, Domain Glossary, System Vision — into a typed, validated **spec graph** that compiles into enforcement artifacts (contract tests, CI gates, AGENTS.md context).
 
-DekSpec is shipped as a Python library + CLI + Claude Code skills + markdown templates, vendored into consumer repos via a single install script. The current version is **v0.115.0**.
+DekSpec is shipped as a Python library + CLI + Claude Code skills + markdown templates, vendored into consumer repos via a single install script. The current version is **v0.116.0**.
 
 ## What's here
 
@@ -17,7 +17,7 @@ DekSpec is shipped as a Python library + CLI + Claude Code skills + markdown tem
 |------|----------|
 | `tooling/dekspec/` | Python package: Constraint Compiler (parsers + 9 IR schemas + emitters), fidelity audit (~30 audit rules), persistence layer (SQLite-indexed run history), and the `dekspec` CLI. |
 | `tooling/dekspec/schemas/` | JSON Schema Draft 2020-12 definitions (YAML) for each artifact type. Shipped as package data; loadable via `importlib.resources`. |
-| `plugins/dekspec/skills/` | Claude Code skills (authoring + orchestration): `/write-ae`, `/write-adr`, `/write-ws`, `/write-ic`, `/write-ibs`, `/write-intent`, `/write-mission`, `/write-sv`, `/write-ggc`, `/write-sp`, `/write-evals`, `/write-tests`, `/write-beads`, `/exec-coding-session`, `/archeology`, `/brownfield-ingest`, `/orchestrate-intent`, `/using-dekspec`. Ship through the Claude Code plugin marketplace at `Dektora/dekspec`. |
+| `plugins/dekspec/skills/` | Claude Code skills (authoring + orchestration): `/write-ae`, `/write-adr`, `/write-ws`, `/write-ic`, `/write-ibs`, `/write-intent`, `/write-mission`, `/write-sv`, `/write-ggc`, `/write-sp`, `/write-evals`, `/write-tests`, `/write-code-beads`, `/exec-coding-session`, `/archeology`, `/brownfield-ingest`, `/orchestrate-intent`, `/using-dekspec`. Ship through the Claude Code plugin marketplace at `Dektora/dekspec`. |
 | `plugins/dekspec/commands/` | Slash-command wrappers + CLI mirrors: `/doctor`, `/compile`, `/validate-artifact`, `/migrate`, `/upgrade`, `/graph-export` (CLI verb mirrors); plus Skill-wrapper pairs for `/archeology`, `/brownfield-ingest`, `/exec-coding-session`, `/orchestrate-intent`, `/using-dekspec`. |
 | `templates/` | Artifact templates (ADR, AE, WS, IC, IB, Intent, Mission, Vision Note, plus a checklists subdirectory). |
 | `docs/` | Methodology docs: `dekspec-operating-guide.md`, `dekspec-quick-reference.md`, `architecture-frameworks-reference.md`, plus the framework's own `architecture.md`. |
@@ -182,12 +182,12 @@ Both halves land at the same version. Re-run to upgrade. Drift between the two i
 
 CLI only via pipx (isolated venv):
 ```bash
-pipx install "git+https://github.com/Dektora/dekspec-public.git@v0.115.0"
+pipx install "git+https://github.com/Dektora/dekspec-public.git@v0.116.0"
 ```
 
 CLI only into a project venv:
 ```bash
-pip install "git+https://github.com/Dektora/dekspec-public.git@v0.115.0"
+pip install "git+https://github.com/Dektora/dekspec-public.git@v0.116.0"
 ```
 
 Plugin only (in a Claude Code session OR via the `claude` CLI):
@@ -337,7 +337,7 @@ CI runs `pytest -q` + `ruff check` on Python 3.11 / 3.12 / 3.13 via GitHub Actio
 
 ## Status
 
-**v0.115.0** is the current release. The Constraint Compiler PoC (v0.2) has matured into a 9-IR framework with ~30 audit rules, 11 CLI subcommands, a public Python API at `dekspec.api`, an execution-attempt lifecycle DB (`dekspec.lifecycle`) that DekFactory (or any executor) writes to, and end-to-end test coverage. See [`CHANGELOG.md`](CHANGELOG.md) for the per-version detail.
+**v0.116.0** is the current release. The Constraint Compiler PoC (v0.2) has matured into a 9-IR framework with ~30 audit rules, 11 CLI subcommands, a public Python API at `dekspec.api`, an execution-attempt lifecycle DB (`dekspec.lifecycle`) that DekFactory (or any executor) writes to, and end-to-end test coverage. See [`CHANGELOG.md`](CHANGELOG.md) for the per-version detail.
 
 Open follow-ons:
 - Mission rigor calibration after lived MSN execution data (`ds-zuy`).

@@ -45,8 +45,8 @@ Before the Status transition, determine whether this Intent requires bead decomp
 
 1. **(WS/IBs exist) Read the `beads_before_accept` field** from the Intent's front-matter (parsed IR). The field defaults to `true` for new Intents authored after this gate shipped.
 2. **If `beads_before_accept: true`** (the default):
-   - Invoke `/write-beads` with the Intent path as the argument. This decomposes the Intent's Implementation Briefs into atomic bead work-units before the ACCEPTED transition, ensuring the decomposition is reviewed as part of the accept decision.
-   - If `/write-beads` surfaces errors or the engineer declines the decomposition, STOP — the Intent stays at `PROPOSED` and no transition occurs.
+   - Invoke `/write-code-beads` with the Intent path as the argument. This decomposes the Intent's Implementation Briefs into atomic bead work-units before the ACCEPTED transition, ensuring the decomposition is reviewed as part of the accept decision.
+   - If `/write-code-beads` surfaces errors or the engineer declines the decomposition, STOP — the Intent stays at `PROPOSED` and no transition occurs.
 3. **If `beads_before_accept: false`** (grandfathered Intents):
    - Skip bead authoring with the note: *"Grandfathered Intent — beads authored post-accept per legacy order."*
    - Proceed directly to Step 5.
@@ -55,6 +55,6 @@ Before the Status transition, determine whether this Intent requires bead decomp
 
 1. Flip Status to `ACCEPTED`, bump Modified, and append the Amendment Log row — run `python ../_lib/scripts/artifact_ops.py transition <Intent-path> --from PROPOSED --to ACCEPTED --note "Promoted PROPOSED to ACCEPTED via /write-intent --accept" --engineer <engineer-or-agent>` (surface stderr on non-zero exit and STOP).
 2. Update `dekspec/intent-index.md` — run `python ../_lib/scripts/artifact_ops.py update-index dekspec/intent-index.md --id INT-NNN --status ACCEPTED` (surface stderr on non-zero exit). Or run `dekspec library regen-indexes` for the full deterministic refresh (MSN-015 path).
-3. Surface the next-step message: ACCEPTED Intents become IMPLEMENTING via `--decompose`, which scaffolds the IBs/beads. For a `type: bug` Intent the first bead is the failing reproduction test — which is the Intent's ADR-029 Outcome Verification test (red-first), produced through the normal `/write-beads` flow (there is no separate `--bug-reproduction` mode).
+3. Surface the next-step message: ACCEPTED Intents become IMPLEMENTING via `--decompose`, which scaffolds the IBs/beads. For a `type: bug` Intent the first bead is the failing reproduction test — which is the Intent's ADR-029 Outcome Verification test (red-first), produced through the normal `/write-code-beads` flow (there is no separate `--bug-reproduction` mode).
 
 **End of Accept Mode.**

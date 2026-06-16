@@ -45,6 +45,11 @@ def main() -> int:
     if os.environ.get("DEKSPEC_HOOK_DISABLE") == "1":
         return 0
 
+    # Rotation-handoff resume (INT-176 / κ): surface the most recent
+    # DekSpec-authored handoff so a rotated/compacted session resumes from a
+    # native record — independent of whether the engine CLI is on PATH.
+    _resume_from_handoff(Path.cwd().resolve())
+
     if shutil.which("dekspec") is None:
         _print_absent_guidance()
         return 0
@@ -65,6 +70,65 @@ def main() -> int:
 
     # CLI present and current → stay silent.
     return 0
+
+
+def _import_handoff_engine(cwd: Path):
+    """Best-effort load of the native rotation-handoff engine.
+
+    The handler runs from the plugin tree, not the installed package. Prefer the
+    in-repo source at `<repo>/tooling/dekspec/rotation_handoff.py` (loaded
+    directly from its file, so it works even when a different `dekspec` package
+    is already on sys.path), then fall back to a plain import. Returns the
+    module or None.
+    """
+    src = cwd / "tooling" / "dekspec" / "rotation_handoff.py"
+    if src.is_file():
+        try:
+            import importlib.util
+
+            spec = importlib.util.spec_from_file_location(
+                "dekspec_rotation_handoff_engine", src
+            )
+            if spec and spec.loader:
+                mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(mod)
+                return mod
+        except Exception:
+            pass
+    try:
+        from dekspec import rotation_handoff  # type: ignore
+
+        return rotation_handoff
+    except Exception:
+        return None
+
+
+def _resume_from_handoff(cwd: Path) -> None:
+    """Read the latest handoff and print a short resume block. Best-effort.
+
+    Silent outside a dekspec repo, when no handoff exists, or on any error so
+    the parent SessionStart event is never disturbed.
+    """
+    if not (cwd / ".dekspec-version").exists() and not (cwd / "dekspec").is_dir():
+        return
+    engine = _import_handoff_engine(cwd)
+    if engine is None:
+        return
+    try:
+        record = engine.read_latest_handoff(cwd)
+    except Exception:
+        return
+    if not isinstance(record, dict):
+        return
+    objective = str(record.get("objective") or "").strip()
+    next_action = str(record.get("next_safest_action") or "").strip()
+    if not objective and not next_action:
+        return
+    print("[dekspec] resuming from prior session handoff:", file=sys.stderr)
+    if objective:
+        print(f"  objective: {objective}", file=sys.stderr)
+    if next_action:
+        print(f"  next safest action: {next_action}", file=sys.stderr)
 
 
 def _print_absent_guidance() -> None:

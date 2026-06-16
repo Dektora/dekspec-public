@@ -118,13 +118,19 @@ The risk tier is **complementary** to Autonomy and Intent type: type classifies 
 
 ## Motivation
 
-[Why this change is needed. 1-3 paragraphs. The user-observable problem, the underlying gap, the cost of not changing.]
+[Why this change is needed. 1-3 paragraphs. **Problem-first, user-grounded:** open by naming the concrete *problem* and the *user or persona* who feels it — what breaks for whom, today, without this — before any task or solution. A motivation that names only the task to do or the solution to build, without first establishing the problem and who hurts, is incomplete (INT-168 / D5). Then state the underlying gap and the cost of not changing.]
 
 *Stay at the motivation level.* Decision rationale (why option A over option B) belongs in an ADR, not here (audit-v2 D20). Measurable targets (latency, throughput, capacity, coverage thresholds) belong in a Working Spec, not here (audit-v2 D19).
 
 ## Desired Outcome
 
 [What is true after the Intent lands. State as observable system behavior, not as task completion. One paragraph.]
+
+## Non-Goals
+
+*Optional — expected only when this Intent has **no** parent Mission (i.e. `Mission:` is `none`).* List what this Intent will deliberately **not** do: the boundary that stops scope creep on a standalone Intent. When a parent Mission **is** named, delete this section — the Mission's `Out-of-scope` contract owns non-goals and duplicating them here is discouraged. A Mission-less Intent that omits this section draws the P3-advisory `T-INT-NON-GOALS-MISSING` audit finding (INT-168 / D6) — advisory only, never a blocker, and silent on already-LOCKED Intents.
+
+- [What this Intent will not do / not touch — and, where useful, where that work lives instead.]
 
 ## Type-specific required fields
 
@@ -136,7 +142,11 @@ The risk tier is **complementary** to Autonomy and Intent type: type classifies 
 
 ### `bug` — Reproduction
 
-[Verbatim failing command, log excerpt, or step-by-step repro. Required for `type: bug`. The first bead produced at `--decompose` is the failing test that proves this Reproduction — and it is the Intent's ADR-029 Outcome Verification test (red-first); the Verification predicate's `bug-reproduction-fixed` check runs that test.]
+[A deterministic, agent-runnable PASS/FAIL repro signal — ideally the one `/diagnose` built in PHASE 1 (a single shell command whose exit code *is* the signal). Required for `type: bug` *unless* a `### bug — Non-Reproducible Waiver` is supplied instead. The first bead produced at `--decompose` is the failing test that proves this Reproduction — and it is the Intent's ADR-029 Outcome Verification test (red-first); the Verification predicate's `bug-reproduction-fixed` check runs that test. The `T-BUG-REPRO-GATE` audit rule fires a P3 advisory on a `≥ACCEPTED` bug Intent that has neither this section nor the waiver below.]
+
+### `bug` — Non-Reproducible Waiver
+
+[Supply *this section instead of* Reproduction only when `/diagnose` could not construct a deterministic repro (e.g. a Heisenbug, an environment-bound failure on a since-deleted runner, a data-dependent crash with no reproducible input). State plainly *why* no repro could be built and what evidence the fix rests on instead. A populated waiver satisfies the `T-BUG-REPRO-GATE` audit rule exactly as a populated Reproduction does — it is the explicit escape hatch, not a silent omission.]
 
 ### `nfr` — Metric and Target
 

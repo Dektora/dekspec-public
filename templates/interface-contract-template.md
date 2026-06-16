@@ -140,6 +140,17 @@ Use tables for structured data. Be specific about types, shapes, dtypes, and ord
 **Does NOT hold:**
 - [Non-guarantee 1 — why, and what callers must do instead]
 
+## Options Considered / Rejected Rationale
+
+[Record the write-ic Phase-2 **design-twice** comparison for a high-blast-radius boundary — one that binds many parties or governs many ADRs, where the first design is most expensive to lock blindly. Three competing designs are drafted (one each under *minimize-method-count*, *maximize-flexibility*, *optimize-the-common-case*), compared on deep-module criteria (no leaked invariants/ordering, a clear seam, a minimal surface hiding maximal complexity, deep-not-shallow per ADR-036), and the deepest is synthesized. Capture what was compared and why the surviving surface is the deepest, so a reviewer can see the boundary was *competed*, not merely depth-checked once.]
+
+[Omit this section for a trivial / low-blast-radius boundary — the single deep-module pass is sufficient there. The `T-IC-OPTIONS-MISSING` audit rule (P3 advisory) fires only on a high-blast-radius IC that ships without this section populated.]
+
+- **Design A — minimize-method-count:** [the smallest-surface candidate; why kept or rejected]
+- **Design B — maximize-flexibility:** [the most-configurable candidate; why kept or rejected]
+- **Design C — optimize-the-common-case:** [the candidate tuned for the dominant call path; why kept or rejected]
+- **Synthesized result:** [the surviving surface and the deep-module reason it is deepest — what complexity it hides that the rejected designs leaked onto callers]
+
 ## Open Issues
 
 [Issues, questions, contradictions, and concerns. Logged during initial drafting, audits, reviews, or cascades from other artifacts. Resolve via `/write-ic --review`.]

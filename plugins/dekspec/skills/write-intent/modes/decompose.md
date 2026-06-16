@@ -5,7 +5,7 @@
 
 Reads `<Intent-path>`. Refuses if Status is not `ACCEPTED`. Branches by IB-need (Decision #12) and scaffolds beads.
 
-> **Inline execution.** This mode runs directly in the parent context so it has access to the `Skill` tool and can invoke the sister skills `/write-ibs` and `/write-beads` directly.
+> **Inline execution.** This mode runs directly in the parent context so it has access to the `Skill` tool and can invoke the sister skills `/write-ibs` and `/write-code-beads` directly.
 
 ### Step 1: Validate
 
@@ -18,7 +18,7 @@ Reads `<Intent-path>`. Refuses if Status is not `ACCEPTED`. Branches by IB-need 
 
 ### Step 2: Bug-Type Reproduction Scaffold (type: bug only)
 
-For `type: bug`, the first IB / bead is the failing test that proves the Reproduction — and that test **is the Intent's ADR-029 Outcome Verification test** (a single user-observable proof, authored red-first). There is no separate `--bug-reproduction` mode: produce it through the normal `/write-beads <IB-or-Intent-path>` flow as one bead whose acceptance criterion is "the test runs, asserts the documented failing behavior, and fails on the current code (red-first); the fix makes it green." Capture that bead's eventual test path and substitute it into the Intent's Verification block, replacing the `<reproduction-test-path-from-IB-1>` placeholder with the concrete file path (this is the same path named in the `## Outcome Verification` section). Save.
+For `type: bug`, the first IB / bead is the failing test that proves the Reproduction — and that test **is the Intent's ADR-029 Outcome Verification test** (a single user-observable proof, authored red-first). There is no separate `--bug-reproduction` mode: produce it through the normal `/write-code-beads <IB-or-Intent-path>` flow as one bead whose acceptance criterion is "the test runs, asserts the documented failing behavior, and fails on the current code (red-first); the fix makes it green." Capture that bead's eventual test path and substitute it into the Intent's Verification block, replacing the `<reproduction-test-path-from-IB-1>` placeholder with the concrete file path (this is the same path named in the `## Outcome Verification` section). Save.
 
 For non-bug types, skip Step 2.
 
@@ -26,8 +26,8 @@ For non-bug types, skip Step 2.
 
 For each Implementation Unit recorded in the Layer impact analysis (excluding IB-1 if `type: bug`):
 
-- **WS fan-in = 1** (single-WS IU). Invoke `/write-beads <Intent-path>` directly with a per-IU scope marker. The bead reads the WS content from the named WS without an intermediate IB.
-- **WS fan-in ≥ 2** (multi-WS IU). Invoke `/write-ibs <Intent-path>` first to author IB-NNN with the reconciled spec content. Then invoke `/write-beads <IB-path>` to scaffold the bead(s) under that IB. The IB's parent is the Intent; the bead's parent is the IB.
+- **WS fan-in = 1** (single-WS IU). Invoke `/write-code-beads <Intent-path>` directly with a per-IU scope marker. The bead reads the WS content from the named WS without an intermediate IB.
+- **WS fan-in ≥ 2** (multi-WS IU). Invoke `/write-ibs <Intent-path>` first to author IB-NNN with the reconciled spec content. Then invoke `/write-code-beads <IB-path>` to scaffold the bead(s) under that IB. The IB's parent is the Intent; the bead's parent is the IB.
 
 The skill awaits the sister-skill calls; both are interactive enough that the engineer reviews each IB / bead before it lands. Record each IB-NNN and bead-XXXX produced in the Intent's Layer impact analysis as a verification trail.
 

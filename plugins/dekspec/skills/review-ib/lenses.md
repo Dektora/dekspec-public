@@ -1,10 +1,10 @@
 # REVIEW_IB lens pack
 
-> 13 lenses for `/dekspec:review-ib` (INT-106). Each entry conforms to the schema in `plugins/dekspec/skills/_lib/review_lens_registry.md` (4 required fields: `question`, `input_slice`, `attack_patterns`, `severity_rubric`). The orchestration shell (INT-105 LOCKED) loads this file and fans out one specialist per lens.
+> 14 lenses for `/dekspec:review-ib` (INT-106). Each entry conforms to the schema in `plugins/dekspec/skills/_lib/review_lens_registry.md` (4 required fields: `question`, `input_slice`, `attack_patterns`, `severity_rubric`). The orchestration shell (INT-105 LOCKED) loads this file and fans out one specialist per lens.
 >
 > Source design substrate: `~/.claude/projects/-home-dfxop-projects-dekspec/memory/reference_review_pipeline_design.md` §"Lens design (per-stage)" REVIEW_IB table.
 
-All 13 lenses share `severity_rubric: shared` (resolves to `plugins/dekspec/skills/_lib/review_confidence_rubric.md`). The orchestrator surface threshold is 80; any single lens at ≥80 confidence vetoes the verdict per ADR-026's asymmetric-voting contract.
+All 14 lenses share `severity_rubric: shared` (resolves to `plugins/dekspec/skills/_lib/review_confidence_rubric.md`). The orchestrator surface threshold is 80; any single lens at ≥80 confidence vetoes the verdict per ADR-026's asymmetric-voting contract.
 
 ---
 
@@ -88,6 +88,30 @@ All 13 lenses share `severity_rubric: shared` (resolves to `plugins/dekspec/skil
     - IB silently shifts a boundary the source AE pins
   severity_rubric: shared
 ```
+
+## interface-depth
+
+```yaml
+- id: interface-depth
+  question: |
+    Is the implementation surface the IB describes (the public
+    boundary its beads build out — function signatures, class APIs,
+    module entry points) DEEP — a small, simple surface concentrating
+    a large amount of implementation behavior — or SHALLOW: a surface
+    nearly as complex as the implementation it fronts, leaking
+    invariants, ordering, and error-handling onto callers (ADR-036 /
+    Constitution Article 4)?
+  input_slice: ib.body + parent_ws.acceptance + source_ae_paths.*.boundaries
+  attack_patterns:
+    - interface exposes many operations/methods where a few would compose to the same effect
+    - operation has a long, branchy parameter list that pushes mode-selection onto the caller
+    - pass-through / thin operation that adds no behavior over the layer it wraps
+    - caller is forced to know internal ordering, invariants, or error states to use the surface correctly
+    - surface is nearly as complex as the implementation it fronts (shallow-module smell)
+  severity_rubric: shared
+```
+
+Per **ADR-036** (deep-modules design principle) + **Constitution Article 4**. A shallow interface is a smell: recommend deepening (hide more behind a smaller surface) or combining operations before the IB advances. Depth here is judgement, not a checkable predicate — surface the smell at ≥80 only when callers are demonstrably forced to absorb internal complexity.
 
 ## rollout-risk-plan
 
@@ -233,10 +257,10 @@ Per **INT-120** (Slice C peel-off of INT-112 per ADR-028). This lens fires the s
 - id: bead-to-ib-fidelity
   question: |
     Does the bead set faithfully implement the IB's contract per
-    `/write-beads --audit`, or does it carry drift?
+    `/write-code-beads --audit`, or does it carry drift?
   input_slice: audit_doctor.write_beads_audit_findings + bead_decomposition
   attack_patterns:
-    - /write-beads --audit reports drift between IB body and bead claims
+    - /write-code-beads --audit reports drift between IB body and bead claims
     - bead acceptance contradicts IB acceptance
     - bead introduces a surface IB does not declare
     - bead silently omits an IB-declared deliverable
@@ -248,6 +272,7 @@ Per **INT-120** (Slice C peel-off of INT-112 per ADR-028). This lens fires the s
 ## Cross-references
 
 - ADR-026 (parent decision).
+- ADR-036 + Constitution Article 4 (deep-modules principle — source of the `interface-depth` lens).
 - `plugins/dekspec/skills/_lib/review-orchestration.md` (the shell that loads this pack).
 - `plugins/dekspec/skills/_lib/review_lens_registry.md` (the schema this pack conforms to).
 - `plugins/dekspec/skills/_lib/review_confidence_rubric.md` (the canonical `severity_rubric: shared` target).

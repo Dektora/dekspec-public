@@ -426,25 +426,25 @@ against the repo root. This deterministically re-derives and renders the cross-a
 
 ### Writeable status
 
-The `## Class Lanes` section is writeable through this skill — engineers populate it at Constitution creation and modify it via `--amend --editorial` for class promotion / demotion. The table is the Constitution IR's `class_lanes` field; the Constraint Compiler extracts it on every parse.
+The `## Class Lanes` section is writeable through this skill — engineers populate it at Constitution creation and modify it via `--revise` (the routed editorial-amendment mode) for class promotion / demotion. The table is the Constitution IR's `class_lanes` field; the Constraint Compiler extracts it on every parse. (Note: `--amend` is a write-intent-only mode per `_lib/mode_dispatcher.md`; it is **not** a write-constitution mode — use `--revise`.)
 
 ### Schema per row
 
 Each row binds `(intent_type, risk_tier)` to a `lane` (enum: `dark` | `canary` | `gated`) plus the budget caps, attempt limits, promotion/demotion thresholds, and the calibration-binding fields `effective_model_snapshot` + `effective_corpus_volume`. See `tooling/dekspec/schemas/constitution.schema.yaml::properties.class_lanes` for the load-bearing schema.
 
-### `--amend --editorial` path for class promotion / demotion
+### `--revise` path for class promotion / demotion
 
-When operational evidence (clean-run streak / revert streak) crosses a promotion or demotion threshold, the engineer drives the class transition manually:
+When operational evidence (clean-run streak / revert streak) crosses a promotion or demotion threshold, the engineer drives the class transition manually via the routed `--revise` mode:
 
 ```
-/dekspec:write-constitution --amend --editorial <constitution-path>
+/dekspec:write-constitution --revise <constitution-path> "class-lane promotion: (intent_type, risk_tier) <old-lane> → <new-lane>"
 ```
 
 The skill walks the engineer through:
 1. Identifying the (`intent_type`, `risk_tier`) row to amend.
 2. Updating the `lane` field (e.g. `canary` → `gated` on promotion, or `gated` → `canary` on demotion).
 3. Re-stamping `effective_model_snapshot` + `effective_corpus_volume` to the current values (the calibration is re-bound to the new operational regime).
-4. Appending a row to the typed `amendment_log` IR field (Nygard MUST-NOT — no prose-only logs): `{date, type: "editorial", change: "...", author: "..."}`.
+4. Appending a row to the typed `amendment_log` IR field via `--revise`'s Amendment-Log step (Nygard MUST-NOT — no prose-only logs): `{date, type: "Revise", change: "class-lane <old>→<new> for (intent_type, risk_tier)", author: "..."}`.
 
 No automation drives the transition. Governance is human work per the dekfactory review synthesis decisions applied at INT-125 authoring.
 

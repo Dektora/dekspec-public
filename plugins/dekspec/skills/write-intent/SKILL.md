@@ -7,7 +7,7 @@ reasoning_effort: max
 disable-model-invocation: false
 allowed-tools: Read Write Edit Grep Glob Bash Agent
 argument-hint: [--canonical] [--provisional <slug>] [--help | --teaching | --audit | --review | --analyze | --accept | --approve | --decompose | --testpass | --lock | --unlock | --sync | --supersede [--by <INT-NNN|MSN-NNN>] | --amend [--editorial] | --lite] [description or path to Intent]
-related_skills: [orchestrate-intent, write-ws, write-ibs, write-beads, write-mission]
+related_skills: [orchestrate-intent, write-ws, write-ibs, write-code-beads, write-mission]
 ---
 
 > **Vendored asset paths:** Template + doc paths below resolve via `dekspec resource template <name>` / `dekspec resource doc <name>` (wheel-bundled since v0.91.0; consumer-fs override wins when present). See [`_lib/vendored_assets.md`](../_lib/vendored_assets.md) for the full resolution rule.
@@ -67,6 +67,18 @@ Parse `$ARGUMENTS` for the mode flag, then **load the corresponding per-mode bod
 - Substantive-work (fan-out via Agent tool): (no flag), `--analyze`, `--accept`
 - Inline (parent context): `--help`, `--teaching`, `--review`, `--audit`, `--lock`, `--unlock`, `--sync`, `--supersede`, `--testpass`, `--amend`, `--decompose`, `--approve`, `--lite`
 
+## Interview Rigor (default-on)
+
+This skill **composes the owned [`interview-me`](../interview-me/SKILL.md) skill** (INT-167 / D13) — it does not re-author the interview prose, and there is no `--grill` flag. When the engineer's input is fuzzy or underspecified, invoke `/dekspec:interview-me <INT-NNN | description>` so the engineer is interviewed one decision-tree question at a time, with a recommended answer per question, repo-exploration for discoverable answers, glossary + governing ADR/AE citation with conflict-flagging, fuzzy-term sharpening, and scenario-based stress-testing of asserted relationships.
+
+**Trigger (pinned, INT-167 Open Issues):**
+
+- **Auto-engages** in **Creation** (no-flag) and **`--analyze`** modes when the input is fuzzy/underspecified.
+- **Auto-skips** on **`--lite`** and **`--amend --editorial`** (editorial) and trivial passes — these are not fuzzy-input authoring.
+- **Escape:** the `--no-interview` modifier skips the interview on demand even on a fuzzy Creation/analyze pass.
+
+At interview end, read the hand-off log `dekspec/.scratch/interview-me/<artifact-id>.md` and fold its resolved decisions into the Intent being authored. `interview-me` never writes the artifact itself — the host skill (this one) folds the decisions in.
+
 ## Mode Index
 
 | Mode | Flag | File | One-liner |
@@ -87,7 +99,7 @@ Parse `$ARGUMENTS` for the mode flag, then **load the corresponding per-mode bod
 | Help | `--help` | [modes/help.md](modes/help.md) | Render the USAGE / MODES / EXAMPLES block and stop. |
 | Teaching | `--teaching` | [modes/teaching.md](modes/teaching.md) | Interactive tutorial walking a new author through writing an Intent section-by-section. |
 | Provisional | `--provisional <slug>` | [modes/provisional.md](modes/provisional.md) | Redirect authoring into `dekspec/provisional/<slug>/` until `promote-provisional` runs. |
-| Lite | `--lite` | [modes/lite.md](modes/lite.md) | Single-IU single-component bypass — skips `--analyze` + `/write-beads`, sets `lite: true` frontmatter, retains `--testpass`. Hard-refuses on `components > 1` / `ius > 1` / `adrs ≠ []` / `ics ≠ []`. INT-088 IU-2. |
+| Lite | `--lite` | [modes/lite.md](modes/lite.md) | Single-IU single-component bypass — skips `--analyze` + `/write-code-beads`, sets `lite: true` frontmatter, retains `--testpass`. Hard-refuses on `components > 1` / `ius > 1` / `adrs ≠ []` / `ics ≠ []`. INT-088 IU-2. |
 | Fan-Out (internal) | — | [modes/fan-out.md](modes/fan-out.md) | Orchestrator/subagent dispatch contract for substantive-work modes (Creation, `--analyze`, `--accept`). |
 
 **Dispatcher contract.** After parsing the mode flag in Mode Detection above, read the corresponding `modes/<slug>.md` file with the `Read` tool and follow its body as the active mode contract. The shared scaffolding below (Write-Time CoW Guard, Rules, Output, Closing Step) runs across every substantive-mode invocation regardless of which per-mode body is loaded.
@@ -128,7 +140,7 @@ modes:
   - { flag: "--approve", args: "<Intent-path>", description: "Approve mode — see modes/approve.md." }
   - { flag: "--teaching", args: "", description: "Teaching mode — see modes/teaching.md." }
   - { flag: "--provisional", args: "<slug>", description: "Provisional mode — see modes/provisional.md." }
-  - { flag: "--lite", args: "<Intent-path>", description: "Lite mode — single-IU single-component bypass of --analyze + /write-beads; sets `lite: true` frontmatter; retains --testpass. Hard-refuses on components > 1 / ius > 1 / adrs ≠ [] / ics ≠ []. INT-088 IU-2. See modes/lite.md." }
+  - { flag: "--lite", args: "<Intent-path>", description: "Lite mode — single-IU single-component bypass of --analyze + /write-code-beads; sets `lite: true` frontmatter; retains --testpass. Hard-refuses on components > 1 / ius > 1 / adrs ≠ [] / ics ≠ []. INT-088 IU-2. See modes/lite.md." }
   - { flag: "--help", args: "", description: "Show this help message (load modes/help.md for full per-mode descriptions)." }
 examples:
   - "/write-intent --help"
@@ -175,6 +187,7 @@ If the path is not claimed by any pre-ACCEPTED Intent, the verb errors unless yo
 - **Log corrections.** When this skill corrects a domain misinterpretation in the engineer's input — wrong term, confused concept, contradicted architectural fact — invoke `/write-ggc --log` with the correction details before proceeding. Feeds the glossary promotion pipeline.
 - **Diff confinement is hard.** `--testpass` Step 2 is the gate that prevents Intents from quietly growing scope. An out-of-scope edit appends a TESTFAIL record (Status stays IMPLEMENTING — the TESTFAIL Status flip retired 2026-05-25) even when every Verification check passes. The remedy is either reverting the out-of-scope edit or re-running `--analyze` with an updated `Components affected:` (which re-validates the size cap). Never silently extend the glob list inside `--testpass`.
 - **Verification fast-fails on first failure.** `--testpass` Step 3 stops at the first non-zero check. Subsequent checks are not run because they may depend on invariants the failing check guards. The engineer fixes, then re-runs.
+- **Outcome verification shares one scoping altitude with the bead tests (INT-151).** When authoring an Intent's `outcome_verification` declaration (the single user-observable proof, per ADR-029), apply the same scoping altitude the `/write-tests` **scoping role-pass** applies to per-bead assertions: classify each pinned mechanism **REQUIRED / GIVEN / INCIDENTAL** and keep the outcome assertion as tight as the Intent's intent and no tighter. An `outcome_verification` test that pins an INCIDENTAL mechanism is over-specified — pin the user-observable behavior instead. This keeps the per-Intent `outcome_verification` and the per-bead assertions speaking one vocabulary, reinforcing `fence-durable` / `fence-golden-path` rather than introducing a second altitude language.
 - **`--lock` has two sufficient paths (ADR-017).** Run from `main` only. Path A — forward flow: Status `MERGED` and the Verification block byte-identical to the version `--testpass` ran against. Path B — every downstream WS/IC/IB the Intent produced is at status `>= ACCEPTED`; no `MERGED`, no `--testpass` record, no branch diff required (the path for Intents whose work shipped outside the Intent lifecycle). Either path is sufficient; if neither holds, refuse and name what each still needs.
 - **`--unlock` is editorial-only and reason-gated.** `--unlock` walks `LOCKED → PROPOSED` so an editorial correction (stale glob, broken cross-ref, renamed-file path) can land; it refuses any status other than `LOCKED`, demands a full-sentence reason recorded verbatim in the Amendment Log, and never paraphrases that reason. It is the precursor to a re-`--lock` (Path B). Substantive change to a LOCKED Intent is **not** an `--unlock` case — see the `--amend` terminal-status rule below.
 - **`--audit` is strictly read-only.** Audit never mutates the Intent file, never transitions Status, never appends an Amendment Log entry. If a finding requires action, the audit output recommends the remedial mode (`--amend` for substantive, `--review` for editorial); the engineer must explicitly invoke it.

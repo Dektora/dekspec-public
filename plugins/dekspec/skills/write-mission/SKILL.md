@@ -57,6 +57,18 @@ See [`_lib/mode_detection_template.md`](../_lib/mode_detection_template.md) for 
 - Substantive-work (fan-out via Agent tool): (no flag)
 - Inline (parent context): `--help`, `--teaching`, `--review`, `--audit`, `--activate`, `--complete`, `--kill`, `--supersede`
 
+## Interview Rigor (default-on)
+
+This skill **composes the owned [`interview-me`](../interview-me/SKILL.md) skill** (INT-167 / D13) — it does not re-author the interview prose, and there is no `--grill` flag. When the engineer's input is fuzzy or underspecified, invoke `/dekspec:interview-me <MSN-NNN | description>` so the engineer is interviewed one decision-tree question at a time, with a recommended answer per question, repo-exploration for discoverable answers, glossary + governing ADR/AE citation with conflict-flagging, fuzzy-term sharpening, and scenario-based stress-testing of asserted relationships.
+
+**Trigger (pinned, INT-167 Open Issues):**
+
+- **Auto-engages** in **Creation** (no-flag) mode when the Mission framing is fuzzy/underspecified.
+- **Auto-skips** on editorial/trivial passes (`--amend --editorial`-style) — these are not fuzzy-input authoring.
+- **Escape:** the `--no-interview` modifier skips the interview on demand even on a fuzzy Creation pass.
+
+At interview end, read the hand-off log `dekspec/.scratch/interview-me/<artifact-id>.md` and fold its resolved decisions into the Mission being authored. `interview-me` never writes the artifact itself — the host skill (this one) folds the decisions in.
+
 ## Help Mode
 
 See [`_lib/help_mode_template.md`](../_lib/help_mode_template.md) for the canonical Help rendering contract. Manifest for this skill:
@@ -544,7 +556,7 @@ Pattern: "An engineer can produce artifact X via path Y in under Z minutes, end-
 
 Concrete Mission Verification predicate (as authored in the near-immutable section):
 
-> An engineer can take a brownfield repository with no DekSpec artifacts and produce a LOCKED System Vision + 3 LOCKED Architecture Elements via the `/dekspec:ingest-document` + `/dekspec:write-sv` + `/dekspec:write-ae` flow in under 90 minutes, with no engineer input beyond the prompts those skills themselves surface.
+> An engineer can take a brownfield repository with no DekSpec artifacts and produce a LOCKED System Vision + 3 LOCKED Architecture Elements via the `/dekspec:brownfield-ingest` + `/dekspec:write-sv` + `/dekspec:write-ae` flow in under 90 minutes, with no engineer input beyond the prompts those skills themselves surface.
 
 - **What this is NOT:** a pytest assertion that the three skills each return exit 0 — that is per-component testing, not Mission-level behavioral verification. The Mission-level assertion is about end-to-end engineer-observable outcome (artifacts on disk, in the correct status, inside a time budget), not about whether each skill's unit tests pass.
 

@@ -68,6 +68,21 @@ rules:
   # INT-128 / ds-provisional-promotion-guardrails — stale-canonical
   # Mission advisory.
   - T-MISSION-CANONICAL-WITHOUT-CHILD
+  # INT-168 (δ / MSN-020) — P3 advisory: a non-terminal, Mission-less
+  # Intent whose body lacks a `## Non-Goals` section. Forward-authoring
+  # nudge; non-gating (stays out of the P0/P1/P2 doctor gate per ADR-018).
+  - T-INT-NON-GOALS-MISSING
+  # INT-169 (ε / MSN-020) — P3 advisory: a >=ACCEPTED non-terminal
+  # `type: bug` Intent carrying neither a populated Reproduction section
+  # nor a Non-Reproducible Waiver. Forward-authoring nudge toward the
+  # `diagnose` repro; non-gating (ADR-018).
+  - T-BUG-REPRO-GATE
+  # INT-171 (η / MSN-020) — P3 advisory: a non-terminal, high-blast-radius
+  # IC (>=2 consumer parties OR >=2 governing ADRs) whose body lacks a
+  # populated `## Options Considered / Rejected Rationale` section. Nudges
+  # authors to record the write-ic Phase-2 design-twice comparison;
+  # non-gating (stays out of the P0/P1/P2 doctor gate per ADR-018).
+  - T-IC-OPTIONS-MISSING
   - SI-01-DATE-STALE
   # ADR-020 / INT-070 — T-STATUS-* status-maturity coherence family.
   # T-STATUS-INVERSION: edge-structural — a settled artifact (maturity band

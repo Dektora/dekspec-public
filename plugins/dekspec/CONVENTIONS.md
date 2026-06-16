@@ -61,7 +61,7 @@ Heavy, stateful expertise for authoring an artifact (an AE, ADR, IC, WS, IB, Int
 **Pattern-B members today:**
 - Authoring (lite): `write-adr`, `write-ae`, `write-constitution`, `write-evals`, `write-ggc`, `write-intent`, `write-sp`, `write-sv`, `write-tests`
 - Authoring (deep, mode=full): `write-ibs`, `write-ic`, `write-mission`, `write-ws`
-- Utility authoring: `write-beads`
+- Utility authoring: `write-code-beads`
 
 ### Pattern C — Command + skill pair (typeable + heavy logic)
 
@@ -98,7 +98,7 @@ The dozen `write-*` skills (Pattern B) are deliberately not wrapped in slash com
 - Each `write-*` skill has 5–10 modes (`--audit`, `--review`, `--accept`, `--lock`, `--unlock`, `--revise`, `--teaching`, `--resync`, `--dry-run`, `--amend`, `--analyze`). Typing the right flag is harder than describing intent.
 - A command wrapper adds a maintenance surface (2 files instead of 1) without ergonomic gain.
 
-`write-beads` historically had a command wrapper from the INT-098 rename alias (`/create-beads` → `/write-beads`). The wrapper was dropped in B1 (2026-05-27) to restore the convention. The skill remains discoverable; bare `/write-beads` (or `"create beads from IB-NNN"`) still resolves to it.
+`write-code-beads` historically had a command wrapper from the INT-098 rename alias (`/create-beads` → `/write-code-beads`). The wrapper was dropped in B1 (2026-05-27) to restore the convention. The skill remains discoverable; bare `/write-code-beads` (or `"create beads from IB-NNN"`) still resolves to it.
 
 ---
 

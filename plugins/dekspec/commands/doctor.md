@@ -251,7 +251,7 @@ The operating guide is the master document of the DekSpec system. Highest-drift-
 - [ ] **Role definitions in project-context.md align with operating guide references.**
 
 **Format and schema alignment:**
-- [ ] **Bead format matches write-beads skill.** Compare the operating guide's bead description/format with the canonical format in `/write-beads`. Flag any divergence.
+- [ ] **Bead format matches write-code-beads skill.** Compare the operating guide's bead description/format with the canonical format in `/write-code-beads`. Flag any divergence.
 - [ ] **IB format matches write-ibs skill.** Compare the operating guide's IB description with the IB Content Rules in the skill.
 - [ ] **Template references are current.** For each template path mentioned in the operating guide, verify the template exists and its sections match what the guide describes.
 

@@ -22,6 +22,8 @@ if TYPE_CHECKING:
     pass
 
 from . import __version__
+from . import platform_install
+from .harness import HarnessUnsupported
 from .constraint_compiler import (
     ADRParseError,
     AEParseError,
@@ -206,6 +208,17 @@ def main(argv: list[str] | None = None) -> int:
     # 6. resource — wheel-vendored asset resolver (INT-097)
     _add_resource_subparser(sub)
 
+    # 7. install — per-host skill/command/hook emitter (ds-iz3d). Repackages
+    # the single plugins/dekspec source into the file tree a given harness
+    # host (claude/codex/antigravity/cursor/copilot/pi) expects. Build-time only:
+    # writes files, never executes (ADR-024).
+    _add_install_subparser(sub)
+
+    # 8. slices — LLM-free structural slice-discovery (ds-mrsu). Thin adapter
+    # over constraint_compiler.slice_discovery; all graph/clustering logic
+    # lives in the engine (AE-005).
+    _add_slices_subparser(sub)
+
     # Legacy top-level command aliases (hidden from help)
     _add_compile_subparser(SubParserWrapper(sub, suppress=True))
     _add_runs_subparser(SubParserWrapper(sub, suppress=True))
@@ -254,6 +267,69 @@ def main(argv: list[str] | None = None) -> int:
         return args.func(args)
     except KeyboardInterrupt:
         return 130
+
+
+# --------------------------------------------------------------------------- #
+# slices — structural slice discovery (ds-mrsu)
+# --------------------------------------------------------------------------- #
+
+
+def _add_slices_subparser(sub: argparse._SubParsersAction) -> None:
+    """Register the `dekspec slices` verb (ds-mrsu).
+
+    Thin adapter (AE-005): all import-graph / clustering logic lives in
+    ``constraint_compiler.slice_discovery``. This registration only declares
+    the CLI surface (`path` + `--json`) and wires the handler.
+    """
+    p = sub.add_parser(
+        "slices",
+        help="Discover structural slices of a Python repo (LLM-free).",
+        description=(
+            "Walk a target repo's Python package tree, build an intra-repo "
+            "import graph via the stdlib ast module, cluster it by structural "
+            "modularity, and write the RAW slice manifest to "
+            "<repo>/.dekspec/slices.json. Pure static analysis — no LLM, no "
+            "network."
+        ),
+    )
+    p.add_argument(
+        "path",
+        nargs="?",
+        default=".",
+        help="Target repo to slice (default: current directory).",
+    )
+    p.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit the slice array as JSON instead of a human summary.",
+    )
+    p.set_defaults(func=cmd_slices)
+
+
+def cmd_slices(args: argparse.Namespace) -> int:
+    """Thin adapter for `dekspec slices` (AE-005) — formats output only.
+
+    All graph/cluster logic lives in the engine; this function imports it,
+    invokes it, and renders the result.
+    """
+    from .constraint_compiler.slice_discovery import discover_slices
+
+    repo = Path(args.path).resolve()
+    slices = discover_slices(repo)
+
+    if args.json:
+        print(json.dumps(slices, indent=2, default=str))
+        return 0
+
+    if not slices:
+        print(f"No slices discovered under {repo} (no importable Python modules).")
+        return 0
+
+    print(f"Discovered {len(slices)} slice(s) under {repo}:")
+    for i, s in enumerate(slices, 1):
+        members = s["member_modules"]
+        print(f"  [{i}] {len(members)} module(s): {', '.join(members)}")
+    return 0
 
 
 # --------------------------------------------------------------------------- #
@@ -3392,7 +3468,9 @@ def _add_config_subparser(sub: argparse._SubParsersAction) -> None:
             "Inspect or edit the per-repo DekSpec config. `dekspec config get "
             "<key>` prints a value; `dekspec config set <key> <value>` writes "
             "it (atomic, JSON-Schema-validated). Recognised keys: schema_version, "
-            "methodology_profile (alias: profile), repo.scope."
+            "methodology_profile (alias: profile), repo.scope, issue_tracker, "
+            "ephemeral_scratch_dir, glossary_path, triage_labels.hitl, "
+            "triage_labels.afk, triage_labels.buckets."
         ),
     )
     c_sub = p.add_subparsers(dest="config_command", metavar="<config-command>")
@@ -6124,6 +6202,77 @@ def cmd_cow_stage(args: argparse.Namespace) -> int:
         "`dekspec repo promote-provisional " + incubation + "` when the "
         "originating Intent is ready to ACCEPT."
     )
+    return 0
+
+
+def _default_skills_source() -> Path:
+    """Resolve the in-repo plugin source dir (`plugins/dekspec`).
+
+    Walks up from this module to find a `plugins/dekspec` directory (repo
+    layout). Returns the path even if absent — `emit` tolerates missing
+    skills/commands/hooks subtrees gracefully.
+    """
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        candidate = parent / "plugins" / "dekspec"
+        if candidate.is_dir():
+            return candidate
+    # Fall back to the conventional location relative to the repo root.
+    return here.parents[2] / "plugins" / "dekspec"
+
+
+def _add_install_subparser(sub) -> None:
+    p = sub.add_parser(
+        "install",
+        help="Emit the per-host skill/command/hook tree for a harness platform.",
+        description=(
+            "Repackage the single DekSpec plugin source into the file tree a "
+            "harness host expects, so the skill suite is invocable on that "
+            "host after one command. Writes files only — never executes."
+        ),
+    )
+    p.add_argument(
+        "--platform",
+        required=True,
+        choices=["claude", "codex", "antigravity", "cursor", "copilot", "pi"],
+        help="Target harness host.",
+    )
+    p.add_argument(
+        "--target",
+        default=".",
+        help="Directory to write the per-host tree into (default: cwd).",
+    )
+    p.add_argument(
+        "--source",
+        default=None,
+        help=(
+            "Plugin source dir (default: the in-repo plugins/dekspec). Used to "
+            "override the skill/command/hook source."
+        ),
+    )
+    p.set_defaults(func=cmd_install)
+
+
+def cmd_install(args: argparse.Namespace) -> int:
+    source_dir = Path(args.source) if args.source else _default_skills_source()
+    target_dir = Path(args.target)
+    try:
+        result = platform_install.emit(
+            args.platform, source_dir=source_dir, target_dir=target_dir
+        )
+    except HarnessUnsupported as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+    print(
+        f"Installed DekSpec for '{result.platform}' into {target_dir} "
+        f"({len(result.written)} files):"
+    )
+    for path in result.written:
+        try:
+            shown = path.relative_to(target_dir)
+        except ValueError:
+            shown = path
+        print(f"  {shown}")
     return 0
 
 

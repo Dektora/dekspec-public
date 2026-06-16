@@ -7,7 +7,7 @@ reasoning_effort: high
 disable-model-invocation: false
 allowed-tools: Read Write Edit Bash
 argument-hint: [--help | --teaching | --audit | --review | --resync | --revise | --accept | --dry-run] [BEAD-NNN or path to IB] [engineer notes or path to notes file]
-related_skills: [write-ibs, write-tests, write-beads, write-intent, exec-coding-session]
+related_skills: [write-ibs, write-tests, write-code-beads, write-intent, exec-coding-session]
 ---
 
 > **Vendored asset paths:** Template + doc paths below resolve via `dekspec resource template <name>` / `dekspec resource doc <name>` (wheel-bundled since v0.91.0; consumer-fs override wins when present). See [`_lib/vendored_assets.md`](../_lib/vendored_assets.md) for the full resolution rule.

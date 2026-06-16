@@ -55,11 +55,30 @@ For each Component listed in `Components affected:`, scan the corpus for missing
 
 Each gap is logged as a blocking Open Issue with **Source: analyze** and a resolution proposal: write the prerequisite first (split into a separate Intent) or close inside this Intent.
 
+### Step 3b: Retirement / Deprecation Gate
+
+Before sizing or recommending anything, confirm the surface this Intent targets is **still alive**. An Intent that proposes building on a retired surface is not a small problem to flag later — it is the wrong Intent, and recommending it `CANONICAL` sends the engineer to author against architecture that no longer exists (or that a decision explicitly bans re-introducing). Pattern-matching a LOCKED precedent is not enough; precedent proves the surface *used to* live, not that it lives now.
+
+Run two checks against the architecture this Intent touches:
+
+1. **Linked-AE status.** Read each entry under `Linked Architecture Elements:` (and any AE that owns a path in `Components affected:`). If any touched AE carries `Status: DEPRECATED` / `RETIRED`, treat that as a stop condition, not a footnote.
+2. **Governing-ADR ban.** Grep `dekspec/adrs/` for ADRs that govern the touched surface (search the surface's nouns — e.g. `executor`, `dispatch`, the component name). Read any hit for language that *retires or forbids* the surface ("excised", "no longer", "must not re-introduce", "removed wholesale", a superseding in-process/replacement model). A decision that bans the surface outranks a precedent that predates it.
+
+**If the surface is retired or banned:** set the analyze verdict to **BLOCKED**, and recommend the correct disposition instead of `CANONICAL`:
+- If the capability now lives in another repo or system (the ADR usually names the replacement — e.g. an out-of-tree implementation), recommend **re-route there**.
+- If the capability was removed with no replacement, recommend the engineer **author an ADR to reverse the retirement first**, before any feature Intent against the surface.
+
+Record the finding as a blocking Open Issue with **Source: analyze**, leave Status at `DRAFT` (do not promote), and stop here — do not continue to Size Assessment or Promote. Surfacing this as a P2 caveat while still recommending `CANONICAL` is exactly the failure this gate exists to prevent: the deprecation must *govern the verdict*, not merely annotate it.
+
+If both checks are clean (touched AEs are live, no ADR bans the surface), proceed to Step 4.
+
 ### Step 4: Bottom-Up Archaeology
 
 Invoke `/dekspec:archeology --scan <component-path>` for each Component listed. The scan output enumerates what exists today on the file paths the Intent will touch — public API, internal state, external callers. Apply the optional 5-phase deeper-investigation mental model (see archeology Scan Mode) to extract constraints / implicit decisions / gaps, and append the findings to the Intent's **Layer impact analysis** with explicit per-layer entries.
 
 ### Step 5: Size Assessment
+
+**Step 5.0 — Ephemeral user-story scope probe (INT-168 / D6).** Before measuring the caps, enumerate the candidate *user-stories* this Intent would satisfy — one line per distinct "as a `<persona>`, I can `<observable capability>`" the Intent implies. This probe exists for one purpose: to expose scope so the IU/Component cap check below is honest (a hidden third and fourth user-story is the usual tell that an Intent is secretly OVERSIZED). The probe is **purely ephemeral**: the enumerated stories are **never persisted to the Intent body** and **never emitted as beads** — they are reasoning scaffolding for the size verdict only. Use them to inform the IU count, then discard them. If the story list itself reveals more than one cohesive capability surface, that is a strong OVERSIZED signal — feed it into the cap measurement, do not write it down.
 
 Measure each hard cap (Decision #5). Cap-by-cap, populate the **Size Assessment** table with the measured value and verdict:
 

@@ -119,7 +119,7 @@ supports markdown only at this release — `docx` / `pdf` input is deferred to a
 future Intent — and stop. Do not attempt to convert the file.
 
 **(b) Run `dekspec dev ingest`.**
-Choose a fresh staging directory (for example `./dekspec-ingest-review/`) and
+Choose a fresh staging directory under the ephemeral scratch zone (`dekspec/.scratch/brownfield-ingest/`, gitignored per ADR-040 — never the repo root) and
 run, via the Bash tool:
 
 ```
