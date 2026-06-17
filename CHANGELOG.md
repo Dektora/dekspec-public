@@ -4,6 +4,18 @@ All notable changes to DekSpec are documented here. Format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [v0.118.0] — 2026-06-17
+
+> Docs patch release: fixes the consumer-facing install URL (P0) and documents the platform-aware installer.
+
+### Fixed — README quick-start install URL 404'd for consumers (ds-9svk, P0)
+
+The README quick-start curl blocks pointed at the **private** source repo (`raw.githubusercontent.com/Dektora/dekspec/main/scripts/install.sh`), so a new consumer's first command 404'd. All three blocks now point at the curated **public mirror** (`Dektora/dekspec-public`, ADR-034), matching `install.sh`'s `MIRROR_REPO` and the Installation section. A new guard — `tests/test_no_private_install_url.py` — bans the private install-script path from install-facing docs (README / RELEASING / docs) so the regression cannot reappear.
+
+### Changed — README documents `install.sh --platform <host>`
+
+The single-command install section now shows the per-host form (`install.sh [VERSION] [--platform <host>]`) with examples for the default `claude` and the other hosts, the platform-aware step list (host-agnostic steps 1–3; step 4 dispatches `claude` → marketplace, every other host → `dekspec install --platform <host>`), and the `claude` CLI requirement scoped to `--platform claude`.
+
 ## [v0.117.0] — 2026-06-16
 
 > Patch release: fixes per-host `install.sh` delivery for non-Claude hosts — a defect in the v0.116.0 platform-aware installer surfaced by a live install test.

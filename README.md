@@ -9,7 +9,7 @@
 
 A spec-driven-development framework for AI-augmented engineering. Turns the markdown artifacts your team already writes — ADRs, Architecture Elements, Working Specs, Interface Contracts, Implementation Briefs, Intents, Missions, Domain Glossary, System Vision — into a typed, validated **spec graph** that compiles into enforcement artifacts (contract tests, CI gates, AGENTS.md context).
 
-DekSpec is shipped as a Python library + CLI + Claude Code skills + markdown templates, vendored into consumer repos via a single install script. The current version is **v0.117.0**.
+DekSpec is shipped as a Python library + CLI + Claude Code skills + markdown templates, vendored into consumer repos via a single install script. The current version is **v0.118.0**.
 
 ## What's here
 
@@ -111,7 +111,7 @@ Single-command install (installs the Python CLI and the Claude Code plugin at th
 
 ```bash
 # Run from your project root:
-bash <(curl -fsSL https://raw.githubusercontent.com/Dektora/dekspec/main/scripts/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/Dektora/dekspec-public/main/scripts/install.sh)
 ```
 
 Then:
@@ -156,38 +156,46 @@ dekspec doctor
 
 ### Single-command install (recommended)
 
-Installs both the Python CLI and the Claude Code plugin at the same version:
+Installs the Python CLI + vendored content, then delivers DekSpec for one harness platform (default `claude`):
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/Dektora/dekspec-public/main/scripts/install.sh)             # latest
-bash <(curl -fsSL https://raw.githubusercontent.com/Dektora/dekspec-public/main/scripts/install.sh) v0.95.0    # pinned
+# latest release, Claude (default)
+bash <(curl -fsSL https://raw.githubusercontent.com/Dektora/dekspec-public/main/scripts/install.sh)
+
+# latest release, a specific host
+bash <(curl -fsSL https://raw.githubusercontent.com/Dektora/dekspec-public/main/scripts/install.sh) --platform pi
+
+# pinned version + host
+bash <(curl -fsSL https://raw.githubusercontent.com/Dektora/dekspec-public/main/scripts/install.sh) v0.117.0 --platform codex
 ```
+
+`<host>` ∈ `claude` (default) · `codex` · `antigravity` · `cursor` · `copilot` · `pi`.
 
 The script:
 1. Resolves the ref (highest release tag on the public mirror, or the explicit tag you pass).
 2. Runs `pipx install "git+https://github.com/Dektora/dekspec-public.git@<ref>"` — pip-from-git, pulling transitive deps from PyPI.
-3. Adds the `Dektora/dekspec-public` Claude Code marketplace and installs the `dekspec@dekspec` plugin from it.
-4. Prints the resolved CLI version + a pointer to `claude plugin list` for plugin verification.
+3. Reconciles vendored content against the installed engine (`dekspec library sync`).
+4. Delivers for the chosen `--platform`: `claude` → adds the `Dektora/dekspec-public` Claude Code marketplace + installs the `dekspec@dekspec` plugin; every other host → emits the per-host skill/command/hook tree into the current directory via `dekspec install --platform <host>` (the plugin source is fetched from the mirror at the same ref).
 
-Both halves land at the same version. Re-run to upgrade. Drift between the two is reported by `dekspec audit doctor` (the `plugin version` section flags ADVISORY when they disagree).
+Steps 1–3 are host-agnostic. Re-run to upgrade. For `--platform claude`, plugin-vs-CLI drift is reported by `dekspec audit doctor` (the `plugin version` section flags ADVISORY when they disagree).
 
 ### Requirements
 
 - `git` — see https://git-scm.com/downloads
 - `pipx` — see https://pipx.pypa.io/stable/installation/
-- `claude` CLI — see https://docs.claude.com/en/docs/claude-code/cli
+- `claude` CLI — see https://docs.claude.com/en/docs/claude-code/cli (only for `--platform claude`)
 - `curl`, `bash`, `grep`
 
 ### Manual install (split surfaces)
 
 CLI only via pipx (isolated venv):
 ```bash
-pipx install "git+https://github.com/Dektora/dekspec-public.git@v0.117.0"
+pipx install "git+https://github.com/Dektora/dekspec-public.git@v0.118.0"
 ```
 
 CLI only into a project venv:
 ```bash
-pip install "git+https://github.com/Dektora/dekspec-public.git@v0.117.0"
+pip install "git+https://github.com/Dektora/dekspec-public.git@v0.118.0"
 ```
 
 Plugin only (in a Claude Code session OR via the `claude` CLI):
@@ -231,7 +239,7 @@ For projects that already have a `dekspec/` tree, vendored content, and a pinned
 
 ```bash
 # 1. Re-run the install script — picks up the latest tag, reinstalls CLI + plugin at the same version.
-bash <(curl -fsSL https://raw.githubusercontent.com/Dektora/dekspec/main/scripts/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/Dektora/dekspec-public/main/scripts/install.sh)
 
 # 2. Auto-apply mechanical audit fixes (new bidirectional backlink rules, etc.):
 dekspec audit linkage --fix --apply
@@ -252,7 +260,7 @@ Same as routine, plus schema-migration and breaking-change steps:
 
 ```bash
 # 1. Reinstall CLI + plugin at the new pinned version:
-bash <(curl -fsSL https://raw.githubusercontent.com/Dektora/dekspec/main/scripts/install.sh) vX.Y.Z
+bash <(curl -fsSL https://raw.githubusercontent.com/Dektora/dekspec-public/main/scripts/install.sh) vX.Y.Z
 
 # 2. Migrate persisted IR JSON files forward through registered schema migrations:
 dekspec migrate-ir
@@ -337,7 +345,7 @@ CI runs `pytest -q` + `ruff check` on Python 3.11 / 3.12 / 3.13 via GitHub Actio
 
 ## Status
 
-**v0.117.0** is the current release. The Constraint Compiler PoC (v0.2) has matured into a 9-IR framework with ~30 audit rules, 11 CLI subcommands, a public Python API at `dekspec.api`, an execution-attempt lifecycle DB (`dekspec.lifecycle`) that DekFactory (or any executor) writes to, and end-to-end test coverage. See [`CHANGELOG.md`](CHANGELOG.md) for the per-version detail.
+**v0.118.0** is the current release. The Constraint Compiler PoC (v0.2) has matured into a 9-IR framework with ~30 audit rules, 11 CLI subcommands, a public Python API at `dekspec.api`, an execution-attempt lifecycle DB (`dekspec.lifecycle`) that DekFactory (or any executor) writes to, and end-to-end test coverage. See [`CHANGELOG.md`](CHANGELOG.md) for the per-version detail.
 
 Open follow-ons:
 - Mission rigor calibration after lived MSN execution data (`ds-zuy`).

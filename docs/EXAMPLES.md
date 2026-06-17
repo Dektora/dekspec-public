@@ -744,7 +744,7 @@ jobs:
         with:
           python-version: "3.13"
       - name: Install dekspec
-        run: pip install git+https://github.com/Dektora/dekspec.git@v0.117.0
+        run: pip install git+https://github.com/Dektora/dekspec.git@v0.118.0
       - name: Vendor dekspec skills + templates
         run: bash scripts/install-dekspec.sh
       - name: Run dekspec doctor
