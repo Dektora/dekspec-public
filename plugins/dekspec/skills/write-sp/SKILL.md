@@ -299,7 +299,7 @@ review, or their own analysis — that need to be worked into an SP.
    confirm with the engineer before writing.
 4. Add an Amendment Log entry summarizing the changes (date, type
    `substantive` or `editorial`, the change one-line).
-5. Re-run `dekspec validate`. If the revise triggered a schema-
+5. Re-run `dekspec check validate`. If the revise triggered a schema-
    validation error, surface and loop.
 
 ## Supersede Mode
@@ -319,7 +319,7 @@ typed-record arrays + Amendment Log.
    at PROPOSED status.
 5. Mark the source SP's status as `SUPERSEDED` with an Amendment Log
    entry citing the successor's ID.
-6. Re-run `dekspec validate` against both files.
+6. Re-run `dekspec check validate` against both files.
 
 ## Review Mode
 

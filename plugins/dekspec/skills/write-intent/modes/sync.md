@@ -33,6 +33,15 @@ Each new bullet should be specific and actionable: `[ ] dekspec/working-specs/WS
 
 ### Step 4: Apply edits
 
+`--sync` edits the body of a **LOCKED** Intent via the Edit tool, which the
+`pretooluse-locked-guard` hook (ds-k24i) blocks by default. Lift the guard for
+the duration of this sync's edits by dropping the staleness-guarded exemption
+marker, then remove it in Step 5. Before the first Edit:
+
+```bash
+touch dekspec/.dekspec-locked-write-allow   # ds-k24i: authorize sync's LOCKED-body edits
+```
+
 For each bullet the engineer wants resolved in this sync session:
 
 1. Run the matching small edit (Edit tool — single-file scope per bullet).
@@ -45,6 +54,12 @@ Refuse to apply any edit that would touch a file outside the original Intent's `
 1. Update Modified date.
 2. Append an Amendment Log entry: `| <date> | Editorial | Sync session: marked N bullets complete, added M new bullets, applied K edits via /write-intent --sync | <engineer-or-agent> |`
 3. Save.
-4. Surface a closing summary: how many items were marked done, how many were added, how many remain open.
+4. **Remove the LOCKED-write exemption marker** (the guard re-engages immediately; it is staleness-guarded so a forgotten removal expires on its own):
+
+```bash
+rm -f dekspec/.dekspec-locked-write-allow   # ds-k24i: re-engage the LOCKED-write guard
+```
+
+5. Surface a closing summary: how many items were marked done, how many were added, how many remain open.
 
 **End of Sync Mode.**

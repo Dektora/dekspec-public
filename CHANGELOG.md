@@ -4,6 +4,28 @@ All notable changes to DekSpec are documented here. Format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [v0.119.0] — 2026-06-17
+
+> Governance + onboarding hardening: write-time LOCKED enforcement, a debugging skill, a doc-honesty sweep, and a deeper mirror leak-guard. No breaking changes.
+
+### Added — `/dekspec:debug` skill (INT-177)
+
+A `/dekspec:debug` skill adopting the debugging-9-rules protocol with persistent investigation state (survives context resets / handoffs), wired into the `--testpass` failure path and registered in the canonical skill flag-defaults.
+
+### Added — write-time LOCKED-artifact enforcement (ds-k24i)
+
+A `PreToolUse(Edit|Write|MultiEdit)` hook mechanically **blocks** a direct Edit/Write to a LOCKED artifact under `dekspec/` (exit-2 + a clear reason). LOCKED immutability was previously honor-system (only a post-edit audit, after the fact). The legitimate paths stay exempt: status transitions run via `artifact_ops` (Bash, not the Edit tool), and `/write-intent --sync` drops a staleness-guarded marker the hook honors; `DEKSPEC_HOOK_DISABLE=1` overrides.
+
+### Added — skill-lint + mirror leak-guard hardening
+
+- `skill_lint` gains C5 (deprecated-CLI invocations), C6 (dead related-skill references), and C7 (skill-markdown `dekspec …` arg forms linted against the live CLI).
+- The mirror leak-guard now asserts the **materialized** curated tree (release.yml post-rsync guard + a test that materializes the git-tracked tree), not just the include-manifest text — catching a forbidden path a glob expands into, or build junk `rsync` would carry (ds-609x).
+
+### Fixed / Changed — doc-honesty sweep + skill-reference repairs
+
+- Doc-honesty sweep (ds-52ol): README runnable quick-start verbs canonicalized (`library init` / `audit doctor` / `check validate` / `check aggregate` / `dev graph`); nonexistent onboarding skill/command references removed and test-guarded; a canonical smallest-path `--lite` recipe added; the fresh-user next-step nudge no longer points at `/write-ae`; the overclaimed immutability statement made accurate (now backed by the ds-k24i hook).
+- Repaired stale references + dead/deprecated CLI invocations across 6 skills; corrected the `check validate` arg form in `write-sv` / `write-constitution`; optimized the `write-intent` skill description for triggering (ds-gvg1); bundled `depth_classify.py` into `audit-codebase` for vendor portability.
+
 ## [v0.118.0] — 2026-06-17
 
 > Docs patch release: fixes the consumer-facing install URL (P0) and documents the platform-aware installer.

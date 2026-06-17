@@ -5,7 +5,7 @@
 
 Reads `<Intent-path>`. Refuses if Status is not `DRAFT` or `OVERSIZED` (analyze re-run after split is supported; later statuses do not analyze).
 
-> **Fan-out delegated (ds-di2).** The orchestrator dispatches this mode's body to a fresh-context `dekspec:intent-author` subagent per **Fan-Out Mode** above. The steps below are the **subagent's contract**; on return, the orchestrator validates the edited Intent (`dekspec check validate intent <path>`) and confirms Coverage Report + Size Assessment + Status transition were populated as specified.
+> **Fan-out delegated (ds-di2).** The orchestrator dispatches this mode's body to a fresh-context `dekspec:intent-author` subagent per **Fan-Out Mode** above. The steps below are the **subagent's contract**; on return, the orchestrator validates the edited Intent (`dekspec check validate --kind intent <path>`) and confirms Coverage Report + Size Assessment + Status transition were populated as specified.
 
 ### Step 1: Validate
 

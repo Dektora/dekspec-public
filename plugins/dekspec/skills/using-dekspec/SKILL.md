@@ -57,7 +57,7 @@ Guided tour for an engineer adopting DekSpec in a fresh repo. Touches all three 
 3. **Configuration.** `using-dekspec` does not own per-repo config — it *calls* `setup-dekspec` for it. Ask: "Configure the per-repo `.dekspec/config.yaml` choices now (issue tracker, scratch dir, triage labels, glossary path, methodology profile)? [Y/n]". On yes, invoke `/dekspec:setup-dekspec --at .` (the configuration front-end); on no, surface the command and continue.
 4. **Catalog summary.** Render the **Quick reference** subset from Catalog Mode (categories + the single most-used skill per category, not the full table). End with one-liner: "Run `/dekspec:using-dekspec --catalog` for the full table; ask in natural language to trigger any skill."
 
-Close with a one-line "Next step" recommendation matched to the engineer's state: if the scaffold was fresh, recommend `/write-ae` for the first Architecture Element; if spec-mode was just enabled, remind that future code-changing requests will be gated on a spec artifact existing.
+Close with a one-line "Next step" recommendation matched to the engineer's state: if the scaffold was fresh, point at the **Smallest path** — `/write-intent --lite "<change>"` for a single-file governed change — or, for vision-first work, `/write-ae` for the first Architecture Element. (Lite scaffolding does **not** author an AE, so don't pin a fresh solo user to `/write-ae` by default.) If spec-mode was just enabled, remind that future code-changing requests will be gated on a spec artifact existing.
 
 **End of Walkthrough Mode.**
 
@@ -68,7 +68,7 @@ Scaffold the DekSpec artifact directory layout in the current directory (or `--a
 1. Confirm the user wants to scaffold in the current directory (run `pwd` and show the path). If `--at <path>` is supplied, use that path.
 2. Run `dekspec library init $ARGUMENTS` via Bash (forwarding all flags after `--init` to the CLI verb — `--at`, `--dekspec-root`, `--force`, `--executor`, `--endpoint`, `--methodology`, `--profile`).
 3. Report which subdirs were created and which already existed.
-4. Hint that the natural next step is `/write-ae` (for the first Architecture Element), after which `/dekspec:doctor` will surface a baseline of findings to triage.
+4. Hint at the smallest governed loop — `/write-intent --lite "<change>"` → `/exec-coding-session` → `/land-intent` — for a single-file change; or `/write-ae` for the first Architecture Element when the work is vision-first. (Lite scaffolding does **not** author an AE.) After authoring, `/dekspec:doctor` will surface a baseline of findings to triage.
 
 **End of Init Mode.**
 
@@ -195,7 +195,7 @@ Use the table below as a quick reference sheet:
 ### 5. Developer Aids & Utilities
 | Skill | Purpose | How to Trigger / Ask |
 |---|---|---|
-| **`setup-dekspec`** | Per-repo config front-end — interactively set issue tracker, scratch dir, triage labels, glossary path, methodology profile (round-trips through `dekspec config`) | *"Configure DekSpec for this repo"* / *"Set up the .dekspec config"* |
+| **`setup-dekspec`** | Per-repo config front-end — interactively set issue tracker, scratch dir, triage labels, glossary path, methodology profile (round-trips through `dekspec exec config`) | *"Configure DekSpec for this repo"* / *"Set up the .dekspec config"* |
 | **`interview-me`** | Docs-anchored one-question-at-a-time interview that sharpens fuzzy input into resolved decisions (composed default-on by the high-judgment authoring skills) | *"Interview me on this fuzzy idea"* / *"Grill me on this design"* |
 | **`rotation-handoff`** | Native session continuity — emit/read a structured, secret-redacted handoff record (objective, artifacts, decisions, next safest action) to `dekspec/.scratch/rotation-handoff/` so a rotated/compacted session resumes cold-start-free (zero dependency on `claude-mem`) | *"Write a handoff before I rotate"* / *"Resume from the last session handoff"* |
 | **`diagnose`** | Pre-spec debugging loop — build a deterministic PASS/FAIL repro signal *first*, log to `dekspec/.scratch/diagnostics/`, then minimize→hypothesize→instrument→fix→regression-test and promote the repro into a bug Intent | *"Diagnose this bug"* / *"Reproduce this failure before we fix it"* |
@@ -208,7 +208,14 @@ Use the table below as a quick reference sheet:
 ---
 
 ### Pro-Tip 💡
-To drive an Intent through its lifecycle interactively, use the orchestration slash commands:
+**Smallest path to a merged one-file change** (the `--lite` track — skips `--analyze` + code-bead decomposition, still LOCKs):
+```bash
+/write-intent --lite "<one-line description>"   # single-component, single-IU, no ADRs/ICs
+/exec-coding-session                            # agents implement the bead in an isolated worktree
+/land-intent                                    # merge the IB-aggregate PR + LOCK the Intent
+```
+
+To drive an Intent through its full lifecycle interactively, use the orchestration slash commands:
 ```bash
 /dekspec:spec-intent <INT-NNN>        # specification phase: DRAFT → ready-for-coding
 /dekspec:orchestrate-intent <INT-NNN> # full guided lifecycle walk → LOCKED

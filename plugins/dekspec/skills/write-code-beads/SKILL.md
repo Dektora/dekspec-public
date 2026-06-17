@@ -72,7 +72,7 @@ Bead ID(s): the argument after `--audit`. Accepts `BEAD-NNN`, multiple space-sep
 
 ### Workflow
 
-1. Read the bead(s) from `.beads/beads.jsonl` (via `br show <id> --json`)
+1. Read the bead(s) from `.beads/issues.jsonl` (via `br show <id> --json`)
 2. If any bead is `in_progress` or `closed` — flag as process violation, do not audit, escalate to engineer
 3. Read the referenced IB from each bead's `external_ref`. To enumerate which beads belong to an IB (when `--audit` was passed an IB rather than bead IDs), run `scripts/find_beads_for_ib.py <IB>` — it returns JSON `{ib, by_status, total, source}`. Surface stderr on non-zero exit. Audit every bead it lists.
 
@@ -349,7 +349,7 @@ br sync
 
 ### Output
 
-Beads created in `br` database and synced to `.beads/beads.jsonl` via `br sync`.
+Beads created in `br` database and synced to `.beads/issues.jsonl` via `br sync`.
 
 ## Common Pitfalls
 

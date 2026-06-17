@@ -1,6 +1,6 @@
 ---
 name: diagnose
-description: Governed pre-spec debugging loop for DekSpec — when a bug is observed, build a fast, deterministic, agent-runnable PASS/FAIL repro signal FIRST (before any hypothesizing), then minimize → hypothesize → instrument → fix → regression-test. The working diagnosis log lands in the gitignored `dekspec/.scratch/diagnostics/` zone and never enters the committed tree; the durable repro promotes into a bug Intent's `### bug — Reproduction` section (via /write-intent --kind bug) and seeds /write-tests as a red-first outcome test. Use when a bug needs reproducing-before-fixing, when asked to debug or diagnose a failure, or before capturing a bug Intent.
+description: Governed pre-spec debugging loop for DekSpec — when a bug is observed, build a fast, deterministic, agent-runnable PASS/FAIL repro signal FIRST (before any hypothesizing), then minimize → hypothesize → instrument → fix → regression-test. The working diagnosis log lands in the gitignored `dekspec/.scratch/diagnostics/` zone and never enters the committed tree; the durable repro promotes into a bug Intent's `### bug — Reproduction` section (via /write-intent (type: bug)) and seeds /write-tests as a red-first outcome test. Use when a bug needs reproducing-before-fixing, when asked to debug or diagnose a failure, or before capturing a bug Intent.
 mode: lite
 model: claude-opus-4-7
 reasoning_effort: high
@@ -19,7 +19,7 @@ it seeds the red-first outcome test `/write-tests` needs, and it becomes the
 
 This skill is the **debugging half** of the DekSpec lifecycle (INT-169 / ε).
 It runs in a distinct pre-spec context and owns one distinct output — the
-deterministic repro — which two downstream skills (`write-intent --kind bug`,
+deterministic repro — which two downstream skills (`write-intent (type: bug)`,
 `write-tests`) consume. It writes a working diagnosis log to the *gitignored*
 ephemeral zone `dekspec/.scratch/diagnostics/` (landed by INT-165 / α) and never
 commits it.
@@ -60,8 +60,8 @@ Before forming a single hypothesis, build a repro you can run on demand:
    seen, what the user expected instead.
 2. **Express the repro as one agent-runnable command whose exit code is the
    signal** — `0` = PASS (bug absent), non-zero = FAIL (bug reproduced). Build
-   it on the **consumer repo's own test/run harness** — detect it, or read it
-   from `.dekspec/config.yaml` (`dekspec config get`). Never invent a runner:
+   it on the **consumer repo's own test/run harness** — detect it from the
+   repo's manifest / lockfiles. Never invent a runner:
    wrap the repo's pytest / go test / npm test / cargo test / shell entrypoint.
    This keeps PHASE 1 **language-agnostic by delegation**.
 3. **Prove it flips red.** Run the command against the buggy state and confirm
@@ -93,7 +93,7 @@ Only after PHASE 1 yields a red repro (or a waiver):
 ### PHASE 3 — promote into the governed lifecycle
 
 9. **Promote the durable repro** into a bug Intent via
-   `/dekspec:write-intent --kind bug` — the repro command + its red output
+   `/dekspec:write-intent (type: bug)` — the repro command + its red output
    populate the `### bug — Reproduction` section (or, if PHASE 1 produced a
    waiver, the `### bug — Non-Reproducible Waiver` section). A `≥ACCEPTED` bug
    Intent carrying neither draws a `T-BUG-REPRO-GATE` P3 advisory.
@@ -111,7 +111,7 @@ See [`_lib/help_mode_template.md`](../_lib/help_mode_template.md) for the canoni
 skill_name: "/dekspec:diagnose"
 one_line:   "Pre-spec debugging loop — build a deterministic PASS/FAIL repro signal FIRST, log to dekspec/.scratch/diagnostics/, then minimize→hypothesize→instrument→fix→regression-test and promote the repro into a bug Intent"
 modes:
-  - { flag: "", args: "[--at PATH]", description: "Diagnose mode — build the deterministic repro signal first, then run the full loop and promote the durable repro into a bug Intent via /write-intent --kind bug + /write-tests." }
+  - { flag: "", args: "[--at PATH]", description: "Diagnose mode — build the deterministic repro signal first, then run the full loop and promote the durable repro into a bug Intent via /write-intent (type: bug) + /write-tests." }
   - { flag: "--help", args: "", description: "Show this help message." }
 examples:
   - "/dekspec:diagnose --at ."
@@ -129,7 +129,7 @@ At runtime, render the manifest per `_lib/help_mode_template.md` and stop.
 
 ## When NOT to use
 
-- To author the bug Intent itself — that is `/dekspec:write-intent --kind bug`; `diagnose` *produces* the repro it consumes.
+- To author the bug Intent itself — that is `/dekspec:write-intent (type: bug)`; `diagnose` *produces* the repro it consumes.
 - To write the red-first outcome test — that is `/dekspec:write-tests`; `diagnose` seeds it.
 
 ## Related

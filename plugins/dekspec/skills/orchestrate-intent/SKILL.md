@@ -150,7 +150,7 @@ Once the Intent's PR(s) are landed on `main`:
 5. **Graph Synchronization**:
    - `python plugins/dekspec/skills/_lib/scripts/artifact_ops.py update-index ...`
    - `dekspec audit relink` to restitch the link graph.
-   - Verify health using `dekspec doctor --at .`.
+   - Verify health using `dekspec audit doctor --at .`.
 
 ---
 

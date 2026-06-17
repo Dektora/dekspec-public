@@ -7,7 +7,7 @@ Reads `<Intent-path>`. Refuses if Status is not `PROPOSED`.
 
 Passing the `--accept` flag counts as deliberate engineer approval — no additional confirmation is asked. The mode runs the linkage / shape / drift checks one last time before promoting.
 
-> **Fan-out delegated (ds-di2).** The orchestrator dispatches this mode's body to a fresh-context `dekspec:intent-author` subagent per **Fan-Out Mode** above. The steps below are the **subagent's contract**; on return, the orchestrator runs `dekspec check validate intent <path>` and confirms Status flipped PROPOSED → ACCEPTED with the Amendment Log entry appended.
+> **Fan-out delegated (ds-di2).** The orchestrator dispatches this mode's body to a fresh-context `dekspec:intent-author` subagent per **Fan-Out Mode** above. The steps below are the **subagent's contract**; on return, the orchestrator runs `dekspec check validate --kind intent <path>` and confirms Status flipped PROPOSED → ACCEPTED with the Amendment Log entry appended.
 
 ### Step 1: Validate
 

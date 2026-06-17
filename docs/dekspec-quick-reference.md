@@ -43,7 +43,7 @@ For the arc42 chapter mapping, C4 diagram lexicon, and skill routing tables, see
 4. PLAN        /write-ibs <spec>                                         → IBs
 5. PREPARE     /write-code-beads <IB>   /write-tests   /write-evals (if model output)
 6. BUILD       /exec-coding-session   — agents execute beads in parallel worktrees
-7. REVIEW      /present --review     — serve draft/proposed artifacts for review
+7. REVIEW      /review-ib <IB>   /review-pr <PR>   — non-sycophantic pre-impl + post-impl review
 ```
 
 ---
@@ -76,10 +76,7 @@ IBs also use directory lifecycle: `queued/` --> `active/` --> `completed/`
 | `/exec-coding-session` | Orchestrate parallel AI coding agents |
 | `/doctor` | AE-aware fidelity audit — canonical for new audits |
 | `/write-ggc` | Log domain corrections, add glossary terms, audit terminology health |
-|  | Record a system-level divergence as a numbered note |
 | `/dekspec:brownfield-ingest` | Classify inherited markdown prose into DekSpec artifact slots |
-| `/dekspec:dispatch-inbox-listener` | Async-dispatch listener over `.dekspec/inbox/` |
-| `/present` *(user-level)* | Serve artifacts in the browser for review/editing |
 
 Every skill supports `--help` for full usage details, modes, and examples.
 

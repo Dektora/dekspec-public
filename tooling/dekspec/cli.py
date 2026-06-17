@@ -112,7 +112,14 @@ LEGACY_COMMANDS = {
 }
 
 
-def main(argv: list[str] | None = None) -> int:
+def build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.ArgumentParser]]:
+    """Construct the full dekspec argparse tree.
+
+    Extracted from ``main`` so tooling and tests can introspect the CLI surface
+    (e.g. dry-``parse_args`` a doc-snippet invocation to catch wrong arg forms)
+    without dispatching. Returns the top parser plus the group→subparser map
+    ``main`` uses for its no-subcommand help fallback.
+    """
     parser = argparse.ArgumentParser(
         prog="dekspec",
         description="DekSpec — shared library and Constraint Compiler for Dektora projects.",
@@ -244,6 +251,11 @@ def main(argv: list[str] | None = None) -> int:
         "library": p_library,
         "dev": p_dev,
     }
+    return parser, group_parsers
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser, group_parsers = build_parser()
 
     check_args = argv if argv is not None else sys.argv[1:]
     if check_args and check_args[0] in LEGACY_COMMANDS:
@@ -258,10 +270,12 @@ def main(argv: list[str] | None = None) -> int:
     if not getattr(args, "func", None):
         if args.command in group_parsers:
             group_parsers[args.command].print_help()
-        elif args.command in sub.choices:
-            sub.choices[args.command].print_help()
         else:
-            parser.print_help()
+            _sub = _get_subparsers_action(parser)
+            if _sub is not None and args.command in _sub.choices:
+                _sub.choices[args.command].print_help()
+            else:
+                parser.print_help()
         return 0
     try:
         return args.func(args)

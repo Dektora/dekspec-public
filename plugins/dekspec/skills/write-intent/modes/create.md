@@ -3,7 +3,7 @@
 [← back to dispatcher](../SKILL.md)
 
 
-> **Fan-out delegated (ds-di2).** The orchestrator dispatches this mode's body to a fresh-context `dekspec:intent-author` subagent per **Fan-Out Mode** above. The steps below are the **subagent's contract** — the orchestrator bundles them into the prompt; the subagent executes them in fresh context; the orchestrator validates the result via `dekspec check validate intent <path>` on return.
+> **Fan-out delegated (ds-di2).** The orchestrator dispatches this mode's body to a fresh-context `dekspec:intent-author` subagent per **Fan-Out Mode** above. The steps below are the **subagent's contract** — the orchestrator bundles them into the prompt; the subagent executes them in fresh context; the orchestrator validates the result via `dekspec check validate --kind intent <path>` on return.
 
 ### Step 1: Input
 

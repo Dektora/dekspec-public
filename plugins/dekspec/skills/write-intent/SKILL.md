@@ -1,6 +1,6 @@
 ---
 name: write-intent
-description: Author, analyze, accept, decompose, testpass, lock, unlock, sync, audit, review, amend, or supersede an Intent (INT-NNN) — a single LOCKable, machine-verifiable unit of cross-component work. Use when the engineer has a committed direction the system intends to land. Phase 1 (Parts A + B) + Phase 3 flags (--sync / --audit / --review / --amend) all implemented.
+description: "Use to create or operate on a single Intent (INT-NNN) — a committed, machine-verifiable unit of cross-component work captured as a file. Trigger when the engineer wants to: author/capture a committed direction or planned change as an Intent before starting; decompose an Intent into beads/IBs; amend it to change scope, components, or globs; accept, analyze, review, or audit it; lock it (including the retroactive post-merge path once a branch merged and beads closed), unlock, sync post-merge, or supersede it. Phrases like \"author the intent for this\", \"decompose INT-x\", \"amend INT-x to add...\", \"lock INT-x now its branch merged\", or \"capture this as a committed direction\" all apply — even when stated in plain language without flags. This handles ONE Intent operation or transition. A request to walk an Intent through its whole lifecycle step-by-step belongs to orchestrate-intent instead."
 mode: lite
 model: claude-opus-4-7
 reasoning_effort: max

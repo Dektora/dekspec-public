@@ -123,7 +123,7 @@ With `--auto-approve`, skip 3.5 and behave as if `[a]` were pressed.
 
 - After upgrading the installed `dekspec` library to a new version (the `/dekspec:upgrade` flow chains this command automatically — skippable with `--no-migrate`).
 - As a standalone check when investigating drift between vendored content and the installed library.
-- For CI: `dekspec migrate --apply --skip-walker` forward-migrates persisted IR + markdown mechanically; the walker stays operator-driven.
+- For CI: `dekspec migrate --apply` forward-migrates persisted IR + markdown mechanically (the CLI runs no walker — that Stage-2 advisory pass stays operator-driven via the skill's `--skip-walker`/`--walker-only` orchestration flags, which are never passed to the CLI).
 
 ## Related
 

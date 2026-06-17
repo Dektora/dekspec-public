@@ -40,6 +40,7 @@ If any file is out-of-scope:
 1. Append a TESTFAIL record with `Failed check: diff-confinement`, `Detail: <list of out-of-scope files>`, today's date.
 2. Status stays at `IMPLEMENTING` (the `TESTFAIL` Status flip retired 2026-05-25). The TESTFAIL record above is the persisted captured-failure log.
 3. Surface the offending files and stop. The engineer either (a) reverts the out-of-scope edits or (b) revises `Components affected:` to legitimately include them and re-runs `--analyze` (which will re-validate against the size cap), then re-runs `--testpass`.
+4. **Run `/dekspec:debug` to investigate.** The TESTFAIL record above seeds the persistent debug-state file at `dekspec/debug/<slug>.md`; the debug skill runs Agans' nine rules on the captured symptom with observation/theory/disproved audit-trail discipline and survives a context reset via `/dekspec:debug continue <slug>`.
 
 If diff confinement passes, proceed to Step 3.
 
@@ -57,6 +58,7 @@ If **any** check exits non-zero, stop on first failure (do not run subsequent ch
 1. Append a TESTFAIL record with `Failed check: <name>`, `Detail: <exit code, last few lines of stderr>`, today's date.
 2. Status stays at `IMPLEMENTING` (the `TESTFAIL` Status flip retired 2026-05-25). The TESTFAIL record above is the persisted captured-failure log.
 3. Surface the failing check + captured stderr. The engineer fixes via the existing bead chain (existing or new beads), then re-runs `--testpass`.
+4. **Run `/dekspec:debug` to investigate.** The TESTFAIL record above seeds the persistent debug-state file at `dekspec/debug/<slug>.md`; the debug skill runs Agans' nine rules on the captured symptom with observation/theory/disproved audit-trail discipline and survives a context reset via `/dekspec:debug continue <slug>`.
 
 If **all** executable checks exit zero:
 

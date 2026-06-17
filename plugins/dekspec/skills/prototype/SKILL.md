@@ -64,8 +64,8 @@ selects the throwaway shape within Prototype mode, not a standalone mode.
 2. **Pick a shape** (`--shape`, default `logic`):
    - `logic` — a throwaway terminal app exercising a state model. Wire the
      smallest runnable program that lets you step the states and watch the
-     transitions, on the repo's own runtime (detect it, or read it from
-     `.dekspec/config.yaml` via `dekspec config get`). Never invent a runner.
+     transitions, on the repo's own runtime (detect it from the repo's
+     manifest / lockfiles). Never invent a runner.
    - `api` — a request/response shape sketch. Stub the endpoints / message
      payloads as a throwaway sketch you can exercise against sample inputs.
    - *(`UI` switchable-variants is a DEFERRED follow-up — see below.)*

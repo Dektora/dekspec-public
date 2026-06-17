@@ -1,6 +1,6 @@
 ---
 name: orchestrate-deepening
-description: Run ONE end-to-end architecture-deepening pass — analyze with deepen-codebase-architecture, turn the recommendations into atomic br beads with write-beads, implement the Strong and Worth-exploring beads via exec-coding-session (ADR-024 in-process), and land them review-ready through land-intent (ADR-026, never auto-merge). Returns a `{ completed, remaining, dry }` convergence signal. Use when the engineer wants one autonomous deepening cycle implemented and landed review-ready.
+description: Run ONE end-to-end architecture-deepening pass — analyze with deepen-codebase-architecture, turn the recommendations into atomic br beads with write-code-beads, implement the Strong and Worth-exploring beads via exec-coding-session (ADR-024 in-process), and land them review-ready through land-intent (ADR-026, never auto-merge). Returns a `{ completed, remaining, dry }` convergence signal. Use when the engineer wants one autonomous deepening cycle implemented and landed review-ready.
 mode: lite
 # override-reason: latest Opus tier per CLAUDE.md model policy; suite default (claude-opus-4-7) predates 4-8
 model: claude-opus-4-8
@@ -8,7 +8,7 @@ reasoning_effort: high
 disable-model-invocation: true
 allowed-tools: Read Bash Agent
 argument-hint: [--help] [--scope PATH]
-related_skills: [deepen-codebase-architecture, write-beads, exec-coding-session, land-intent]
+related_skills: [deepen-codebase-architecture, write-code-beads, exec-coding-session, land-intent]
 ---
 
 > **Vendored asset paths (INT-097):** Paths below like `dekspec/...` reference the consumer-vendored layout. Pip-only installs resolve via `dekspec resource ...`. See [`_lib/vendored_assets.md`](../_lib/vendored_assets.md).
@@ -16,7 +16,7 @@ related_skills: [deepen-codebase-architecture, write-beads, exec-coding-session,
 Run **exactly ONE** architecture-deepening pass and return a convergence signal.
 
 This skill is a thin **composer**: it does not analyze, create beads, write code, or merge anything itself. It drives one pass through four sibling surfaces in order —
-`deepen-codebase-architecture` → `write-beads` → `exec-coding-session` → `land-intent` —
+`deepen-codebase-architecture` → `write-code-beads` → `exec-coding-session` → `land-intent` —
 implements the `Strong` and `Worth exploring` recommendations, lands them **review-ready** (never a direct merge, ADR-026), and emits a `{ completed, remaining, dry }` structured signal.
 
 > **⛔ CONTEXT CHECK** — see [`_lib/context_check.md`](../_lib/context_check.md)
@@ -31,7 +31,7 @@ This skill performs **one pass and stops**. It does NOT loop. There is **no inte
 
 This skill **composes** the four siblings — it never re-implements them:
 
-- **It opens no beads by hand** — `write-beads` does that.
+- **It opens no beads by hand** — `write-code-beads` does that.
 - **It writes no code inline and runs no `git switch -c` itself** — `exec-coding-session` does that (ADR-024, in-process).
 - **It runs no local merge, no base-branch push, and no work-branch delete** — landing is `land-intent` only (ADR-026). The inherited direct-merge-and-push automation from `skills-import/ship-architecture-improvements` is deliberately ABSENT; see **Phase 4**.
 - **It never edits or unlocks a LOCKED artifact** — the `land-intent` handoff refuses on the first unmet precondition (ADR-021).
@@ -87,9 +87,9 @@ Thread the optional **`--scope`** argument straight through into the analysis pa
 
 Collect every recommendation with its **strength** — `Strong`, `Worth exploring`, or `Speculative` — title, files/modules, problem, solution, acceptance criteria, and focused tests. The set of `Strong` / `Worth exploring` recommendations surfaced **for the active scope** is what the convergence signal in Phase 5 keys off.
 
-### Phase 2 — Recommendations → beads (`write-beads`)
+### Phase 2 — Recommendations → beads (`write-code-beads`)
 
-Run **`write-beads`** to turn the recommendations into atomic `br` beads. Do **not** hand-roll a `br create` loop — `write-beads` owns bead decomposition (atomicity, self-containment, labels, acceptance/test plan). Implementation beads (`Strong` / `Worth exploring`) become the work set for Phase 3; `Speculative` recommendations become review/follow-up beads only and are **not** implemented unless the engineer explicitly promotes them.
+Run **`write-code-beads`** to turn the recommendations into atomic `br` beads. Do **not** hand-roll a `br create` loop — `write-code-beads` owns bead decomposition (atomicity, self-containment, labels, acceptance/test plan). Implementation beads (`Strong` / `Worth exploring`) become the work set for Phase 3; `Speculative` recommendations become review/follow-up beads only and are **not** implemented unless the engineer explicitly promotes them.
 
 ### Phase 3 — Implement (`exec-coding-session`)
 

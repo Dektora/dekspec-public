@@ -9,7 +9,7 @@
 
 A spec-driven-development framework for AI-augmented engineering. Turns the markdown artifacts your team already writes — ADRs, Architecture Elements, Working Specs, Interface Contracts, Implementation Briefs, Intents, Missions, Domain Glossary, System Vision — into a typed, validated **spec graph** that compiles into enforcement artifacts (contract tests, CI gates, AGENTS.md context).
 
-DekSpec is shipped as a Python library + CLI + Claude Code skills + markdown templates, vendored into consumer repos via a single install script. The current version is **v0.118.0**.
+DekSpec is shipped as a Python library + CLI + Claude Code skills + markdown templates, vendored into consumer repos via a single install script. The current version is **v0.119.0**.
 
 ## What's here
 
@@ -118,20 +118,37 @@ Then:
 
 ```bash
 # Scaffold the dekspec/ tree (first-time only):
-dekspec init
+dekspec library init
 
 # Health check:
-dekspec doctor
+dekspec audit doctor
 # → traffic-light summary; exit 0 = clean
 
 # Author your first artifact (in Claude Code):
 /write-ae
 
 # Once you have LOCKED + ACCEPTED artifacts, build the AGENTS.md:
-dekspec aggregate agents-md
+dekspec check aggregate agents-md
 ```
 
 See [Installation](#installation) for pinned versions, manual install paths, and the plugin-only / CLI-only splits.
+
+### Smallest path to a merged one-file change
+
+The shortest governed loop for a single-component, single-file change — the `--lite` track (skips `--analyze` and code-bead decomposition, but still LOCKs):
+
+```bash
+# 1. Author a lite Intent (single-component, single-IU, no ADRs/ICs), in Claude Code:
+/write-intent --lite "<one-line description of the change>"
+
+# 2. Dispatch the coding session — agents implement the bead in an isolated worktree:
+/exec-coding-session
+
+# 3. Land it — merge the IB-aggregate PR and LOCK the Intent:
+/land-intent
+```
+
+See the `using-dekspec` skill for the full catalog and when to step up to the full (non-lite) lifecycle.
 
 ### Working with an existing dekspec tree
 
@@ -143,13 +160,13 @@ dekspec audit linkage
 dekspec audit linkage --fix --apply
 
 # Validate one artifact (no side effects):
-dekspec validate dekspec/architecture-elements/AE-014-formula-engine.md
+dekspec check validate dekspec/architecture-elements/AE-014-formula-engine.md
 
 # Export the full spec graph for downstream tooling:
-dekspec graph export --pretty --output graph.json
+dekspec dev graph export --pretty --output graph.json
 
 # Health check before commit:
-dekspec doctor
+dekspec audit doctor
 ```
 
 ## Installation
@@ -190,12 +207,12 @@ Steps 1–3 are host-agnostic. Re-run to upgrade. For `--platform claude`, plugi
 
 CLI only via pipx (isolated venv):
 ```bash
-pipx install "git+https://github.com/Dektora/dekspec-public.git@v0.118.0"
+pipx install "git+https://github.com/Dektora/dekspec-public.git@v0.119.0"
 ```
 
 CLI only into a project venv:
 ```bash
-pip install "git+https://github.com/Dektora/dekspec-public.git@v0.118.0"
+pip install "git+https://github.com/Dektora/dekspec-public.git@v0.119.0"
 ```
 
 Plugin only (in a Claude Code session OR via the `claude` CLI):
@@ -229,7 +246,7 @@ Your authored artifacts under `dekspec/architecture-elements/`, `dekspec/adrs/`,
 
 Semver. Major = breaking changes to schemas, parser output shape, or CLI flags. Minor = additive (new IRs, new emitters, new audit rules, new CLI commands). Patch = bug fixes + clarifications.
 
-Pin a specific version in your consuming repo's `pyproject.toml`. Use `dekspec doctor` in CI to detect drift + audit issues + parse failures in one shot.
+Pin a specific version in your consuming repo's `pyproject.toml`. Use `dekspec audit doctor` in CI to detect drift + audit issues + parse failures in one shot.
 
 ## Upgrading dekspec in your project
 
@@ -245,10 +262,10 @@ bash <(curl -fsSL https://raw.githubusercontent.com/Dektora/dekspec-public/main/
 dekspec audit linkage --fix --apply
 
 # 3. Health check:
-dekspec doctor
+dekspec audit doctor
 
 # 4. Regenerate the project-wide AGENTS.md:
-dekspec aggregate agents-md
+dekspec check aggregate agents-md
 
 # 5. Commit (single PR per consumer):
 git add -A && git commit -m "chore(dekspec): bump to vX.Y.Z"
@@ -275,10 +292,10 @@ dekspec audit linkage
 #    (Critical findings on a major bump usually mean a required field was added or renamed.)
 
 # 6. Health check:
-dekspec doctor
+dekspec audit doctor
 
 # 7. Regenerate AGENTS.md:
-dekspec aggregate agents-md
+dekspec check aggregate agents-md
 
 # 8. Commit:
 git add -A && git commit -m "chore(dekspec): bump to vX.Y.Z"
@@ -345,7 +362,7 @@ CI runs `pytest -q` + `ruff check` on Python 3.11 / 3.12 / 3.13 via GitHub Actio
 
 ## Status
 
-**v0.118.0** is the current release. The Constraint Compiler PoC (v0.2) has matured into a 9-IR framework with ~30 audit rules, 11 CLI subcommands, a public Python API at `dekspec.api`, an execution-attempt lifecycle DB (`dekspec.lifecycle`) that DekFactory (or any executor) writes to, and end-to-end test coverage. See [`CHANGELOG.md`](CHANGELOG.md) for the per-version detail.
+**v0.119.0** is the current release. The Constraint Compiler PoC (v0.2) has matured into a 9-IR framework with ~30 audit rules, 11 CLI subcommands, a public Python API at `dekspec.api`, an execution-attempt lifecycle DB (`dekspec.lifecycle`) that DekFactory (or any executor) writes to, and end-to-end test coverage. See [`CHANGELOG.md`](CHANGELOG.md) for the per-version detail.
 
 Open follow-ons:
 - Mission rigor calibration after lived MSN execution data (`ds-zuy`).

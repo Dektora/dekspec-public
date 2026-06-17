@@ -283,15 +283,25 @@ companion to it. Like the rest of this skill, it is **read-only**: it runs an
 analyzer and reports its output, mutating nothing.
 
 It does **not** re-derive depth, cohesion, or facade logic. It **invokes the
-built analyzer** `scripts/depth_classify.py`, whose thresholds and logic are
-owned upstream and frozen here.
+bundled analyzer** [`scripts/depth_classify.py`](scripts/depth_classify.py),
+which ships **inside this skill's own directory** so the skill stays
+self-contained when vendored into any consumer repo. The analyzer is pure
+stdlib (no `dekspec` package import) — it runs anywhere Python 3 runs. Its
+thresholds and logic are frozen here; do not re-derive them. The canonical
+upstream copy lives at the library repo's `scripts/depth_classify.py`; this
+bundled copy is the distributed one.
+
+Resolve the script path **relative to this skill's directory** (the directory
+containing this SKILL.md), not the audited repo. The audited repo path is the
+analyzer's *argument*, not where the script lives.
 
 ### Bands and concentration (ADR-039)
 
-Run the analyzer's CLI for the per-module depth bands:
+Run the bundled analyzer's CLI for the per-module depth bands (substitute the
+skill directory for `<skill-dir>` and the audited repo root for `<repo-root>`):
 
 ```bash
-python3 scripts/depth_classify.py <repo-root>
+python3 <skill-dir>/scripts/depth_classify.py <repo-root>
 ```
 
 Report the four bands and the concentration figure exactly as the analyzer
@@ -314,11 +324,11 @@ advisory as an observation, not a defect to fix.
 ### Over-decomposition candidates (ADR-038)
 
 The CLI prints only the ADR-039 bands. For the ADR-038 over-decomposition
-candidates, call `classify_clusters` via import (set the analyzer's directory on
-`sys.path`, e.g. `PYTHONPATH=scripts`):
+candidates, call `classify_clusters` via import. Put the bundled analyzer's
+directory (this skill's `scripts/`) on `sys.path` via `PYTHONPATH=<skill-dir>/scripts`:
 
 ```bash
-PYTHONPATH=scripts python3 -c "from depth_classify import classify_clusters; \
+PYTHONPATH=<skill-dir>/scripts python3 -c "from depth_classify import classify_clusters; \
 cands=classify_clusters('<repo-root>'); \
 [print(c.package, c.n_public, round(c.cohesion,2), round(c.facade_ratio,2), c.public_modules) for c in cands]"
 ```
