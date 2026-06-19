@@ -171,6 +171,10 @@ rules:
   # Single family code; all findings emit at P2 (no per-rule graduation).
   # lite.yaml + team.yaml inherit v1, so this flows through both.
   - SPEC-REVIEW
+  # INT-139 / ds-uqnx — ContextSpec role-identity uniqueness (P2). The reviewer
+  # dispatcher resolves a role to exactly one ContextSpec; a duplicated
+  # role_identity is ambiguous. Makes ContextSpec a graph-audited IR.
+  - L-CS-ROLE-UNIQUE
   # ds-52p D-16 — singleton self-consistency
   - T-GLOSSARY-DUPLICATE
   - T-GLOSSARY-MISSING-DEFINITION

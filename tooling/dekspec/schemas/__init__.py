@@ -3,11 +3,18 @@
 Schemas are JSON Schema Draft 2020-12 written in YAML for review readability.
 Loaded via `importlib.resources` so they ship as wheel-installable package data.
 
-Today every schema is at `ir_schema_version: "0.1.0"` and lives in the package
-root (flat layout). When the first schema evolution lands (e.g., the ds-zuy
-Mission rigor calibration → v0.2.0 schema), retired versions move to
-`schemas/archive/v0.1.0/<name>.schema.yaml` and the loader picks the right
-file by `(artifact_type, ir_schema_version)`.
+Schemas live flat in the package root; the library ships only the **latest**
+version of each (`<name>.schema.yaml`). There is no archived/version-pinned
+schema store.
+
+**Schema evolution is governed by ADR-008 (LOCKED) — a lazy migration
+registry, NOT archived-schema loading.** When a schema evolves, an old IR is
+upgraded by a pure migration function keyed on its `ir_schema_version` (registry
+at `tooling/dekspec/migrations/`) and then **re-validated against the current
+schema**. The library never loads an old schema by version to validate an old
+artifact — it migrates the artifact forward and validates against the one
+current schema. (ds-99ai removed the earlier `schemas/archive/v<X.Y.Z>/`
+resolution path, which had no caller, no archive dir, and contradicted ADR-008.)
 
 ## Public API
 
@@ -19,34 +26,21 @@ from dekspec.schemas import (
     load_schema,
 )
 
-# Load the latest schema for an artifact type
+# Load the (only shipped = latest) schema for an artifact type
 schema = load_schema("mission")
 
-# Or pin to a specific version (today only 0.1.0 exists; future
-# versions will resolve from the archive)
-schema = load_schema("mission", version="0.1.0")
+# `version=` accepts the latest as an explicit pin; any other version raises
+# SchemaNotFoundError (the library ships only the latest — older shapes are
+# reached by migrating the IR, not by loading an old schema).
+schema = load_schema("mission", version=LATEST_VERSIONS["mission"])
 
-# List every (artifact_type, version) the library knows about
+# List every (artifact_type, version) the library ships (latest only)
 for artifact_type, version in list_schemas():
     print(artifact_type, version)
 ```
 
-## Versioned-file layout
-
-When v0.2.0 schemas land, the layout becomes:
-
-```
-schemas/
-  mission.schema.yaml              # latest (v0.2.0)
-  archive/
-    v0.1.0/
-      mission.schema.yaml          # retired v0.1.0
-  __init__.py
-```
-
-`load_schema("mission")` returns the latest (`mission.schema.yaml`);
-`load_schema("mission", version="0.1.0")` returns the archived copy.
-`load_schema("mission", version="0.99.0")` raises `SchemaNotFoundError`.
+`load_schema("mission")` returns the latest; `load_schema("mission",
+version="0.99.0")` raises `SchemaNotFoundError`.
 
 The parser modules use `load_schema(artifact_type)` (latest) internally so
 schema loads centralize through one code path. Consumers writing custom
@@ -154,24 +148,28 @@ def load_schema(artifact_type: str, version: str | None = None) -> dict[str, Any
     target_version = version or LATEST_VERSIONS[artifact_type]
     filename = SCHEMA_FILENAMES[artifact_type]
 
-    if target_version == LATEST_VERSIONS[artifact_type]:
-        # Latest lives at the flat root.
-        return _read_yaml(("dekspec.schemas",), filename)
-
-    # Retired versions live under archive/v<X.Y.Z>/.
-    try:
-        return _read_yaml(("dekspec.schemas", "archive", f"v{target_version}"), filename)
-    except FileNotFoundError as e:
+    if target_version != LATEST_VERSIONS[artifact_type]:
+        # Per ADR-008 (LOCKED), schema evolution runs via a lazy MIGRATION
+        # REGISTRY: an old IR is migrated by its `ir_schema_version` and
+        # re-validated against the CURRENT schema — the library does not ship or
+        # load archived, version-pinned schemas. So any version other than the
+        # latest is simply not loadable. `version=` is retained for API symmetry
+        # (explicit latest-pinning); a non-latest request raises. (ds-99ai:
+        # removed the dead archive/v<X.Y.Z>/ resolution path that contradicted
+        # ADR-008's migrate-to-current model and had no caller or archive dir.)
         raise SchemaNotFoundError(
             f"No schema for {artifact_type} at version {target_version}. "
-            f"Latest is {LATEST_VERSIONS[artifact_type]}; archived versions "
-            f"live under schemas/archive/v<X.Y.Z>/."
-        ) from e
+            f"Latest is {LATEST_VERSIONS[artifact_type]}. Schema evolution runs "
+            f"via the ADR-008 migration registry (migrate IR → validate against "
+            f"current), not archived version-pinned schema loading."
+        )
+    # Latest lives at the flat root.
+    return _read_yaml(("dekspec.schemas",), filename)
 
 
 def _read_yaml(parts: tuple[str, ...], filename: str) -> dict[str, Any]:
-    """Read a YAML resource via importlib.resources. Walks the package
-    chain in `parts` to support nested directories like archive/v0.1.0/."""
+    """Read a YAML resource via importlib.resources, walking the package
+    chain in `parts` (today always the flat `("dekspec.schemas",)` root)."""
     base = files(parts[0])
     for p in parts[1:]:
         base = base / p
@@ -185,40 +183,13 @@ def _read_yaml(parts: tuple[str, ...], filename: str) -> dict[str, Any]:
 def list_schemas() -> list[tuple[str, str]]:
     """List every (artifact_type, version) pair the library ships.
 
-    Includes both the latest version per artifact type (always present)
-    and any archived prior versions found under `archive/v<X.Y.Z>/`.
-
-    Returns a list of (artifact_type, version) tuples sorted by
-    (artifact_type, version).
+    The library ships only the latest version of each schema — per ADR-008,
+    older artifact shapes are reached by migrating the IR forward, not by
+    shipping archived schemas. So this returns exactly the latest version per
+    artifact type, sorted by (artifact_type, version). (ds-99ai removed the dead
+    `archive/v<X.Y.Z>/` directory walk that never matched anything.)
     """
-    seen: set[tuple[str, str]] = set()
-    # Latest versions
-    for artifact_type, version in LATEST_VERSIONS.items():
-        seen.add((artifact_type, version))
-    # Archive directory (if any)
-    try:
-        archive = files("dekspec.schemas") / "archive"
-        if archive.is_dir():
-            for version_dir in archive.iterdir():
-                if not version_dir.is_dir() or not version_dir.name.startswith("v"):
-                    continue
-                version = version_dir.name[1:]  # strip leading 'v'
-                for filename in SCHEMA_FILENAMES.values():
-                    if (version_dir / filename).is_file():
-                        artifact_type = _filename_to_artifact_type(filename)
-                        seen.add((artifact_type, version))
-    except (AttributeError, FileNotFoundError):
-        # importlib.resources may not expose iterdir on all backends
-        # for nested package paths; degrade gracefully.
-        pass
-    return sorted(seen)
-
-
-def _filename_to_artifact_type(filename: str) -> str:
-    for artifact_type, fn in SCHEMA_FILENAMES.items():
-        if fn == filename:
-            return artifact_type
-    raise KeyError(f"Unknown schema filename: {filename}")
+    return sorted(LATEST_VERSIONS.items())
 
 
 __all__ = [

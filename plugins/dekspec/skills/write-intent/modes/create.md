@@ -18,6 +18,14 @@ Optional structured cues the engineer may pass inline:
 
 If `type:` is not provided, ask the engineer one direct question and parse the answer against the controlled vocabulary. Do not infer — type drives required fields and the default Verification predicate, so a wrong guess wastes work.
 
+> **Feasibility check (ds-dekspec-spike).** If the engineer's input rests on an
+> unvalidated *approach* — an algorithm choice, a third-party integration, or a
+> performance/scaling assumption the Intent would bake in — surface:
+> "The approach looks unproven — consider `/dekspec:spike <hypothesis>` first to
+> validate it, then cite the spike record in this Intent's Motivation." A spike
+> de-risks the approach before the Intent commits; it is distinct from
+> `/dekspec:prototype` (which explores a design *shape*).
+
 ### Step 2: Serialization Advisory
 
 **Per-Mission serialization, advisory enforcement (ADR-016).** Intent

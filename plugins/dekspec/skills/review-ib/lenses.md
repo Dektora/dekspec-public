@@ -1,10 +1,10 @@
 # REVIEW_IB lens pack
 
-> 14 lenses for `/dekspec:review-ib` (INT-106). Each entry conforms to the schema in `plugins/dekspec/skills/_lib/review_lens_registry.md` (4 required fields: `question`, `input_slice`, `attack_patterns`, `severity_rubric`). The orchestration shell (INT-105 LOCKED) loads this file and fans out one specialist per lens.
+> 16 lenses for `/dekspec:review-ib` (INT-106). Each entry conforms to the schema in `plugins/dekspec/skills/_lib/review_lens_registry.md` (4 required fields: `question`, `input_slice`, `attack_patterns`, `severity_rubric`). The orchestration shell (INT-105 LOCKED) loads this file and fans out one specialist per lens.
 >
 > Source design substrate: `~/.claude/projects/-home-dfxop-projects-dekspec/memory/reference_review_pipeline_design.md` §"Lens design (per-stage)" REVIEW_IB table.
 
-All 14 lenses share `severity_rubric: shared` (resolves to `plugins/dekspec/skills/_lib/review_confidence_rubric.md`). The orchestrator surface threshold is 80; any single lens at ≥80 confidence vetoes the verdict per ADR-026's asymmetric-voting contract.
+All 16 lenses share `severity_rubric: shared` (resolves to `plugins/dekspec/skills/_lib/review_confidence_rubric.md`). The orchestrator surface threshold is 80; any single lens at ≥80 confidence vetoes the verdict per ADR-026's asymmetric-voting contract.
 
 ---
 
@@ -23,6 +23,30 @@ All 14 lenses share `severity_rubric: shared` (resolves to `plugins/dekspec/skil
     - file is outside the project root entirely
   severity_rubric: shared
 ```
+
+## sibling-ib-coherence
+
+```yaml
+- id: sibling-ib-coherence
+  question: |
+    Do any OTHER in-flight IBs under the same parent Intent modify a
+    file this IB also modifies, while neither IB names the other in
+    `depends_on` — i.e. would landing both produce a write-write
+    conflict the dependency graph does not order?
+  input_slice: ib.files_to_modify + ib.depends_on + sibling_ibs.*.files_to_modify + sibling_ibs.*.depends_on
+  attack_patterns:
+    - a sibling IB under the same parent modifies a file in this IB's file set, and neither IB names the other in depends_on
+    - two sibling IBs rewrite the same module / surface with contradictory or independent designs (no shared contract, no ordering edge)
+    - both sibling IBs declare depends_on: [] yet their edits to a shared file are order-sensitive
+    - per-IB file partitioning looks clean, but the union of sibling edits collides on the same region of a shared file
+  severity_rubric: shared
+```
+
+The `scope-creep` lens checks this IB against the *parent Intent's* component
+globs; it is blind to *sibling IBs*. This lens closes that cross-IB coherence
+gap (ds-review-ib-scope-creep-sibling-ib — surfaced by the review-ib live eval):
+two siblings that each look in-scope can still collide when their file sets
+overlap with no ordering edge between them.
 
 ## acceptance-falsifiability
 

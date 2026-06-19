@@ -9,7 +9,7 @@
 
 A spec-driven-development framework for AI-augmented engineering. Turns the markdown artifacts your team already writes — ADRs, Architecture Elements, Working Specs, Interface Contracts, Implementation Briefs, Intents, Missions, Domain Glossary, System Vision — into a typed, validated **spec graph** that compiles into enforcement artifacts (contract tests, CI gates, AGENTS.md context).
 
-DekSpec is shipped as a Python library + CLI + Claude Code skills + markdown templates, vendored into consumer repos via a single install script. The current version is **v0.119.0**.
+DekSpec is shipped as a Python library + CLI + Claude Code skills + markdown templates, vendored into consumer repos via a single install script. The current version is **v0.120.0**.
 
 ## What's here
 
@@ -207,12 +207,12 @@ Steps 1–3 are host-agnostic. Re-run to upgrade. For `--platform claude`, plugi
 
 CLI only via pipx (isolated venv):
 ```bash
-pipx install "git+https://github.com/Dektora/dekspec-public.git@v0.119.0"
+pipx install "git+https://github.com/Dektora/dekspec-public.git@v0.120.0"
 ```
 
 CLI only into a project venv:
 ```bash
-pip install "git+https://github.com/Dektora/dekspec-public.git@v0.119.0"
+pip install "git+https://github.com/Dektora/dekspec-public.git@v0.120.0"
 ```
 
 Plugin only (in a Claude Code session OR via the `claude` CLI):
@@ -362,7 +362,7 @@ CI runs `pytest -q` + `ruff check` on Python 3.11 / 3.12 / 3.13 via GitHub Actio
 
 ## Status
 
-**v0.119.0** is the current release. The Constraint Compiler PoC (v0.2) has matured into a 9-IR framework with ~30 audit rules, 11 CLI subcommands, a public Python API at `dekspec.api`, an execution-attempt lifecycle DB (`dekspec.lifecycle`) that DekFactory (or any executor) writes to, and end-to-end test coverage. See [`CHANGELOG.md`](CHANGELOG.md) for the per-version detail.
+**v0.120.0** is the current release. The Constraint Compiler PoC (v0.2) has matured into a 9-IR framework with ~30 audit rules, 11 CLI subcommands, a public Python API at `dekspec.api`, an execution-attempt lifecycle DB (`dekspec.lifecycle`) that DekFactory (or any executor) writes to, and end-to-end test coverage. See [`CHANGELOG.md`](CHANGELOG.md) for the per-version detail.
 
 Open follow-ons:
 - Mission rigor calibration after lived MSN execution data (`ds-zuy`).

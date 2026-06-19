@@ -4,6 +4,34 @@ All notable changes to DekSpec are documented here. Format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [v0.120.0] — 2026-06-19
+
+> Audit + skills batch: ContextSpec becomes a first-class audited IR, four new utility skills land, the components-affected glob audit catches refactor-stale paths across the whole lifecycle, and a dead schema-resolution path that contradicted a LOCKED ADR is removed. No breaking changes (public schema API unchanged).
+
+### Added — ContextSpec wired into the SpecGraph (INT-139 / ds-uqnx)
+
+The 11th IR kind was parsed + schema-validated + CLI-resolvable but never entered the SpecGraph (no loader, no iterator, no linkage rule) — advertised as live yet governance-inert. It now loads (`dekspec/context-specs/role-*.md`), is exposed via `SpecGraph.context_specs()`, and participates in a new `L-CS-ROLE-UNIQUE` linkage rule (P2): each `role_identity` is claimed by at most one ContextSpec, so the reviewer dispatcher's role→scope resolution is unambiguous.
+
+### Added — four utility skills
+
+- **`/dekspec:pr-branch`** (ds-40sh) — build a clean `<branch>-pr` that filters spec-only commits (status bumps, index reconciliation, pm ledgers) and strips spec-only files from mixed commits, so code PRs show only the implementation diff. Pure git; never touches `main`.
+- **`/dekspec:forensics`** (ds-avxp) — read-only post-mortem for stuck/failed construction sessions: collects git/worktree/bead/linkage evidence, matches known failure fingerprints, writes a forensic report with a root-cause hypothesis. Remediates nothing.
+- **`/dekspec:spike`** (ds-dekspec-spike) — pre-Intent feasibility spike: a throwaway experiment that produces a verified-knowledge record (hypothesis → VALIDATED/REFUTED/INCONCLUSIVE → recommendation) the next Intent cites. No production leak.
+- **`/dekspec:goal-loop`** — write verifiable goal contracts (Objective / Constraints / Validate / Stop) for long-running autonomous runs; drive via `/loop`, a background agent, `/schedule`, or `exec-coding-session`.
+
+### Added — `review-ib` sibling-ib-coherence lens (ds-review-ib-scope-creep-sibling-ib)
+
+A 16th REVIEW_IB lens that flags sibling IBs under the same parent Intent modifying overlapping files with no `depends_on` ordering edge — a cross-IB coherence gap the `scope-creep` lens (which only diffs against the parent Intent's globs) was structurally blind to.
+
+### Changed — L7b stale-glob detection across all statuses (ds-to7s)
+
+`L7b-INT-COMPONENTS-RESOLVE` now checks every non-terminal Intent. The build-underway band (IMPLEMENTING/TESTPASS/MERGED), previously fully exempt, now emits a `P3` advisory so a refactor-stale `components_affected` glob surfaces instead of hiding; LOCKED keeps `P2` (the sole gating severity). One canonical glob gate, reconciled with the existing rule per ADR-019.
+
+### Fixed
+
+- **schemas (ds-99ai):** removed the dead archive/version-pinned schema-resolution path (`load_schema(version=)` archive read + `list_schemas` archive walk). It had no caller and no archive directory, and its docstring described a version-pinned model that contradicted the LOCKED **ADR-008** lazy-migration-registry (migrate IR → validate against current). Public API + tests unchanged.
+- **skill flag-defaults:** registered the new utility skills (pr-branch, forensics, spike, goal-loop) in `_SKILL_CLASS_DEFAULTS` + `docs/dekspec-skill-flag-defaults.md`, clearing `T-SKILL-FRONTMATTER-NORMAL` P2 findings.
+
 ## [v0.119.0] — 2026-06-17
 
 > Governance + onboarding hardening: write-time LOCKED enforcement, a debugging skill, a doc-honesty sweep, and a deeper mirror leak-guard. No breaking changes.

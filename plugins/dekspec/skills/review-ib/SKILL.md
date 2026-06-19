@@ -63,6 +63,7 @@ The orchestration shell bundles the following inputs and projects per-lens slice
 | `parent_ws.acceptance` | The WS's acceptance criteria, for fidelity-check lenses. |
 | `parent_intent.path` | Path to the parent Intent. |
 | `parent_intent.components_affected` | The Intent's component globs, for scope-creep lens. |
+| `sibling_ibs` | The other in-flight IBs under the same parent Intent (each with its `files_to_modify` + `depends_on`), for the sibling-ib-coherence lens. |
 | `source_ae_paths` | Paths to source Architecture Elements. |
 | `glossary` | `dekspec/domain-glossary.md` for glossary-discipline lens. |
 | `bead_decomposition` | Bead manifest from `/write-code-beads --audit`. |
@@ -85,9 +86,9 @@ In parallel the structured verdict is persisted to the SQLite flywheel at `$XDG_
 
 ## Lens pack
 
-The 14 REVIEW_IB lenses live in `plugins/dekspec/skills/review-ib/lenses.md`. The pack covers:
+The 16 REVIEW_IB lenses live in `plugins/dekspec/skills/review-ib/lenses.md`. The pack covers:
 
-- **Spec discipline** — scope-creep, acceptance-falsifiability, test-plan-coverage, source-spec-fidelity, interface-depth, ambiguity-audit, constraint-completeness.
+- **Spec discipline** — scope-creep, sibling-ib-coherence, acceptance-falsifiability, test-plan-coverage, source-spec-fidelity, interface-depth, ambiguity-audit, constraint-completeness.
 - **Operational discipline** — dependency-readiness, rollout-risk-plan, glossary-discipline.
 - **Bead discipline** — bead-coverage, bead-granularity, bead-dependency-graph, bead-to-ib-fidelity.
 

@@ -34,6 +34,7 @@ from .parser import (
     ADRParseError,
     AEParseError,
     ConstitutionParseError,
+    CSParseError,
     GlossaryParseError,
     IBParseError,
     ICParseError,
@@ -46,6 +47,7 @@ from .parser import (
     parse_adr,
     parse_ae,
     parse_constitution,
+    parse_context_spec,
     parse_glossary,
     parse_ib,
     parse_intent,
@@ -170,6 +172,17 @@ class SpecGraph:
             (dekspec_dir / "impl-briefs", "IB-*.md", "ib", parse_ib, IBParseError, True),
             (dekspec_dir / "intents", "INT-*.md", "intent", parse_intent, IntentParseError, True),
             (dekspec_dir / "missions", "MSN-*.md", "mission", parse_mission, MissionParseError, True),
+            # ContextSpec (INT-139 / ds-uqnx): role-identity context-window IRs.
+            # Canonical filename is role-keyed (role-<role>.md), NOT ID-keyed —
+            # the CS-NNN id is sourced from the `## ID` body section.
+            (
+                dekspec_dir / "context-specs",
+                "role-*.md",
+                "context_spec",
+                parse_context_spec,
+                CSParseError,
+                False,
+            ),
         ]
         from ..draft_ids import is_draft_filename
 
@@ -263,6 +276,9 @@ class SpecGraph:
 
     def security_profiles(self) -> Iterator[dict[str, Any]]:
         return (ir for ir in self.irs_by_id.values() if ir["id"].startswith("SP-"))
+
+    def context_specs(self) -> Iterator[dict[str, Any]]:
+        return (ir for ir in self.irs_by_id.values() if ir["id"].startswith("CS-"))
 
     def glossary(self) -> dict[str, Any] | None:
         return self.irs_by_id.get("DOMAIN-GLOSSARY")

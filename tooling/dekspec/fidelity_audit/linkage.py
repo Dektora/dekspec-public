@@ -159,6 +159,10 @@ def audit_linkage(
     findings.extend(prose_shape.prose_shape_rules(graph, active_profile))
     # SPEC-REVIEW reviewer-dispatch family (INT-141 / IB-126) — advisory P2.
     findings.extend(spec_review_rules.spec_review_rules(graph, active_profile))
+    # ContextSpec role-identity uniqueness (INT-139 / ds-uqnx) — the reviewer
+    # dispatcher resolves a role to exactly one ContextSpec; a duplicated
+    # role_identity makes that resolution ambiguous.
+    findings.extend(_l_context_spec_role_unique(graph))
     findings.extend(_t_glossary_self_consistency(graph))
     findings.extend(_t_vision_completeness(graph))
     findings.extend(_t_constitution_article_present(graph))
@@ -367,6 +371,42 @@ def _lx_duplicate_ids(graph: SpecGraph) -> list[Finding]:
                     fix_kind="semantic",
                 )
             )
+    return out
+
+
+def _l_context_spec_role_unique(graph: SpecGraph) -> list[Finding]:
+    """L-CS-ROLE-UNIQUE: each role_identity is claimed by at most one ContextSpec.
+
+    ContextSpec (INT-139) defines the context-window scope of a lifecycle role.
+    The reviewer dispatcher (spec_review) resolves a role_identity to exactly
+    one ContextSpec instance; two ContextSpecs sharing a role_identity make that
+    resolution ambiguous (which scope wins?). This is the graph-level invariant
+    that makes ContextSpec a first-class, audited IR rather than a parse-only
+    artifact the SpecGraph never sees (ds-uqnx wire decision).
+    """
+    out: list[Finding] = []
+    seen: dict[str, str] = {}
+    for cs in graph.context_specs():
+        role = cs.get("role_identity")
+        if not role:
+            continue  # schema validation already guards a missing role_identity
+        if role in seen:
+            out.append(
+                Finding(
+                    severity=P2,
+                    rule="L-CS-ROLE-UNIQUE",
+                    artifact_id=cs["id"],
+                    message=(
+                        f"ContextSpec role_identity '{role}' is also claimed by "
+                        f"{seen[role]}. The reviewer dispatcher resolves a role to "
+                        "exactly one ContextSpec; collapse the duplicate so the "
+                        "role-to-scope mapping is unambiguous."
+                    ),
+                    fix_kind="semantic",
+                )
+            )
+        else:
+            seen[role] = cs["id"]
     return out
 
 
@@ -1250,12 +1290,6 @@ def _expand_braces(pattern: str) -> list[str]:
     return results
 
 
-# Per ADR-019: an Intent in one of these "build underway" statuses is exempt
-# from L7b-INT-COMPONENTS-RESOLVE — an unresolved component glob is the
-# expected shadow of authoring specs ahead of the code that lands them.
-# `TESTFAIL` retired 2026-05-25 (E3 audit).
-_L7B_BUILD_UNDERWAY = {"IMPLEMENTING", "TESTPASS", "MERGED"}
-
 # Phase 1.B / ds-puvi: recommended open-enum vocabulary for Intent.risk_tier.
 # Lint-on-boundary (Fowler): the schema accepts any string; the audit rule
 # T-INT-RISK-TIER-VALID emits a P3 advisory when the value falls outside this
@@ -1294,15 +1328,17 @@ def _l7_intent_linkage(graph: SpecGraph) -> list[Finding]:
       - L7a-INT-AE-EXISTS  (critical):  each linked AE-NNN must resolve in the registry.
       - L7b-INT-COMPONENTS-MISSING (important): Intent has no components_affected.
       - L7b-INT-COMPONENTS-RESOLVE (status-conditional): each glob must match ≥1
-        path relative to repo_root. **Per ADR-019:** severity tracks the Intent
-        lifecycle. DRAFT, PROPOSED, and ACCEPTED Intents emit `P3` (advisory) —
-        their declared paths are a forward commitment the Intent itself plans to
-        land. IMPLEMENTING and the rest of the build-underway band (TESTPASS,
-        MERGED) are exempt — an unresolved glob there is the expected shadow of
-        authoring specs ahead of code, not drift. Only LOCKED emits `P2`: a
-        LOCKED Intent claims its work is complete, so an unresolved glob is a
-        genuine break. DEPRECATED and SUPERSEDED are skipped entirely.
-        Skipped when graph.repo_root is None.
+        path relative to repo_root. **Per ADR-019 + ds-to7s:** EVERY non-terminal
+        Intent is checked, so a refactor-stale glob (a path a rename/move
+        orphaned) never hides. Severity tracks the lifecycle: DRAFT, PROPOSED,
+        ACCEPTED, and the build-underway band (IMPLEMENTING/TESTPASS/MERGED) all
+        emit `P3` (advisory) — an unresolved glob there is usually the expected
+        forward shadow of specs-ahead-of-code, surfaced but not gating. Only
+        LOCKED emits `P2` (gating): a LOCKED Intent claims its work is complete,
+        so an unresolved glob is a genuine break. DEPRECATED and SUPERSEDED are
+        skipped entirely. Skipped when graph.repo_root is None.
+        (Before ds-to7s the build-underway band was fully exempt, which let a
+        refactor-stale glob mid-build escape the audit — the gap this closes.)
       - T14-INT-VERIFICATION (important): no verification cmd checks.
 
     Note: the L7 prefix here is for Intent-targeted rules (audit-v2 calls them
@@ -1362,39 +1398,43 @@ def _l7_intent_linkage(graph: SpecGraph) -> list[Finding]:
                 )
             )
         elif repo_root is not None:
-            # Per ADR-019: L7b severity tracks the Intent lifecycle. The
-            # build-underway band (IMPLEMENTING/TESTPASS/MERGED) is
-            # exempt — an unresolved glob there is the expected shadow of
-            # authoring specs ahead of code. DRAFT/PROPOSED/ACCEPTED emit a
-            # `P3` advisory (a forward commitment, surfaced but not gating);
-            # only LOCKED — which claims the work is done — keeps `P2`.
+            # Per ADR-019, L7b severity tracks the Intent lifecycle, but every
+            # non-terminal Intent is now checked (ds-to7s): a `components_affected`
+            # glob that matches 0 paths is surfaced at EVERY non-terminal status,
+            # so a refactor-stale glob (a path a rename/move silently orphaned)
+            # never hides. The build-underway band (IMPLEMENTING/TESTPASS/MERGED)
+            # is no longer fully exempt — it emits `P3` advisory rather than
+            # nothing, since an unresolved glob there is *usually* the expected
+            # forward shadow of specs-ahead-of-code (advisory, not gating) but may
+            # also be genuine drift. DRAFT/PROPOSED/ACCEPTED likewise emit `P3`.
+            # Only LOCKED — which claims the work is complete — keeps `P2`, the
+            # sole gating severity. (DEPRECATED/SUPERSEDED skipped above.)
             status = (intent.get("status") or "DRAFT").upper()
-            if status not in _L7B_BUILD_UNDERWAY:
-                severity = P2 if status == "LOCKED" else P3
-                for pattern in components:
-                    # `glob.glob` understands `*`, `**`, `?`, `[seq]` but NOT
-                    # shell brace expansion `{a,b}`. Expand braces ourselves
-                    # and union the matches so a brace glob resolves when any
-                    # branch matches ≥1 path (ds-l7b).
-                    matches: list[str] = []
-                    for expansion in _expand_braces(pattern):
-                        matches.extend(_glob.glob(str(repo_root / expansion), recursive=True))
-                    if not matches:
-                        out.append(
-                            Finding(
-                                severity=severity,
-                                rule="L7b-INT-COMPONENTS-RESOLVE",
-                                artifact_id=int_id,
-                                message=(
-                                    f"Intent.components_affected glob `{pattern}` "
-                                    f"matched 0 paths under {repo_root}. Per "
-                                    f"audit-v2 L7b, each glob must resolve to ≥1 "
-                                    f"existing path (severity={severity} at "
-                                    f"status={status})."
-                                ),
-                                fix_kind="semantic",
-                            )
+            severity = P2 if status == "LOCKED" else P3
+            for pattern in components:
+                # `glob.glob` understands `*`, `**`, `?`, `[seq]` but NOT
+                # shell brace expansion `{a,b}`. Expand braces ourselves
+                # and union the matches so a brace glob resolves when any
+                # branch matches ≥1 path (ds-l7b).
+                matches: list[str] = []
+                for expansion in _expand_braces(pattern):
+                    matches.extend(_glob.glob(str(repo_root / expansion), recursive=True))
+                if not matches:
+                    out.append(
+                        Finding(
+                            severity=severity,
+                            rule="L7b-INT-COMPONENTS-RESOLVE",
+                            artifact_id=int_id,
+                            message=(
+                                f"Intent.components_affected glob `{pattern}` "
+                                f"matched 0 paths under {repo_root}. Per "
+                                f"audit-v2 L7b, each glob must resolve to ≥1 "
+                                f"existing path (severity={severity} at "
+                                f"status={status})."
+                            ),
+                            fix_kind="semantic",
                         )
+                    )
 
         if not (intent.get("verification") or []):
             out.append(
@@ -5277,6 +5317,13 @@ _SKILL_CLASS_DEFAULTS: dict[str, dict[str, str]] = {
     "write-evals":        {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
     "write-tests":        {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
     "rotation-handoff":   {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
+    # utility (DX/recovery skills ported 2026-06; per-skill tool sets — pr-branch
+    # is pure-git, forensics is read-only + writes one report, spike runs throwaway
+    # experiments. Registered with their actual minimal tool sets.)
+    "pr-branch":          {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Bash"},
+    "forensics":          {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Bash Write"},
+    "spike":              {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
+    "goal-loop":          {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
 }
 
 # Default model across all skill classes (CLAUDE.md §Agent-model-policy).
