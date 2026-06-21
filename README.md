@@ -4,26 +4,32 @@
 [![License](https://img.shields.io/badge/license-Proprietary-lightgrey.svg)](pyproject.toml)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue.svg)](https://github.com/Dektora/dekspec/blob/main/.github/workflows/ci.yml)
 [![Status](https://img.shields.io/badge/status-beta-yellow.svg)](CHANGELOG.md)
-[![Spec graph](https://img.shields.io/badge/spec_graph-9_IRs-blue.svg)](#the-nine-ir-types)
-[![Audit rules](https://img.shields.io/badge/audit_rules-~30-blue.svg)](#audit-rule-families)
+[![Spec graph](https://img.shields.io/badge/spec_graph-11_IRs-blue.svg)](#the-eleven-ir-types)
+[![Audit rules](https://img.shields.io/badge/audit_rules-~80-blue.svg)](#audit-rule-families)
 
-A spec-driven-development framework for AI-augmented engineering. Turns the markdown artifacts your team already writes — ADRs, Architecture Elements, Working Specs, Interface Contracts, Implementation Briefs, Intents, Missions, Domain Glossary, System Vision — into a typed, validated **spec graph** that compiles into enforcement artifacts (contract tests, CI gates, AGENTS.md context).
+A five-layer **agentic-(software-)engineering toolkit** for AI-augmented teams — **specification, orchestration, codified rules, human oversight, and observable development**. "Spec" is the layer it's named after, not the whole of it.
 
-DekSpec is shipped as a Python library + CLI + Claude Code skills + markdown templates, vendored into consumer repos via a single install script. The current version is **v0.120.0**.
+- **Specification** — turns the markdown artifacts your team already writes (ADRs, Architecture Elements, Working Specs, Interface Contracts, Implementation Briefs, Intents, Missions, Domain Glossary, System Vision) into a typed, validated **spec graph** that compiles into enforcement artifacts (contract tests, CI gates, AGENTS.md context).
+- **Orchestration** — dispatches parallel coding sessions to fresh-context agents in isolated worktrees, then drives the work through review to merge.
+- **Codified rules** — compiles and *audits* your team's decisions and constraints (ADRs, Interface Contracts, the Constitution) at graded severities, instead of trusting prose an agent loads and hopes to follow.
+- **Human oversight** — gates every change behind the No Specless Edits guardrail, a two-tier non-sycophantic review pipeline, and operator-confirmed merge.
+- **Observable development** — verifies outcomes against the spec, not just the tests, and feeds what it learns back into the rules.
+
+DekSpec is shipped as a Python library + CLI + Claude Code skills + markdown templates, vendored into consumer repos via a single install script. The current version is **v0.120.1**.
 
 ## What's here
 
 | Path | Contents |
 |------|----------|
-| `tooling/dekspec/` | Python package: Constraint Compiler (parsers + 9 IR schemas + emitters), fidelity audit (~30 audit rules), persistence layer (SQLite-indexed run history), and the `dekspec` CLI. |
+| `tooling/dekspec/` | Python package: Constraint Compiler (parsers + 11 IR schemas + emitters), fidelity audit (~80 audit rules across the L-, T-, and D- families), persistence layer (SQLite-indexed run history), and the `dekspec` CLI. |
 | `tooling/dekspec/schemas/` | JSON Schema Draft 2020-12 definitions (YAML) for each artifact type. Shipped as package data; loadable via `importlib.resources`. |
-| `plugins/dekspec/skills/` | Claude Code skills (authoring + orchestration): `/write-ae`, `/write-adr`, `/write-ws`, `/write-ic`, `/write-ibs`, `/write-intent`, `/write-mission`, `/write-sv`, `/write-ggc`, `/write-sp`, `/write-evals`, `/write-tests`, `/write-code-beads`, `/exec-coding-session`, `/archeology`, `/brownfield-ingest`, `/orchestrate-intent`, `/using-dekspec`. Ship through the Claude Code plugin marketplace at `Dektora/dekspec`. |
+| `plugins/dekspec/skills/` | 37 Claude Code skills. **Authoring:** `/write-sv`, `/write-constitution`, `/write-ae`, `/write-adr`, `/write-ws`, `/write-ic`, `/write-ibs`, `/write-intent`, `/write-mission`, `/write-ggc`, `/write-sp`, `/write-evals`, `/write-tests`, `/write-code-beads`, `/write-issue-beads`. **Lifecycle + orchestration:** `/spec-intent`, `/orchestrate-intent`, `/exec-coding-session`, `/land-intent`, `/review-ib`, `/review-pr`. **Brownfield + recovery:** `/archeology`, `/brownfield-ingest`, `/diagnose`, `/debug`, `/forensics`, `/rotation-handoff`. **Architecture + exploration:** `/audit-codebase`, `/deepen-codebase-architecture`, `/orchestrate-deepening`, `/prototype`, `/spike`, `/interview-me`, `/goal-loop`, `/pr-branch`. **Onboarding:** `/using-dekspec`, `/setup-dekspec`. Ship through the Claude Code plugin marketplace at `Dektora/dekspec`. |
 | `plugins/dekspec/commands/` | Slash-command wrappers + CLI mirrors: `/doctor`, `/compile`, `/validate-artifact`, `/migrate`, `/upgrade`, `/graph-export` (CLI verb mirrors); plus Skill-wrapper pairs for `/archeology`, `/brownfield-ingest`, `/exec-coding-session`, `/orchestrate-intent`, `/using-dekspec`. |
-| `templates/` | Artifact templates (ADR, AE, WS, IC, IB, Intent, Mission, Vision Note, plus a checklists subdirectory). |
+| `templates/` | Artifact templates (System Vision, Constitution, ADR, AE, WS, IC, IB, Intent, Mission, Domain Glossary, Context Spec, Security Profile, plus lite Constitution/Intent variants and a checklists subdirectory). |
 | `docs/` | Methodology docs: `dekspec-operating-guide.md`, `dekspec-quick-reference.md`, `architecture-frameworks-reference.md`, plus the framework's own `architecture.md`. |
 | `.beads/` | Project's own bead tracker (`br` CLI; SQLite + JSONL). |
 
-## The nine IR types
+## The eleven IR types
 
 Each artifact type has a typed schema + lossy markdown parser + cross-artifact resolution. The parser is deliberately permissive — missing fields surface as `parse_warnings` rather than raising. Schema validation catches the genuinely-malformed.
 
@@ -38,32 +44,37 @@ Each artifact type has a typed schema + lossy markdown parser + cross-artifact r
 | `MSN-NNN` | Mission | (cross-Intent) | Long-horizon container: outcome, mission verification, out-of-scope contract, flag strategy, rollback plan, kill criteria, Intent queue |
 | `DOMAIN-GLOSSARY` | Domain Glossary (singleton) | L0 | Canonical term definitions: term + category + canonical_definition + not_this + code_convention |
 | `SYSTEM-VISION` | System Vision (singleton) | L0 | One-paragraph elevator pitch + What this is + Why this exists + What success looks like + What we are NOT building |
+| `CONSTITUTION` | Constitution (singleton) | L0 | Non-negotiable operational commitments across eight articles: identity, technology stack, quality standards, architecture principles, development workflow, model configuration, boundaries, amendments |
+| `CS-NNN` | Context Spec | (cross-cutting) | Role/context specification — a named role identity (auditor / specifier / implementer / verifier / code-reviewer / spec-reviewer) and the context bundle a dispatched agent operates under; consumed by the review + dispatch pipeline |
 
-## CLI — eleven subcommands
+## CLI — namespaced commands
 
 ```
 dekspec --version
 dekspec --help
 ```
 
-| Command | What it does |
-|---------|--------------|
-| `dekspec init` | Scaffold a new dekspec/ tree (10 subdirs + 6 index files + AGENTS.md placeholder). Idempotent. |
-| `dekspec compile <file>` | Parse one artifact + (optionally) emit IR / contract-test / ci-gate / agents-md. Persists to per-run history. |
-| `dekspec validate <file>` | Quick parse-only check, no persistence side effect. Useful for editor integrations + pre-commit hooks. |
-| `dekspec audit linkage` | Run all audit rule families (L1-L11 + T-series + D-series). `--fix --apply` auto-applies mechanical fixes for L6/L7/L8 mirror gaps. |
-| `dekspec aggregate agents-md` | Walk the SpecGraph and emit a project-wide AGENTS.md with one fragment per artifact (default status filter: LOCKED + ACCEPTED). |
-| `dekspec graph export` | Dump every IR as a single JSON document for downstream tooling. |
-| `dekspec audit doctor` | Composite health check: vendored-content drift + audit linkage + parse failures, rolled up into a traffic-light summary. The vendored-drift section was previously exposed as a standalone CLI verb (retired INT-098). |
-| `dekspec migrate-ir` | Migrate persisted IR JSON files forward through registered schema migrations. Walks `$XDG_DATA_HOME/dekspec/<repo>/runs/**/irs/*.ir.json` and rewrites them through the per-IR migration chain. (Renamed from `dekspec migrate` in v0.50.0 — old name no longer accepted.) |
-| `dekspec runs ls/show/reindex/gc` | Inspect compile-run history persisted under `$XDG_DATA_HOME/dekspec/` (SQLite-indexed). `gc` garbage-collects old runs while preserving milestone runs. |
-| `dekspec executions ls/show/metrics/tag/amend/link` | Query + annotate the execution-attempt lifecycle DB (the flywheel substrate that DekFactory writes to). Produces first-pass success rate, mean time-to-merge, escalation rate. |
+The CLI is grouped into namespaces (`dekspec <namespace> <verb>`):
+
+| Namespace | Verbs | What it does |
+|-----------|-------|--------------|
+| `check` | `validate` · `compile` · `emit` · `aggregate` · `allocate-ids` · `lint-ib` | Single-file parse / compile / validate; emit IR / contract-test / ci-gate / agents-md; aggregate a project-wide AGENTS.md (one fragment per artifact). |
+| `audit` | `linkage` · `doctor` · `lock-ready` · `failure-classes` · `relink` | Fidelity audit: run all rule families (`linkage`), composite traffic-light health check (`doctor`), lock-readiness gate, failure-class report, deterministic backlink re-derivation (`relink`). |
+| `dev` | `graph` · `ingest` · `archeology` | Diagnostics: export the SpecGraph (JSON / DOT / Mermaid), brownfield markdown ingest + classification, code-vs-spec archaeology. |
+| `library` | `sync` · `init` · `new-provisional` · `author-target` · `regen-indexes` · `cow-stage` | Consumer-side content ops: scaffold / reconcile the dekspec tree, provisional incubation staging, index regen, copy-on-write write-guard. |
+| `exec` | `session` · `runs` · `config` | Session tracking, compile-run history (SQLite-indexed), per-repo `.dekspec/config.yaml`. |
+| `migrate` | — | Full upgrade pipeline: verify vendored drift → migrate-ir → migrate-artifacts. |
+| `resource` | — | Resolve a wheel-vendored asset (template / methodology doc) to a path or content. |
+| `install` | — | Emit the per-host skill / command / hook tree for a harness platform. |
+| `slices` | — | Discover structural slices of a Python repo (LLM-free). |
+
+(`repo` remains a one-release deprecated alias for `library`.)
 
 Full per-flag reference: [`docs/cli-reference.md`](docs/cli-reference.md) (also vendored into `dekspec/cli-reference.md` for consumers).
 
 ## Audit rule families
 
-The audit engine (`dekspec audit linkage`) runs ~30 distinct rules grouped into four families:
+The audit engine (`dekspec audit linkage`) runs ~80 distinct rules grouped into the L- (linkage integrity), T- (structural completeness), and D- (content-drift routing) families:
 
 **L-series (linkage integrity):**
 - L1 — ADR.related_architecture_elements references resolve
@@ -207,12 +218,12 @@ Steps 1–3 are host-agnostic. Re-run to upgrade. For `--platform claude`, plugi
 
 CLI only via pipx (isolated venv):
 ```bash
-pipx install "git+https://github.com/Dektora/dekspec-public.git@v0.120.0"
+pipx install "git+https://github.com/Dektora/dekspec-public.git@v0.120.1"
 ```
 
 CLI only into a project venv:
 ```bash
-pip install "git+https://github.com/Dektora/dekspec-public.git@v0.120.0"
+pip install "git+https://github.com/Dektora/dekspec-public.git@v0.120.1"
 ```
 
 Plugin only (in a Claude Code session OR via the `claude` CLI):
@@ -362,7 +373,7 @@ CI runs `pytest -q` + `ruff check` on Python 3.11 / 3.12 / 3.13 via GitHub Actio
 
 ## Status
 
-**v0.120.0** is the current release. The Constraint Compiler PoC (v0.2) has matured into a 9-IR framework with ~30 audit rules, 11 CLI subcommands, a public Python API at `dekspec.api`, an execution-attempt lifecycle DB (`dekspec.lifecycle`) that DekFactory (or any executor) writes to, and end-to-end test coverage. See [`CHANGELOG.md`](CHANGELOG.md) for the per-version detail.
+**v0.120.1** is the current release. The Constraint Compiler PoC (v0.2) has matured into an 11-IR, five-layer agentic-engineering toolkit with ~80 audit rules, a namespaced CLI, a public Python API at `dekspec.api`, an execution-attempt lifecycle DB (`dekspec.lifecycle`) that DekFactory (or any executor) writes to, and end-to-end test coverage. See [`CHANGELOG.md`](CHANGELOG.md) for the per-version detail.
 
 Open follow-ons:
 - Mission rigor calibration after lived MSN execution data (`ds-zuy`).

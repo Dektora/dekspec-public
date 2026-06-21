@@ -4,6 +4,25 @@ All notable changes to DekSpec are documented here. Format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [v0.120.1] — 2026-06-21
+
+> Identity reposition: DekSpec is ratified as a five-layer agentic-(software-)engineering toolkit, not a spec compiler. Narrative + self-spec refresh only — no code, schema, or public-API change.
+
+### Changed — DekSpec repositioned as a five-layer agentic-engineering toolkit (ADR-041)
+
+- **ADR-041** (ACCEPTED) ratifies DekSpec's identity as a full five-layer toolkit — specification, orchestration, codified rules, human oversight, observable development — keeping the `dekspec` token (rename rejected: ~32.6k occurrences, generic-category naming) and naming "Dektora Agentic Engineering (DAE)" as the umbrella family brand.
+- **System Vision** + **Constitution** (Articles 1 + 7) cascaded to the toolkit framing. The stale "DekSpec ships no runtime executor / planner authored by DekFactory" boundary — false since ADR-024 moved execution in-process — is restated: no *external/standalone* executor; execution is in-process, governed, and human-gated (ADR-024 / ADR-026).
+
+### Docs — README accuracy pass
+
+- README narrative leads with the five layers; spec-graph detail retained as the specification-layer bullet.
+- Corrected stale counts + tables: **9 → 11 IR types** (added Constitution + Context Spec rows), **~30 → ~80 audit rules** (L/T/D families), flat "eleven subcommands" → the **namespaced CLI** table, skills list refreshed to the current 37, templates list de-staled (dropped "Vision Note"; added SV/Constitution/Glossary/Context Spec/Security Profile + lite variants).
+
+### Tracked — deferred follow-ups (br)
+
+- `ds-dae-umbrella-brand-governance` (P3) — DAE-vs-`dekspec` naming boundary.
+- `ds-family-split-dekspec-engine-vs-dekfactory-afk` (P3) — engine vs AFK-operator family cut.
+
 ## [v0.120.0] — 2026-06-19
 
 > Audit + skills batch: ContextSpec becomes a first-class audited IR, four new utility skills land, the components-affected glob audit catches refactor-stale paths across the whole lifecycle, and a dead schema-resolution path that contradicted a LOCKED ADR is removed. No breaking changes (public schema API unchanged).
