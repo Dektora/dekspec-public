@@ -36,19 +36,19 @@ A thin slash command that wraps a `dekspec` CLI verb. No skill exists for these.
 **Pattern-A members today:**
 | Command | Wraps |
 |---|---|
-| `/compile` | `dekspec check compile` |
-| `/doctor` | `dekspec audit doctor` + inlined fidelity-audit body (hybrid; see Pattern C exception) |
-| `/graph-export` | `dekspec dev graph export` |
+| `/compile` | `dekspec compile` |
+| `/doctor` | `dekspec doctor` + inlined fidelity-audit body (hybrid; see Pattern C exception) |
+| `/graph-export` | `dekspec graph export` |
 | `/man` | Renders `docs/dekspec-overview.md` (no CLI verb; doc-render pattern) |
 | `/migrate` | `dekspec migrate` + inlined advisory walker (hybrid; see Pattern C exception) |
-| `/validate-artifact` | `dekspec check validate` |
+| `/validate-artifact` | `dekspec validate` |
 
 **Retired commands** (functionality folded into the table above):
-- `/basic-audit` (linkage-only audit) — folded into `/doctor` Stage 1, which runs `dekspec audit doctor` (schema validate + linkage + drift in one pass). Retired v0.98.0.
+- `/basic-audit` (linkage-only audit) — folded into `/doctor` Stage 1, which runs `dekspec doctor` (schema validate + linkage + drift in one pass). Retired v0.98.0.
 - `/doctor-fidelity` (T/D/L fidelity body) — inlined into `/doctor` Stage 2. Retired v0.98.0.
 - `/validate` — renamed to `/validate-artifact` for clarity vs the broader `/doctor` graph audit. Renamed v0.98.0.
-- `/upgrade` — removed once the ADR-032 deprecation window elapsed (ADR-034 killed the in-CLI acquisition model). Acquire out-of-band (`pipx`/pip-from-git + `claude plugin update`) and reconcile via `dekspec library sync`.
-- `/run-coding-session` — renamed to `/exec-coding-session` in INT-098; the stray `run-coding-session.md` file (which had no command frontmatter and only carried INT-123's IB-lifecycle wiring docs) was deleted and its wiring relocated into `exec-coding-session.md`. Retired ds-jhbw.
+- `/upgrade` — removed once the ADR-032 deprecation window elapsed (ADR-034 killed the in-CLI acquisition model). Acquire out-of-band (`pipx`/pip-from-git + `claude plugin update`) and reconcile via `dekspec sync`.
+- `/run-coding-session` — renamed to `/orchestrate-coding-session` in INT-098; the stray `run-coding-session.md` file (which had no command frontmatter and only carried INT-123's IB-lifecycle wiring docs) was deleted and its wiring relocated into `orchestrate-coding-session.md`. Retired ds-jhbw.
 
 ### Pattern B — Skill-only authoring
 
@@ -75,7 +75,7 @@ Heavy logic lives in a skill; a thin command wraps it for typeable invocation. T
 |---|---|---|
 | `/archeology` | `archeology` | brownfield spec-gap recovery |
 | `/brownfield-ingest` | `brownfield-ingest` | classify inherited markdown into artifact slots |
-| `/exec-coding-session` | `exec-coding-session` | dispatch parallel coding session over a bead set |
+| `/orchestrate-coding-session` | `orchestrate-coding-session` | dispatch parallel coding session over a bead set |
 | `/orchestrate-intent` | `orchestrate-intent` | guided Intent lifecycle walker |
 | `/using-dekspec` | `using-dekspec` | onboarding entry point (init + spec-mode + catalog) |
 
@@ -83,7 +83,7 @@ Heavy logic lives in a skill; a thin command wraps it for typeable invocation. T
 
 Two slash commands run a CLI verb AND invoke a skill body, combining Patterns A and C:
 
-- **`/doctor`** — Stage 1 runs `dekspec audit doctor` (Bash; schema validate + linkage + drift); Stage 2 executes the inlined AE-aware T/D/L fidelity audit body. Single full-audit surface; subsumed the legacy `/fidelity-audit` command in B11, the `/doctor-fidelity` skill in v0.98.0, and `/basic-audit` (linkage-only) in v0.98.0.
+- **`/doctor`** — Stage 1 runs `dekspec doctor` (Bash; schema validate + linkage + drift); Stage 2 executes the inlined AE-aware T/D/L fidelity audit body. Single full-audit surface; subsumed the legacy `/fidelity-audit` command in B11, the `/doctor-fidelity` skill in v0.98.0, and `/basic-audit` (linkage-only) in v0.98.0.
 - **`/migrate`** — Stage 1 runs `dekspec migrate` (Bash); Stage 2 walks the advisory queue interactively (inlined walker body using `${CLAUDE_PLUGIN_ROOT}/scripts/migrate/advisory_io.py` helpers). Single migration surface; subsumed the legacy `/migrate-artifact-format` skill in B2.
 
 When a capability needs both CLI execution AND in-loop Claude reasoning, expand the command body to dispatch both — don't fan out across separately-invocable surfaces.

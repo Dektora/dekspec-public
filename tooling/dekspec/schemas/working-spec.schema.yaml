@@ -56,7 +56,7 @@ properties:
   id:
     description: Canonical WS identifier derived from filename (e.g., WS-016).
     type: string
-    pattern: "^WS-\\d{3,}$"
+    pattern: "^(?:P-)?WS-\\d{3,}$"
 
   name:
     description: Human title from the markdown H1 (e.g., "Scoring Formulas").

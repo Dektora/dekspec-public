@@ -3,11 +3,11 @@
 [← back to dispatcher](../SKILL.md)
 
 
-Skips the `--analyze` and `/write-code-beads` phases for **single-IU, single-component** Intents and hands the Intent itself directly to `/exec-coding-session` as the work unit. `--testpass` is **retained** — the diff-confinement gate is real and worth preserving even for single-IU work; only the bead ceremony is bypassed.
+Skips the `--analyze` and `/write-code-beads` phases for **single-IU, single-component** Intents and hands the Intent itself directly to `/orchestrate-coding-session` as the work unit. `--testpass` is **retained** — the diff-confinement gate is real and worth preserving even for single-IU work; only the bead ceremony is bypassed.
 
 **Source.** INT-088 IU-2, bead `ds-49mc` (parent critique bead `ds-write-intent-lite-single-iu-path-k5cl`). The `--lite` discipline contract is documented inline (OI-C deferred — no ADR governs this bead beyond ADR-013).
 
-> **Inline execution.** This mode runs directly in the parent context — it does not fan out via the Agent tool. The gate check + frontmatter marker are both deterministic Python in `_lib/scripts/artifact_ops.py`; the routing to `/exec-coding-session` is the same skill-invocation surface the explicit-prompt path uses.
+> **Inline execution.** This mode runs directly in the parent context — it does not fan out via the Agent tool. The gate check + frontmatter marker are both deterministic Python in `_lib/scripts/artifact_ops.py`; the routing to `/orchestrate-coding-session` is the same skill-invocation surface the explicit-prompt path uses.
 
 ## Refusal contract (hard gates)
 
@@ -72,12 +72,12 @@ python plugins/dekspec/skills/_lib/scripts/artifact_ops.py transition \
 
 Surface stderr on non-zero exit and STOP.
 
-### Step 5: Route to `/exec-coding-session`
+### Step 5: Route to `/orchestrate-coding-session`
 
 Hand the Intent itself to the coding session as the work unit. The session resolves its own scope from the Intent's `## Components affected` and `## Desired Outcome`; there is no bead JSON to consume.
 
 ```text
-Next step: invoke /exec-coding-session with <Intent-path> as the work unit.
+Next step: invoke /orchestrate-coding-session with <Intent-path> as the work unit.
 ```
 
 ### Step 6: `--testpass` (retained)

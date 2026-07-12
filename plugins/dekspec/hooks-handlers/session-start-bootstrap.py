@@ -62,7 +62,7 @@ def main() -> int:
             "[dekspec] engine CLI may be stale: "
             f"CLI={cli_version} plugin={plugin_version}. "
             f"Re-acquire the engine ({WHEEL_INSTALL_LINE}) then reconcile "
-            "content with `dekspec library sync`; refresh the plugin with "
+            "content with `dekspec sync`; refresh the plugin with "
             "`claude plugin update dekspec@dekspec`. (The install script runs "
             "all three: scripts/install.sh.)",
             file=sys.stderr,

@@ -83,7 +83,7 @@ Engineer-in-the-loop by default (confirm each gate); `--auto` walks the same del
 
 ---
 
-#### Gate 2 — Implement → dispatch `/exec-coding-session`
+#### Gate 2 — Implement → dispatch `/orchestrate-coding-session`
 
 > [!NOTE]
 > Status `IMPLEMENTING`. Optionally review the specs before dispatching construction.
@@ -110,7 +110,7 @@ Then prompt:
 * **[interview]** — act as Lead System Architect; answer questions on tradeoffs, component boundaries, failure behavior, linkage/ADR compliance. Loop until the engineer types `done` / `skip` / chooses `[implement]`.
 * **[implement]** — dispatch the construction phase-executor:
   ```
-  /exec-coding-session <INT-NNN>
+  /orchestrate-coding-session <INT-NNN>
   ```
   It dispatches the ready bead set in parallel isolated worktrees and lands the IB-aggregate PR(s). The conductor does not run the coding itself.
 
@@ -149,8 +149,8 @@ Once the Intent's PR(s) are landed on `main`:
    - Promote any related artifact still in `PROPOSED`/`DRAFT` to its terminal status via `artifact_ops.py transition` (or the artifact's lock skill); leave nothing lingering in `TODO`/`DRAFT`/`PROPOSED`. Log every promotion.
 5. **Graph Synchronization**:
    - `python plugins/dekspec/skills/_lib/scripts/artifact_ops.py update-index ...`
-   - `dekspec audit relink` to restitch the link graph.
-   - Verify health using `dekspec audit doctor --at .`.
+   - `dekspec relink` to restitch the link graph.
+   - Verify health using `dekspec doctor --at .`.
 
 ---
 
@@ -175,7 +175,7 @@ Before walking any transition, enumerate every gate the walker will encounter fr
 | `ACCEPTED` → `IMPLEMENTING` | `decompose-emitted` | `/dekspec:spec-intent`'s decompose step has emitted IBs (or taken the no-IB direct-bead shortcut for WS-fan-in = 0 IUs); every downstream child artifact (AE, WS, IC, IB) reachable from `## Layer impact analysis` is at `ACCEPTED` or higher. |
 | `IMPLEMENTING` → `TESTPASS` | `verification-green` + `beads-closed` | Every child bead listed in the Intent's decomposition trail is `CLOSED`; every `verification[*].cmd` exits 0 (the diff-confinement gate + per-predicate scripts). |
 | `TESTPASS` → `MERGED` | `branch-merged-to-main` | The Intent's `## Branch` is merged into `main` per git log; out-of-band engineer-driven check (`--auto` does not perform the merge). |
-| `MERGED` → `LOCKED` | `post-merge-no-drift` | No post-merge drift findings in `dekspec audit doctor --at .`; all child artifacts have been promoted to their terminal status. |
+| `MERGED` → `LOCKED` | `post-merge-no-drift` | No post-merge drift findings in `dekspec doctor --at .`; all child artifacts have been promoted to their terminal status. |
 
 For each gate, the walker verifies the pre-condition by reading the same `artifact_ops.py status-guard` surface the explicit-prompt mode consumes. The walker does not infer pre-conditions; it reads them.
 

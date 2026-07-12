@@ -111,6 +111,19 @@ LEGACY_COMMANDS = {
     "lint-ib": ("check", "lint-ib"),
 }
 
+# ADR-042 inversion — the flat verb is now the canonical form; the nested
+# `<group> <sub>` form is the one-release deprecated alias. This reverse map
+# (`group -> {sub -> flat}`) lets `main()` warn on a nested invocation and
+# point at the flat successor. Built from LEGACY_COMMANDS plus the flat public
+# verbs added directly (not routed through LEGACY_COMMANDS): `lock-ready`,
+# `sync`, `regen-indexes`.
+_NESTED_TO_FLAT: dict[str, dict[str, str]] = {}
+for _flat, (_grp, _cmd) in LEGACY_COMMANDS.items():
+    _NESTED_TO_FLAT.setdefault(_grp, {})[_cmd] = _flat
+_NESTED_TO_FLAT.setdefault("audit", {})["lock-ready"] = "lock-ready"
+_NESTED_TO_FLAT.setdefault("library", {})["sync"] = "sync"
+_NESTED_TO_FLAT.setdefault("library", {})["regen-indexes"] = "regen-indexes"
+
 
 def build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.ArgumentParser]]:
     """Construct the full dekspec argparse tree.
@@ -150,6 +163,23 @@ def build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.Argument
     sub_audit = _get_subparsers_action(p_audit)
     _add_doctor_subparser(sub_audit)
     _add_relink_subparser(sub_audit)
+    # ADR-042 — bare `dekspec audit` is the consolidated composite verb:
+    # fix-to-convergence by default, `--check-only` reports without mutating.
+    # (The `audit <sub>` forms above remain deprecated nested aliases.)
+    p_audit.add_argument("--at", help="Path to anchor the repo (default: current working directory).")
+    p_audit.add_argument(
+        "--dekspec-root",
+        default="dekspec",
+        help="Path to the DekSpec content tree relative to repo root (default: dekspec).",
+    )
+    p_audit.add_argument("--json", action="store_true", help="Emit the rolled-up summary as JSON.")
+    p_audit.add_argument("--profile", default=None, help="Audit-rule profile to enforce.")
+    p_audit.add_argument(
+        "--check-only",
+        action="store_true",
+        help="Report without applying any fix (the CI-safe path; default is fix-to-convergence).",
+    )
+    p_audit.set_defaults(func=cmd_audit)
 
     # 3. exec
     p_exec = sub.add_parser("exec", help="Session tracking + per-repo config.")
@@ -226,22 +256,31 @@ def build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.Argument
     # lives in the engine (AE-005).
     _add_slices_subparser(sub)
 
-    # Legacy top-level command aliases (hidden from help)
+    # ADR-042 — internal flat verbs: reachable but hidden from top-level help
+    # (skill/hook/pipeline plumbing, not part of the advertised surface).
     _add_compile_subparser(SubParserWrapper(sub, suppress=True))
     _add_runs_subparser(SubParserWrapper(sub, suppress=True))
     _add_aggregate_subparser(SubParserWrapper(sub, suppress=True))
     _add_emit_subparser(SubParserWrapper(sub, suppress=True))
     _add_graph_subparser(SubParserWrapper(sub, suppress=True))
     _add_relink_subparser(SubParserWrapper(sub, suppress=True))
-    _add_init_subparser(SubParserWrapper(sub, suppress=True))
     _add_validate_subparser(SubParserWrapper(sub, suppress=True))
     _add_doctor_subparser(SubParserWrapper(sub, suppress=True))
     _add_session_subparser(SubParserWrapper(sub, suppress=True))
     _add_id_subparser(SubParserWrapper(sub, suppress=True))
     _add_config_subparser(SubParserWrapper(sub, suppress=True))
-    _add_ingest_subparser(SubParserWrapper(sub, suppress=True))
     _add_archeology_subparser(SubParserWrapper(sub, suppress=True))
     _add_lint_ib_subparser(SubParserWrapper(sub, suppress=True))
+    # ADR-042 — the PUBLIC flat verbs, SHOWN in top-level help. Together with
+    # the already-top-level audit / migrate / install, these are the nine
+    # public verbs of the flattened surface (init, ingest, sync,
+    # regen-indexes, lock-ready, find-spec-gaps).
+    _add_init_subparser(sub)
+    _add_ingest_subparser(sub)
+    _add_sync_subparser(sub)
+    _add_regen_indexes_subparser(sub)
+    _add_lock_ready_flat_subparser(sub)
+    _add_find_spec_gaps_subparser(sub)
 
     group_parsers = {
         "check": p_check,
@@ -251,6 +290,17 @@ def build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.Argument
         "library": p_library,
         "dev": p_dev,
     }
+    # ADR-042 — hide the deprecated nested group namespaces from top-level help.
+    # They stay fully dispatchable (each nested `<group> <sub>` still works and
+    # prints its deprecation notice), but the advertised surface is the flat
+    # verbs. `audit` is NOT hidden — it is now a public verb (with the group's
+    # subcommands as its deprecated aliases).
+    _top = _get_subparsers_action(parser)
+    if _top is not None and getattr(_top, "_choices_actions", None):
+        _deprecated_groups = {"check", "exec", "repo", "library", "dev", "resource"}
+        _top._choices_actions = [
+            a for a in _top._choices_actions if a.dest not in _deprecated_groups
+        ]
     return parser, group_parsers
 
 
@@ -258,12 +308,18 @@ def main(argv: list[str] | None = None) -> int:
     parser, group_parsers = build_parser()
 
     check_args = argv if argv is not None else sys.argv[1:]
-    if check_args and check_args[0] in LEGACY_COMMANDS:
-        new_group, new_cmd = LEGACY_COMMANDS[check_args[0]]
-        print(
-            f"[DEPRECATED] 'dekspec {check_args[0]}' is deprecated. Please use 'dekspec {new_group} {new_cmd}' instead.",
-            file=sys.stderr,
-        )
+    # ADR-042: flat verbs are canonical (silent); the nested `<group> <sub>`
+    # forms are one-release deprecated aliases that warn, pointing to the flat
+    # successor. (The reverse: `dekspec doctor` is now silent; `dekspec audit
+    # doctor` warns.)
+    if len(check_args) >= 2 and check_args[0] in _NESTED_TO_FLAT:
+        flat = _NESTED_TO_FLAT[check_args[0]].get(check_args[1])
+        if flat:
+            print(
+                f"[DEPRECATED] 'dekspec {check_args[0]} {check_args[1]}' is deprecated. "
+                f"Please use 'dekspec {flat}' instead.",
+                file=sys.stderr,
+            )
 
     args = parser.parse_args(argv)
 
@@ -366,6 +422,50 @@ def _add_library_artifact_subparsers(sub: argparse._SubParsersAction) -> None:
     _add_author_target_subparser(sub)
     _add_regen_indexes_subparser(sub)
     _add_cow_stage_subparser(sub)
+
+
+def _add_lock_ready_flat_subparser(sub: argparse._SubParsersAction) -> None:
+    """ADR-042 flat `lock-ready` — the gated ACCEPTED→LOCKED sweep, kept a
+    distinct public verb (never folded into `audit`'s fix default). Dispatches
+    to the same handler as `audit lock-ready`."""
+    p = sub.add_parser(
+        "lock-ready",
+        help="Transition lock-ready ACCEPTED artifacts to LOCKED (gated action).",
+    )
+    p.add_argument("--at", help="Path to anchor the repo (default: current working directory).")
+    p.add_argument(
+        "--dekspec-root",
+        default="dekspec",
+        help="Path to the DekSpec content tree relative to repo root (default: dekspec).",
+    )
+    p.add_argument(
+        "--apply",
+        action="store_true",
+        help="Actually transition the lock-ready artifacts to LOCKED.",
+    )
+    p.add_argument(
+        "--engineer",
+        default="dekspec-audit-lock-ready",
+        help="The engineer/agent identifier for the Amendment Log row.",
+    )
+    p.set_defaults(func=cmd_audit_lock_ready)
+
+
+def _add_find_spec_gaps_subparser(sub: argparse._SubParsersAction) -> None:
+    """ADR-042 flat `find-spec-gaps` — the flat rename of `dev archeology
+    coverage`. Reports source files no LOCKED Intent claims; feeds the
+    archeology recovery workflow."""
+    p = sub.add_parser(
+        "find-spec-gaps",
+        help="Report source files no LOCKED Intent claims (spec-coverage gaps).",
+    )
+    p.add_argument("--at", default=".", help="Path to the repo to scan (default: current working directory).")
+    p.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit the gap report as a JSON array instead of a Markdown table.",
+    )
+    p.set_defaults(func=cmd_archeology_coverage)
 
 
 def _make_deprecation_alias(verb: str, handler):
@@ -2287,6 +2387,63 @@ def _add_doctor_subparser(sub: argparse._SubParsersAction) -> None:
     p.set_defaults(func=cmd_doctor)
 
 
+def _fix_to_convergence(
+    repo_root,
+    dekspec_root: str = "dekspec",
+    max_passes: int = 10,
+    *,
+    _propose=None,
+    _apply=None,
+) -> list[int]:
+    """Run the mechanical fix sweep to a fixed point (ADR-042 / INT-127).
+
+    Re-runs propose_fixes → apply_fixes until propose_fixes returns nothing
+    (quiescence) or `max_passes` is reached. Only mechanical fixes flow through
+    propose_fixes (L6 backlinks, status metadata) — reversible metadata moves,
+    never semantic edits — so looping to convergence is safe. Returns the
+    per-pass fix count (its length is the number of passes that did work).
+
+    `_propose` / `_apply` are injectable for testing; they default to the
+    tested primitives in fidelity_audit.linkage.
+    """
+    if _propose is None or _apply is None:
+        from .fidelity_audit.linkage import apply_fixes as _a
+        from .fidelity_audit.linkage import propose_fixes as _p
+
+        _propose = _propose or _p
+        _apply = _apply or _a
+
+    rounds: list[int] = []
+    for _ in range(max_passes):
+        fixes = _propose(repo_root, dekspec_root=dekspec_root)
+        if not fixes:
+            break
+        _apply(fixes, dry_run=False)
+        rounds.append(len(fixes))
+    return rounds
+
+
+def cmd_audit(args: argparse.Namespace) -> int:
+    """ADR-042 consolidated `audit` verb — the composite health check.
+
+    Fixes to convergence by default (mechanical fixes only); ``--check-only``
+    reports without mutating (the CI-safe path). Delegates to the doctor
+    composite with ``--loop`` toggled by ``--check-only``. The nested
+    ``audit <sub>`` forms remain as deprecated aliases.
+    """
+    doctor_args = argparse.Namespace(
+        at=getattr(args, "at", None),
+        dekspec_root=getattr(args, "dekspec_root", "dekspec"),
+        json=getattr(args, "json", False),
+        profile=getattr(args, "profile", None),
+        loop=not getattr(args, "check_only", False),
+        pass_cap=10,
+        scope="corpus",
+        axis=None,
+    )
+    return cmd_doctor(doctor_args)
+
+
 def cmd_doctor(args: argparse.Namespace) -> int:
     """Composite health check. Exit 0 = clean OR advisory, 1 = warnings, 2 = critical.
 
@@ -2305,6 +2462,21 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     from .vendoring import compute_drift
 
     repo_root = Path(args.at).resolve() if args.at else Path.cwd()
+
+    # ADR-042 / INT-127 — with --loop, drive the mechanical fix sweep to a
+    # fixed point before reporting, so the composite reflects the post-fix
+    # state. Mechanical fixes only (reversible metadata moves).
+    if getattr(args, "loop", False):
+        passes = _fix_to_convergence(
+            repo_root,
+            dekspec_root=getattr(args, "dekspec_root", "dekspec"),
+            max_passes=getattr(args, "pass_cap", 10) or 10,
+        )
+        if passes:
+            print(
+                f"fix-to-convergence: {len(passes)} pass(es) applied "
+                f"(fixes per pass = {passes})"
+            )
 
     sections: list[dict[str, Any]] = []
     worst_severity = "clean"  # clean | advisory | warning | critical
@@ -4579,6 +4751,12 @@ def cmd_sync(args: argparse.Namespace) -> int:
 
 def _detect_artifact_kind(filename: str) -> str | None:
     """Return artifact kind from filename, None if unrecognized."""
+    # ADR-043: a provisional `P-<KIND>-<NNN>-<slug>.md` file detects to its
+    # underlying kind — strip the `P-` prefix so the per-kind checks match.
+    from .provisional_ids import is_provisional_filename
+
+    if is_provisional_filename(filename):
+        filename = filename[len("P-"):]
     if filename == "system-vision.md":
         return "vision"
     if filename == "domain-glossary.md":
@@ -5789,11 +5967,18 @@ _PROVISIONAL_BRANCH_PREFIX: dict[str, str] = {
 }
 
 # Canonical directory (relative to the dekspec content root) per IR kind.
-# Extensible: add a kind here to teach `resolve_author_target` its canonical
-# home. Today only the two Creation-mode authoring kinds (INT, MSN) are wired.
+# ADR-043 generalizes provisional/canonical authoring beyond INT/MSN to every
+# kind; this mirrors `promote.KIND_TO_DIR` (the promotion-target mapping) so a
+# `--canonical` author-target and its eventual promotion agree on the home dir.
 _CANONICAL_DIR_BY_KIND: dict[str, str] = {
     "INT": "intents",
     "MSN": "missions",
+    "ADR": "adrs",
+    "AE": "architecture-elements",
+    "IC": "interface-contracts",
+    "WS": "working-specs",
+    "IB": "impl-briefs/queued",
+    "SP": "security-profiles",
 }
 
 

@@ -7,7 +7,7 @@ reasoning_effort: high
 disable-model-invocation: false
 allowed-tools: Read Bash
 argument-hint: [--help] [target-branch]
-related_skills: [land-intent, exec-coding-session]
+related_skills: [land-intent, orchestrate-coding-session]
 ---
 
 Build a **clean PR branch** that carries only the code reviewers need to see.
@@ -146,10 +146,10 @@ At runtime, render the manifest per `_lib/help_mode_template.md` and stop.
 ## When NOT to use
 
 - To land/merge an Intent's PRs through review — that is `/dekspec:land-intent`.
-- To dispatch the coding itself — that is `/dekspec:exec-coding-session`.
+- To dispatch the coding itself — that is `/dekspec:orchestrate-coding-session`.
 - On a branch with no spec churn — it works, but it only clones the branch.
 
 ## Related
 
 - `/dekspec:land-intent` — drives the resulting PR(s) through the review pipeline to a landed state.
-- `/dekspec:exec-coding-session` — produces the code commits this skill later separates from spec churn.
+- `/dekspec:orchestrate-coding-session` — produces the code commits this skill later separates from spec churn.

@@ -40,7 +40,7 @@ claude plugin install dekspec@dekspec
 
 (Or paste the equivalent `/plugin marketplace add Dektora/dekspec-public` and `/plugin install dekspec@dekspec` into an interactive Claude Code session.)
 
-The plugin version is pinned to the dekspec library version — installing the plugin at `v0.40.1` matches the library at `v0.40.1`. To upgrade, run the standard flow **in order** (plugin last): re-acquire the engine (`pipx install dekspec==X.Y.Z`), reconcile vendored content with `dekspec library sync`, then `claude plugin update dekspec@dekspec`. The one-command `scripts/install.sh` does all three. (The legacy one-shot `dekspec repo upgrade` acquisition verb was removed once the ADR-032 deprecation window elapsed — ADR-034 killed the in-CLI acquisition model; reconcile via `dekspec library sync`.)
+The plugin version is pinned to the dekspec library version — installing the plugin at `v0.40.1` matches the library at `v0.40.1`. To upgrade, run the standard flow **in order** (plugin last): re-acquire the engine (`pipx install dekspec==X.Y.Z`), reconcile vendored content with `dekspec sync`, then `claude plugin update dekspec@dekspec`. The one-command `scripts/install.sh` does all three. (The legacy one-shot `dekspec repo upgrade` acquisition verb was removed once the ADR-032 deprecation window elapsed — ADR-034 killed the in-CLI acquisition model; reconcile via `dekspec sync`.)
 
 ## Layout
 

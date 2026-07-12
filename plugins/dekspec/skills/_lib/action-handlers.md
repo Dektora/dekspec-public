@@ -11,7 +11,7 @@ ADR-026's design substrate names exactly three symmetric failure pairs. Each FAI
 | Success state | Failure state | Registered handler (per design substrate) |
 |---|---|---|
 | `REVIEW_IB` | **REVIEW_IB_FAIL** | `/write-ibs --revise` + re-fire REVIEW_IB |
-| `TESTPASS` | **TESTFAIL** | `/exec-coding-session --retry` + re-eval |
+| `TESTPASS` | **TESTFAIL** | `/orchestrate-coding-session --retry` + re-eval |
 | `REVIEW_PR` | **REVIEW_PR_FAIL** | seed `/code-review --comment` + `/write-ibs --revise` + new commits (grep-loop fix discipline) + re-fire REVIEW_PR |
 
 The REVIEW_PR_FAIL handler drives a **review-fix loop** that seeds the PR with line-anchored findings via `/code-review <effort> --comment <PR-#>` before fixing — read the diff first, fix only real/relevant findings, a test per fix, summary of resolved items, re-fire until clean. See `handlers/review_pr_fail.md` §Review-fix loop discipline.
@@ -37,7 +37,7 @@ result = dispatch(
 
 `register(state, module_path)` is idempotent — registering the same handler twice is a no-op. Registering a different handler for a state already registered is a hard error (the framework refuses silent overrides).
 
-`dispatch(fail_state, context)` looks up the registered handler, calls it with the context, and returns a `HandlerResult` carrying (a) the transition signal (advance / hold / abort), (b) any new artifacts the handler staged (diff + commit messages for `/write-ibs --revise`, retry-session ID for `/exec-coding-session --retry`), (c) a human-readable summary for the operator's sidecar log.
+`dispatch(fail_state, context)` looks up the registered handler, calls it with the context, and returns a `HandlerResult` carrying (a) the transition signal (advance / hold / abort), (b) any new artifacts the handler staged (diff + commit messages for `/write-ibs --revise`, retry-session ID for `/orchestrate-coding-session --retry`), (c) a human-readable summary for the operator's sidecar log.
 
 If no handler is registered for `fail_state`, `dispatch` raises `UnregisteredFailStateError` before the IB state machine commits the transition — better to abort than dispatch a half-broken pipeline.
 
@@ -50,9 +50,9 @@ Each handler receives a `HandlerContext` carrying:
 | `context.ib_id` | The IB the state machine is operating on | The handler's primary subject. |
 | `context.ib_path` | Resolved path to the IB markdown body | For `/write-ibs --revise` invocation. |
 | `context.sidecar_review_path` | The sidecar review file the orchestration shell wrote that triggered this FAIL transition | The handler's evidence base — the verdict + findings to act on. |
-| `context.audit_doctor_snapshot_sha` | The `dekspec audit doctor` SHA the review ran against | For correlation with the flywheel + reproducibility. |
+| `context.audit_doctor_snapshot_sha` | The `dekspec doctor` SHA the review ran against | For correlation with the flywheel + reproducibility. |
 | `context.mode` | RECOMMEND / MIXED / AUTO (from `.dekspec/config.yaml` `review.mode` field — INT-118) | Determines whether the handler stages-and-signals (RECOMMEND) or auto-advances (AUTO). |
-| `context.coding_session_ref` | Reference to the IB's most recent coding session (for TESTFAIL retry) | Required by `/exec-coding-session --retry`; optional for the other two handlers. |
+| `context.coding_session_ref` | Reference to the IB's most recent coding session (for TESTFAIL retry) | Required by `/orchestrate-coding-session --retry`; optional for the other two handlers. |
 
 Handlers are deliberately blind to anything else — they do not see the lens scores, the per-lens findings detail, or the operator's prior decisions. The orchestration shell projects what the handler needs and nothing more.
 

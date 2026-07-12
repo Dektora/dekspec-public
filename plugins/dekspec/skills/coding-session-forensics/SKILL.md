@@ -1,5 +1,5 @@
 ---
-name: forensics
+name: coding-session-forensics
 description: Read-only post-mortem for stuck, failed, or anomalous DekSpec construction sessions — collects git/worktree/bead/linkage evidence, detects known failure fingerprints (stuck loop, orphaned worktree, mid-red crash, incomplete LOCK chain, IB drift, test regression, context-overflow, cross-session collision), and writes a structured forensic report with a root-cause hypothesis + recommended recovery commands. Never modifies any artifact. Use when a coding session hung, a wave was killed, worktrees were orphaned, or a merge/LOCK chain ended in a weird state.
 mode: lite
 model: claude-opus-4-7
@@ -7,7 +7,7 @@ reasoning_effort: high
 disable-model-invocation: false
 allowed-tools: Read Bash Write
 argument-hint: [--help] [problem description]
-related_skills: [diagnose, exec-coding-session, land-intent]
+related_skills: [diagnose-bug, orchestrate-coding-session, land-intent]
 ---
 
 Run a **read-only post-mortem** on a DekSpec construction session that went
@@ -18,14 +18,14 @@ root-cause hypothesis and concrete recovery commands. It **diagnoses, it does
 not remediate** — it creates no beads, edits no artifacts, and the engineer
 decides what to do with the findings.
 
-This is the construction-session counterpart to `/dekspec:diagnose` (which
+This is the construction-session counterpart to `/dekspec:diagnose-bug` (which
 post-mortems a *bug* via a deterministic repro). Forensics post-mortems the
 *session* via git/worktree/bead archaeology.
 
 ## Starter Prompt
 
 ```prompt
-/dekspec:forensics the INT-204 coding session hung mid-wave and left worktrees behind
+/dekspec:coding-session-forensics the INT-204 coding session hung mid-wave and left worktrees behind
 
 Investigate read-only: gather git/worktree/bead/linkage evidence, detect the
 failure fingerprint (orphaned worktrees? mid-red crash? incomplete LOCK chain?),
@@ -75,7 +75,7 @@ for b in $(git for-each-ref --format='%(refname:short)' refs/heads); do
 done
 
 # DekSpec health (canonical audit forms; note-and-continue if the CLI is absent)
-dekspec audit doctor --at .
+dekspec doctor --at .
 dekspec audit linkage --at .
 
 # Bead state — `br` prints glyphs (○ open / ● closed), not the word CLOSED, so a
@@ -107,9 +107,9 @@ For each pattern, check the signal; record HIGH / MEDIUM / LOW with verbatim evi
 
 ### Step 3 — write the report (the only file this skill writes)
 
-Write to `docs/workspace/<area>/pm/forensics/report-<UTC-timestamp>.md` when a
+Write to `docs/workspace/<area>/pm/coding-session-forensics/report-<UTC-timestamp>.md` when a
 `docs/workspace/` tree exists; otherwise fall back to
-`.dekspec-forensics/report-<UTC-timestamp>.md` (create the dir). Use this shape:
+`.dekspec-coding-session-forensics/report-<UTC-timestamp>.md` (create the dir). Use this shape:
 
 ```markdown
 # Forensic Report — DekSpec Construction
@@ -154,15 +154,15 @@ engineer runs deliberately.
 See [`_lib/help_mode_template.md`](../_lib/help_mode_template.md) for the canonical Help rendering contract. Manifest for this skill:
 
 ```yaml
-skill_name: "/dekspec:forensics"
+skill_name: "/dekspec:coding-session-forensics"
 one_line:   "Read-only post-mortem of a stuck/failed DekSpec construction session — collect git/worktree/bead/linkage evidence, match failure fingerprints, write a forensic report with a root-cause hypothesis + recovery commands. Remediates nothing."
 modes:
   - { flag: "",       args: "[problem description]", description: "Forensics mode — collect read-only evidence, detect anomaly fingerprints, write a forensic report with root-cause hypothesis + recommended recovery commands." }
   - { flag: "--help", args: "",                      description: "Show this help message." }
 examples:
-  - "/dekspec:forensics the INT-204 coding session hung mid-wave"
-  - "/dekspec:forensics orphaned worktrees after a wave kill"
-  - "/dekspec:forensics --help"
+  - "/dekspec:coding-session-forensics the INT-204 coding session hung mid-wave"
+  - "/dekspec:coding-session-forensics orphaned worktrees after a wave kill"
+  - "/dekspec:coding-session-forensics --help"
 ```
 
 At runtime, render the manifest per `_lib/help_mode_template.md` and stop.
@@ -175,13 +175,13 @@ At runtime, render the manifest per `_lib/help_mode_template.md` and stop.
 
 ## When NOT to use
 
-- To reproduce and fix a *bug* — that is `/dekspec:diagnose` (deterministic repro
+- To reproduce and fix a *bug* — that is `/dekspec:diagnose-bug` (deterministic repro
   loop), not a session post-mortem.
 - To actually perform recovery (re-dispatch, worktree rescue, re-LOCK) — this
   skill only reports; remediation is the engineer's deliberate next step.
 
 ## Related
 
-- `/dekspec:diagnose` — the bug-level post-mortem sibling (repro-first debugging).
-- `/dekspec:exec-coding-session` — the construction surface this skill post-mortems.
-- `/dekspec:land-intent` — the review-and-land phase whose partial completion forensics often diagnoses.
+- `/dekspec:diagnose-bug` — the bug-level post-mortem sibling (repro-first debugging).
+- `/dekspec:orchestrate-coding-session` — the construction surface this skill post-mortems.
+- `/dekspec:land-intent` — the review-and-land phase whose partial completion coding-session-forensics often diagnoses.

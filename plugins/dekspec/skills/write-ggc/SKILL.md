@@ -724,14 +724,14 @@ If the singleton is unclaimed, the verb errors unless `--incubation <slug>` is p
 - [ ] In `--add-term`: the Step 3 duplicate + synonym check ran and STOPPED on an exact match; no duplicate glossary row was added.
 - [ ] Any edit to `dekspec/domain-glossary.md` was preceded by the `dekspec library cow-stage` guard (or correctly fell through to direct-flow on exit 1).
 - [ ] `--audit` / `--review` made no unintended writes beyond their declared resolutions; the glossary **Modified** date was bumped on any file actually changed.
-- [ ] For substantive modes, `dekspec audit relink` was run against the repo root as the final action.
+- [ ] For substantive modes, `dekspec relink` was run against the repo root as the final action.
 
 ## Closing Step
 
 **Mandatory closing step for every substantive mode of this skill** (the modes that write or revise a Glossary / Guidance-and-Corrections entry — `--log`, `--add-term`, `--review`). After the artifact file is saved and any index update is done, run:
 
 ```
-dekspec audit relink
+dekspec relink
 ```
 
-against the repo root. This deterministically re-derives and renders the cross-artifact `Linked Artifacts` backlinks from the forward links the artifact declares, stitching the spec graph in one pass. This is a required action, not a reminder — do not defer it, do not surface a "backfill the backlinks later" note to the engineer. `dekspec audit relink` is the graph-repair pass; running it is the last thing the skill does before reporting back.
+against the repo root. This deterministically re-derives and renders the cross-artifact `Linked Artifacts` backlinks from the forward links the artifact declares, stitching the spec graph in one pass. This is a required action, not a reminder — do not defer it, do not surface a "backfill the backlinks later" note to the engineer. `dekspec relink` is the graph-repair pass; running it is the last thing the skill does before reporting back.

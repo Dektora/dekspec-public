@@ -239,14 +239,14 @@ If the path is not claimed by any pre-ACCEPTED Intent, the verb errors unless yo
 - [ ] The Status transition recorded matches the mode's contract (e.g. `--accept` PROPOSED → ACCEPTED; `--audit` mutated nothing; `--review` did not promote Status).
 - [ ] The required Amendment Log entry was appended for mutating modes (with `--unlock`'s reason recorded verbatim), and `--audit` wrote nothing.
 - [ ] Any domain misinterpretation corrected during the run was logged via `/write-ggc --log` before proceeding.
-- [ ] `dekspec audit relink` was run against the repo root as the final action of every substantive mode.
+- [ ] `dekspec relink` was run against the repo root as the final action of every substantive mode.
 
 ## Closing Step
 
 **Mandatory closing step for every substantive mode of this skill** (the modes that write or revise an Intent — Creation, `--analyze`, `--accept`, `--decompose`, `--testpass`, `--lock`, `--unlock`, `--sync`, `--review`, `--amend`). After the artifact file is saved and any index update is done, run:
 
 ```
-dekspec audit relink
+dekspec relink
 ```
 
-against the repo root. This deterministically re-derives and renders the cross-artifact `Linked Artifacts` backlinks from the forward links the artifact declares, stitching the spec graph in one pass. This is a required action, not a reminder — do not defer it, do not surface a "backfill the backlinks later" note to the engineer. `dekspec audit relink` is the graph-repair pass; running it is the last thing the skill does before reporting back.
+against the repo root. This deterministically re-derives and renders the cross-artifact `Linked Artifacts` backlinks from the forward links the artifact declares, stitching the spec graph in one pass. This is a required action, not a reminder — do not defer it, do not surface a "backfill the backlinks later" note to the engineer. `dekspec relink` is the graph-repair pass; running it is the last thing the skill does before reporting back.

@@ -1,5 +1,5 @@
 ---
-name: diagnose
+name: diagnose-bug
 description: Governed pre-spec debugging loop for DekSpec — when a bug is observed, build a fast, deterministic, agent-runnable PASS/FAIL repro signal FIRST (before any hypothesizing), then minimize → hypothesize → instrument → fix → regression-test. The working diagnosis log lands in the gitignored `dekspec/.scratch/diagnostics/` zone and never enters the committed tree; the durable repro promotes into a bug Intent's `### bug — Reproduction` section (via /write-intent (type: bug)) and seeds /write-tests as a red-first outcome test. Use when a bug needs reproducing-before-fixing, when asked to debug or diagnose a failure, or before capturing a bug Intent.
 mode: lite
 model: claude-opus-4-7
@@ -27,7 +27,7 @@ commits it.
 ## Starter Prompt
 
 ```prompt
-/dekspec:diagnose --at .
+/dekspec:diagnose-bug --at .
 
 A bug was observed: <one-line symptom>. Build a deterministic PASS/FAIL repro
 signal FIRST — a single agent-runnable command whose exit code is the signal —
@@ -108,15 +108,15 @@ Domain-term clarifications that surface during diagnosis route to
 See [`_lib/help_mode_template.md`](../_lib/help_mode_template.md) for the canonical Help rendering contract. Manifest for this skill:
 
 ```yaml
-skill_name: "/dekspec:diagnose"
+skill_name: "/dekspec:diagnose-bug"
 one_line:   "Pre-spec debugging loop — build a deterministic PASS/FAIL repro signal FIRST, log to dekspec/.scratch/diagnostics/, then minimize→hypothesize→instrument→fix→regression-test and promote the repro into a bug Intent"
 modes:
   - { flag: "", args: "[--at PATH]", description: "Diagnose mode — build the deterministic repro signal first, then run the full loop and promote the durable repro into a bug Intent via /write-intent (type: bug) + /write-tests." }
   - { flag: "--help", args: "", description: "Show this help message." }
 examples:
-  - "/dekspec:diagnose --at ."
-  - "/dekspec:diagnose"
-  - "/dekspec:diagnose --help"
+  - "/dekspec:diagnose-bug --at ."
+  - "/dekspec:diagnose-bug"
+  - "/dekspec:diagnose-bug --help"
 storage: "dekspec/.scratch/diagnostics/ (gitignored ephemeral working log; the durable repro promotes into a bug Intent's Reproduction section)"
 ```
 

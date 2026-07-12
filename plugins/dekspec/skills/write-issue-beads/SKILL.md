@@ -7,7 +7,7 @@ reasoning_effort: high
 disable-model-invocation: false
 allowed-tools: Read Write Edit Bash
 argument-hint: [--groom | --help] [path-or-text-or-bead-id]
-related_skills: [write-code-beads, send-issue, diagnose, write-intent]
+related_skills: [write-code-beads, send-issue, diagnose-bug, write-intent]
 ---
 
 Ingest arbitrary input and triage it into the non-coding `br` backlog.
@@ -22,11 +22,11 @@ Ingest arbitrary input and triage it into the non-coding `br` backlog.
 
 `write-issue-beads` owns the **non-coding bead lifecycle**: ingest an arbitrary report / request / note → triage → groom a standing `br` backlog of `bug`/`task`/`issue`/`chore` items. It is the counterpart to `write-code-beads`.
 
-- **`write-code-beads`** decomposes a LOCKED Implementation Brief into self-contained single-PR **coding beads** that `exec-coding-session` *dispatches*. Coding-pure, IB-derived, never triaged. **Do not duplicate it here.**
+- **`write-code-beads`** decomposes a LOCKED Implementation Brief into self-contained single-PR **coding beads** that `orchestrate-coding-session` *dispatches*. Coding-pure, IB-derived, never triaged. **Do not duplicate it here.**
 - **`write-ibs`** decomposes a finalized Working Spec into Implementation Briefs. **Do not duplicate it here.**
 - **`send-issue`** files the *upstream* GitHub issue against `Dektora/dekspec`. `write-issue-beads` operates only on the *local* `br` backlog. The two stay distinct.
 
-**Bead-model note (ADR-025 distinction):** ADR-025 defines the *coding* bead as a commit-cluster and the IB as a PR. This skill operates a **distinct non-coding bead lifecycle** (ingest → triage → groom) that *coexists with* and does **not change** that model — the IB-derived coding-bead path dispatched by `exec-coding-session` is untouched. No new ADR governs this skill; the distinction lives in this prose.
+**Bead-model note (ADR-025 distinction):** ADR-025 defines the *coding* bead as a commit-cluster and the IB as a PR. This skill operates a **distinct non-coding bead lifecycle** (ingest → triage → groom) that *coexists with* and does **not change** that model — the IB-derived coding-bead path dispatched by `orchestrate-coding-session` is untouched. No new ADR governs this skill; the distinction lives in this prose.
 
 ## Starter Prompt
 

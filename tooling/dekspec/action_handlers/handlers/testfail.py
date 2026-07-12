@@ -1,6 +1,6 @@
 """TESTFAIL handler (INT-114 markdown contract realized in Python).
 
-Per ADR-026 + ADR-027 the handler invokes `/exec-coding-session
+Per ADR-026 + ADR-027 the handler invokes `/orchestrate-coding-session
 --retry` with the failing coding session's context + re-evals.
 RECOMMEND mode stages + signals; AUTO advances on retry pass.
 """
@@ -21,7 +21,7 @@ def handle(context):
     HandlerResult = registry.HandlerResult
 
     retry_plan = (
-        f"/exec-coding-session --retry {context.ib_id} "
+        f"/orchestrate-coding-session --retry {context.ib_id} "
         f"(prior-session: {context.coding_session_ref or '<unknown>'})"
     )
 
@@ -45,7 +45,7 @@ def handle(context):
             ),
         },
         summary=(
-            "RECOMMEND: staged /exec-coding-session --retry; "
+            "RECOMMEND: staged /orchestrate-coding-session --retry; "
             "operator drives re-eval."
         ),
     )

@@ -362,7 +362,7 @@ the referenced-not-owned helper
 [`_lib/folderize_deep_module.md`](../_lib/folderize_deep_module.md) on the
 flagged **deep module** (the `should-folderize` candidate). That helper is
 **referenced-not-owned**: call it, never edit it. The sibling
-`deepen-codebase-architecture` skill calls the same helper.
+`analyze-module-depth` skill calls the same helper.
 
 **Confirmation gate — never silent mutation.** Before touching the tree, `--fix`
 previews the planned restructuring (a **dry-run** preview of the new package

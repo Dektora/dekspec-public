@@ -1,4 +1,4 @@
-# /dekspec:debug — Diagnose mode
+# /dekspec:debug-testfail — Diagnose mode
 
 Walk Agans' nine rules of debugging on a TESTFAIL symptom. Every observation,
 every hypothesis, and every disproved theory is recorded in

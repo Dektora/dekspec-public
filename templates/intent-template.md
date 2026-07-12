@@ -142,11 +142,11 @@ The risk tier is **complementary** to Autonomy and Intent type: type classifies 
 
 ### `bug` — Reproduction
 
-[A deterministic, agent-runnable PASS/FAIL repro signal — ideally the one `/diagnose` built in PHASE 1 (a single shell command whose exit code *is* the signal). Required for `type: bug` *unless* a `### bug — Non-Reproducible Waiver` is supplied instead. The first bead produced at `--decompose` is the failing test that proves this Reproduction — and it is the Intent's ADR-029 Outcome Verification test (red-first); the Verification predicate's `bug-reproduction-fixed` check runs that test. The `T-BUG-REPRO-GATE` audit rule fires a P3 advisory on a `≥ACCEPTED` bug Intent that has neither this section nor the waiver below.]
+[A deterministic, agent-runnable PASS/FAIL repro signal — ideally the one `/diagnose-bug` built in PHASE 1 (a single shell command whose exit code *is* the signal). Required for `type: bug` *unless* a `### bug — Non-Reproducible Waiver` is supplied instead. The first bead produced at `--decompose` is the failing test that proves this Reproduction — and it is the Intent's ADR-029 Outcome Verification test (red-first); the Verification predicate's `bug-reproduction-fixed` check runs that test. The `T-BUG-REPRO-GATE` audit rule fires a P3 advisory on a `≥ACCEPTED` bug Intent that has neither this section nor the waiver below.]
 
 ### `bug` — Non-Reproducible Waiver
 
-[Supply *this section instead of* Reproduction only when `/diagnose` could not construct a deterministic repro (e.g. a Heisenbug, an environment-bound failure on a since-deleted runner, a data-dependent crash with no reproducible input). State plainly *why* no repro could be built and what evidence the fix rests on instead. A populated waiver satisfies the `T-BUG-REPRO-GATE` audit rule exactly as a populated Reproduction does — it is the explicit escape hatch, not a silent omission.]
+[Supply *this section instead of* Reproduction only when `/diagnose-bug` could not construct a deterministic repro (e.g. a Heisenbug, an environment-bound failure on a since-deleted runner, a data-dependent crash with no reproducible input). State plainly *why* no repro could be built and what evidence the fix rests on instead. A populated waiver satisfies the `T-BUG-REPRO-GATE` audit rule exactly as a populated Reproduction does — it is the explicit escape hatch, not a silent omission.]
 
 ### `nfr` — Metric and Target
 

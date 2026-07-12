@@ -95,6 +95,16 @@ def _draft_id_or_none(filename: str) -> str | None:
     return f"{kind}-DRAFT-{slug}"
 
 
+def _provisional_id_or_none(filename: str) -> str | None:
+    """Return the ``P-<KIND>-<NNN>`` ID if ``filename`` is a provisional
+    filename (ADR-043), else None. Single seam the per-kind ``_extract_*_id``
+    helpers consult: a provisional file *parses* (returns its P- id) rather
+    than raising, so it can be validated while incubating."""
+    from ..provisional_ids import provisional_id_or_none
+
+    return provisional_id_or_none(filename)
+
+
 # Parser-side legacy → canonical severity alias map. Imported from
 # `dekspec.severity` (the leaf module that both this parser and the
 # IB-024 audit engine share) and re-exposed under a parser-private
@@ -425,6 +435,9 @@ def _split_sections(text: str) -> dict[str, str]:
 def _extract_id(filename: str, ctx: _ParseContext) -> str:
     m = _IC_FILENAME.match(filename)
     if not m:
+        pid = _provisional_id_or_none(filename)
+        if pid is not None:
+            return pid
         if _draft_id_or_none(filename) is not None:
             raise DraftArtifactError(
                 f"{filename} is a DRAFT artifact (IC-DRAFT-<slug>); allocate a "
@@ -937,7 +950,7 @@ def _maybe_set(d: dict[str, Any], key: str, value: Any) -> None:
 # =========================================================================== #
 
 _AE_FILENAME = re.compile(r"^(AE-\d{3,})-.+\.md$")
-_AE_H1_TITLE = re.compile(r"^#\s+(?:AE-\d{3,}|Architecture Element):\s*(.+?)\s*$", re.MULTILINE)
+_AE_H1_TITLE = re.compile(r"^#\s+(?:(?:P-)?AE-\d{3,}|Architecture Element):\s*(.+?)\s*$", re.MULTILINE)
 _FORMER_DN = re.compile(r"\b(DN-\d{3,})\b")
 
 _AE_VALID_STATUSES = {"TODO", "DRAFT", "PROPOSED", "ACCEPTED", "LOCKED", "DEPRECATED"}
@@ -1093,6 +1106,9 @@ def parse_ae(path: str | Path) -> dict[str, Any]:
 def _extract_ae_id(filename: str) -> str:
     m = _AE_FILENAME.match(filename)
     if not m:
+        pid = _provisional_id_or_none(filename)
+        if pid is not None:
+            return pid
         if _draft_id_or_none(filename) is not None:
             raise DraftArtifactError(
                 f"{filename} is a DRAFT artifact (AE-DRAFT-<slug>); allocate a "
@@ -1749,6 +1765,9 @@ def parse_ws(path: str | Path) -> dict[str, Any]:
 def _extract_ws_id(filename: str) -> str:
     m = _WS_FILENAME.match(filename)
     if not m:
+        pid = _provisional_id_or_none(filename)
+        if pid is not None:
+            return pid
         if _draft_id_or_none(filename) is not None:
             raise DraftArtifactError(
                 f"{filename} is a DRAFT artifact (WS-DRAFT-<slug>); allocate a "
@@ -2078,7 +2097,7 @@ def _validate_ws(ir: dict[str, Any]) -> None:
 # =========================================================================== #
 
 _ADR_FILENAME = re.compile(r"^(ADR-\d{3,})-.+\.md$")
-_ADR_H1_TITLE = re.compile(r"^#\s+ADR-\d{3,}:\s*(.+?)\s*$", re.MULTILINE)
+_ADR_H1_TITLE = re.compile(r"^#\s+(?:P-)?ADR-\d{3,}:\s*(.+?)\s*$", re.MULTILINE)
 _ADR_VALID_STATUSES = {
     "TODO", "DRAFT", "PROPOSED", "ACCEPTED", "LOCKED", "DEPRECATED", "SUPERSEDED",
 }
@@ -2208,6 +2227,9 @@ def parse_adr(path: str | Path) -> dict[str, Any]:
 def _extract_adr_id(filename: str) -> str:
     m = _ADR_FILENAME.match(filename)
     if not m:
+        pid = _provisional_id_or_none(filename)
+        if pid is not None:
+            return pid
         if _draft_id_or_none(filename) is not None:
             raise DraftArtifactError(
                 f"{filename} is a DRAFT artifact (ADR-DRAFT-<slug>); allocate a "
@@ -2536,6 +2558,9 @@ def parse_ib(path: str | Path) -> dict[str, Any]:
 def _extract_ib_id(filename: str) -> str:
     m = _IB_FILENAME.match(filename)
     if not m:
+        pid = _provisional_id_or_none(filename)
+        if pid is not None:
+            return pid
         if _draft_id_or_none(filename) is not None:
             raise DraftArtifactError(
                 f"{filename} is a DRAFT artifact (IB-DRAFT-<slug>); allocate a "
@@ -2735,7 +2760,7 @@ _INT_VALID_TYPES = {
     "feature", "bug", "nfr", "adr-driven", "refactor", "documentation", "environment",
 }
 _INT_VALID_AUTONOMY = {"manual", "low", "medium", "high"}
-_INT_H1_TITLE = re.compile(r"^#\s+INT-\d{3,}:\s*(.+?)\s*$", re.MULTILINE)
+_INT_H1_TITLE = re.compile(r"^#\s+(?:P-)?INT-\d{3,}:\s*(.+?)\s*$", re.MULTILINE)
 _INT_AE_REF = re.compile(r"^[-*]\s*(?:\*\*)?(AE-\d{3,})(?:\*\*)?\s*[:\-—]\s*(?P<rest>.+?)$", re.MULTILINE)
 _INT_GLOB_BULLET = re.compile(r"^[-*]\s*`([^`]+)`(?:[ \t]+.*)?$", re.MULTILINE)
 _INT_FENCED_YAML = re.compile(r"```(?:yaml)?\s*\n(.*?)\n```", re.DOTALL)
@@ -2893,6 +2918,9 @@ def parse_intent(path: str | Path) -> dict[str, Any]:
 def _extract_intent_id(filename: str) -> str:
     m = _INT_FILENAME.match(filename)
     if not m:
+        pid = _provisional_id_or_none(filename)
+        if pid is not None:
+            return pid
         if _draft_id_or_none(filename) is not None:
             raise DraftArtifactError(
                 f"{filename} is a DRAFT artifact (INT-DRAFT-<slug>); allocate a "
@@ -3166,7 +3194,7 @@ _MISSION_IR_SCHEMA_VERSION = "0.2.0"
 _MSN_FILENAME = re.compile(r"^(MSN-\d{3,})-.+\.md$")
 _MSN_VALID_STATUSES = {"TODO", "ACTIVE", "COMPLETING", "COMPLETE", "KILLED", "SUPERSEDED"}
 _MSN_VALID_AUTONOMY = {"manual", "low", "medium", "high"}
-_MSN_H1_TITLE = re.compile(r"^#\s+Mission\s+MSN-\d{3,}:\s*(.+?)\s*$", re.MULTILINE)
+_MSN_H1_TITLE = re.compile(r"^#\s+Mission\s+(?:P-)?MSN-\d{3,}:\s*(.+?)\s*$", re.MULTILINE)
 _MSN_BOLD_META = re.compile(r"^\*\*([^*]+?):\*\*\s*(.+?)\s*$", re.MULTILINE)
 
 
@@ -3315,6 +3343,9 @@ def _extract_intent_verification_msn(body: str) -> list[dict[str, str]]:
 def _extract_msn_id(filename: str) -> str:
     m = _MSN_FILENAME.match(filename)
     if not m:
+        pid = _provisional_id_or_none(filename)
+        if pid is not None:
+            return pid
         if _draft_id_or_none(filename) is not None:
             raise DraftArtifactError(
                 f"{filename} is a DRAFT artifact (MSN-DRAFT-<slug>); allocate a "
@@ -4290,6 +4321,9 @@ def parse_security_profile(path: str | Path) -> dict[str, Any]:
 def _extract_sp_id(filename: str) -> str:
     m = _SP_FILENAME.match(filename)
     if not m:
+        pid = _provisional_id_or_none(filename)
+        if pid is not None:
+            return pid
         if _draft_id_or_none(filename) is not None:
             raise DraftArtifactError(
                 f"{filename} is a DRAFT artifact (SP-DRAFT-<slug>); allocate a "

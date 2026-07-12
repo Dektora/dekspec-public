@@ -118,7 +118,7 @@ On subagent return:
 
 1. **Parse / capture the subagent's output.** If the subagent returned `INSUFFICIENT_INPUT:`, surface the named gap to the engineer verbatim and halt — this is the indirect quality signal from Rationale #2. Do NOT silently retry; ask the engineer what additional context to bundle.
 
-2. **Run the bundled validation command** from the manifest (`dekspec check validate <output-path>`, `pytest --collect-only <output-path>`, `/write-evals --audit <BEAD-NNN>`, or the skill-specific equivalent). Non-zero exit → surface the validation error verbatim alongside the subagent's own findings; do **not** silently retry with looser validation. The pattern's value is that a subagent that can't produce a clean artifact exposes a gap in the bundled context.
+2. **Run the bundled validation command** from the manifest (`dekspec validate <output-path>`, `pytest --collect-only <output-path>`, `/write-evals --audit <BEAD-NNN>`, or the skill-specific equivalent). Non-zero exit → surface the validation error verbatim alongside the subagent's own findings; do **not** silently retry with looser validation. The pattern's value is that a subagent that can't produce a clean artifact exposes a gap in the bundled context.
 
 3. **Run mode-specific post-checks.** Confirm the file exists at the expected output path; confirm the status walk happened (PROPOSED for Creation, ACCEPTED for Accept, reset to PROPOSED for Revise on previously-LOCKED artifacts, etc.); confirm Amendment Log entries were appended where required; confirm the index was updated; confirm any cascade reminders are surfaced to the engineer.
 
@@ -148,7 +148,7 @@ See [`_lib/fan_out.md`](../_lib/fan_out.md) for the canonical ds-di2 orchestrato
   3. <skill-specific bundle item 3 — e.g., related ADRs with supersession applied>
   4. ...
 - **expected_output_path**: <e.g., `dekspec/working-specs/WS-NNN-<slug>.md` for Creation; the input path for Accept / Revise>
-- **validation**: <e.g., `dekspec check validate <path>` + the §Audit Mode checklist; or `pytest --collect-only <path>`; or `/write-evals --audit <BEAD-NNN>`>
+- **validation**: <e.g., `dekspec validate <path>` + the §Audit Mode checklist; or `pytest --collect-only <path>`; or `/write-evals --audit <BEAD-NNN>`>
 
 **End of Fan-Out Mode.**
 ```

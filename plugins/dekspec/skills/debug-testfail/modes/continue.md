@@ -1,4 +1,4 @@
-# /dekspec:debug — Continue mode
+# /dekspec:debug-testfail — Continue mode
 
 Resume a prior debugging session. The whole point of the persisted state
 file at `dekspec/debug/<slug>.md` is that the hunt survives a context
@@ -8,7 +8,7 @@ agent stopped, rather than restarting the nine-rules walk from the symptom.
 ## Pre-conditions
 
 - A state file already exists at `dekspec/debug/<slug>.md` from a prior
-  `/dekspec:debug --diagnose` run. (If no such file exists, this mode
+  `/dekspec:debug-testfail --diagnose` run. (If no such file exists, this mode
   refuses with a one-line message instructing the operator to start a
   fresh diagnose run.)
 

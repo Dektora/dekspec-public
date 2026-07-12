@@ -22,7 +22,7 @@ back toward the spec.
 
 The deterministic work — the AST walk, the symbol enumeration, the
 gap-detection against LOCKED Intents' §Components-affected globs — lives in the
-`tooling/dekspec/archeology/` substrate and the `dekspec dev archeology coverage`
+`tooling/dekspec/archeology/` substrate and the `dekspec find-spec-gaps`
 CLI verb. This skill orchestrates that substrate plus the human judgment around
 it. It does not reimplement scanning or gap detection.
 
@@ -98,7 +98,7 @@ modes:
   - { flag: "", args: "", description: "Conversational mode: orient the engineer and route them to the right recovery mode." }
   - { flag: "--scan", args: "<path>", description: "Summarize a file or directory's public API, internal state, and external callers (shells out to the scan substrate)." }
   - { flag: "--propose-intent", args: "<path>", description: "Draft a retroactive Intent skeleton — §Motivation + §Desired-Outcome + §Components-affected only — returned to the engineer for ratification, written to no file." }
-  - { flag: "--coverage-gap-report", args: "", description: "Run `dekspec dev archeology coverage` and render the gap report — files no LOCKED Intent claims — inline in the transcript." }
+  - { flag: "--coverage-gap-report", args: "", description: "Run `dekspec find-spec-gaps` and render the gap report — files no LOCKED Intent claims — inline in the transcript." }
   - { flag: "--ratify", args: "<draft> --as INT-NNN", description: "Promote a reviewed draft Intent by routing through the engineer's /dekspec:write-intent --accept flow." }
   - { flag: "--cross-ref", args: "<symbol>", description: "Find usages of a symbol across the repo and suggest which Interface Contract surface it likely belongs to." }
   - { flag: "--teaching", args: "", description: "Interactive tutorial — the brownfield-recovery workflow explained step-by-step." }
@@ -138,7 +138,7 @@ Run the canonical recovery flow below, and before each step pause to explain:
 1. **Before the gap report** — explain what a spec gap *is*: in any
    non-greenfield repo, code surfaces exist that no Intent / WS / IB claims —
    work that pre-dated DekSpec, was vibecoded under-spec, or drifted past its
-   spec. Explain that `dekspec dev archeology coverage` is deterministic — it
+   spec. Explain that `dekspec find-spec-gaps` is deterministic — it
    collects every LOCKED Intent's §Components-affected globs and reports the
    files no glob matches — so the same repo always yields the same gap list.
 2. **Before scanning** — explain that `--scan` is an AST walk, not an LLM
@@ -248,7 +248,7 @@ Surface every file no LOCKED Intent claims.
 1. Shell out to the CLI verb via the Bash tool:
 
    ```
-   dekspec dev archeology coverage --at .
+   dekspec find-spec-gaps --at .
    ```
 
 2. The verb walks the repo, collects every LOCKED Intent's §Components-affected
@@ -295,7 +295,7 @@ Place a symbol — find where it is used and which contract surface owns it.
 ## Boundary — this skill writes nothing and promotes nothing
 
 This skill produces conversational guidance only. It shells out to the
-`tooling/dekspec/archeology/` substrate and the `dekspec dev archeology coverage`
+`tooling/dekspec/archeology/` substrate and the `dekspec find-spec-gaps`
 CLI verb (both read-only against the repo), and it reads scan / gap-report
 output. It does **not**:
 
@@ -307,7 +307,7 @@ output. It does **not**:
 Every `--propose-intent` draft is returned to the engineer as Markdown for
 review. Every `--ratify` promotion routes through `/dekspec:write-intent
 --accept`. The scan + gap-detection substrate is deterministic — there is no
-LLM in `dekspec dev archeology coverage`.
+LLM in `dekspec find-spec-gaps`.
 
 ## Common Pitfalls
 

@@ -98,7 +98,7 @@ How would you like to proceed?
 3. Register the Mission in `dekspec/mission-index.md`.
 4. **Delete** the OVERSIZED Intent file (`git rm dekspec/intents/INT-NNN-*.md`). Remove its row from `dekspec/intent-index.md` (it was in the Active queue, not Archive — and it should not enter Archive since it never had a successor). **No SUPERSEDED shell is created.**
 5. Update any cross-references to the deleted Intent in surviving artifacts (LOCKED Intents, IBs, AEs, ADRs) — replace `INT-NNN §section` citations with `MSN-XXX §section` where the content has moved; drop bare INT references where the content is fully absorbed.
-6. Run `dekspec audit relink` to refresh derived backlinks.
+6. Run `dekspec relink` to refresh derived backlinks.
 
 ### 5. Redirect Focus & Resume Orchestration
 
@@ -119,5 +119,5 @@ If an OVERSIZED → SUPERSEDED Intent shell already exists in the corpus (legacy
 
 - Delete the orphan Intent file.
 - Remove its Archive row from `dekspec/intent-index.md`.
-- Run `dekspec audit relink` to refresh AE backlinks.
+- Run `dekspec relink` to refresh AE backlinks.
 - Leave dangling prose citations in surviving artifacts as historical residue (audit does not check prose-text references); they can be cleaned up opportunistically.

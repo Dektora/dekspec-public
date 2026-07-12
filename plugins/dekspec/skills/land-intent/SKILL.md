@@ -1,18 +1,18 @@
 ---
 name: land-intent
-description: Review-and-land phase-executor for an Intent (INT-NNN). Drives every IB-aggregate PR the Intent produced through the two-tier review pipeline to a landed state — fires the REVIEW_PR trigger, lets the REVIEW_PR_FAIL grep-loop run to a terminal verdict, and on GO presents the squash-merge for explicit operator confirmation. Never auto-merges (ADR-026 RECOMMEND-only). The review-side sibling of /exec-coding-session.
+description: Review-and-land phase-executor for an Intent (INT-NNN). Drives every IB-aggregate PR the Intent produced through the two-tier review pipeline to a landed state — fires the REVIEW_PR trigger, lets the REVIEW_PR_FAIL grep-loop run to a terminal verdict, and on GO presents the squash-merge for explicit operator confirmation. Never auto-merges (ADR-026 RECOMMEND-only). The review-side sibling of /orchestrate-coding-session.
 mode: lite
 model: claude-opus-4-7
 reasoning_effort: high
 disable-model-invocation: false
 allowed-tools: Read Write Edit Bash
 argument-hint: [--help] <INT-NNN | path/ID of Intent>
-related_skills: [review-pr, exec-coding-session, orchestrate-intent, spec-intent]
+related_skills: [review-pr, orchestrate-coding-session, orchestrate-intent, spec-intent]
 ---
 
 > **Vendored asset paths (INT-097):** Paths below like `dekspec/...` reference the consumer-vendored layout. Pip-only installs resolve via `dekspec resource ...`. See [`_lib/vendored_assets.md`](../_lib/vendored_assets.md).
 
-Review-and-land phase-executor for an Intent. The review-side counterpart to `/exec-coding-session <intent>`: where that skill executes *all* of an Intent's beads, `land-intent` drives *all* of the Intent's IB-aggregate PRs through the review pipeline to a landed state, in dependency order, from one launch — reusing the existing trigger + `review-pr` + `REVIEW_PR_FAIL` machinery unchanged. It is a thin orchestrator: its only net-new behavior is the per-Intent PR enumeration/ordering and the operator-confirmed merge gate.
+Review-and-land phase-executor for an Intent. The review-side counterpart to `/orchestrate-coding-session <intent>`: where that skill executes *all* of an Intent's beads, `land-intent` drives *all* of the Intent's IB-aggregate PRs through the review pipeline to a landed state, in dependency order, from one launch — reusing the existing trigger + `review-pr` + `REVIEW_PR_FAIL` machinery unchanged. It is a thin orchestrator: its only net-new behavior is the per-Intent PR enumeration/ordering and the operator-confirmed merge gate.
 
 ## Starter Prompt
 
@@ -53,7 +53,7 @@ examples:
 Identify the target Intent `INT-NNN`. Build the ordered set of its open IB-aggregate PRs using only existing surfaces (no new tooling):
 
 1. Resolve the Intent's beads/IBs and their PRs via the `Resolves IB-NNN` PR-body convention (ADR-025) + bead `external_ref` linkage — `gh pr list` for the open set, `git` for branch state.
-2. Order the PRs by dependency using the `br` blocked-by topology — the same `br`-driven dependency walk `/exec-coding-session` Phase 1 performs.
+2. Order the PRs by dependency using the `br` blocked-by topology — the same `br`-driven dependency walk `/orchestrate-coding-session` Phase 1 performs.
 
 ### Phase 2 — Review-and-land each PR (in order)
 
@@ -92,4 +92,4 @@ When every PR is landed (or the operator halts), report a per-PR outcome roll-up
 
 ## Closing Step
 
-After the run, `dekspec audit relink` against the repo root to restitch any backlinks touched by merges.
+After the run, `dekspec relink` against the repo root to restitch any backlinks touched by merges.

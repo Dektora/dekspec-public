@@ -9,7 +9,7 @@ Every lens entry MUST declare all four fields. A lens missing any field causes t
 | Field | Purpose | Shape |
 |---|---|---|
 | `question` | The single question this lens asks the IB / PR surface under review. One sentence, falsifiable. Drives the specialist's system prompt. | string |
-| `input_slice` | Selector identifying the input projection the orchestrator feeds this lens's specialist. Either a path-glob into the per-stage input bundle (e.g. `ib.body`, `parent_ws.acceptance`, `ae_paths.*.bounded_context`) OR `audit_doctor.<json-path>` to consume a slice of the cached `dekspec audit doctor --json` snapshot. NEVER full-repo context. | string |
+| `input_slice` | Selector identifying the input projection the orchestrator feeds this lens's specialist. Either a path-glob into the per-stage input bundle (e.g. `ib.body`, `parent_ws.acceptance`, `ae_paths.*.bounded_context`) OR `audit_doctor.<json-path>` to consume a slice of the cached `dekspec doctor --json` snapshot. NEVER full-repo context. | string |
 | `attack_patterns` | List of specific failure-class checks the specialist loads into its system prompt. The specialist's job is to FIND a failure matching one of these patterns, not to give a friendly review. Pattern-armed attack per ADR-026. | list of strings |
 | `severity_rubric` | The 0-100 confidence-band rubric used by the per-issue scorer. Most lenses inherit the shared `review_confidence_rubric.md`; a lens may override per-band thresholds if its question shape justifies it (e.g. an audit-rule preflight lens may have stricter critical-tier semantics). MUST include an explicit abstention band so calibrated `INSUFFICIENT_EVIDENCE` is reachable. | reference or inline yaml |
 

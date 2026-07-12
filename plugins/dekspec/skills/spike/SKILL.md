@@ -7,7 +7,7 @@ reasoning_effort: high
 disable-model-invocation: false
 allowed-tools: Read Write Edit Bash
 argument-hint: [--help] [--wrap-up <slug>] [hypothesis or question]
-related_skills: [prototype, diagnose, write-intent, write-adr]
+related_skills: [prototype, diagnose-bug, write-intent, write-adr]
 ---
 
 Run a **feasibility spike**: a focused, time-boxed throwaway experiment that
@@ -26,7 +26,7 @@ assumptions or defer indefinitely — both bad.
   VALIDATED/REFUTED knowledge → durable spike record an Intent cites.
 - `/dekspec:prototype` — *what is the right design shape?* Throwaway state-model
   / API sketch → findings folded into a WS/IC/AE. (Shape, not feasibility.)
-- `/dekspec:diagnose` — *why does this bug happen?* Deterministic repro of a
+- `/dekspec:diagnose-bug` — *why does this bug happen?* Deterministic repro of a
   defect (post-hoc), not a pre-spec feasibility question.
 
 **No production leak** (shared with `prototype`): spike experiment code is
@@ -174,13 +174,13 @@ At runtime, render the manifest per `_lib/help_mode_template.md` and stop.
 
 - To explore a design *shape* (state model / API surface) — that is
   `/dekspec:prototype`.
-- To reproduce and diagnose a *bug* — that is `/dekspec:diagnose`.
+- To reproduce and diagnose a *bug* — that is `/dekspec:diagnose-bug`.
 - To author the Intent or ADR itself — spike *produces the verified finding*
   those skills consume; `--wrap-up` routes, it does not author.
 
 ## Related
 
 - `/dekspec:prototype` — the design-shape sibling (throwaway shape exploration).
-- `/dekspec:diagnose` — the bug-repro sibling (deterministic defect reproduction).
+- `/dekspec:diagnose-bug` — the bug-repro sibling (deterministic defect reproduction).
 - `/dekspec:write-intent` — cites the spike record's finding in `## Motivation`.
 - `/dekspec:write-adr` — `--wrap-up` routes a load-bearing finding here as an ADR candidate.

@@ -146,7 +146,7 @@ Pass `--canonical` iff the engineer passed `--canonical` to this skill. The verb
 - **Default (no `--canonical`):** `target_dir` under `dekspec/provisional/` and `allocate_canonical=false` — route through the `--provisional` codepath (same as if `--provisional <slug>` had been passed explicitly). Do NOT allocate a canonical `MSN-NNN`. This is the safe posture: `rm -rf dekspec/provisional/<slug>/` is the entire eradication path if the work doesn't graduate, versus the MSN-011 case (12 commits, ~30 minutes, 5 LOCKED-artifact unlock cycles — see `docs/dekspec-operating-guide.md` §Provisional vs. Canonical decision criteria).
 - **Opt-out (`--canonical`):** `target_dir` is `dekspec/missions/` and `allocate_canonical=true` — author canonical under `dekspec/missions/MSN-NNN-<slug>.md`, allocating the next-free `MSN-NNN`.
 
-The `T-MISSION-CANONICAL-WITHOUT-CHILD` (P3 advisory) audit rule (registered in `v1.yaml`) backstops this gate: any canonical Mission stale TODO for ≥7 days without a declaring child Intent surfaces in `dekspec audit doctor` with the recommendation to demote-or-kill.
+The `T-MISSION-CANONICAL-WITHOUT-CHILD` (P3 advisory) audit rule (registered in `v1.yaml`) backstops this gate: any canonical Mission stale TODO for ≥7 days without a declaring child Intent surfaces in `dekspec doctor` with the recommendation to demote-or-kill.
 
 #### 1a.1. Convert-from-OVERSIZED handler (when triggered)
 
@@ -170,7 +170,7 @@ If the trigger is `from-oversized: <INT-NNN-path>`:
 
    | Section | Source |
    | :--- | :--- |
-   | Title | Verb-first phrasing of the §Mission decomposition plan child entry (e.g., "Add the dekspec audit relink CLI verb..." for Child B of an OVERSIZED Intent whose Child B is "the relink verb implementation") |
+   | Title | Verb-first phrasing of the §Mission decomposition plan child entry (e.g., "Add the dekspec relink CLI verb..." for Child B of an OVERSIZED Intent whose Child B is "the relink verb implementation") |
    | Status | `DRAFT` |
    | Intent type | OVERSIZED Intent's `## Intent type` (typically `feature`; override per child if the decomposition plan specifies, e.g., `adr-driven` for ADR-consuming children) |
    | Autonomy | OVERSIZED Intent's `## Autonomy` (must be ≤ this Mission's `Autonomy ceiling`) |
@@ -199,7 +199,7 @@ If the trigger is `from-oversized: <INT-NNN-path>`:
 4. **Delete the OVERSIZED Intent file** post-extraction (`git rm <path>`). Remove its row from `dekspec/intent-index.md` (it was Active queue; should not enter Archive — never had a successor and never shipped).
 5. **No SUPERSEDED shell.** The Intent's substance is absorbed; the artifact ceases to exist.
 6. Update any cross-references to the deleted Intent in surviving artifacts where appropriate — replace `INT-OOO §section` citations with `MSN-XXX §section`; drop bare INT references where the content is fully absorbed.
-7. Run `dekspec audit relink` to refresh derived AE backlinks (each new child Intent's Linked AEs contributes a backlink entry to the AE's `Related Intents` list).
+7. Run `dekspec relink` to refresh derived AE backlinks (each new child Intent's Linked AEs contributes a backlink entry to the AE's `Related Intents` list).
 8. **Report back to the engineer.** Surface a structured summary card:
 
    ```
@@ -248,7 +248,7 @@ The subagent runs in a fresh context with **no access to this session's history*
 6. **Engineer guidance** — the raw `$ARGUMENTS` text plus any parsed structured cues.
 7. **Next MSN-NNN** — run `python ../_lib/scripts/artifact_ops.py next-id mission` (surface stderr on non-zero exit).
 8. **Expected output path** — `dekspec/missions/MSN-NNN-<slug>.md` (slug derived from the Outcome, not from team / project name).
-9. **Validation command** — `dekspec check validate dekspec/missions/MSN-NNN-<slug>.md`.
+9. **Validation command** — `dekspec validate dekspec/missions/MSN-NNN-<slug>.md`.
 
 ### Step 2: Dispatch via the Agent tool
 
@@ -319,14 +319,14 @@ Invoke the `Agent` tool with:
     INSUFFICIENT_CONTEXT lines encountered.
 
   VALIDATION (the orchestrator will run this after you return):
-    dekspec check validate <expected-output-path>
+    dekspec validate <expected-output-path>
   ```
 
 ### Step 3: Validate + index + report (orchestrator, parent context)
 
 When the subagent returns:
 
-1. **Validate.** Validation contract: see [`_lib/validate_and_surface.md`](../_lib/validate_and_surface.md). Run `dekspec check validate --kind mission dekspec/missions/MSN-NNN-<slug>.md`; on non-zero exit, surface verbatim and stop — do not silently retry. Mission-specific audit gate: this skill's §Audit Mode (read-only health check, see below).
+1. **Validate.** Validation contract: see [`_lib/validate_and_surface.md`](../_lib/validate_and_surface.md). Run `dekspec validate --kind mission dekspec/missions/MSN-NNN-<slug>.md`; on non-zero exit, surface verbatim and stop — do not silently retry. Mission-specific audit gate: this skill's §Audit Mode (read-only health check, see below).
 2. **Index.** Add a row to `dekspec/mission-index.md` Active queue for the new Mission.
 3. **Report.** Tell the engineer: the Mission is in `TODO` at the saved path; author the First Intent via `/write-intent`; once that Intent reaches `LOCKED`, run `/write-mission --activate` to promote `TODO → ACTIVE`. Surface any `INSUFFICIENT_CONTEXT:` lines the subagent returned so the engineer can fill the gap via `--review` before activation.
 
@@ -610,15 +610,15 @@ python ../_lib/scripts/artifact_ops.py approve <Mission-path> --target-status <S
 - [ ] Every near-immutable field is populated with no placeholders and no unresolved `INSUFFICIENT_CONTEXT:` lines.
 - [ ] Mission Verification has ≥1 named `cmd:` entry asserting an integrated-system behavior (not a per-component pytest sweep); Rollback plan and Kill criteria use yaml `{name, cmd}` shape or an explicit `_legacy_*` sentinel.
 - [ ] Status is correct for the mode run (TODO on creation; the exact target status for each lifecycle transition) and `dekspec/mission-index.md` Active↔Archive placement matches.
-- [ ] `dekspec check validate --kind mission <path>` exited 0 and any CONVERT-scaffolded child Intents landed in `dekspec/intents/` + `dekspec/intent-index.md`.
-- [ ] `dekspec audit relink` was run as the final action and reported clean.
+- [ ] `dekspec validate --kind mission <path>` exited 0 and any CONVERT-scaffolded child Intents landed in `dekspec/intents/` + `dekspec/intent-index.md`.
+- [ ] `dekspec relink` was run as the final action and reported clean.
 
 ## Closing Step
 
 **Mandatory closing step for every substantive mode of this skill** (the modes that write or revise a Mission — Creation, `--activate`, `--review`, `--complete`, `--kill`, `--supersede`). After the artifact file is saved and any index update is done, run:
 
 ```
-dekspec audit relink
+dekspec relink
 ```
 
-against the repo root. This deterministically re-derives and renders the cross-artifact `Linked Artifacts` backlinks from the forward links the artifact declares, stitching the spec graph in one pass. This is a required action, not a reminder — do not defer it, do not surface a "backfill the backlinks later" note to the engineer. `dekspec audit relink` is the graph-repair pass; running it is the last thing the skill does before reporting back.
+against the repo root. This deterministically re-derives and renders the cross-artifact `Linked Artifacts` backlinks from the forward links the artifact declares, stitching the spec graph in one pass. This is a required action, not a reminder — do not defer it, do not surface a "backfill the backlinks later" note to the engineer. `dekspec relink` is the graph-repair pass; running it is the last thing the skill does before reporting back.

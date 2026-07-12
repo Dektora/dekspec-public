@@ -82,9 +82,9 @@ See [`_lib/fan_out.md`](../_lib/fan_out.md) for the canonical ds-di2 orchestrato
   5. Parent Architecture Element — if `$ARGUMENTS` names a `bounded_context` (e.g., `api-gateway`, `worker`), the matching AE under `dekspec/architecture-elements/`. For singleton SPs (`bounded_context` absent, typically SP-001), pass the root AE (`AE-001-dekspec.md` or project equivalent) for dataflow coverage validation. If no AE applies, pass the empty list and document the absence.
   6. Related artifacts from the spec graph (paths only): every existing SP under `dekspec/security-profiles/` (singleton-vs-multi-context consistency + OWASP coverage matrix alignment); `dekspec/constitution.md` Article 5 (Development Workflow — SAST/DAST/secret-store/supply-chain commitments to compile into typed-record arrays); `dekspec/domain-glossary.md` (L10 advisory).
   7. Engineer guidance — `$ARGUMENTS` verbatim, including structured cues (`bounded_context:`, `singleton`, notes path for `--revise`).
-  8. Constraints — schema closed-shape; loud-placeholder discipline (every `<engineer-fills-here>` replaced or the row deleted before `--accept` — enforced by an explicit `grep '<engineer-fills-here>'` scan, NOT by `dekspec check validate`, which is schema-only); singleton-vs-multi-context gate (if SP-001 singleton exists, new SP MUST declare `bounded_context`); honest-empty typed-record arrays allowed (keep H2 + table header); `ir_schema_version: 0.1.0`; status walk legality (Create→PROPOSED; Accept: PROPOSED→ACCEPTED; Revise: any non-terminal, append Amendment Log entry).
+  8. Constraints — schema closed-shape; loud-placeholder discipline (every `<engineer-fills-here>` replaced or the row deleted before `--accept` — enforced by an explicit `grep '<engineer-fills-here>'` scan, NOT by `dekspec validate`, which is schema-only); singleton-vs-multi-context gate (if SP-001 singleton exists, new SP MUST declare `bounded_context`); honest-empty typed-record arrays allowed (keep H2 + table header); `ir_schema_version: 0.1.0`; status walk legality (Create→PROPOSED; Accept: PROPOSED→ACCEPTED; Revise: any non-terminal, append Amendment Log entry).
 - **expected_output_path**: `dekspec/security-profiles/SP-NNN-<slug>.md` (Create — next free SP-NNN) or the input path (Accept / Revise — subagent edits in place).
-- **validation**: `dekspec check validate <output-path>`. Validation/surface contract: see [`_lib/validate_and_surface.md`](../_lib/validate_and_surface.md) — on non-zero exit, surface verbatim and stop, do not silently retry. Mode-specific post-checks: Create — SP file exists with `status: PROPOSED`, `ir_schema_version: 0.1.0`, index row added (if maintained); Accept — Status flipped PROPOSED→ACCEPTED + `lifecycle` Amendment Log entry; Revise — `substantive` or `editorial` Amendment Log entry summarizing changes.
+- **validation**: `dekspec validate <output-path>`. Validation/surface contract: see [`_lib/validate_and_surface.md`](../_lib/validate_and_surface.md) — on non-zero exit, surface verbatim and stop, do not silently retry. Mode-specific post-checks: Create — SP file exists with `status: PROPOSED`, `ir_schema_version: 0.1.0`, index row added (if maintained); Accept — Status flipped PROPOSED→ACCEPTED + `lifecycle` Amendment Log entry; Revise — `substantive` or `editorial` Amendment Log entry summarizing changes.
 
 **End of Fan-Out Mode.**
 
@@ -130,7 +130,7 @@ See [`_lib/teaching_mode.md`](../_lib/teaching_mode.md) for the canonical 4-step
 
 - For **Bounded Context**, walk the engineer through the singleton-vs-multi-context decision before accepting input — a repo declares either a singleton SP-001 (bounded_context absent) or multiple per-bounded-context SPs.
 - For each typed-record array section (Allowed Dataflows, Secret Stores, etc.), explain the canonical record shape before prompting.
-- **Loud-placeholder discipline:** the template seeds every typed-record array with a `<engineer-fills-here>` placeholder row. Surface this discipline during the ritual — every placeholder must be replaced with real content or the row deleted before `--accept`. The gate is an explicit `grep '<engineer-fills-here>'` scan (Analyze Mode step 2), NOT `dekspec check validate` (which is schema-only and passes live placeholders). On exit, flag any remaining placeholder rows as deferred sections that MUST be removed before `--accept`.
+- **Loud-placeholder discipline:** the template seeds every typed-record array with a `<engineer-fills-here>` placeholder row. Surface this discipline during the ritual — every placeholder must be replaced with real content or the row deleted before `--accept`. The gate is an explicit `grep '<engineer-fills-here>'` scan (Analyze Mode step 2), NOT `dekspec validate` (which is schema-only and passes live placeholders). On exit, flag any remaining placeholder rows as deferred sections that MUST be removed before `--accept`.
 - The SP is written to disk at PROPOSED status (not DRAFT); the engineer audits with `--analyze` (the skill's substitute for `--audit`) before `--accept`.
 - **Supply-chain hygiene (ds-tygt):** when walking **Supply Chain**, surface the two operating rules that pair with the profile (they are operator discipline, not schema fields): (1) the **14-day new-package rule** — never lean on a dependency pinned to a version published < 14 days ago without explicit human approval; the `T-SUPPLY-CHAIN-NEW-DEPENDENCY` audit advisory (P3) flags this from an offline `.dekspec/package-publish-dates.json` cache when present; (2) the **breach-scan reflex** — when a breach trends for a package, scan local projects for that package/version and pin away before resuming. Both are documented in the template's Supply Chain section.
 
@@ -141,7 +141,7 @@ See [`_lib/teaching_mode.md`](../_lib/teaching_mode.md) for the canonical 4-step
 > **Fan-Out Mode** above. The steps below are the **subagent's
 > contract** — the orchestrator bundles them into the prompt; the
 > subagent executes them in fresh context; the orchestrator validates
-> the result via `dekspec check validate <path>` on return and confirms the
+> the result via `dekspec validate <path>` on return and confirms the
 > SP was written at PROPOSED with `ir_schema_version: 0.1.0`.
 
 Author a new Security Profile from the engineer's description.
@@ -192,11 +192,11 @@ populate it). Set `status: PROPOSED`. Set `ir_schema_version: 0.1.0`.
 
 ### Step 5: Validate and Save
 
-Run `dekspec check validate dekspec/security-profiles/SP-NNN-<slug>.md`. If
+Run `dekspec validate dekspec/security-profiles/SP-NNN-<slug>.md`. If
 validation fails, surface the schema error to the engineer and loop on
 Step 4. **Then run the placeholder gate explicitly** —
 `grep -n '<engineer-fills-here>' dekspec/security-profiles/SP-NNN-<slug>.md` —
-because `dekspec check validate` is schema-only and does **not** catch live
+because `dekspec validate` is schema-only and does **not** catch live
 placeholders; if any row matches, loop on Step 4 until every placeholder is
 replaced or its row deleted. If validation passes AND the placeholder scan is
 clean, commit the SP at PROPOSED. Add a row to the SP index (if one exists;
@@ -211,8 +211,8 @@ Read-only health check. Runs the same schema-validation predicate that
 
 1. Read the SP. Run `parse_security_profile(path)`; surface any
    schema-validation error verbatim.
-2. **Placeholder scan (the loud-placeholder gate — NOT enforced by `dekspec check validate`).**
-   `dekspec check validate` is schema/structural only; it does **not** scan cell
+2. **Placeholder scan (the loud-placeholder gate — NOT enforced by `dekspec validate`).**
+   `dekspec validate` is schema/structural only; it does **not** scan cell
    contents, so a live `<engineer-fills-here>` row passes validation silently.
    Run an explicit scan: `grep -n '<engineer-fills-here>' <SP-path>`. If any row
    matches, surface each as a **blocking** finding ("unfilled placeholder at
@@ -232,7 +232,7 @@ Read-only health check. Runs the same schema-validation predicate that
 > **Fan-out delegated (ds-di2).** The orchestrator dispatches this
 > mode's body to a fresh-context `general-purpose` subagent per
 > **Fan-Out Mode** above. The steps below are the **subagent's
-> contract**; on return, the orchestrator runs `dekspec check validate <path>`
+> contract**; on return, the orchestrator runs `dekspec validate <path>`
 > and confirms Status flipped PROPOSED → ACCEPTED with the Amendment
 > Log entry appended.
 
@@ -252,7 +252,7 @@ Promote a Security Profile from PROPOSED → ACCEPTED after a clean
    what the engineer reviewed at accept time — the SP uses lowercase
    lifecycle types, so do not delegate the row to the script's default
    `Substantive` type.
-4. Re-run `dekspec check validate <path>` to confirm the walk didn't break
+4. Re-run `dekspec validate <path>` to confirm the walk didn't break
    schema validation.
 
 ## Lock Mode (ACCEPTED → LOCKED)
@@ -283,7 +283,7 @@ SP-specific closing reminder (in Step 4): recommend the engineer follow up with 
 > **Fan-out delegated (ds-di2).** The orchestrator dispatches this
 > mode's body to a fresh-context `general-purpose` subagent per
 > **Fan-Out Mode** above. The steps below are the **subagent's
-> contract**; on return, the orchestrator runs `dekspec check validate <path>`
+> contract**; on return, the orchestrator runs `dekspec validate <path>`
 > and confirms the Amendment Log entry was appended summarizing the
 > changes.
 
@@ -299,7 +299,7 @@ review, or their own analysis — that need to be worked into an SP.
    confirm with the engineer before writing.
 4. Add an Amendment Log entry summarizing the changes (date, type
    `substantive` or `editorial`, the change one-line).
-5. Re-run `dekspec check validate`. If the revise triggered a schema-
+5. Re-run `dekspec validate`. If the revise triggered a schema-
    validation error, surface and loop.
 
 ## Supersede Mode
@@ -319,7 +319,7 @@ typed-record arrays + Amendment Log.
    at PROPOSED status.
 5. Mark the source SP's status as `SUPERSEDED` with an Amendment Log
    entry citing the successor's ID.
-6. Re-run `dekspec check validate` against both files.
+6. Re-run `dekspec validate` against both files.
 
 ## Review Mode
 
@@ -422,7 +422,7 @@ If the path is not claimed by any pre-ACCEPTED Intent, the verb errors unless yo
 ## Common Pitfalls
 
 - Don't author a second SP without a `bounded_context` when SP-001 singleton already exists — run `scripts/singleton_gate.py` first and refuse until the engineer names a context; two `bounded_context`-absent SPs is an unresolvable cardinality conflict.
-- Don't leave `<engineer-fills-here>` placeholder rows in the file — either replace them with real typed records or delete the row entirely (keeping the H2 + table header). Note: `dekspec check validate` is schema-only and does **not** catch live placeholders — enforce the gate with an explicit `grep -n '<engineer-fills-here>' <SP-path>` scan in Analyze + before `--accept`.
+- Don't leave `<engineer-fills-here>` placeholder rows in the file — either replace them with real typed records or delete the row entirely (keeping the H2 + table header). Note: `dekspec validate` is schema-only and does **not** catch live placeholders — enforce the gate with an explicit `grep -n '<engineer-fills-here>' <SP-path>` scan in Analyze + before `--accept`.
 - Don't delete a whole typed-record section to represent "no commitments" — ship the array honest-empty (keep H2 + header) so the section still documents what could populate it; an absent section is not the same as an asserted-empty one.
 - Don't unlock an SP to `PROPOSED` — SPs are the documented variance and unlock to `ACCEPTED` (one edit away from re-lock); routing through `lock_unlock.md`'s default would corrupt the status walk.
 - Don't combine `--lock` with `--provisional` — provisional artifacts lack the linkage-walker visibility LOCKED requires; route to LOCKED only through the hand-promote workflow.
@@ -431,19 +431,19 @@ If the path is not claimed by any pre-ACCEPTED Intent, the verb errors unless yo
 ## Verification Checklist
 
 - [ ] Singleton-vs-multi-context gate ran (`scripts/singleton_gate.py`) and the SP's `bounded_context` presence matches its verdict.
-- [ ] `dekspec check validate <SP-path>` exits 0, AND the explicit placeholder scan (`grep -n '<engineer-fills-here>' <SP-path>`) is empty — validate is schema-only and does not catch placeholders, so the grep is the real gate.
+- [ ] `dekspec validate <SP-path>` exits 0, AND the explicit placeholder scan (`grep -n '<engineer-fills-here>' <SP-path>`) is empty — validate is schema-only and does not catch placeholders, so the grep is the real gate.
 - [ ] Every typed-record array is either populated or honest-empty (H2 + table header retained, no whole section deleted).
 - [ ] `status` and `ir_schema_version: 0.1.0` reflect the mode run (Create → PROPOSED; Accept → ACCEPTED; Lock → LOCKED; Unlock → ACCEPTED; Supersede → source SUPERSEDED + successor PROPOSED).
 - [ ] An Amendment Log entry was appended for every status-changing mode, using the correct lowercase lifecycle type (`lifecycle` / `lock` / `unlock` / `substantive` / `editorial`).
 - [ ] `--lock` was NOT used in combination with `--provisional`.
-- [ ] `dekspec audit relink` ran against the repo root after any substantive write.
+- [ ] `dekspec relink` ran against the repo root after any substantive write.
 
 ## Closing Step
 
 **Mandatory closing step for every substantive mode of this skill** (the modes that write or revise a Security Profile — Creation, `--accept`, `--revise`, `--lock`, `--unlock`, `--supersede`). After the artifact file is saved and any index update is done, run:
 
 ```
-dekspec audit relink
+dekspec relink
 ```
 
-against the repo root. This deterministically re-derives and renders the cross-artifact `Linked Artifacts` backlinks from the forward links the artifact declares, stitching the spec graph in one pass. This is a required action, not a reminder — do not defer it, do not surface a "backfill the backlinks later" note to the engineer. `dekspec audit relink` is the graph-repair pass; running it is the last thing the skill does before reporting back.
+against the repo root. This deterministically re-derives and renders the cross-artifact `Linked Artifacts` backlinks from the forward links the artifact declares, stitching the spec graph in one pass. This is a required action, not a reminder — do not defer it, do not surface a "backfill the backlinks later" note to the engineer. `dekspec relink` is the graph-repair pass; running it is the last thing the skill does before reporting back.

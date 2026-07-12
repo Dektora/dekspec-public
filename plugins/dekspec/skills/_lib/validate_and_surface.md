@@ -22,10 +22,10 @@ This file is the source of truth for that contract. Each fan-out skill's Step 3 
 
 When a substantive-work mode (fan-out or inline) produces or mutates a DekSpec artifact, the orchestrator MUST:
 
-### 1. Run `dekspec check validate <path>` from the parent session
+### 1. Run `dekspec validate <path>` from the parent session
 
 - **Always** — even when the subagent self-reports a clean validate. The subagent's claim is suggestive; the parent's independent `dekspec validate` call is authoritative. (Trust-but-verify: a confused subagent can return `validation: clean` from inside its own buggy run.)
-- Use the typed form when known: `dekspec check validate --kind <ir_kind> <path>` (e.g., `--kind intent`, `--kind security-profile`). Untyped `dekspec check validate <path>` falls through to the dispatcher, which is fine but slower and less specific on errors.
+- Use the typed form when known: `dekspec validate --kind <ir_kind> <path>` (e.g., `--kind intent`, `--kind security-profile`). Untyped `dekspec validate <path>` falls through to the dispatcher, which is fine but slower and less specific on errors.
 - Validation is a **post-write** check. The subagent has already written the file via its own `Write` tool by the time the parent runs validate.
 
 ### 2. On non-zero exit: surface verbatim, do not retry
@@ -74,7 +74,7 @@ Paste this into your skill's `## Fan-Out Mode` § Step 3 (the validate step), pa
 
 ```
 Validation contract: see [`_lib/validate_and_surface.md`](../_lib/validate_and_surface.md).
-After the subagent returns, run `dekspec check validate --kind <KIND> <output-path>`; on
+After the subagent returns, run `dekspec validate --kind <KIND> <output-path>`; on
 non-zero exit, surface verbatim and stop — do not silently retry. <KIND>-specific
 audit gate: this skill's §Audit Mode checklist (see below). <Any genuinely skill-
 unique post-write checks listed here as additional items, NOT as replacements for
@@ -94,7 +94,7 @@ The mode-specific post-checks list (Creation/Accept/Revise/etc. specifics) stays
 
 When refactoring an existing fan-out skill to the substrate:
 
-- [ ] Locate the validate paragraph in `## Fan-Out Mode` § Step 3. It typically begins with "Run `dekspec check validate <output-path>`. Non-zero exit → surface the validation error verbatim..." and ends with "...gap in the bundled context."
+- [ ] Locate the validate paragraph in `## Fan-Out Mode` § Step 3. It typically begins with "Run `dekspec validate <output-path>`. Non-zero exit → surface the validation error verbatim..." and ends with "...gap in the bundled context."
 - [ ] Replace that paragraph with the citation block above, parameterized for this skill's artifact kind.
 - [ ] Preserve any skill-unique post-write gates as additional items (do NOT delete `pytest --collect-only`, `dekspec doctor --at .`, structural pre-save checks, JSON parse, etc.).
 - [ ] Preserve the mode-specific post-checks list (Creation/Accept/Revise/etc.) — those are skill-specific contracts, not substrate.

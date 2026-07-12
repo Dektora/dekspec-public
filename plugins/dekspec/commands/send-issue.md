@@ -112,7 +112,7 @@ Where `<CATEGORY>` is one of: `Bug`, `Feature`, `Feedback`, `Question`, `Docs`. 
 - **Category:** <Bug | Feature | Feedback | Question | Docs>
 - **Severity:** <S0 critical | S1 high | S2 medium | S3 low>
 - **Priority:** <P0 now | P1 next | P2 later | P3 someday>
-- **Reasoning:** <one sentence on WHY this severity and priority — e.g. "S1/P1: workflow-blocking for any consumer running `dekspec library init` since v0.91.0, no override.">
+- **Reasoning:** <one sentence on WHY this severity and priority — e.g. "S1/P1: workflow-blocking for any consumer running `dekspec init` since v0.91.0, no override.">
 - **Drafted by:** Claude (via /send-issue), reviewed by operator before send.
 
 ## Context

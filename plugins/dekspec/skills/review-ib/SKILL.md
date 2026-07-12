@@ -67,7 +67,7 @@ The orchestration shell bundles the following inputs and projects per-lens slice
 | `source_ae_paths` | Paths to source Architecture Elements. |
 | `glossary` | `dekspec/domain-glossary.md` for glossary-discipline lens. |
 | `bead_decomposition` | Bead manifest from `/write-code-beads --audit`. |
-| `audit_doctor` | Cached `dekspec audit doctor --json --at .` snapshot. |
+| `audit_doctor` | Cached `dekspec doctor --json --at .` snapshot. |
 
 The orchestration shell pulls these once and caches; each lens sees only its declared slice.
 
@@ -105,7 +105,7 @@ The orchestration shell aggregates per-lens findings under ADR-026's asymmetric-
 ## Failure modes
 
 - **Lens-pack load failure** — if any lens in `lenses.md` violates the schema (missing field, empty `attack_patterns`, etc.) the orchestration shell raises at load time before any specialist runs. Fix the lens pack, re-invoke.
-- **Audit-doctor unavailable** — if `dekspec audit doctor --json --at .` fails, the skill aborts before fan-out. Several lenses depend on the audit-doctor cache (per `review_lens_registry.md` audit-doctor reuse contract); a review without it cannot satisfy those lens contracts.
+- **Audit-doctor unavailable** — if `dekspec doctor --json --at .` fails, the skill aborts before fan-out. Several lenses depend on the audit-doctor cache (per `review_lens_registry.md` audit-doctor reuse contract); a review without it cannot satisfy those lens contracts.
 - **All lenses abstain** — verdict is INSUFFICIENT_EVIDENCE; sidecar records the unanimous abstention.
 
 ## Cross-references

@@ -68,7 +68,7 @@ See [`_lib/fan_out.md`](../_lib/fan_out.md) for the canonical ds-di2 orchestrato
   6. Engineer guidance — `$ARGUMENTS` verbatim (Creation: the description; `--accept`: the spec path; `--revise`: spec path + notes).
   7. Constraints — the Rules block at the bottom of this skill (1-2 pages max; every business rule testable; every failure mode has stated behavior; serialized role passes; template fully populated; self-contained spec — no cross-WS references; cascade awareness for IBs; corrections logged via `/write-ggc --log`).
 - **expected_output_path**: `dekspec/working-specs/WS-NNN-<slug>.md` (Creation) or the input path (`--accept` / `--revise`; subagent edits in place).
-- **validation**: `dekspec check validate <output-path>`. Validation/surface contract: see [`_lib/validate_and_surface.md`](../_lib/validate_and_surface.md) — on non-zero exit, surface verbatim and stop, do not silently retry. Mode-specific post-checks: Creation — Status PROPOSED + index row added + Expertise Audit Record present; `--accept` — Status ACCEPTED + index updated + no Amendment Log entry (reserved for post-LOCK changes); `--revise` — Modified updated + reset to PROPOSED if previously ACCEPTED/LOCKED + new ambiguities under `## Open Issues` + IB cascade reminder surfaced if IBs exist.
+- **validation**: `dekspec validate <output-path>`. Validation/surface contract: see [`_lib/validate_and_surface.md`](../_lib/validate_and_surface.md) — on non-zero exit, surface verbatim and stop, do not silently retry. Mode-specific post-checks: Creation — Status PROPOSED + index row added + Expertise Audit Record present; `--accept` — Status ACCEPTED + index updated + no Amendment Log entry (reserved for post-LOCK changes); `--revise` — Modified updated + reset to PROPOSED if previously ACCEPTED/LOCKED + new ambiguities under `## Open Issues` + IB cascade reminder surfaced if IBs exist.
 
 **End of Fan-Out Mode.**
 
@@ -264,7 +264,7 @@ Run the complete Audit Mode check list — every check must pass, including IB c
 - [ ] All template sections are populated — no placeholders, no TODOs in the body
 - [ ] All Domain Constraints populated (no unexplained n/a)
 - [ ] All required contract sections present (based on active silent failure domains)
-- [ ] Zero `P1` open issues remain — count every blocking-family alias that normalizes to `P1` per ADR-013: canonical `P1`, plus the legacy aliases `blocking_pre_ib` / `blocking (pre-IB)` and bare `blocking`. This gate must match audit rule `L12-WS-BLOCKING-PRE-IB-CLEAN` exactly — it fires P1 on ANY `P1` open issue once a WS is ACCEPTED+, so a narrower gate here lets a WS pass `--accept` then immediately fail `dekspec audit doctor`. (`blocking (pre-code)` / `blocking_pre_code` normalizes to `P2` and is NOT part of this gate.)
+- [ ] Zero `P1` open issues remain — count every blocking-family alias that normalizes to `P1` per ADR-013: canonical `P1`, plus the legacy aliases `blocking_pre_ib` / `blocking (pre-IB)` and bare `blocking`. This gate must match audit rule `L12-WS-BLOCKING-PRE-IB-CLEAN` exactly — it fires P1 on ANY `P1` open issue once a WS is ACCEPTED+, so a narrower gate here lets a WS pass `--accept` then immediately fail `dekspec doctor`. (`blocking (pre-code)` / `blocking_pre_code` normalizes to `P2` and is NOT part of this gate.)
 - [ ] All business rules are testable
 - [ ] All failure modes have stated behavior
 - [ ] No contradictions with governing ADRs (read each and verify consistency)
@@ -522,29 +522,29 @@ python ../_lib/scripts/artifact_ops.py approve <WS-path> --target-status <STATUS
 
 - Don't reference another Working Spec (`see WS-NNN for details`) — restate the interface contract from THIS component's perspective so the spec stays self-contained for a coding agent reading only it plus its ADRs/AEs.
 - Don't run the Phase 3 expert passes in parallel — serialize them strictly (ML → Quantization → CUDA → Graph → Embedding → Pipeline), saving after each, so every expert builds on the prior one's edits.
-- Don't pass `--accept` / `--lock` with any `P1` open issue still open — count the blocking-family aliases (`blocking_pre_ib` / `blocking (pre-IB)` / bare `blocking`) that normalize to `P1` per ADR-013, or the WS clears the skill gate then immediately fails `L12-WS-BLOCKING-PRE-IB-CLEAN` under `dekspec audit doctor`.
+- Don't pass `--accept` / `--lock` with any `P1` open issue still open — count the blocking-family aliases (`blocking_pre_ib` / `blocking (pre-IB)` / bare `blocking`) that normalize to `P1` per ADR-013, or the WS clears the skill gate then immediately fails `L12-WS-BLOCKING-PRE-IB-CLEAN` under `dekspec doctor`.
 - Don't combine `--lock` with `--provisional` — LOCKED requires linkage-walker visibility that provisional artifacts lack; route to LOCKED through the hand-promote workflow instead.
 - Don't `Edit`/`Write` a claimed canonical artifact without first running `dekspec library cow-stage <path>` — redirect to the printed provisional sibling when it exits 0, or `T-COW-CANONICAL-EDITED` fires advisory on the next linkage run.
 - Don't silently correct a domain misinterpretation — invoke `/write-ggc --log` with the correction before proceeding so the glossary-promotion pipeline sees it.
-- Don't skip `dekspec audit relink` at the end of a substantive run — the backlinks are not optional and must not be deferred with a "backfill later" note.
+- Don't skip `dekspec relink` at the end of a substantive run — the backlinks are not optional and must not be deferred with a "backfill later" note.
 
 ## Verification Checklist
 
 - [ ] Status reflects the mode's terminal state — PROPOSED after Creation, ACCEPTED after `--accept`, LOCKED after `--lock`, PROPOSED after `--unlock`/`--revise` (reset from ACCEPTED/LOCKED).
-- [ ] `dekspec check validate <output-path>` exits 0 (surfaced verbatim, not silently retried).
+- [ ] `dekspec validate <output-path>` exits 0 (surfaced verbatim, not silently retried).
 - [ ] `dekspec/working-spec-index.md` has the matching row with the current Status; Created and Modified dates are set.
 - [ ] Every triggered expertise-audit role shows evidence in the Expertise Audit Record; spec fits 1-2 pages.
 - [ ] Zero `P1` open issues remain (canonical `P1` + all blocking-family aliases per ADR-013) for any ACCEPTED+ WS.
 - [ ] No `see WS-NNN` cross-references in the body; all interfaces are restated from this component's perspective.
 - [ ] IB cascade reminder surfaced if Implementation Briefs reference this spec and the body changed.
-- [ ] `dekspec audit relink` was run against the repo root as the final action.
+- [ ] `dekspec relink` was run against the repo root as the final action.
 
 ## Closing Step
 
 **Mandatory closing step for every substantive mode of this skill** (the modes that write or revise a Working Spec — Creation, `--accept`, `--revise`, `--lock`, `--unlock`). After the artifact file is saved and any index update is done, run:
 
 ```
-dekspec audit relink
+dekspec relink
 ```
 
-against the repo root. This deterministically re-derives and renders the cross-artifact `Linked Artifacts` backlinks from the forward links the artifact declares, stitching the spec graph in one pass. This is a required action, not a reminder — do not defer it, do not surface a "backfill the backlinks later" note to the engineer. `dekspec audit relink` is the graph-repair pass; running it is the last thing the skill does before reporting back.
+against the repo root. This deterministically re-derives and renders the cross-artifact `Linked Artifacts` backlinks from the forward links the artifact declares, stitching the spec graph in one pass. This is a required action, not a reminder — do not defer it, do not surface a "backfill the backlinks later" note to the engineer. `dekspec relink` is the graph-repair pass; running it is the last thing the skill does before reporting back.

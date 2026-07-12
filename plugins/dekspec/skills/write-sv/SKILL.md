@@ -113,7 +113,7 @@ See [`_lib/fan_out.md`](../_lib/fan_out.md) for the canonical ds-di2 orchestrato
   7. Constraints — singleton path (`dekspec/system-vision.md`); H1 form (`# System Vision: <Name>` — never `# Vision Note: ...`, rejected by parser since v0.38.0+); Status `DRAFT` on creation; `Created` / `Modified` stamped to today (`YYYY-MM-DD`); six load-bearing non-empty sections (preamble, `## What This Is`, `## Who This Is For`, `## Why This Exists`, `## What Success Looks Like`, `## What We Are Not Building`); per-section guidance from §"Draft the six sections" (pasted verbatim into the prompt — it is the authoring contract); Why-This-Exists + Who-This-Is-For load-bearing — return `INSUFFICIENT_INPUT:` rather than guess.
   8. Return-shape contract — subagent returns the **full markdown body as its final message**; no file writes from the subagent; the orchestrator saves to `dekspec/system-vision.md`.
 - **expected_output_path**: `dekspec/system-vision.md` (singleton; the only valid path; orchestrator writes the file after structural validation).
-- **validation**: cheap parent-side structural pre-save checks — write the returned content to a temp path and run `python ../_lib/scripts/validate_structure.py <temp-path>` (checks H1 starts with `# System Vision:` and not `# Vision Note:`; all required H2 sections present and non-empty; preamble non-empty between H1 and first H2; `Status` is `DRAFT`; `Created`/`Modified` are today; prints failing rule names one per line, exit 1; exit 2 = file unreadable). Validation/surface contract: see [`_lib/validate_and_surface.md`](../_lib/validate_and_surface.md) — `validate_structure.py` is this skill's named equivalent gate; on failure, re-dispatch with the failing rule names appended as a fix-up directive, do **not** silently patch in the parent. After save, run `dekspec check validate --kind vision dekspec/system-vision.md` (and `dekspec audit doctor --at .` for the full graph check after Status reaches PROPOSED). Final report names the file written + Status=DRAFT + next recommended mode (`--review` for editorial passes; later `--accept` for PROPOSED→ACCEPTED; later `--lock` to fix dependent AEs/ADRs).
+- **validation**: cheap parent-side structural pre-save checks — write the returned content to a temp path and run `python ../_lib/scripts/validate_structure.py <temp-path>` (checks H1 starts with `# System Vision:` and not `# Vision Note:`; all required H2 sections present and non-empty; preamble non-empty between H1 and first H2; `Status` is `DRAFT`; `Created`/`Modified` are today; prints failing rule names one per line, exit 1; exit 2 = file unreadable). Validation/surface contract: see [`_lib/validate_and_surface.md`](../_lib/validate_and_surface.md) — `validate_structure.py` is this skill's named equivalent gate; on failure, re-dispatch with the failing rule names appended as a fix-up directive, do **not** silently patch in the parent. After save, run `dekspec validate --kind vision dekspec/system-vision.md` (and `dekspec doctor --at .` for the full graph check after Status reaches PROPOSED). Final report names the file written + Status=DRAFT + next recommended mode (`--review` for editorial passes; later `--accept` for PROPOSED→ACCEPTED; later `--lock` to fix dependent AEs/ADRs).
 
 **End of Fan-Out Mode.**
 
@@ -273,7 +273,7 @@ If the singleton is unclaimed, the verb errors unless `--incubation <slug>` is p
 - Don't leave `Why This Exists` (or `Who This Is For`) thin or inferred — return `INSUFFICIENT_INPUT:` and ask the engineer; these are the load-bearing rationale, and guessing them poisons every downstream AE/ADR.
 - Don't patch a failed subagent draft inline in the parent — re-dispatch with the failing `validate_structure.py` rule names appended; silent parent-side fixes defeat the fan-out contract.
 - Don't make a substantive edit (what the system IS / FOR / WHY / success / NOT) while the Vision is LOCKED — run `/write-sv --unlock` first; editorial-only changes (typo, link, formatting) are the sole exception.
-- Don't skip `dekspec audit relink` after a write/revise mode — the cross-artifact backlinks go stale; it is the mandatory last action, not a deferred reminder.
+- Don't skip `dekspec relink` after a write/revise mode — the cross-artifact backlinks go stale; it is the mandatory last action, not a deferred reminder.
 
 ## Verification Checklist
 
@@ -282,15 +282,15 @@ If the singleton is unclaimed, the verb errors unless `--incubation <slug>` is p
 - [ ] All six sections are present and non-empty: preamble, What This Is, Who This Is For, Why This Exists, What Success Looks Like, What We Are Not Building.
 - [ ] `Status`, `Created`, and `Modified` are stamped; `Created`/`Modified` use `YYYY-MM-DD` and reflect the transition just made.
 - [ ] An Amendment Log row was appended for every mode except a typo-only `--review` pass.
-- [ ] `dekspec check validate --kind vision dekspec/system-vision.md` parses clean (and `dekspec audit doctor --at .` once Status ≥ PROPOSED).
-- [ ] `dekspec audit relink` was run against the repo root after saving (the mandatory closing step).
+- [ ] `dekspec validate --kind vision dekspec/system-vision.md` parses clean (and `dekspec doctor --at .` once Status ≥ PROPOSED).
+- [ ] `dekspec relink` was run against the repo root after saving (the mandatory closing step).
 
 ## Closing Step
 
 **Mandatory closing step for every substantive mode of this skill** (the modes that write or revise the System Vision — Creation, `--accept`, `--review`, `--lock`, `--unlock`, `--deprecate`). After the artifact file is saved, run:
 
 ```
-dekspec audit relink
+dekspec relink
 ```
 
-against the repo root. This deterministically re-derives and renders the cross-artifact `Linked Artifacts` backlinks from the forward links the artifact declares, stitching the spec graph in one pass. This is a required action, not a reminder — do not defer it, do not surface a "backfill the backlinks later" note to the engineer. `dekspec audit relink` is the graph-repair pass; running it is the last thing the skill does before reporting back.
+against the repo root. This deterministically re-derives and renders the cross-artifact `Linked Artifacts` backlinks from the forward links the artifact declares, stitching the spec graph in one pass. This is a required action, not a reminder — do not defer it, do not surface a "backfill the backlinks later" note to the engineer. `dekspec relink` is the graph-repair pass; running it is the last thing the skill does before reporting back.

@@ -8,7 +8,7 @@ second Intent lifecycle (spec or coding) runs in the same checkout, the two
 flip HEAD against each other: commits from one Intent leak into the other's
 ancestry, polluting its diff and tripping `--testpass` diff-confinement. The
 coding phase already isolates per-bead work in git worktrees
-(`exec-coding-session`); the spec phase did not.
+(`orchestrate-coding-session`); the spec phase did not.
 
 This guard runs *before* `git checkout -b` at Intent-branch creation. It
 REFUSES (exit 2) to create a new Intent branch on top of another Intent's

@@ -68,7 +68,7 @@ See [`_lib/fan_out.md`](../_lib/fan_out.md) for the canonical ds-di2 orchestrato
   8. Engineer guidance — `$ARGUMENTS` verbatim (target path, revise notes if any, structured cues).
   9. Constraints — T-CONSTITUTION (all 8 Articles present, in canonical order, with required structural fields); L-CONSTITUTION (Article 1 `see_also` resolves to system-vision; every `adr_refs` / `ae_refs` resolves to an existing artifact); `Created:` / `Modified:` ISO-8601; Status ∈ `DRAFT | PROPOSED | ACCEPTED`; Article 8 Amendment Log seeded for Creation (Type=Substantive "Initial authoring"), appended for `--revise` (Type=Revise + bump Modified) and `--accept` (Type=Accept + flip Status to ACCEPTED).
 - **expected_output_path**: `dekspec/constitution.md` (singleton) or engineer-overridden from `$ARGUMENTS`.
-- **validation**: `dekspec check validate --kind constitution <output-path>`; fallback `dekspec audit doctor --at <project-root> 2>&1 | grep -E '^\s*\[(T|L)-CONSTITUTION-'` if the `constitution` subcommand is not yet wired. Validation/surface contract: see [`_lib/validate_and_surface.md`](../_lib/validate_and_surface.md) — on non-zero exit, surface verbatim and stop, do not silently retry. Mode-specific post-checks: Creation → 8 Articles present, Article 1 pointer resolves, Amendment Log seeded, Status=DRAFT; Revise → Modified bumped + Type=Revise row + Status unchanged; Accept → Status=ACCEPTED + Type=Accept row + no critical/important findings.
+- **validation**: `dekspec validate --kind constitution <output-path>`; fallback `dekspec doctor --at <project-root> 2>&1 | grep -E '^\s*\[(T|L)-CONSTITUTION-'` if the `constitution` subcommand is not yet wired. Validation/surface contract: see [`_lib/validate_and_surface.md`](../_lib/validate_and_surface.md) — on non-zero exit, surface verbatim and stop, do not silently retry. Mode-specific post-checks: Creation → 8 Articles present, Article 1 pointer resolves, Amendment Log seeded, Status=DRAFT; Revise → Modified bumped + Type=Revise row + Status unchanged; Accept → Status=ACCEPTED + Type=Accept row + no critical/important findings.
 
 **End of Fan-Out Mode.**
 
@@ -133,13 +133,13 @@ Skill-specific structural checks to surface as Open Issues: T-CONSTITUTION (miss
 **Outputs.**
 
 - Findings list filtered to `T-CONSTITUTION-*` and `L-CONSTITUTION-*` rule codes.
-- Each finding line: `severity rule artifact_id message` (matching `dekspec audit doctor`'s output shape).
+- Each finding line: `severity rule artifact_id message` (matching `dekspec doctor`'s output shape).
 - Summary count by severity (critical / important / minor).
 
 **Delegation.** This mode is engineer-facing sugar over the existing audit CLI. Single rule implementation, two invocation paths (skill + CLI) per WS-005 BR8. Invocation:
 
 ```bash
-dekspec audit doctor --at <project-root> 2>&1 | grep -E '^\s*\[(T|L)-CONSTITUTION-'
+dekspec doctor --at <project-root> 2>&1 | grep -E '^\s*\[(T|L)-CONSTITUTION-'
 ```
 
 `dekspec audit linkage` has no kind filter, so the Constitution findings are isolated by the grep above, not by a `--kind` flag.
@@ -175,7 +175,7 @@ The skill never calls rule functions or parser internals directly — per ADR-00
 4. For each, engineer rules `resolve <one-line note>` / `defer <reason>` / `escalate <bead-slug>`.
 5. Write back: amend Article 8 with resolution rows; bump `Modified` date.
 
-**Delegation.** Engineer-facing prose work. The skill does not invoke `dekspec audit doctor` here — review is interactive prose authoring, not rule emission. (Audit-style findings on the *result* of review happen in a follow-up `--audit` pass.)
+**Delegation.** Engineer-facing prose work. The skill does not invoke `dekspec doctor` here — review is interactive prose authoring, not rule emission. (Audit-style findings on the *result* of review happen in a follow-up `--audit` pass.)
 
 **End of Review Mode.**
 
@@ -233,7 +233,7 @@ The skill never calls rule functions or parser internals directly — per ADR-00
 4. Write back the updated Constitution.
 5. Run `--audit` automatically on the result; report findings; engineer rules whether to fix-up or accept the new findings.
 
-**Delegation.** The post-revise audit invocation matches the Audit Mode delegation (above): `dekspec audit doctor --at <root>` filtered to Constitution findings.
+**Delegation.** The post-revise audit invocation matches the Audit Mode delegation (above): `dekspec doctor --at <root>` filtered to Constitution findings.
 
 **End of Revise Mode.**
 
@@ -326,7 +326,7 @@ The skill never calls rule functions or parser internals directly — per ADR-00
 - `skills/write-adr/SKILL.md` — sibling authoring skill (an ADR cited in Articles 4 + 7 is typically authored via this skill).
 - `skills/write-evals/SKILL.md` — the v0.40.0 rebuild template that pinned the 8-mode catalog shape.
 - `templates/constitution-template.md` — the Creation mode emits a copy of this.
-- `tooling/dekspec/fidelity_audit/linkage.py` — the T-CONSTITUTION + L-CONSTITUTION rule functions the Audit mode surfaces via `dekspec audit doctor`.
+- `tooling/dekspec/fidelity_audit/linkage.py` — the T-CONSTITUTION + L-CONSTITUTION rule functions the Audit mode surfaces via `dekspec doctor`.
 - `tooling/dekspec/fidelity_audit/profiles/v1.yaml` — rule-code registration manifest.
 - INT-001 / INT-002 / INT-003 / INT-004 — the four Constitution Intents for traceability.
 
@@ -401,20 +401,20 @@ If the singleton is unclaimed, the verb errors unless `--incubation <slug>` is p
 - [ ] Article 1 `see_also` resolves to `dekspec/system-vision.md`; every Article 4 / 7 `adr_refs` and Article 7 `ae_refs` resolves to an existing on-disk artifact (no broken refs).
 - [ ] `Created:` / `Modified:` are valid ISO-8601; `Modified:` was bumped this run for any substantive mode; `Status ∈ {DRAFT, PROPOSED, ACCEPTED}`.
 - [ ] Article 8 Amendment Log carries the correct typed row for the mode run (`Substantive` initial-authoring on Creation, `Revise` / `Accept` / `Resync` / `editorial` otherwise) with author resolved from `git config user.email`.
-- [ ] Validation ran and exited clean: `dekspec check validate --kind constitution <path>` (or the `dekspec audit doctor` Constitution-filtered fallback); for `--accept`, no critical/important findings remain.
+- [ ] Validation ran and exited clean: `dekspec validate --kind constitution <path>` (or the `dekspec doctor` Constitution-filtered fallback); for `--accept`, no critical/important findings remain.
 - [ ] Before any canonical edit, the CoW guard (`dekspec library cow-stage dekspec/constitution.md`) was consulted and the edit was routed per its exit code.
 - [ ] If `## Class Lanes` was touched, every `(intent_type, risk_tier)` tuple resolves to exactly one row and `effective_model_snapshot` + `effective_corpus_volume` were re-stamped.
-- [ ] The mandatory closing step (`dekspec audit relink`) ran against the repo root after the file was saved.
+- [ ] The mandatory closing step (`dekspec relink`) ran against the repo root after the file was saved.
 
 ## Closing Step
 
 **Mandatory closing step for every substantive mode of this skill** (the modes that write or revise the Constitution — Creation, `--accept`, `--revise`, `--resync`). After the artifact file is saved and any index update is done, run:
 
 ```
-dekspec audit relink
+dekspec relink
 ```
 
-against the repo root. This deterministically re-derives and renders the cross-artifact `Linked Artifacts` backlinks from the forward links the artifact declares, stitching the spec graph in one pass. This is a required action, not a reminder — do not defer it, do not surface a "backfill the backlinks later" note to the engineer. `dekspec audit relink` is the graph-repair pass; running it is the last thing the skill does before reporting back.
+against the repo root. This deterministically re-derives and renders the cross-artifact `Linked Artifacts` backlinks from the forward links the artifact declares, stitching the spec graph in one pass. This is a required action, not a reminder — do not defer it, do not surface a "backfill the backlinks later" note to the engineer. `dekspec relink` is the graph-repair pass; running it is the last thing the skill does before reporting back.
 
 ## §Class Lanes section (INT-125)
 

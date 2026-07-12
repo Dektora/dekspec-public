@@ -199,6 +199,8 @@ def audit_linkage(
     # L-PROVISIONAL-* — provisional incubation visibility
     # (INT-provisional-audit-treatment per MSN-014).
     findings.extend(_l_provisional_tree_present(graph))
+    # ADR-043 — provisional artifacts must be promoted, never locked in place.
+    findings.extend(_t_provisional_not_locked(graph))
     findings.extend(
         _l_provisional_stale(
             graph,
@@ -5286,8 +5288,8 @@ _SKILL_CLASS_DEFAULTS: dict[str, dict[str, str]] = {
     "write-ibs":          {"mode": "full", "reasoning_effort": "max",  "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Grep Glob Bash Agent"},
     "write-mission":      {"mode": "full", "reasoning_effort": "max",  "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Grep Glob Bash Agent"},
     # dispatch (high-risk; disable-model-invocation: true)
-    "exec-coding-session":     {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "true",  "allowed-tools": "Read Bash Agent"},
-    "orchestrate-deepening":   {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "true",  "allowed-tools": "Read Bash Agent"},
+    "orchestrate-coding-session":     {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "true",  "allowed-tools": "Read Bash Agent"},
+    "orchestrate-module-deepening":   {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "true",  "allowed-tools": "Read Bash Agent"},
     "factory-dispatch-intent":  {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "true",  "allowed-tools": "Read Bash Agent"},
     "factory-listen":           {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "true",  "allowed-tools": "Read Bash Agent"},
     # diagnostic (read-mostly CLI-wrap probes; slash-invocation only, no sub-agent spawn)
@@ -5296,7 +5298,7 @@ _SKILL_CLASS_DEFAULTS: dict[str, dict[str, str]] = {
     "archeology":              {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Grep Glob Bash"},
     "brownfield-ingest":       {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Grep Glob Bash"},
     # architecture (read-mostly source-architecture analysis; spawn Explore/Design-It-Twice sub-agents, propose-only)
-    "deepen-codebase-architecture": {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Grep Glob Bash Agent"},
+    "analyze-module-depth": {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Grep Glob Bash Agent"},
     "audit-codebase": {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Grep Glob Bash Agent"},
     # audit class row retired v0.98.0 (doctor-fidelity inlined into /doctor Stage 2)
     # review (read-only adversarial reviewers; reasoning_effort max, spawn lens sub-agents, no Write/Edit)
@@ -5311,19 +5313,19 @@ _SKILL_CLASS_DEFAULTS: dict[str, dict[str, str]] = {
     "using-dekspec":      {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
     "setup-dekspec":      {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
     "interview-me":       {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
-    "diagnose":           {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
-    "debug":              {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
+    "diagnose-bug":           {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
+    "debug-testfail":     {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
     "prototype":          {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
     "write-evals":        {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
     "write-tests":        {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
     "rotation-handoff":   {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
     # utility (DX/recovery skills ported 2026-06; per-skill tool sets — pr-branch
-    # is pure-git, forensics is read-only + writes one report, spike runs throwaway
+    # is pure-git, coding-session-forensics is read-only + writes one report, spike runs throwaway
     # experiments. Registered with their actual minimal tool sets.)
     "pr-branch":          {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Bash"},
-    "forensics":          {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Bash Write"},
+    "coding-session-forensics":          {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Bash Write"},
     "spike":              {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
-    "goal-loop":          {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
+    "write-goal-loop-contract":          {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
 }
 
 # Default model across all skill classes (CLAUDE.md §Agent-model-policy).
@@ -5641,6 +5643,63 @@ def _l_provisional_tree_present(graph: SpecGraph) -> list[Finding]:
                 ),
                 fix_kind="semantic",
                 file_path=str(slug_dir.relative_to(graph.repo_root)),
+            )
+        )
+    return findings
+
+
+# First bare status token on the line(s) after a `## Status` header.
+_PROVISIONAL_STATUS_RE = re.compile(
+    r"^##\s+Status\s*$\s*\n(?:\s*\n)*\s*`?([A-Za-z]+)", re.MULTILINE
+)
+# Terminal statuses a provisional artifact must never reach in place — reaching
+# one means it was frozen under provisional/ instead of promoted to canonical.
+_PROVISIONAL_TERMINAL = {"LOCKED", "COMPLETE"}
+
+
+def _t_provisional_not_locked(graph: SpecGraph) -> list[Finding]:
+    """T-PROVISIONAL-NOT-LOCKED (P2) — ADR-043 abortability guard.
+
+    A provisional artifact (``P-<KIND>-<NNN>-<slug>.md`` or the legacy
+    ``<KIND>-provisional-<slug>.md``) must be *promoted* to canonical, never
+    driven to a terminal ``LOCKED`` / ``COMPLETE`` status while still under
+    ``dekspec/provisional/``. Provisional artifacts live outside the canonical
+    graph precisely so they stay freely abortable; a terminal one signals it
+    was locked in place — losing that guarantee — and should instead be
+    promoted (or abandoned).
+    """
+    from ..provisional_ids import is_provisional_filename, provisional_id_or_none
+
+    findings: list[Finding] = []
+    prov = graph.dekspec_dir / "provisional"
+    if not prov.is_dir():
+        return findings
+    for f in sorted(prov.rglob("*.md")):
+        if not f.is_file():
+            continue
+        name = f.name
+        is_legacy = "-provisional-" in name
+        if not (is_provisional_filename(name) or is_legacy):
+            continue
+        text = f.read_text(encoding="utf-8", errors="ignore")
+        m = _PROVISIONAL_STATUS_RE.search(text)
+        if not m or m.group(1).upper() not in _PROVISIONAL_TERMINAL:
+            continue
+        art_id = provisional_id_or_none(name) or name[: -len(".md")]
+        findings.append(
+            Finding(
+                severity=P2,
+                rule="T-PROVISIONAL-NOT-LOCKED",
+                artifact_id=art_id,
+                message=(
+                    f"Provisional artifact `{name}` is `{m.group(1).upper()}` — a "
+                    f"terminal status. Provisional artifacts must be promoted to "
+                    f"canonical (`dekspec library promote-provisional`), not locked "
+                    f"in place: a locked provisional loses its freely-abortable "
+                    f"guarantee (ADR-043). Promote it, or abandon the folder."
+                ),
+                fix_kind="semantic",
+                file_path=str(f.relative_to(graph.repo_root)),
             )
         )
     return findings
@@ -6348,7 +6407,7 @@ def _t_bug_missing_repro_gate(graph) -> list[Finding]:
     A bug fix that lands without a deterministic, agent-runnable repro signal
     (or an explicit waiver explaining why one could not be built) has nothing
     durable to gate the fix or to seed the red-first outcome test. The
-    ``diagnose`` skill (INT-169) exists to produce that repro before the bug
+    ``diagnose-bug`` skill (INT-169) exists to produce that repro before the bug
     Intent is filled; this rule nudges authors toward one of the two valid
     end-states.
 
@@ -6397,7 +6456,7 @@ def _t_bug_missing_repro_gate(graph) -> list[Finding]:
                 f"Bug Intent {intent.get('id')} is at status {status} but "
                 "carries neither a populated `### bug — Reproduction` section "
                 "nor a `### bug — Non-Reproducible Waiver` section. Run "
-                "`/diagnose` to build a deterministic repro before the fix "
+                "`/diagnose-bug` to build a deterministic repro before the fix "
                 "lands, or record a Non-Reproducible Waiver explaining why one "
                 "could not be constructed."
             ),

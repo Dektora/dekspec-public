@@ -50,7 +50,7 @@ properties:
   id:
     description: Canonical IB identifier derived from filename (e.g., IB-001).
     type: string
-    pattern: "^IB-\\d{3,}$"
+    pattern: "^(?:P-)?IB-\\d{3,}$"
 
   name:
     description: 'Title from the markdown H1 (e.g., "Implementation Brief: Harness Foundation").'

@@ -1,7 +1,7 @@
 # DekSpec Help Mode — Canonical Substrate
 
 **Status:** AUTHORITATIVE.
-**Audience:** DekSpec skill authors. Every skill that exposes a `--help` flag (every authoring skill at `skills/write-*/SKILL.md`, plus the non-authoring orchestration skills such as `write-code-beads`, `exec-coding-session`, `archeology`) cites this file in its `## Help Mode` section and supplies a manifest. The canonical rendering contract below is enforced uniformly across skills.
+**Audience:** DekSpec skill authors. Every skill that exposes a `--help` flag (every authoring skill at `skills/write-*/SKILL.md`, plus the non-authoring orchestration skills such as `write-code-beads`, `orchestrate-coding-session`, `archeology`) cites this file in its `## Help Mode` section and supplies a manifest. The canonical rendering contract below is enforced uniformly across skills.
 **Sibling substrates:** `_lib/mode_dispatcher.md` (universal mode catalog + Mode-Detection prose), `_lib/teaching_mode.md` (Teaching Mode contract), `_lib/lock_unlock.md` (lifecycle promotion prose).
 
 ---
@@ -56,7 +56,7 @@ The rendered MODES table MUST end with:
 
 - `--help                       Show this help message.`
 
-The rendered MODES table MUST include `--teaching` when the skill is an authoring skill subject to `_lib/mode_dispatcher.md` (i.e., every `skills/write-*` skill except per its exemption table). Non-authoring skills (`write-code-beads`, `exec-coding-session`, `archeology`) MAY omit `--teaching` per the dispatcher-test exemption list.
+The rendered MODES table MUST include `--teaching` when the skill is an authoring skill subject to `_lib/mode_dispatcher.md` (i.e., every `skills/write-*` skill except per its exemption table). Non-authoring skills (`write-code-beads`, `orchestrate-coding-session`, `archeology`) MAY omit `--teaching` per the dispatcher-test exemption list.
 
 The skill MUST NOT emit any prose after `**End of Help Mode.**` — the help invocation terminates the skill.
 
@@ -92,7 +92,7 @@ Field contract:
 - `modes[].description` may contain embedded newlines; the renderer applies the two-space hanging indent so multi-line descriptions align under the column where the first description char began.
 - `examples` lines are emitted verbatim under `EXAMPLES:` with two-space indent. The first token of each example should be `skill_name` so the engineer can copy-paste directly.
 - `storage` is rendered as a single-line `STORAGE:` section: `  <storage_value>`. Use for artifact-storage paths (e.g., `dekspec/security-profiles/SP-NNN-<slug>.md`).
-- `extra_sections` is the escape hatch for skills with genuinely unique Help structure (e.g., `exec-coding-session`'s `WORKFLOW:` phase list, `archeology`'s `BOUNDARY:` and `EXCLUDE FILE:` blocks). Use sparingly — if more than two skills need the same extra section, promote it to a first-class manifest field.
+- `extra_sections` is the escape hatch for skills with genuinely unique Help structure (e.g., `orchestrate-coding-session`'s `WORKFLOW:` phase list, `archeology`'s `BOUNDARY:` and `EXCLUDE FILE:` blocks). Use sparingly — if more than two skills need the same extra section, promote it to a first-class manifest field.
 
 ## Universal-mode rows (every authoring skill includes verbatim)
 

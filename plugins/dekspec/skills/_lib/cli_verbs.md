@@ -8,50 +8,52 @@ last-synced: 2026-05-25b
 
 This file is the canonical list of DekSpec CLI invocations referenced from skill bodies. When the CLI surface changes (verb renamed, moved under a new group, retired), this file is the first artifact to update. The companion CI gate (`scripts/check-cli-verb-drift.sh`) ensures retired verbs do not leak back into `plugins/dekspec/skills/`.
 
-The CLI grew an explicit group hierarchy (`check / audit / exec / library / dev`) during the v0.50.x sweep. Top-level legacy aliases (e.g. `dekspec validate`, `dekspec relink`, `dekspec migrate`) still parse via `LEGACY_COMMANDS` in `tooling/dekspec/cli.py`, but they print a `[DEPRECATED]` banner and are NOT permitted in skill bodies — skills are an authored surface and should always use the canonical, group-qualified form.
+**ADR-042 flattened the CLI.** The nested group hierarchy (`check / audit / exec / library / dev`) from the v0.50.x sweep is now inverted: the flat `dekspec <verb>` forms are **canonical**, and the nested `dekspec <group> <sub>` forms are **one-release deprecated aliases** that still parse but print a `[DEPRECATED]` banner pointing at the flat successor. Skill bodies — an authored surface — must use the flat form. (This reverses the earlier polarity, where the group-qualified form was canonical.)
 
-**`repo` → `library` rename (INT-136 / ADR-033).** The former `repo` namespace was renamed to `library` — every former `repo <verb>` is now canonically `dekspec library <verb>` (joining `library sync` from INT-135). `dekspec repo <verb>` is retained for **one transition release** as a deprecation alias: it prints a one-line `[DEPRECATED] 'dekspec repo <verb>' → use 'dekspec library <verb>'` notice on stderr and dispatches to the same handler. Skill bodies should use the canonical `library <verb>` form; the `repo <verb>` alias is tolerated for the transition window but should not be authored fresh.
+The `repo` namespace remains a deprecation alias for `library` (INT-136 / ADR-033); under ADR-042 both collapse to flat verbs (`init`, `sync`, `regen-indexes`). `dekspec repo <verb>` is tolerated for the transition window but should not be authored fresh.
 
 ---
 
 ## Active verbs
 
-| Verb | Form | Purpose | Replaces |
-|---|---|---|---|
-| `dekspec check validate <path>` | `check <path>` | Validate one artifact's schema (single-file). | `dekspec validate <path>` |
-| `dekspec check compile <path>` | `check <path>` | Parse a DekSpec artifact and (optionally) emit an enforcement output. | `dekspec compile <path>` |
-| `dekspec check emit …` | `check <path>` | Emitter subcommand for compiled IR (contract-test / ci-gate / agents-md / etc). | `dekspec emit …` |
-| `dekspec check aggregate …` | `check <path>` | Aggregate emitters across multiple artifacts. | `dekspec aggregate …` |
-| `dekspec check allocate-ids …` | `check <path>` | Allocate / reconcile artifact IDs. | `dekspec id …` |
-| `dekspec check lint-ib <path>` | `check <path>` | Lightweight Implementation Brief linter. | `dekspec lint-ib …` |
-| `dekspec audit linkage` | `audit <graph>` | Cross-artifact linkage audit. | (no legacy form) |
-| `dekspec audit relink` | `audit <graph>` | Re-derive backlinks from forward links. Add `--check` for dry-run. | `dekspec relink` |
-| `dekspec audit doctor --at .` | `audit <graph>` | Full fidelity audit + drift check over a repo's spec tree. | `dekspec doctor` |
-| `dekspec library init` | `library <library-op>` | Scaffold the DekSpec artifact directory tree. | `dekspec repo init` · `dekspec init` |
-| `dekspec library sync` | `library <library-op>` | Reconcile the consumer repo to the installed engine (reconcile-only). | `dekspec repo upgrade` / `dekspec upgrade` (verb removed — ADR-032 window elapsed, ADR-034 acquisition model) |
-| `dekspec library author-target …` | `library <library-op>` | Resolve where a Creation-mode artifact lands (provisional vs canonical). | `dekspec repo author-target` |
-| `dekspec library regen-indexes` | `library <library-op>` | Regenerate `*-index.md` files from the artifact tree. | `dekspec repo regen-indexes` |
-| `dekspec library new-provisional …` | `library <library-op>` | Stamp a new provisional incubation folder. | `dekspec repo new-provisional` |
-| `dekspec library cow-stage …` | `library <library-op>` | Copy-on-write staging for artifact-tree edits. | `dekspec repo cow-stage` |
-| `dekspec exec session …` | `exec <exec-op>` | Session lifecycle (start / end / status / hooks / report). | `dekspec session …` |
-| `dekspec exec runs …` | `exec <exec-op>` | List / show / reindex / gc per-run manifests. | `dekspec runs …` |
-| `dekspec exec config …` | `exec <exec-op>` | Per-repo `.dekspec/config.yaml` get / set. | `dekspec config …` |
-| `dekspec dev archeology …` | `dev <dev-op>` | Brownfield code-archaeology probes (coverage, etc). | `dekspec archeology …` |
-| `dekspec dev ingest …` | `dev <dev-op>` | Brownfield-document ingest classifier. | `dekspec ingest …` |
-| `dekspec dev graph export …` | `dev <dev-op>` | Export the DekSpec artifact dependency graph (json / dot / mermaid). | `dekspec graph …` |
+Under ADR-042 the canonical form is the flat `dekspec <verb>`. The **Deprecated alias** column shows the old nested form (still parses, prints `[DEPRECATED]`, must not be authored fresh).
+
+| Verb (canonical, flat) | Purpose | Deprecated alias |
+|---|---|---|
+| `dekspec validate <path>` | Validate one artifact's schema (single-file). | `dekspec check validate` |
+| `dekspec compile <path>` | Parse a DekSpec artifact and (optionally) emit an enforcement output. | `dekspec check compile` |
+| `dekspec emit …` | Emitter subcommand for compiled IR (contract-test / ci-gate / agents-md / etc). | `dekspec check emit` |
+| `dekspec aggregate …` | Aggregate emitters across multiple artifacts. | `dekspec check aggregate` |
+| `dekspec id …` | Allocate / reconcile artifact IDs. | `dekspec check allocate-ids` |
+| `dekspec lint-ib <path>` | Lightweight Implementation Brief linter. | `dekspec check lint-ib` |
+| `dekspec audit` | Composite spec-graph health check. Fixes to convergence by default; `--check-only` reports (CI-safe). | `dekspec audit doctor` (report-only) |
+| `dekspec audit linkage` | Cross-artifact linkage audit. | (no flat form yet — stays nested) |
+| `dekspec lock-ready` | Advance lock-ready ACCEPTED artifacts to LOCKED (gated). | `dekspec audit lock-ready` |
+| `dekspec relink` | Re-derive backlinks from forward links. Add `--check` for dry-run. | `dekspec audit relink` |
+| `dekspec init` | Scaffold the DekSpec artifact directory tree. | `dekspec library init` · `dekspec repo init` |
+| `dekspec sync` | Reconcile the consumer repo to the installed engine (reconcile-only). | `dekspec library sync` |
+| `dekspec regen-indexes` | Regenerate `*-index.md` files from the artifact tree. | `dekspec library regen-indexes` |
+| `dekspec find-spec-gaps` | Report source files no LOCKED Intent claims. | `dekspec dev archeology coverage` |
+| `dekspec ingest …` | Brownfield-document ingest classifier. | `dekspec dev ingest` |
+| `dekspec graph export …` | Export the DekSpec artifact dependency graph (json / dot / mermaid). | `dekspec dev graph export` |
+| `dekspec session …` | Session lifecycle (start / end / status / hooks / report). | `dekspec exec session` |
+| `dekspec config …` | Per-repo `.dekspec/config.yaml` get / set. | `dekspec exec config` |
+| `dekspec migrate` | Full upgrade pipeline (verify-vendored → migrate-ir → migrate-artifacts). | (canonical top-level — no alias) |
+| `dekspec library new-provisional …` | Stamp a new provisional incubation folder. | (no flat form yet — stays nested) |
+| `dekspec library cow-stage …` | Copy-on-write staging for artifact-tree edits. | (no flat form yet — stays nested) |
+| `dekspec library author-target …` | Resolve where a Creation-mode artifact lands. | (no flat form yet — stays nested) |
 
 ---
 
-## Retired verbs (do NOT use)
+## Deprecated / retired verbs (do NOT author in skills)
 
-These top-level legacy aliases still parse (with a `[DEPRECATED]` banner) but MUST NOT appear in any file under `plugins/dekspec/skills/`. CI fails when one leaks in.
+ADR-042 makes the flat verb canonical. The **nested `<group> <sub>` forms** in the Deprecated-alias column above still parse (with a `[DEPRECATED]` banner) but MUST NOT appear in any file under `plugins/dekspec/skills/` — use the flat form. CI (`scripts/check-cli-verb-drift.sh`) fails when a deprecated nested form leaks in. Exceptions: the nested forms with "no flat form yet" (`audit linkage`, `library new-provisional` / `cow-stage` / `author-target`) are still canonical and permitted.
 
-- `dekspec validate <path>` → use `dekspec check validate <path>` (group-qualified form is the only acceptable surface in skill bodies; rename landed in the v0.50.x verb sweep).
-- `dekspec relink` → use `dekspec audit relink` (rename landed in the v0.50.x verb sweep; `--check` flag preserved across the rename).
-- `dekspec migrate` (top-level) → use `dekspec repo migrate-ir` (rename + group landed in CHANGELOG ≥ v0.50.0; the `migrate-ir` form is also the canonical name under `repo`).
+Genuinely retired (removed) verbs:
+
 - `dekspec repo promote-provisional <slug>` — retired 2026-05-25 (F2 audit: zero CLI invocations in history; promotions were hand-promote). Hand-promote workflow is canonical; see `docs/dekspec-operating-guide.md` §Provisional Promotion. The CLI verb still parses but returns a non-zero exit with a pointer to the hand-promote workflow; the underlying promotion helpers (`dekspec.promote.plan_promotion` / `apply_promotion` / `render_plan`) remain importable as a Python API.
 
-The legacy aliases survive in `LEGACY_COMMANDS` (in `tooling/dekspec/cli.py`) for consumer-side back-compat only — DekSpec's own authored surfaces (skills, methodology docs, release notes) are not permitted to fall back to them.
+The nested aliases survive in `LEGACY_COMMANDS` / the group parsers (in `tooling/dekspec/cli.py`) for consumer-side back-compat only — DekSpec's own authored surfaces (skills, methodology docs, release notes) use the flat verbs.
 
 ---
 

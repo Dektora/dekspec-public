@@ -2,7 +2,34 @@
 
 All notable changes to DekSpec are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/); versioning follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [v0.121.0] — 2026-07-07
+
+> Two ratified ADRs land: the CLI is flattened to a single-level verb namespace (ADR-042) and every artifact kind gains a unified, abortable provisional ID scheme (ADR-043). Plus the seven skill renames below. The CLI change is breaking-but-aliased — nested forms still work for one release with a `[DEPRECATED]` notice.
+
+### Changed — flatten the CLI surface (ADR-042)
+
+- **Flat verb namespace.** The nested `check / audit / exec / library / dev` groups are dissolved; every command is now a flat `dekspec <verb>`. `dekspec --help` advertises exactly the **nine public verbs** — `audit`, `lock-ready`, `sync`, `init`, `regen-indexes`, `ingest`, `find-spec-gaps`, `migrate`, `install` — while internal plumbing (`compile`, `validate`, `doctor`, `relink`, `runs`, `resource`, …) stays dispatchable but hidden.
+- **Deprecation inverted.** The flat verb is canonical and silent; the nested `<group> <sub>` form warns and points at the flat successor (one-release alias window).
+- **Audit consolidation.** Bare `dekspec audit` is the composite health check — **fixes to convergence by default**, `--check-only` reports without mutating (the CI-safe path). `lock-ready` stays a separate gated verb. **CI must use `dekspec audit --check-only`.**
+- 52 skill/agent/hook/command call-sites re-pointed to flat forms; `skill_lint` C5 + the `check-cli-verb-drift` gate inverted to match.
+
+### Added — unified `P-<KIND>-NNN` provisional ID scheme (ADR-043)
+
+- Every artifact kind now incubates under one form: `P-<KIND>-<NNN>-<slug>.md`. The number is a non-binding hint (re-derived at promotion); the `P-` prefix self-excludes from the canonical `<KIND>-NNN` scan (retiring the `≥900` sentinel).
+- A provisional artifact parses, `dekspec validate`s, and promotes like any other, but stays **out of the canonical spec graph** — never referenced by a canonical artifact, never indexed — so a provisional folder is **freely abortable** (delete with zero cascade).
+- New `T-PROVISIONAL-NOT-LOCKED` audit rule (P2): a provisional artifact must be promoted, never frozen at a terminal `LOCKED`/`COMPLETE` status.
+
+### Changed — seven skill renames for naming-convention clarity
+
+No behavior change; renamed for object/action clarity after a naming-convention audit found several skills either broke the verb+object convention (bare verbs with no object) or misapplied a prefix that already carries an established meaning elsewhere in the suite. No deprecation aliases — every in-repo cross-reference was re-pointed in the same change.
+
+- **`deepen-codebase-architecture` → `analyze-module-depth`** — the name implied it performs the deepening; it is read-only analysis/recommendation only.
+- **`orchestrate-deepening` → `orchestrate-module-deepening`** — kept the accurate `orchestrate-*` conductor prefix, added "module" to read as a matched family with its analysis sibling.
+- **`exec-coding-session` → `orchestrate-coding-session`** — the skill's own prose already said "orchestrate," and it delegates to a subagent named `coding-orchestrator`; the `exec-*` prefix is reserved elsewhere for a single execution phase, not a multi-phase composer.
+- **`diagnose` → `diagnose-bug`** — bare verb, no object; it specifically diagnoses a pre-spec bug.
+- **`debug` → `debug-testfail`** — bare verb, no object; it specifically debugs a post-spec TESTFAIL regression on an already-LOCKED/IMPLEMENTING Intent, not a fresh bug.
+- **`forensics` → `coding-session-forensics`** — bare noun, no object; it investigates one specific pipeline (bead-dispatch → worktree → merge → LOCK), not an arbitrary session or process.
+- **`goal-loop` → `write-goal-loop-contract`** — the name implied it drives an autonomous loop; it is a contract-writing front-end only (`write-*` convention), handing its output to an external driver (`/loop`, a background agent, `/schedule`, or `orchestrate-coding-session`).
 
 ## [v0.120.1] — 2026-06-21
 

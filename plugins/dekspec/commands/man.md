@@ -16,7 +16,7 @@ Display the DekSpec overview document.
    - `${CLAUDE_PLUGIN_ROOT}/../../docs/dekspec-overview.md` (plugin-side fallback)
 2. Read the overview file at the resolved path.
 3. Render the body verbatim in the chat. Do not summarize, paraphrase, or restructure — operators reading `man <thing>` expect the canonical document, not a re-derivation.
-4. If no candidate path resolved, surface: "DekSpec overview document not found. Re-install dekspec (`pip install --upgrade dekspec`, or `pipx install dekspec`) then run `dekspec library sync` to refresh vendored content." and stop.
+4. If no candidate path resolved, surface: "DekSpec overview document not found. Re-install dekspec (`pip install --upgrade dekspec`, or `pipx install dekspec`) then run `dekspec sync` to refresh vendored content." and stop.
 
 ## When to use
 

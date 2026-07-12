@@ -48,7 +48,7 @@ properties:
   id:
     description: 'Canonical Intent identifier derived from filename (e.g., INT-042).'
     type: string
-    pattern: "^INT-\\d{3,}$"
+    pattern: "^(?:P-)?INT-\\d{3,}$"
 
   name:
     description: 'Verb-first title from the markdown H1.'

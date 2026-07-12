@@ -1,5 +1,5 @@
 ---
-description: Drive the brownfield-ingest workflow — invokes the /brownfield-ingest skill. Runs `dekspec dev ingest` on an inherited markdown document, reviews the confidence-scored classification report, and triages which draft artifacts to promote via the /dekspec:write-* skills.
+description: Drive the brownfield-ingest workflow — invokes the /brownfield-ingest skill. Runs `dekspec ingest` on an inherited markdown document, reviews the confidence-scored classification report, and triages which draft artifacts to promote via the /dekspec:write-* skills.
 allowed-tools: Skill
 argument-hint: [--help] [--teaching] PATH
 disable-model-invocation: false

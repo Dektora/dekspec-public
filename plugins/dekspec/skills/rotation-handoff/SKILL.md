@@ -7,7 +7,7 @@ reasoning_effort: high
 disable-model-invocation: false
 allowed-tools: Read Write Edit Bash
 argument-hint: [--help] [--write | --read] [--at PATH]
-related_skills: [using-dekspec, setup-dekspec, diagnose]
+related_skills: [using-dekspec, setup-dekspec, diagnose-bug]
 ---
 
 Generate or resume a **structured session handoff** so long-running DekSpec work

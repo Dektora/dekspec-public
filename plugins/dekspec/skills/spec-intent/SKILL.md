@@ -1,18 +1,18 @@
 ---
 name: spec-intent
-description: Specification phase-executor for an Intent (INT-NNN). Drives an Intent from DRAFT to ready-for-coding by sequencing the existing authoring skills — /write-intent --analyze / --accept / --decompose plus /write-ws, /write-ic, /write-ibs — and the architectural-interview prompts, leaving the Intent at IMPLEMENTING. Stops at the coding boundary; never dispatches a coding session. The specification-side sibling of /exec-coding-session.
+description: Specification phase-executor for an Intent (INT-NNN). Drives an Intent from DRAFT to ready-for-coding by sequencing the existing authoring skills — /write-intent --analyze / --accept / --decompose plus /write-ws, /write-ic, /write-ibs — and the architectural-interview prompts, leaving the Intent at IMPLEMENTING. Stops at the coding boundary; never dispatches a coding session. The specification-side sibling of /orchestrate-coding-session.
 mode: lite
 model: claude-opus-4-7
 reasoning_effort: high
 disable-model-invocation: false
 allowed-tools: Read Write Edit Bash
 argument-hint: [--help] <INT-NNN | path/ID of Intent>
-related_skills: [write-intent, write-ws, write-ibs, orchestrate-intent, exec-coding-session]
+related_skills: [write-intent, write-ws, write-ibs, orchestrate-intent, orchestrate-coding-session]
 ---
 
 > **Vendored asset paths (INT-097):** Paths below like `dekspec/...` reference the consumer-vendored layout. Pip-only installs resolve via `dekspec resource ...`. See [`_lib/vendored_assets.md`](../_lib/vendored_assets.md).
 
-Specification phase-executor for an Intent. The specification-side counterpart to `/exec-coding-session` (construction) and `/dekspec:land-intent` (review+land): it drives an Intent through its specification lifecycle to the point of being ready for coding, from one launch, by sequencing the existing `write-*` authoring skills unchanged. It is a thin orchestrator — it reimplements none of the authoring logic — and it **stops at the coding boundary** (it never dispatches a coding session itself).
+Specification phase-executor for an Intent. The specification-side counterpart to `/orchestrate-coding-session` (construction) and `/dekspec:land-intent` (review+land): it drives an Intent through its specification lifecycle to the point of being ready for coding, from one launch, by sequencing the existing `write-*` authoring skills unchanged. It is a thin orchestrator — it reimplements none of the authoring logic — and it **stops at the coding boundary** (it never dispatches a coding session itself).
 
 ## Starter Prompt
 
@@ -85,13 +85,13 @@ IB-bearing Intents skip this gate — their review already fires via `/write-ibs
 
 ### Phase 4 — Stop at the coding boundary
 
-When the parent Intent reaches `IMPLEMENTING` with its child specs at `ACCEPTED`/`LOCKED`, the specification phase is complete. **This skill stops at the coding boundary: it does not dispatch a coding session** — `/exec-coding-session <intent>` is the next, separate phase-executor (and `/dekspec:land-intent` the one after). Report the ready-for-coding state and name that next step.
+When the parent Intent reaches `IMPLEMENTING` with its child specs at `ACCEPTED`/`LOCKED`, the specification phase is complete. **This skill stops at the coding boundary: it does not dispatch a coding session** — `/orchestrate-coding-session <intent>` is the next, separate phase-executor (and `/dekspec:land-intent` the one after). Report the ready-for-coding state and name that next step.
 
 ## Common Pitfalls
 
 - Don't auto-accept — `--accept` is the engineer gate; `spec-intent` presents and waits, it never flips PROPOSED → ACCEPTED on its own.
 - Don't reimplement authoring logic — sequence `/write-intent` and the `write-*` skills unchanged; a parallel implementation drifts from the canonical authoring surfaces.
-- Don't cross the coding boundary — never dispatch `/exec-coding-session` or write implementation code; this skill ends at IMPLEMENTING.
+- Don't cross the coding boundary — never dispatch `/orchestrate-coding-session` or write implementation code; this skill ends at IMPLEMENTING.
 - Don't leave child specs raw — drive every scaffolded WS/IC/IB to ACCEPTED/LOCKED before declaring ready-for-coding.
 
 ## Verification Checklist
@@ -101,8 +101,8 @@ When the parent Intent reaches `IMPLEMENTING` with its child specs at `ACCEPTED`
 - [ ] `--decompose` scaffolded the downstream artifacts; each child spec was driven to ACCEPTED/LOCKED.
 - [ ] The parent Intent is at IMPLEMENTING (ready-for-coding).
 - [ ] No coding session was dispatched and no implementation code was written — the run stopped at the coding boundary.
-- [ ] The next step (`/exec-coding-session <intent>`) was named in the hand-off.
+- [ ] The next step (`/orchestrate-coding-session <intent>`) was named in the hand-off.
 
 ## Closing Step
 
-After the run, `dekspec audit relink` against the repo root to restitch the backlinks the scaffolded child specs introduced.
+After the run, `dekspec relink` against the repo root to restitch the backlinks the scaffolded child specs introduced.

@@ -32,7 +32,7 @@ skill_name: "/dekspec:using-dekspec"
 one_line:   "Onboarding entry point — init + spec-mode + catalog merged into one skill (INT-096)"
 modes:
   - { flag: "",             args: "",                       description: "Walkthrough: scaffold + guardrail decision + catalog summary, in that order. (Default)" }
-  - { flag: "--init",       args: "[--at PATH] [--force]",  description: "Run `dekspec library init` — scaffold the artifact tree (adrs/, architecture-elements/, working-specs/, ...). Forwards remaining args to the CLI verb." }
+  - { flag: "--init",       args: "[--at PATH] [--force]",  description: "Run `dekspec init` — scaffold the artifact tree (adrs/, architecture-elements/, working-specs/, ...). Forwards remaining args to the CLI verb." }
   - { flag: "--spec-mode",  args: "--on|--off|--status",    description: "Enable, disable, or check the 'No Specless Edits' guardrail in CLAUDE.md. (Status is the default if no on/off/status given.)" }
   - { flag: "--catalog",    args: "",                       description: "Print the full DekSpec skill catalog grouped by category, with one-line purpose + how to trigger for each skill." }
   - { flag: "--help",       args: "",                       description: "Show this help message." }
@@ -52,7 +52,7 @@ Guided tour for an engineer adopting DekSpec in a fresh repo. Touches all three 
    pipx install "git+https://github.com/Dektora/dekspec-public.git@main"
    ```
    (`@main` → latest; pin a release with `@vX.Y.Z`. Engine is acquired from the curated public mirror, ADR-034). Re-run this walkthrough once the CLI resolves.
-1. **Scaffold check.** Run `ls dekspec/ 2>/dev/null`. If the tree exists, report "DekSpec artifact tree present — skipping scaffold." Else, ask: "Run `dekspec library init` here? [Y/n]" and, on yes, run Init Mode against the cwd. On no, surface the manual command and continue.
+1. **Scaffold check.** Run `ls dekspec/ 2>/dev/null`. If the tree exists, report "DekSpec artifact tree present — skipping scaffold." Else, ask: "Run `dekspec init` here? [Y/n]" and, on yes, run Init Mode against the cwd. On no, surface the manual command and continue.
 2. **Spec-mode decision.** Run the Status sub-flow from Spec-Mode Mode. If `NOT INSTALLED` or `DISABLED`, ask: "Enable the 'No Specless Edits' guardrail in CLAUDE.md? [Y/n] (recommended for repos with active spec work)". On yes, run the On sub-flow. On no, leave as-is and continue.
 3. **Configuration.** `using-dekspec` does not own per-repo config — it *calls* `setup-dekspec` for it. Ask: "Configure the per-repo `.dekspec/config.yaml` choices now (issue tracker, scratch dir, triage labels, glossary path, methodology profile)? [Y/n]". On yes, invoke `/dekspec:setup-dekspec --at .` (the configuration front-end); on no, surface the command and continue.
 4. **Catalog summary.** Render the **Quick reference** subset from Catalog Mode (categories + the single most-used skill per category, not the full table). End with one-liner: "Run `/dekspec:using-dekspec --catalog` for the full table; ask in natural language to trigger any skill."
@@ -63,12 +63,12 @@ Close with a one-line "Next step" recommendation matched to the engineer's state
 
 ## Init Mode
 
-Scaffold the DekSpec artifact directory layout in the current directory (or `--at <path>`). Wraps the `dekspec library init` CLI verb.
+Scaffold the DekSpec artifact directory layout in the current directory (or `--at <path>`). Wraps the `dekspec init` CLI verb.
 
 1. Confirm the user wants to scaffold in the current directory (run `pwd` and show the path). If `--at <path>` is supplied, use that path.
-2. Run `dekspec library init $ARGUMENTS` via Bash (forwarding all flags after `--init` to the CLI verb — `--at`, `--dekspec-root`, `--force`, `--executor`, `--endpoint`, `--methodology`, `--profile`).
+2. Run `dekspec init $ARGUMENTS` via Bash (forwarding all flags after `--init` to the CLI verb — `--at`, `--dekspec-root`, `--force`, `--executor`, `--endpoint`, `--methodology`, `--profile`).
 3. Report which subdirs were created and which already existed.
-4. Hint at the smallest governed loop — `/write-intent --lite "<change>"` → `/exec-coding-session` → `/land-intent` — for a single-file change; or `/write-ae` for the first Architecture Element when the work is vision-first. (Lite scaffolding does **not** author an AE.) After authoring, `/dekspec:doctor` will surface a baseline of findings to triage.
+4. Hint at the smallest governed loop — `/write-intent --lite "<change>"` → `/orchestrate-coding-session` → `/land-intent` — for a single-file change; or `/write-ae` for the first Architecture Element when the work is vision-first. (Lite scaffolding does **not** author an AE.) After authoring, `/dekspec:doctor` will surface a baseline of findings to triage.
 
 **End of Init Mode.**
 
@@ -151,6 +151,8 @@ Render the full DekSpec skill catalog. Behavior preserved verbatim from the lega
 
 Welcome to the DekSpec Spec-Driven Development skills catalog. Since authoring skills are designed to be run through interactive AI reasoning, they are not registered as raw shell commands. Instead, you can trigger them simply by asking me in natural language!
 
+> Entries prefixed `/` are deterministic CLI-wrapper commands — they invoke a `dekspec` CLI verb directly with no agentic reasoning. Everything else is a full skill, triggered by natural language.
+
 Use the table below as a quick reference sheet:
 
 ### 1. Spec Authoring Skills (L0–L2 Artifacts)
@@ -168,15 +170,15 @@ Use the table below as a quick reference sheet:
 | **`write-ws`** | Working Spec | *"Write a Working Spec for [subsystem]"* |
 | **`write-ibs`** | Implementation Briefs (IB) | *"Decompose [Working Spec] into IBs"* |
 | **`write-code-beads`** | Beads (atomic work units) from an IB | *"Convert [IB] into beads"* |
-| **`write-issue-beads`** | Non-coding issue beads (bug/task/issue/chore) triaged from an arbitrary report/request/note; grooms the standing backlog | *"Triage this report into the backlog"* |
 
 ### 2. Lifecycle & Orchestration Skills
 | Skill | Purpose | How to Trigger / Ask |
 |---|---|---|
 | **`orchestrate-intent`** | Guided Intent lifecycle walker (any status → LOCKED) | *"Walk INT-NNN to LOCKED"* |
 | **`spec-intent`** | Specification phase-executor (DRAFT → ready-for-coding) | *"Spec out INT-NNN"* |
-| **`exec-coding-session`** | Dispatch unblocked beads to parallel worktree sub-agents | *"Run the coding session for INT-NNN"* |
+| **`orchestrate-coding-session`** | Dispatch unblocked beads to parallel worktree sub-agents | *"Run the coding session for INT-NNN"* |
 | **`land-intent`** | Drive an Intent's PRs through review to merge | *"Land INT-NNN's PRs"* |
+| **`pr-branch`** | Strip spec-authoring churn from a branch into a clean, code-review-ready PR | *"Prep a clean PR branch for review"* |
 
 ### 3. Review Skills (two-tier, non-sycophantic)
 | Skill | Purpose | How to Trigger / Ask |
@@ -191,19 +193,39 @@ Use the table below as a quick reference sheet:
 | **`/validate-artifact`** | Single-artifact schema validation (narrower than `/doctor`) | *"Validate dekspec/intents/INT-105-foo.md"* |
 | **`write-tests`** | Pre-generate test cases from beads | *"Generate test cases for [beads]"* |
 | **`write-evals`** | Setup probabilistic behavior evals | *"Write evals for [IB/beads]"* |
+| **`debug-testfail`** | Resumable post-spec debugging loop (Agans' 9 rules) for a TESTFAIL symptom; persists investigation state across context resets | *"Debug this TESTFAIL"* / *"Continue debugging [slug]"* |
 
-### 5. Developer Aids & Utilities
+### 5. Pre-Spec Exploration Skills
 | Skill | Purpose | How to Trigger / Ask |
 |---|---|---|
-| **`setup-dekspec`** | Per-repo config front-end — interactively set issue tracker, scratch dir, triage labels, glossary path, methodology profile (round-trips through `dekspec exec config`) | *"Configure DekSpec for this repo"* / *"Set up the .dekspec config"* |
 | **`interview-me`** | Docs-anchored one-question-at-a-time interview that sharpens fuzzy input into resolved decisions (composed default-on by the high-judgment authoring skills) | *"Interview me on this fuzzy idea"* / *"Grill me on this design"* |
-| **`rotation-handoff`** | Native session continuity — emit/read a structured, secret-redacted handoff record (objective, artifacts, decisions, next safest action) to `dekspec/.scratch/rotation-handoff/` so a rotated/compacted session resumes cold-start-free (zero dependency on `claude-mem`) | *"Write a handoff before I rotate"* / *"Resume from the last session handoff"* |
-| **`diagnose`** | Pre-spec debugging loop — build a deterministic PASS/FAIL repro signal *first*, log to `dekspec/.scratch/diagnostics/`, then minimize→hypothesize→instrument→fix→regression-test and promote the repro into a bug Intent | *"Diagnose this bug"* / *"Reproduce this failure before we fix it"* |
+| **`diagnose-bug`** | Pre-spec debugging loop — build a deterministic PASS/FAIL repro signal *first*, log to `dekspec/.scratch/diagnostics/`, then minimize→hypothesize→instrument→fix→regression-test and promote the repro into a bug Intent | *"Diagnose this bug"* / *"Reproduce this failure before we fix it"* |
 | **`prototype`** | Pre-spec throwaway-exploration loop — explore a state model (`logic`) or request/response shape (`api`) in disposable `dekspec/.scratch/prototypes/` code, then route the durable findings into `/write-ws` / `/write-ic` / `/write-ae`; no production leak | *"Prototype this design before we spec it"* / *"Sketch this API shape throwaway"* |
+| **`spike`** | Pre-Intent feasibility exploration — a focused throwaway experiment that produces VERIFIED knowledge (VALIDATED / REFUTED / INCONCLUSIVE) before committing to an approach | *"Spike this approach before we commit to an Intent"* |
+
+### 6. Codebase Architecture & Quality Skills
+| Skill | Purpose | How to Trigger / Ask |
+|---|---|---|
+| **`audit-codebase`** | Audit source-code architecture quality — deep vs. shallow modules, information hiding, folderization fit (APOSD-grounded) | *"Audit this codebase's architecture"* |
+| **`analyze-module-depth`** | Surface deepening opportunities — refactors that turn shallow modules into deep ones | *"Find deepening opportunities in this codebase"* |
+| **`orchestrate-module-deepening`** | Run one end-to-end analyze → beads → implement → land architecture-deepening cycle | *"Run an architecture-deepening pass"* |
+
+### 7. Onboarding & Config Skills
+| Skill | Purpose | How to Trigger / Ask |
+|---|---|---|
+| **`using-dekspec`** | This skill — onboarding + spec-mode + catalog | *"Get me started with DekSpec"* |
+| **`setup-dekspec`** | Per-repo config front-end — interactively set issue tracker, scratch dir, triage labels, glossary path, methodology profile (round-trips through `dekspec config`) | *"Configure DekSpec for this repo"* / *"Set up the .dekspec config"* |
+| **`/migrate`** | Upgrade pipeline (vendored drift → IR → artifacts) | *"Migrate our DekSpec artifacts"* |
+
+### 8. Utility & Helper Skills
+| Skill | Purpose | How to Trigger / Ask |
+|---|---|---|
+| **`write-goal-loop-contract`** | Turn a fuzzy "go do this" into a verifiable goal contract and drive a persistent plan→act→test→review→iterate autonomous run | *"Write a goal contract for this overnight run"* |
+| **`rotation-handoff`** | Native session continuity — emit/read a structured, secret-redacted handoff record (objective, artifacts, decisions, next safest action) to `dekspec/.scratch/rotation-handoff/` so a rotated/compacted session resumes cold-start-free (zero dependency on `claude-mem`) | *"Write a handoff before I rotate"* / *"Resume from the last session handoff"* |
+| **`coding-session-forensics`** | Read-only post-mortem for stuck, failed, or anomalous sessions — collects evidence, detects known failure fingerprints, recommends recovery commands | *"Investigate why this session got stuck"* |
 | **`archeology`** | Brownfield spec-gap recovery — code → ratifiable Intent | *"Recover the spec gaps in this repo"* |
 | **`brownfield-ingest`** | Classify inherited markdown prose into DekSpec artifact slots | *"Ingest legacy document [path]"* |
-| **`migrate`** | Upgrade pipeline (vendored drift → IR → artifacts) | *"Migrate our DekSpec artifacts"* |
-| **`using-dekspec`** | This skill — onboarding + spec-mode + catalog | *"Get me started with DekSpec"* |
+| **`write-issue-beads`** | Non-coding issue beads (bug/task/issue/chore) triaged from an arbitrary report/request/note; grooms the standing backlog | *"Triage this report into the backlog"* |
 
 ---
 
@@ -211,7 +233,7 @@ Use the table below as a quick reference sheet:
 **Smallest path to a merged one-file change** (the `--lite` track — skips `--analyze` + code-bead decomposition, still LOCKs):
 ```bash
 /write-intent --lite "<one-line description>"   # single-component, single-IU, no ADRs/ICs
-/exec-coding-session                            # agents implement the bead in an isolated worktree
+/orchestrate-coding-session                            # agents implement the bead in an isolated worktree
 /land-intent                                    # merge the IB-aggregate PR + LOCK the Intent
 ```
 

@@ -1,12 +1,12 @@
 ---
 name: write-tests
-description: Author the independent, behavior-first acceptance-test floor for a bead — public-interface tests under strong-TDD red-first timing, derived from the spec, before the coding session. Use after /write-code-beads, before /exec-coding-session.
+description: Author the independent, behavior-first acceptance-test floor for a bead — public-interface tests under strong-TDD red-first timing, derived from the spec, before the coding session. Use after /write-code-beads, before /orchestrate-coding-session.
 mode: lite
 model: claude-opus-4-7
 reasoning_effort: high
 allowed-tools: Read Write Edit Bash
 argument-hint: [--help | --teaching | --audit | --all | --integration | --revise] [BEAD-NNN or IB-path] [notes]
-related_skills: [write-code-beads, exec-coding-session, write-evals, write-ibs]
+related_skills: [write-code-beads, orchestrate-coding-session, write-evals, write-ibs]
 disable-model-invocation: false
 ---
 
@@ -59,7 +59,7 @@ See [`_lib/fan_out.md`](../_lib/fan_out.md) for the canonical ds-di2 orchestrato
   4. Project context — `dekspec/project-context.md` (the SDET role the subagent must adopt).
   5. Constraints — the **Test Derivation Rules**, **Test File Format**, **Rules**, and **Red-Genuineness Check** sections of this skill (deterministic-only; one criterion → ≥1 test; real assertions / stub implementations marked `@pytest.mark.skip(reason="pre-implementation — coding agent removes skip")`; edge cases from domain constraints + error paths from IB failure-behavior; import paths from bead's Files (not invented); mock external dependencies only — never internal modules; Test File Format block; and the Red-Genuineness Check — transiently unskip + run each test to confirm it fails because its assertion fired, not via a spurious non-zero exit or an import error).
 - **expected_output_path**: `tests/bead/test_<bead-slug>.py` (default + `--all` + `--revise`); `tests/integration/test_<ib-slug>.py` (`--integration`). For `--all`, one path per bead in the batch.
-- **validation**: `pytest --collect-only <output-path>` — confirms syntactic validity + that all tests collect (skip markers fine; collection errors not). This is a *syntactic* gate only; it never runs an assertion, so pair it with the **Red-Genuineness Check** (transiently unskip + run each test to confirm a genuine red) before reporting back. Validation/surface contract: see [`_lib/validate_and_surface.md`](../_lib/validate_and_surface.md) — test files have no `dekspec check validate --kind` form, so `pytest --collect-only` is the equivalent gate; non-zero exit → surface verbatim and stop, do not silently retry. Mode-specific post-checks: every acceptance criterion in the parent bead is referenced by ≥1 test docstring (default + `--all` + `--revise`); every bead-to-bead boundary in the IB has a data-contract test (`--integration`); parent bead's `--acceptance-criteria` updated to reference the test file (default + `--all`); no pre-existing passing tests deleted (`--revise`).
+- **validation**: `pytest --collect-only <output-path>` — confirms syntactic validity + that all tests collect (skip markers fine; collection errors not). This is a *syntactic* gate only; it never runs an assertion, so pair it with the **Red-Genuineness Check** (transiently unskip + run each test to confirm a genuine red) before reporting back. Validation/surface contract: see [`_lib/validate_and_surface.md`](../_lib/validate_and_surface.md) — test files have no `dekspec validate --kind` form, so `pytest --collect-only` is the equivalent gate; non-zero exit → surface verbatim and stop, do not silently retry. Mode-specific post-checks: every acceptance criterion in the parent bead is referenced by ≥1 test docstring (default + `--all` + `--revise`); every bead-to-bead boundary in the IB has a data-contract test (`--integration`); parent bead's `--acceptance-criteria` updated to reference the test file (default + `--all`); no pre-existing passing tests deleted (`--revise`).
 
 For **`--all`**: the orchestrator iterates the batch (per the existing All Mode steps 1–5), then fans out one subagent **per bead** in parallel; collects subagent reports and emits the batch summary in step 7 of All Mode.
 
@@ -99,7 +99,7 @@ extra_sections:
       - "2. Write evals:     /write-evals <bead>         (if model output)"
       - "3. Write tests:     /write-tests <bead>          (for each bead)"
       - "4. Integration:     /write-tests --integration <IB>  (optional)"
-      - "5. Code:            /exec-coding-session"
+      - "5. Code:            /orchestrate-coding-session"
 ```
 
 At runtime, render the manifest per `_lib/help_mode_template.md` and stop.
@@ -392,7 +392,7 @@ IB path: the argument after `--integration`.
 
 ### What this skill is (ADR-036 / Constitution Article 3)
 
-This skill authors the **independent, behavior-first acceptance-test floor** for a bead — the up-front, public-interface suite that proves observable behavior, written before the coding session under strong-TDD red-first timing. It owns the *independent* floor; the implementer adds discovered-behavior tests **vertically** during `/exec-coding-session` (hybrid-vertical TDD, ADR-036). Because this skill writes the suite **horizontally** (the whole floor up front, not via a vertical implement-as-you-go loop), it is *more* prone to testing imagined shape instead of real behavior. Guard against that: every test must assert an **observable behavior through the public interface**, and the Red-Genuineness Check below must confirm the *assertion* fires (not merely that some shape exists).
+This skill authors the **independent, behavior-first acceptance-test floor** for a bead — the up-front, public-interface suite that proves observable behavior, written before the coding session under strong-TDD red-first timing. It owns the *independent* floor; the implementer adds discovered-behavior tests **vertically** during `/orchestrate-coding-session` (hybrid-vertical TDD, ADR-036). Because this skill writes the suite **horizontally** (the whole floor up front, not via a vertical implement-as-you-go loop), it is *more* prone to testing imagined shape instead of real behavior. Guard against that: every test must assert an **observable behavior through the public interface**, and the Red-Genuineness Check below must confirm the *assertion* fires (not merely that some shape exists).
 
 ### The SDET's per-cycle rules (ADR-036)
 
@@ -463,7 +463,7 @@ Record one line per test in your report: `<test> → red (assertion fired)` or t
 **Mandatory closing step for every substantive mode of this skill** (the modes that write or revise a test suite — All Mode, Bead Test Mode, Integration Mode, `--revise`). After the test file(s) are saved, run:
 
 ```
-dekspec audit relink
+dekspec relink
 ```
 
-against the repo root. This deterministically re-derives and renders the cross-artifact `Linked Artifacts` backlinks from the forward links the artifact declares, stitching the spec graph in one pass. This is a required action, not a reminder — do not defer it, do not surface a "backfill the backlinks later" note to the engineer. `dekspec audit relink` is the graph-repair pass; running it is the last thing the skill does before reporting back.
+against the repo root. This deterministically re-derives and renders the cross-artifact `Linked Artifacts` backlinks from the forward links the artifact declares, stitching the spec graph in one pass. This is a required action, not a reminder — do not defer it, do not surface a "backfill the backlinks later" note to the engineer. `dekspec relink` is the graph-repair pass; running it is the last thing the skill does before reporting back.

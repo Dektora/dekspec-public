@@ -1,9 +1,9 @@
 # Debug session — <slug>
 
 <!--
-Persistent state file for `/dekspec:debug`. Live audit trail kept under
+Persistent state file for `/dekspec:debug-testfail`. Live audit trail kept under
 `dekspec/debug/<slug>.md`. The file is updated *as the hunt proceeds* (not at
-the end) so a context reset is recoverable via `/dekspec:debug continue <slug>`.
+the end) so a context reset is recoverable via `/dekspec:debug-testfail continue <slug>`.
 
 Section shape borrowed from the gsd-debug `.planning/debug/` template.
 -->

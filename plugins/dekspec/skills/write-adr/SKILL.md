@@ -80,7 +80,7 @@ See [`_lib/fan_out.md`](../_lib/fan_out.md) for the canonical ds-di2 orchestrato
   5. Constraints — relevant Interface Contracts (`dekspec/interface-contracts/`), the System Vision (`dekspec/system-vision.md`), the domain glossary (`dekspec/domain-glossary.md`), and any cross-cutting governance the decision must respect.
   6. ADR index state — `dekspec/adr-index.md` for the next ADR-NNN.
 - **expected_output_path**: Creation — `dekspec/adrs/ADR-NNN-<slug>.md` (orchestrator pre-computes NNN); `--revise` / `--accept` — the existing ADR path.
-- **validation**: `dekspec check validate <output-path>` + the Audit Mode checklist (§Audit Mode below). Orchestrator also updates `dekspec/adr-index.md` for Creation (new row) and `--accept` (status change) — the subagent's job is the ADR file, not the index. Validation/surface contract: see [`_lib/validate_and_surface.md`](../_lib/validate_and_surface.md) — on non-zero exit, surface verbatim and stop, do not silently retry.
+- **validation**: `dekspec validate <output-path>` + the Audit Mode checklist (§Audit Mode below). Orchestrator also updates `dekspec/adr-index.md` for Creation (new row) and `--accept` (status change) — the subagent's job is the ADR file, not the index. Validation/surface contract: see [`_lib/validate_and_surface.md`](../_lib/validate_and_surface.md) — on non-zero exit, surface verbatim and stop, do not silently retry.
 
 **End of Fan-Out Mode.**
 
@@ -407,7 +407,7 @@ Downstream impact scan (run during Step 2 alongside the reason gate): grep all s
    ```
 
    On a non-zero exit, surface the helper's refusal verbatim (it names the offending decision field) and STOP — the engineer routes the change through `--unlock` + `--lock` instead. Do **not** hand-edit the Amendment Log to bypass the guard.
-4. **Closing step.** Run `dekspec audit relink` (the shared closing step) so any newly-added forward cross-links re-derive their backlinks.
+4. **Closing step.** Run `dekspec relink` (the shared closing step) so any newly-added forward cross-links re-derive their backlinks.
 
 **End of Amend Mode.**
 
@@ -588,17 +588,17 @@ python ../_lib/scripts/artifact_ops.py approve <ADR-path> --target-status <STATU
 - [ ] Every template section is populated — no placeholders, no TODOs — and Status is PROPOSED on a fresh Creation save.
 - [ ] The body is at architectural level only: no function signatures, line numbers, config key names, or variable names.
 - [ ] The supersession check ran (both directions) and either reported clean or surfaced the conflicting ADR with evidence.
-- [ ] `dekspec check validate <output-path>` exited 0; any non-zero exit was surfaced verbatim and the run stopped.
+- [ ] `dekspec validate <output-path>` exited 0; any non-zero exit was surfaced verbatim and the run stopped.
 - [ ] `dekspec/adr-index.md` was updated by the parent (new row on Creation, status change on `--accept`), not by the subagent.
 - [ ] Created and Modified dates are set, with Modified bumped to today on any write/revise.
-- [ ] `dekspec audit relink` was run at the repo root as the final action of every substantive mode.
+- [ ] `dekspec relink` was run at the repo root as the final action of every substantive mode.
 
 ## Closing Step
 
 **Mandatory closing step for every substantive mode of this skill** (the modes that write or revise an ADR — Creation, `--accept`, `--revise`, `--lock`, `--unlock`). After the artifact file is saved and any index update is done, run:
 
 ```
-dekspec audit relink
+dekspec relink
 ```
 
-against the repo root. This deterministically re-derives and renders the cross-artifact `Linked Artifacts` backlinks from the forward links the artifact declares, stitching the spec graph in one pass. This is a required action, not a reminder — do not defer it, do not surface a "backfill the backlinks later" note to the engineer. `dekspec audit relink` is the graph-repair pass; running it is the last thing the skill does before reporting back.
+against the repo root. This deterministically re-derives and renders the cross-artifact `Linked Artifacts` backlinks from the forward links the artifact declares, stitching the spec graph in one pass. This is a required action, not a reminder — do not defer it, do not surface a "backfill the backlinks later" note to the engineer. `dekspec relink` is the graph-repair pass; running it is the last thing the skill does before reporting back.

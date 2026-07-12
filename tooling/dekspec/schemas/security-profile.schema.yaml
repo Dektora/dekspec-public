@@ -51,7 +51,7 @@ properties:
   id:
     description: Canonical SP identifier derived from filename (e.g., SP-001).
     type: string
-    pattern: "^SP-\\d{3,}$"
+    pattern: "^(?:P-)?SP-\\d{3,}$"
 
   title:
     description: Engineer-authored one-line title from the markdown H1.

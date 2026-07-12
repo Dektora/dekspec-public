@@ -1,5 +1,5 @@
-> Shared `_lib` prose helper called by `deepen-codebase-architecture`,
-> `orchestrate-deepening`, and the `audit-codebase --slices` consumers. This is
+> Shared `_lib` prose helper called by `analyze-module-depth`,
+> `orchestrate-module-deepening`, and the `audit-codebase --slices` consumers. This is
 > not a triggerable skill — it carries no SKILL.md frontmatter and is never
 > enumerated by the harness. A parent skill invokes this routine to produce (or
 > refresh) the durable, committed architecture-slice manifest the `--scope`
@@ -84,7 +84,7 @@ the code evolves. A parent skill or operator MAY refresh it via any of:
 
 - **Manual re-run** — re-invoke this routine on demand before a deepening pass.
 - **Pre-deepening hook** — refresh as the first step of
-  `deepen-codebase-architecture` / `orchestrate-deepening`.
+  `analyze-module-depth` / `orchestrate-module-deepening`.
 - **CI staleness check** — a CI job that regenerates and diffs the manifest,
   flagging drift between committed and freshly-discovered slices.
 

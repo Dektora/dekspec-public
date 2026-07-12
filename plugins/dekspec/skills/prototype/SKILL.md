@@ -145,7 +145,7 @@ At runtime, render the manifest per `_lib/help_mode_template.md` and stop.
 - To author the governed artifact itself — that is `/dekspec:write-ws`,
   `/dekspec:write-ic`, or `/dekspec:write-ae`; `prototype` *produces the
   findings* those skills consume.
-- To reproduce a bug before fixing it — that is `/dekspec:diagnose` (a
+- To reproduce a bug before fixing it — that is `/dekspec:diagnose-bug` (a
   debugging loop, not a pre-spec design exploration).
 - To build anything intended to survive — prototype code is throwaway by
   contract and lives only in the gitignored scratch zone.

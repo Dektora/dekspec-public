@@ -33,7 +33,7 @@ properties:
 
   id:
     type: string
-    pattern: "^MSN-\\d{3,}$"
+    pattern: "^(?:P-)?MSN-\\d{3,}$"
 
   name:
     type: string

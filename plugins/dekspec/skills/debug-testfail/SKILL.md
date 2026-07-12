@@ -1,5 +1,5 @@
 ---
-name: debug
+name: debug-testfail
 description: Resumable post-spec debugging loop for DekSpec — runs Agans' debugging-9-rules protocol on a TESTFAIL symptom and persists investigation state (observation / theory / disproved audit trail) to `dekspec/debug/<slug>.md` so the hunt survives a context reset. `--diagnose` produces a structured Root Cause Report only and applies NO source fix (the only file written is the persisted state log). `continue <slug>` reloads the prior state file rather than restarting from the symptom. On resolution, writes a fix summary back to the Intent's `## TESTFAIL records` table. Use when a previously-locked Intent regresses, an outcome test starts failing, or a debugging session needs to span multiple agent contexts.
 mode: lite
 model: claude-opus-4-7
@@ -7,7 +7,7 @@ reasoning_effort: high
 disable-model-invocation: false
 allowed-tools: Read Write Edit Bash
 argument-hint: [--help] [--diagnose] [continue SLUG]
-related_skills: [diagnose, write-intent, write-tests]
+related_skills: [diagnose-bug, write-intent, write-tests]
 ---
 
 Run the resumable post-spec debugging loop. The **whole point of this skill**
@@ -17,16 +17,16 @@ or `IMPLEMENTING` Intent, while keeping the entire investigation audit trail
 `dekspec/debug/<slug>.md` — so a context reset, a paused session, or a handoff
 to another agent does not vaporize the hunt.
 
-This skill is the **post-spec** sibling of `/dekspec:diagnose`. Where
+This skill is the **post-spec** sibling of `/dekspec:diagnose-bug`. Where
 `diagnose` builds a deterministic PASS/FAIL repro signal *before* a bug
-Intent is captured (pre-spec), `/dekspec:debug` runs the full nine-rules
+Intent is captured (pre-spec), `/dekspec:debug-testfail` runs the full nine-rules
 protocol *after* a TESTFAIL has been recorded against an Intent — it lives
 inside the governed lifecycle, not before it.
 
 ## Starter Prompt
 
 ```prompt
-/dekspec:debug --diagnose --at .
+/dekspec:debug-testfail --diagnose --at .
 
 A TESTFAIL was recorded on <INT-NNN>: <one-line symptom>. Walk Agans' nine
 rules of debugging — Understand the system, Make it fail, Quit thinking and
@@ -82,16 +82,16 @@ audit trail for the resolution.
 See [`_lib/help_mode_template.md`](../_lib/help_mode_template.md) for the canonical Help rendering contract. Manifest for this skill — render it and stop:
 
 ```yaml
-skill_name: "/dekspec:debug"
+skill_name: "/dekspec:debug-testfail"
 one_line:   "Post-spec debugging loop — run Agans' nine rules on a TESTFAIL, persist observation/theory/disproved audit trail to dekspec/debug/<slug>.md so the hunt survives a context reset, produce a Root Cause Report (no source fix), resume via `continue <slug>`."
 modes:
   - { flag: "--diagnose", args: "[--at PATH]", description: "Default. Walk Agans' nine rules; persist audit trail to dekspec/debug/<slug>.md; produce a Root Cause Report. Modifies no source files." }
   - { flag: "",           args: "continue SLUG", description: "Reload `dekspec/debug/<slug>.md` and resume the hunt from the last checkpoint." }
   - { flag: "--help",     args: "", description: "Show this help message." }
 examples:
-  - "/dekspec:debug --diagnose --at ."
-  - "/dekspec:debug continue payment-flow-regression"
-  - "/dekspec:debug --help"
+  - "/dekspec:debug-testfail --diagnose --at ."
+  - "/dekspec:debug-testfail continue payment-flow-regression"
+  - "/dekspec:debug-testfail --help"
 storage: "dekspec/debug/<slug>.md (durable persisted state — observation, theory, disproved, root-cause-report sections; survives context reset)"
 ```
 
@@ -107,15 +107,15 @@ storage: "dekspec/debug/<slug>.md (durable persisted state — observation, theo
 ## When NOT to use
 
 - To build a pre-spec PASS/FAIL repro signal *before* a bug Intent is
-  captured — that is `/dekspec:diagnose` (the pre-spec sibling).
+  captured — that is `/dekspec:diagnose-bug` (the pre-spec sibling).
 - To apply a fix — `--diagnose` is propose-only; the fix lands via the
   Intent's normal coding-session flow once the Root Cause Report is in hand.
 - To author the bug Intent itself — that is `/dekspec:write-intent (type: bug)`.
 
 ## Related
 
-- `/dekspec:diagnose` — the pre-spec sibling; builds the deterministic repro
-  signal *before* the bug Intent is captured. `/dekspec:debug` runs *after*
+- `/dekspec:diagnose-bug` — the pre-spec sibling; builds the deterministic repro
+  signal *before* the bug Intent is captured. `/dekspec:debug-testfail` runs *after*
   a TESTFAIL has been recorded against an Intent.
 - `/dekspec:write-intent` — owns the `## TESTFAIL records` table that the
   resolution writeback updates.

@@ -105,6 +105,9 @@ rules:
   # per MSN-014). Both P3 advisory; never blocks.
   - L-PROVISIONAL-TREE-PRESENT
   - L-PROVISIONAL-STALE
+  # ADR-043 abortability — a provisional artifact must be promoted, not
+  # frozen at a terminal LOCKED/COMPLETE status. P2 gating.
+  - T-PROVISIONAL-NOT-LOCKED
   # Copy-on-write sibling-collision detection
   # (INT-082 MVP slice; full write-time guard + accept gate
   # deferred). P2 semantic.

@@ -1,4 +1,4 @@
-> Shared `_lib` prose helper called by `deepen-codebase-architecture`. This is
+> Shared `_lib` prose helper called by `analyze-module-depth`. This is
 > not a triggerable skill — it carries no SKILL.md frontmatter and is never
 > enumerated by the harness. The parent skill invokes this routine to restructure
 > a deep Python module behaviour-preservingly into a package with a small public

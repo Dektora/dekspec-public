@@ -19,7 +19,7 @@ AI coding agents fill ambiguity with confident, plausible, wrong decisions. By r
 | **L1 Design** | Vision, principles, decisions | System Vision, Architecture Elements (AE), ADRs, Domain Glossary | `/write-ae`, `/write-adr`, `/dekspec:archeology` |
 | **L2 Specification** | Behavioral contracts | Working Specs (WS), Interface Contracts (IC) | `/write-ws`, `/write-ic` |
 | **L3 Implementation** | Decomposed work plans | Implementation Briefs (IB) | `/write-ibs` |
-| **L4 Construction** | Atomic coding tasks | Beads, Tests, Evals | `/write-code-beads`, `/write-tests`, `/write-evals`, `/exec-coding-session` |
+| **L4 Construction** | Atomic coding tasks | Beads, Tests, Evals | `/write-code-beads`, `/write-tests`, `/write-evals`, `/orchestrate-coding-session` |
 
 **Intent (`INT-NNN`) and Mission (`MSN-NNN`) anchor at L1 and span downward through L2-L4.** They link to L1 AEs, spawn L3 IBs, may revise L2 WSs / ICs, and carry L4-surface `verification` / `rollback` / `kill_criteria` commands. The operating guide covers their audit rule classes (L7a / L7b / L8 / L9).
 
@@ -42,7 +42,7 @@ For the arc42 chapter mapping, C4 diagram lexicon, and skill routing tables, see
 3. SPECIFY     /write-ws <description>   /write-ic <boundary> (if needed) → WS, IC
 4. PLAN        /write-ibs <spec>                                         → IBs
 5. PREPARE     /write-code-beads <IB>   /write-tests   /write-evals (if model output)
-6. BUILD       /exec-coding-session   — agents execute beads in parallel worktrees
+6. BUILD       /orchestrate-coding-session   — agents execute beads in parallel worktrees
 7. REVIEW      /review-ib <IB>   /review-pr <PR>   — non-sycophantic pre-impl + post-impl review
 ```
 
@@ -73,7 +73,7 @@ IBs also use directory lifecycle: `queued/` --> `active/` --> `completed/`
 | `/write-code-beads` | Convert IBs into atomic L4 work units |
 | `/write-tests` | Write deterministic tests from acceptance criteria |
 | `/write-evals` | Write probabilistic evals for model output |
-| `/exec-coding-session` | Orchestrate parallel AI coding agents |
+| `/orchestrate-coding-session` | Orchestrate parallel AI coding agents |
 | `/doctor` | AE-aware fidelity audit — canonical for new audits |
 | `/write-ggc` | Log domain corrections, add glossary terms, audit terminology health |
 | `/dekspec:brownfield-ingest` | Classify inherited markdown prose into DekSpec artifact slots |

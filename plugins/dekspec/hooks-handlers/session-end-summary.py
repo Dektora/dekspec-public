@@ -7,7 +7,7 @@ per-response and misses compaction).
 
 Two responsibilities:
 
-  1. Surface (Stop-style summary): runs `dekspec audit doctor --at . --json`
+  1. Surface (Stop-style summary): runs `dekspec doctor --at . --json`
      and prints a one-line summary if vendoring drift or graph-level audit
      findings are worth surfacing. Stays silent when clean.
   2. Rotation-handoff emit (INT-176 / κ): writes a structured, secret-redacted
@@ -67,14 +67,14 @@ def main() -> int:
     if drift_count > 0:
         messages.append(
             f"vendored content drift: {drift_count} finding(s) "
-            "— run `dekspec audit doctor --json` for detail"
+            "— run `dekspec doctor --json` for detail"
         )
 
     critical, important, minor = _audit_counts(payload)
     if critical + important > 0:
         messages.append(
             f"doctor findings: critical={critical} important={important} minor={minor} "
-            "— run `dekspec audit doctor` or `/dekspec:doctor` for detail"
+            "— run `dekspec doctor` or `/dekspec:doctor` for detail"
         )
 
     if not messages:
@@ -145,7 +145,7 @@ def _emit_handoff(cwd: Path) -> None:
 
 
 def _run_doctor(cwd: Path, timeout: int) -> dict | None:
-    """Run `dekspec audit doctor --json`. Return parsed payload, or None on error/no-data."""
+    """Run `dekspec doctor --json`. Return parsed payload, or None on error/no-data."""
     try:
         proc = subprocess.run(
             ["dekspec", "audit", "doctor", "--at", str(cwd), "--json"],

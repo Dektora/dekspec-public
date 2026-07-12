@@ -71,7 +71,7 @@ Optional flags:
 | `ib.files_to_modify` | The IB's declared file globs, for the diff-scope-vs-ib lens. |
 | `ib.test_plan` | The IB's test plan, for the test-plan-execution lens. |
 | `claude_md` | `CLAUDE.md` content, for the claude-md-compliance lens. |
-| `audit_doctor` | Cached `dekspec audit doctor --json --at .` snapshot at the PR's head SHA. |
+| `audit_doctor` | Cached `dekspec doctor --json --at .` snapshot at the PR's head SHA. |
 | `git_history` | Recent `git log` + `git blame` on touched surfaces, for the git-blame-prior-pr lens. |
 
 The orchestration shell pulls these once and caches; each lens sees only its declared slice.
@@ -84,7 +84,7 @@ Structured verdict persisted to the SQLite flywheel (INT-109): `dekspec.review.d
 
 ## Audit-doctor cache reuse
 
-REVIEW_PR leans heavily on `dekspec audit doctor --json --at .` output — the audit-rule-preflight lens consumes it directly, the spec-mode-discipline lens consumes a slice, the doc-changelog-entry lens cross-references it. The orchestration shell runs `dekspec audit doctor --json --at .` exactly once per review session and caches; lenses whose `input_slice` declares `audit_doctor.<path>` consume the cached snapshot rather than re-deriving. A lens that re-walks the source tree to compute what audit-doctor already exposes fails the schema lint at load time.
+REVIEW_PR leans heavily on `dekspec doctor --json --at .` output — the audit-rule-preflight lens consumes it directly, the spec-mode-discipline lens consumes a slice, the doc-changelog-entry lens cross-references it. The orchestration shell runs `dekspec doctor --json --at .` exactly once per review session and caches; lenses whose `input_slice` declares `audit_doctor.<path>` consume the cached snapshot rather than re-deriving. A lens that re-walks the source tree to compute what audit-doctor already exposes fails the schema lint at load time.
 
 ## Lens pack
 

@@ -1,5 +1,5 @@
 ---
-description: Review-and-land phase-executor — invokes the /land-intent skill. Drives every IB-aggregate PR an Intent produced through the two-tier review pipeline to a landed state (fire REVIEW_PR trigger → review-pr → REVIEW_PR_FAIL grep-loop → operator-confirmed squash-merge). Never auto-merges (ADR-026). The review-side sibling of /exec-coding-session.
+description: Review-and-land phase-executor — invokes the /land-intent skill. Drives every IB-aggregate PR an Intent produced through the two-tier review pipeline to a landed state (fire REVIEW_PR trigger → review-pr → REVIEW_PR_FAIL grep-loop → operator-confirmed squash-merge). Never auto-merges (ADR-026). The review-side sibling of /orchestrate-coding-session.
 allowed-tools: Skill
 argument-hint: [--help] <INT-NNN | path/ID of Intent>
 disable-model-invocation: false

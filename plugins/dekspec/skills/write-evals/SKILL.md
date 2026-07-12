@@ -7,7 +7,7 @@ reasoning_effort: high
 disable-model-invocation: false
 allowed-tools: Read Write Edit Bash
 argument-hint: [--help | --teaching | --audit | --review | --resync | --revise | --accept | --dry-run] [BEAD-NNN or path to IB] [engineer notes or path to notes file]
-related_skills: [write-ibs, write-tests, write-code-beads, write-intent, exec-coding-session]
+related_skills: [write-ibs, write-tests, write-code-beads, write-intent, orchestrate-coding-session]
 ---
 
 > **Vendored asset paths:** Template + doc paths below resolve via `dekspec resource template <name>` / `dekspec resource doc <name>` (wheel-bundled since v0.91.0; consumer-fs override wins when present). See [`_lib/vendored_assets.md`](../_lib/vendored_assets.md) for the full resolution rule.
@@ -66,7 +66,7 @@ See [`_lib/fan_out.md`](../_lib/fan_out.md) for the canonical ds-di2 orchestrato
   6. Engineer guidance — `$ARGUMENTS` verbatim, including BEAD-NNN / IB path and inline notes (or `.md`/`.txt` notes file for `--revise`).
   7. Constraints — the rules block at the bottom of this skill (evals authored BEFORE the coding session; coding agent does not write evals; probabilistic-only — deterministic checks belong in `tests/`; one eval per checklist layer; LLM-as-judge uses a different model than the model under evaluation; pass criterion pins trial count + run count + range).
 - **expected_output_path**: Creation — `tests/evals/{behavioral,regression,adversarial}/<bead-id>_<scenario-name>.md` (one file per eval); `--revise` / `--accept` — existing eval-file paths (edited in place).
-- **validation**: `/write-evals --audit <BEAD-NNN>` (re-invoke this skill's own Audit Mode against the returned eval set; until a typed eval IR + `dekspec check validate eval` land, Audit Mode is the validation surface). Any finding of severity critical or important → surface verbatim. Validation/surface contract: see [`_lib/validate_and_surface.md`](../_lib/validate_and_surface.md) — Audit Mode is the equivalent gate here; on a critical/important finding, surface verbatim and stop, do not silently retry. Mode-specific post-checks: Creation — frontmatter populated (Bead, IB, Status=DRAFT) + bead's `evals` field updated; `--revise` — Type=Revise Amendment-Log row per touched eval + Open Issues surfaced; `--accept` — Status flipped DRAFT→ACCEPTED + Type=Accept row + Modified=today.
+- **validation**: `/write-evals --audit <BEAD-NNN>` (re-invoke this skill's own Audit Mode against the returned eval set; until a typed eval IR + `dekspec validate eval` land, Audit Mode is the validation surface). Any finding of severity critical or important → surface verbatim. Validation/surface contract: see [`_lib/validate_and_surface.md`](../_lib/validate_and_surface.md) — Audit Mode is the equivalent gate here; on a critical/important finding, surface verbatim and stop, do not silently retry. Mode-specific post-checks: Creation — frontmatter populated (Bead, IB, Status=DRAFT) + bead's `evals` field updated; `--revise` — Type=Revise Amendment-Log row per touched eval + Open Issues surfaced; `--accept` — Status flipped DRAFT→ACCEPTED + Type=Accept row + Modified=today.
 
 **End of Fan-Out Mode.**
 
@@ -573,7 +573,7 @@ Eval files in `tests/evals/{behavioral,regression,adversarial}/<bead-id>_<scenar
 **Mandatory closing step for every substantive mode of this skill** (the modes that write or revise an eval suite — Creation, `--accept`, `--revise`, `--resync`). After the artifact file is saved and any index update is done, run:
 
 ```
-dekspec audit relink
+dekspec relink
 ```
 
-against the repo root. This deterministically re-derives and renders the cross-artifact `Linked Artifacts` backlinks from the forward links the artifact declares, stitching the spec graph in one pass. This is a required action, not a reminder — do not defer it, do not surface a "backfill the backlinks later" note to the engineer. `dekspec audit relink` is the graph-repair pass; running it is the last thing the skill does before reporting back.
+against the repo root. This deterministically re-derives and renders the cross-artifact `Linked Artifacts` backlinks from the forward links the artifact declares, stitching the spec graph in one pass. This is a required action, not a reminder — do not defer it, do not surface a "backfill the backlinks later" note to the engineer. `dekspec relink` is the graph-repair pass; running it is the last thing the skill does before reporting back.

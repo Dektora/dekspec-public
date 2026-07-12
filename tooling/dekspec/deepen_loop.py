@@ -5,9 +5,9 @@ Bead ds-3mbf / IB-132. Backs ``plugins/dekspec/commands/deepen-until-dry.md``.
 The command markdown owns and *documents* the AFK repeat-until-dry deepening
 loop; this module is the deterministically-testable termination control the
 command drives — loop bound, consecutive-dry convergence, and scope threading —
-exactly as ``/exec-coding-session`` owns :mod:`dekspec.action_handlers`.
+exactly as ``/orchestrate-coding-session`` owns :mod:`dekspec.action_handlers`.
 
-The actual per-pass work (re-invoking the ``orchestrate-deepening`` skill with
+The actual per-pass work (re-invoking the ``orchestrate-module-deepening`` skill with
 fresh context and reading back its ``{completed, remaining, dry}`` convergence
 signal) is INJECTED by the command runtime as the ``pass_runner`` callable.
 This keeps the skill-invocation boundary mockable: the loop here is pure
@@ -27,7 +27,7 @@ class LoopResult:
     Fields:
         converged: whether the loop reached the consecutive-dry target.
         exit_reason: ``"convergence"`` or ``"safety_bound"``.
-        passes: total number of ``orchestrate-deepening`` passes driven.
+        passes: total number of ``orchestrate-module-deepening`` passes driven.
         beads_created: sum of per-pass ``completed`` counts across all rounds.
         scope: the active scope threaded into every pass (``None`` = whole repo).
         prompts_issued: human-in-the-loop prompts issued — always 0 (AFK).
@@ -48,7 +48,7 @@ class LoopResult:
 class _PassContext:
     """A fresh, per-pass context object handed to the injected ``pass_runner``.
 
-    A NEW instance is created for every pass so each ``orchestrate-deepening``
+    A NEW instance is created for every pass so each ``orchestrate-module-deepening``
     invocation gets no shared cross-pass context (the fresh-context guarantee).
     The iteration index is informational only; the loop's termination decision
     keys solely off the per-pass ``dry`` signal.

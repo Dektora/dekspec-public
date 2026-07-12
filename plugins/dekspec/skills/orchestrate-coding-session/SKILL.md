@@ -1,5 +1,5 @@
 ---
-name: exec-coding-session
+name: orchestrate-coding-session
 description: Dispatch unblocked beads to parallel sub-agents in isolated worktrees, then collect results and land the plane.
 mode: lite
 model: claude-opus-4-7
@@ -17,7 +17,7 @@ Orchestrate a parallel coding session across multiple beads.
 ## Starter Prompt
 
 ```prompt
-/dekspec:exec-coding-session INT-123
+/dekspec:orchestrate-coding-session INT-123
 
 Dispatch INT-123's ready bead set in parallel worktrees. Auto-dispatch is
 fine — show me the plan, then land the plane.
@@ -59,20 +59,20 @@ If `$FILTER_INTENT_ID` is set, Phase 1 still runs `br ready` but keeps only cand
 See [`_lib/help_mode_template.md`](../_lib/help_mode_template.md) for the canonical Help rendering contract. Manifest for this skill:
 
 ```yaml
-skill_name: "/exec-coding-session"
+skill_name: "/orchestrate-coding-session"
 one_line:   "Orchestrate parallel bead execution in isolated worktrees"
 modes:
   - { flag: "--confirm-dispatch", args: "", description: "Pause after the dispatch plan and wait for engineer approval before launching sub-agents. Default is auto-dispatch (plan shown for transparency only)." }
   - { flag: "--dry-run", args: "", description: "Run Phase 1 (discover, claim, dependency check) and present the dispatch plan, but do not launch any sub-agents. Use for pre-flight planning." }
   - { flag: "--help", args: "", description: "Show this help message." }
 examples:
-  - "/exec-coding-session"
-  - "/exec-coding-session INT-123"
-  - "/exec-coding-session --confirm-dispatch"
-  - "/exec-coding-session --dry-run"
-  - "/exec-coding-session \"only dispatch BEAD-42 and BEAD-43\""
-  - "/exec-coding-session --confirm-dispatch \"focus on the injection pipeline beads\""
-  - "/exec-coding-session --help"
+  - "/orchestrate-coding-session"
+  - "/orchestrate-coding-session INT-123"
+  - "/orchestrate-coding-session --confirm-dispatch"
+  - "/orchestrate-coding-session --dry-run"
+  - "/orchestrate-coding-session \"only dispatch BEAD-42 and BEAD-43\""
+  - "/orchestrate-coding-session --confirm-dispatch \"focus on the injection pipeline beads\""
+  - "/orchestrate-coding-session --help"
 extra_sections:
   - heading: "WORKFLOW"
     body:
@@ -118,7 +118,7 @@ Do NOT proceed past this point until the script exits 0 (all referenced quality 
 
 ## Session Lifecycle Wiring
 
-Per WS-010 (MSN-002 orchestration plane), this skill opens a `dekspec exec session` on entry and closes it on exit, so off-spec (vibecoding) drift is recorded against a single session for the dispatch round. The session is opened **after** all Pre-Flight Checks STOP conditions clear (quality-gate files present, agent-mail reachable) — early-exit paths never leave a half-opened session.
+Per WS-010 (MSN-002 orchestration plane), this skill opens a `dekspec session` on entry and closes it on exit, so off-spec (vibecoding) drift is recorded against a single session for the dispatch round. The session is opened **after** all Pre-Flight Checks STOP conditions clear (quality-gate files present, agent-mail reachable) — early-exit paths never leave a half-opened session.
 
 ### Prelude: open session
 
@@ -130,7 +130,7 @@ After Pre-Flight Checks pass and before Phase 1, detect any outer session and op
 # routes ^INT-\d{3,}$ → bound_intent_id, else → bound_bead_id.
 
 # Detect outer session via the CLI's machine-readable status envelope.
-STATUS_JSON=$(dekspec exec session status --machine-readable 2>/dev/null || echo '{"active":false}')
+STATUS_JSON=$(dekspec session status --machine-readable 2>/dev/null || echo '{"active":false}')
 OUTER_SESSION_PRESENT=0
 OUTER_BOUND_TO=""
 if echo "$STATUS_JSON" | python -c "import sys,json; d=json.load(sys.stdin); sys.exit(0 if d.get('active') else 1)"; then
@@ -140,26 +140,26 @@ if echo "$STATUS_JSON" | python -c "import sys,json; d=json.load(sys.stdin); sys
     OUTER_SESSION_PRESENT=1
   else
     # Outer session bound to a different target — refuse to nest.
-    echo "STOPPED — outer session active for $OUTER_BOUND_TO, refusing to nest under $SESSION_BIND_ID. End the outer session first (\`dekspec exec session end\`)."
+    echo "STOPPED — outer session active for $OUTER_BOUND_TO, refusing to nest under $SESSION_BIND_ID. End the outer session first (\`dekspec session end\`)."
     exit 1
   fi
 fi
 if [ "$OUTER_SESSION_PRESENT" = "0" ]; then
-  dekspec exec session start "$SESSION_BIND_ID" --branch "$(git branch --show-current)"
+  dekspec session start "$SESSION_BIND_ID" --branch "$(git branch --show-current)"
 fi
 ```
 
 ### Epilogue: report off-spec drift, then close session
 
-At **SESSION COMPLETE** (end of Phase 5), first run `dekspec exec session report` so the operator sees any off-spec (vibecoding) drift recorded during the session (MSN-009) — the report runs against whatever session is active, whether this skill opened it or deferred to an outer one. Then close the session **only if this skill opened it** (skip when an outer session was deferred to):
+At **SESSION COMPLETE** (end of Phase 5), first run `dekspec session report` so the operator sees any off-spec (vibecoding) drift recorded during the session (MSN-009) — the report runs against whatever session is active, whether this skill opened it or deferred to an outer one. Then close the session **only if this skill opened it** (skip when an outer session was deferred to):
 
 ```bash
 # Off-spec drift summary (MSN-009) — surface vibecoding drift to the
 # operator before the session closes. Read-only; runs unconditionally.
-dekspec exec session report
+dekspec session report
 
 if [ "$OUTER_SESSION_PRESENT" = "0" ]; then
-  dekspec exec session end --reason "/exec-coding-session complete"
+  dekspec session end --reason "/orchestrate-coding-session complete"
 fi
 ```
 
@@ -168,13 +168,13 @@ fi
 ### Failure modes
 
 - **Outer session bound to a different bead/Intent:** the prelude STOPs with the diagnostic above. No beads are claimed; no agents are dispatched.
-- **`dekspec exec session start` raises `SessionAlreadyActiveError`:** indicates a stale session. End it (`dekspec exec session end`) and retry the skill; if that fails, surface to the engineer.
+- **`dekspec session start` raises `SessionAlreadyActiveError`:** indicates a stale session. End it (`dekspec session end`) and retry the skill; if that fails, surface to the engineer.
 - **Pre-Flight Checks STOP fires before the prelude runs:** no session is opened; the skill exits cleanly. The epilogue does not run.
 - **Phase 4 surfaces stopped or conflicted beads:** SESSION COMPLETE still fires at the end of Phase 5; the epilogue closes the session.
 
 ## Lifecycle DB writes — retired (MSN-016 / ADR-024)
 
-> **The IC-004 execution-attempt lifecycle-DB writes were retired with the executor abstraction (ADR-024 / MSN-016).** The SQLite lifecycle DB and the `dekspec executions record-attempt / record-event / complete / ls` verbs no longer exist, and IC-004 (the executor/lifecycle-DB-write contract) is DEPRECATED. This skill no longer writes attempt / event / complete rows and no longer resolves a per-Intent `attempt_id`. There is no replacement verb — the skill is a plain in-process bead dispatcher whose only persistent side-effects are git history (merged bead commits), bead-tracker state (`br`), and the `dekspec exec session` off-spec drift record.
+> **The IC-004 execution-attempt lifecycle-DB writes were retired with the executor abstraction (ADR-024 / MSN-016).** The SQLite lifecycle DB and the `dekspec executions record-attempt / record-event / complete / ls` verbs no longer exist, and IC-004 (the executor/lifecycle-DB-write contract) is DEPRECATED. This skill no longer writes attempt / event / complete rows and no longer resolves a per-Intent `attempt_id`. There is no replacement verb — the skill is a plain in-process bead dispatcher whose only persistent side-effects are git history (merged bead commits), bead-tracker state (`br`), and the `dekspec session` off-spec drift record.
 
 ## Phase 1 — Discover & Claim
 
@@ -448,7 +448,7 @@ Ready-to-use phrases for the engineer during a session:
 - Don't auto-resolve merge conflicts in files touched by more than one bead in this session — surface those to the engineer. Only accept-theirs on files no other dispatched bead claims.
 - Don't reach SESSION COMPLETE on a pytest collection error without running the pre-session-commit baseline check — confirm the failure is pre-existing, not a regression this session introduced, before declaring clean.
 - Don't reach for `dekspec executions` / lifecycle-DB writes — those verbs and the IC-004 attempt/event/complete contract were retired with the executor abstraction (MSN-016 / ADR-024). The skill records nothing to a lifecycle DB; do not invent a replacement.
-- Don't close beads or skip the epilogue when an outer session was deferred to — only close the session this skill opened (`OUTER_SESSION_PRESENT=0`), and always run `dekspec exec session report` first to surface off-spec drift.
+- Don't close beads or skip the epilogue when an outer session was deferred to — only close the session this skill opened (`OUTER_SESSION_PRESENT=0`), and always run `dekspec session report` first to surface off-spec drift.
 
 ## Verification Checklist
 
@@ -457,6 +457,6 @@ Ready-to-use phrases for the engineer during a session:
 - [ ] Every claimed bead was either merged + closed, or unclaimed with its file reservations released and a blocker recorded — no bead left claimed-but-abandoned.
 - [ ] All held agent-mail file reservations were released (or the session ran with reservations explicitly skipped and noted in the plan).
 - [ ] The full `pytest tests/ -q` run is green, or any failure was confirmed pre-existing against the pre-session-commit baseline.
-- [ ] `dekspec exec session report` ran at the epilogue, and the session this skill opened was closed (skipped only when deferring to an outer session).
+- [ ] `dekspec session report` ran at the epilogue, and the session this skill opened was closed (skipped only when deferring to an outer session).
 - [ ] Phase 5 ran `br ready` again and either dispatched another round or reached the **⛔ SESSION COMPLETE** terminal state.
 

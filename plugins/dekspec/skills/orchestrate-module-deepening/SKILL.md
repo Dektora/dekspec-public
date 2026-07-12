@@ -1,6 +1,6 @@
 ---
-name: orchestrate-deepening
-description: Run ONE end-to-end architecture-deepening pass — analyze with deepen-codebase-architecture, turn the recommendations into atomic br beads with write-code-beads, implement the Strong and Worth-exploring beads via exec-coding-session (ADR-024 in-process), and land them review-ready through land-intent (ADR-026, never auto-merge). Returns a `{ completed, remaining, dry }` convergence signal. Use when the engineer wants one autonomous deepening cycle implemented and landed review-ready.
+name: orchestrate-module-deepening
+description: Run ONE end-to-end architecture-deepening pass — analyze with analyze-module-depth, turn the recommendations into atomic br beads with write-code-beads, implement the Strong and Worth-exploring beads via orchestrate-coding-session (ADR-024 in-process), and land them review-ready through land-intent (ADR-026, never auto-merge). Returns a `{ completed, remaining, dry }` convergence signal. Use when the engineer wants one autonomous deepening cycle implemented and landed review-ready.
 mode: lite
 # override-reason: latest Opus tier per CLAUDE.md model policy; suite default (claude-opus-4-7) predates 4-8
 model: claude-opus-4-8
@@ -8,7 +8,7 @@ reasoning_effort: high
 disable-model-invocation: true
 allowed-tools: Read Bash Agent
 argument-hint: [--help] [--scope PATH]
-related_skills: [deepen-codebase-architecture, write-code-beads, exec-coding-session, land-intent]
+related_skills: [analyze-module-depth, write-code-beads, orchestrate-coding-session, land-intent]
 ---
 
 > **Vendored asset paths (INT-097):** Paths below like `dekspec/...` reference the consumer-vendored layout. Pip-only installs resolve via `dekspec resource ...`. See [`_lib/vendored_assets.md`](../_lib/vendored_assets.md).
@@ -16,7 +16,7 @@ related_skills: [deepen-codebase-architecture, write-code-beads, exec-coding-ses
 Run **exactly ONE** architecture-deepening pass and return a convergence signal.
 
 This skill is a thin **composer**: it does not analyze, create beads, write code, or merge anything itself. It drives one pass through four sibling surfaces in order —
-`deepen-codebase-architecture` → `write-code-beads` → `exec-coding-session` → `land-intent` —
+`analyze-module-depth` → `write-code-beads` → `orchestrate-coding-session` → `land-intent` —
 implements the `Strong` and `Worth exploring` recommendations, lands them **review-ready** (never a direct merge, ADR-026), and emits a `{ completed, remaining, dry }` structured signal.
 
 > **⛔ CONTEXT CHECK** — see [`_lib/context_check.md`](../_lib/context_check.md)
@@ -32,7 +32,7 @@ This skill performs **one pass and stops**. It does NOT loop. There is **no inte
 This skill **composes** the four siblings — it never re-implements them:
 
 - **It opens no beads by hand** — `write-code-beads` does that.
-- **It writes no code inline and runs no `git switch -c` itself** — `exec-coding-session` does that (ADR-024, in-process).
+- **It writes no code inline and runs no `git switch -c` itself** — `orchestrate-coding-session` does that (ADR-024, in-process).
 - **It runs no local merge, no base-branch push, and no work-branch delete** — landing is `land-intent` only (ADR-026). The inherited direct-merge-and-push automation from `skills-import/ship-architecture-improvements` is deliberately ABSENT; see **Phase 4**.
 - **It never edits or unlocks a LOCKED artifact** — the `land-intent` handoff refuses on the first unmet precondition (ADR-021).
 
@@ -48,16 +48,16 @@ See [`_lib/mode_detection_template.md`](../_lib/mode_detection_template.md). Def
 See [`_lib/help_mode_template.md`](../_lib/help_mode_template.md) for the canonical Help rendering contract. Manifest for this skill:
 
 ```yaml
-skill_name: "/dekspec:orchestrate-deepening"
+skill_name: "/dekspec:orchestrate-module-deepening"
 one_line:   "Run ONE architecture-deepening pass (analyze -> beads -> implement -> land review-ready) and return a convergence signal"
 modes:
   - { flag: "", args: "", description: "Deepening-pass mode — run one whole-repo deepening pass and emit the { completed, remaining, dry } signal." }
   - { flag: "--scope", args: "<path-or-module>", description: "Confine the analysis pass to one path / subsystem / module slice; dry is evaluated relative to this active scope." }
   - { flag: "--help", args: "", description: "Show this help message." }
 examples:
-  - "/dekspec:orchestrate-deepening"
-  - "/dekspec:orchestrate-deepening --scope tooling/dekspec/fidelity_audit"
-  - "/dekspec:orchestrate-deepening --help"
+  - "/dekspec:orchestrate-module-deepening"
+  - "/dekspec:orchestrate-module-deepening --scope tooling/dekspec/fidelity_audit"
+  - "/dekspec:orchestrate-module-deepening --help"
 extra_sections:
   - heading: "ONE PASS"
     body:
@@ -76,14 +76,14 @@ At runtime, render the manifest per `_lib/help_mode_template.md` and stop.
 
 Run the four phases **in order**, exactly once. Each phase composes a sibling surface; do not hand-roll its work.
 
-### Phase 1 — Analyze (`deepen-codebase-architecture`)
+### Phase 1 — Analyze (`analyze-module-depth`)
 
-Run the **`deepen-codebase-architecture`** skill as the analysis engine — it surfaces deepening opportunities (shallow modules made deep) and interviews the chosen candidate. It opens no beads and lands nothing; that is this skill's job downstream.
+Run the **`analyze-module-depth`** skill as the analysis engine — it surfaces deepening opportunities (shallow modules made deep) and interviews the chosen candidate. It opens no beads and lands nothing; that is this skill's job downstream.
 
 Thread the optional **`--scope`** argument straight through into the analysis pass (it has the same `--scope <path>` shape):
 
 - **Scope absent (default)** → run the analysis across the **whole repo**.
-- **Scope present** → **thread** the `--scope <path>` value into the `deepen-codebase-architecture` invocation so the walk is confined to that slice. The objective deepening criteria (deletion test, shallow-interface signal) are unchanged by scope — only *where* it looks changes.
+- **Scope present** → **thread** the `--scope <path>` value into the `analyze-module-depth` invocation so the walk is confined to that slice. The objective deepening criteria (deletion test, shallow-interface signal) are unchanged by scope — only *where* it looks changes.
 
 Collect every recommendation with its **strength** — `Strong`, `Worth exploring`, or `Speculative` — title, files/modules, problem, solution, acceptance criteria, and focused tests. The set of `Strong` / `Worth exploring` recommendations surfaced **for the active scope** is what the convergence signal in Phase 5 keys off.
 
@@ -91,9 +91,9 @@ Collect every recommendation with its **strength** — `Strong`, `Worth explorin
 
 Run **`write-code-beads`** to turn the recommendations into atomic `br` beads. Do **not** hand-roll a `br create` loop — `write-code-beads` owns bead decomposition (atomicity, self-containment, labels, acceptance/test plan). Implementation beads (`Strong` / `Worth exploring`) become the work set for Phase 3; `Speculative` recommendations become review/follow-up beads only and are **not** implemented unless the engineer explicitly promotes them.
 
-### Phase 3 — Implement (`exec-coding-session`)
+### Phase 3 — Implement (`orchestrate-coding-session`)
 
-Run **`exec-coding-session`** on the implementation bead set to autonomously implement the `Strong` and `Worth exploring` beads (ADR-024 — in-process dispatch to fresh-context sub-agents in isolated worktrees). Do **not** run `git switch -c` or write code inline here — `exec-coding-session` owns claim → implement → test → commit on each bead's worktree branch and collects the results.
+Run **`orchestrate-coding-session`** on the implementation bead set to autonomously implement the `Strong` and `Worth exploring` beads (ADR-024 — in-process dispatch to fresh-context sub-agents in isolated worktrees). Do **not** run `git switch -c` or write code inline here — `orchestrate-coding-session` owns claim → implement → test → commit on each bead's worktree branch and collects the results.
 
 ### Phase 4 — Land review-ready (`land-intent`)
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Verify all quality-gate files referenced by an IB exist on disk.
 
-`/exec-coding-session` Pre-Flight Checks asks the model, in prose, to:
+`/orchestrate-coding-session` Pre-Flight Checks asks the model, in prose, to:
 
   1. Run `br ready --json` for the candidate bead list.
   2. For each bead, resolve its IB path from `external_ref` (stripping any

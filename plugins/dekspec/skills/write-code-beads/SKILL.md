@@ -7,7 +7,7 @@ reasoning_effort: high
 disable-model-invocation: false
 allowed-tools: Read Write Edit Bash
 argument-hint: [--audit | --rebuild | --help] [path to IB or BEAD-NNN or "all"]
-related_skills: [write-ibs, write-tests, exec-coding-session, write-intent]
+related_skills: [write-ibs, write-tests, orchestrate-coding-session, write-intent]
 ---
 
 Convert an Implementation Brief into beads.
@@ -57,7 +57,7 @@ extra_sections:
       - "2. Create beads:  /write-code-beads <IB>"
       - "3. Audit beads:   /write-code-beads --audit <bead-id>  (after IB changes or spot checks)"
       - "4. Rebuild beads: /write-code-beads --rebuild <IB>     (after IB resync or revision)"
-      - "5. Code:          /exec-coding-session"
+      - "5. Code:          /orchestrate-coding-session"
 ```
 
 At runtime, render the manifest per `_lib/help_mode_template.md` and stop.

@@ -1,6 +1,6 @@
 ---
 name: brownfield-ingest
-description: Drive the brownfield-ingest workflow — run `dekspec dev ingest` on an inherited markdown document, review the confidence-scored classification report, and triage which draft artifacts to promote via the `/dekspec:write-*` skills. Use when onboarding a brownfield repo whose prior-art prose (a Confluence export, an inherited PRD, a design wiki) needs classifying into DekSpec artifact slots.
+description: Drive the brownfield-ingest workflow — run `dekspec ingest` on an inherited markdown document, review the confidence-scored classification report, and triage which draft artifacts to promote via the `/dekspec:write-*` skills. Use when onboarding a brownfield repo whose prior-art prose (a Confluence export, an inherited PRD, a design wiki) needs classifying into DekSpec artifact slots.
 mode: lite
 model: claude-opus-4-7
 reasoning_effort: high
@@ -9,12 +9,12 @@ allowed-tools: Read Grep Glob Bash
 argument-hint: [--help] [--teaching] [PATH]
 ---
 
-Drive the end-to-end brownfield-ingest workflow: run `dekspec dev ingest` on an
+Drive the end-to-end brownfield-ingest workflow: run `dekspec ingest` on an
 inherited markdown document, walk the engineer through the confidence-scored
 classification report, and hand the high-confidence draft artifacts off to the
 existing `/dekspec:write-*` skills for promotion.
 
-This skill is the prompt-time counterpart to the `dekspec dev ingest` CLI command.
+This skill is the prompt-time counterpart to the `dekspec ingest` CLI command.
 The deterministic work — markdown sectioning, heuristic classification, draft-
 artifact emission — lives entirely in that command (a deterministic heuristic
 classifier, **no LLM call**). This skill orchestrates the command and the human
@@ -50,9 +50,9 @@ canonical Help rendering contract. Manifest for this skill:
 
 ```yaml
 skill_name: "/dekspec:brownfield-ingest"
-one_line:   "Drive `dekspec dev ingest` on a brownfield markdown document and triage the draft artifacts"
+one_line:   "Drive `dekspec ingest` on a brownfield markdown document and triage the draft artifacts"
 modes:
-  - { flag: "", args: "<path>", description: "Workflow mode: run `dekspec dev ingest` on the document, walk the classification report, triage drafts toward the /dekspec:write-* skills." }
+  - { flag: "", args: "<path>", description: "Workflow mode: run `dekspec ingest` on the document, walk the classification report, triage drafts toward the /dekspec:write-* skills." }
   - { flag: "--teaching", args: "<path>", description: "Interactive tutorial — the same workflow, explained step-by-step for an engineer new to brownfield ingest." }
   - { flag: "--help", args: "", description: "Show this help message." }
 examples:
@@ -67,7 +67,7 @@ extra_sections:
       - "                are deferred to a future Intent."
   - heading: "BOUNDARY"
     body:
-      - "This skill writes no artifact and promotes nothing. `dekspec dev ingest`"
+      - "This skill writes no artifact and promotes nothing. `dekspec ingest`"
       - "writes draft artifacts into a staging directory; every promotion into"
       - "the live dekspec/ tree is an explicit engineer action via /dekspec:write-*."
 ```
@@ -89,7 +89,7 @@ explain:
    mechanical classification pass so adoption becomes a review pass rather than
    weeks of blank-page authoring. Explain that markdown is the only supported
    input at this release.
-2. **Before step (b)** — explain that `dekspec dev ingest` is a deterministic
+2. **Before step (b)** — explain that `dekspec ingest` is a deterministic
    heuristic classifier (section-header + keyword + structural-pattern
    matching, no LLM), so the same document always yields the same report —
    which is what makes the review pass auditable.
@@ -114,16 +114,16 @@ The default mode. Drive the brownfield-ingest workflow end-to-end.
 
 **(a) Confirm the input is a markdown document.**
 The remaining `$ARGUMENTS` is the path to the source document. If it is not a
-`.md` file (for example a `.docx` or `.pdf`), explain that `dekspec dev ingest`
+`.md` file (for example a `.docx` or `.pdf`), explain that `dekspec ingest`
 supports markdown only at this release — `docx` / `pdf` input is deferred to a
 future Intent — and stop. Do not attempt to convert the file.
 
-**(b) Run `dekspec dev ingest`.**
+**(b) Run `dekspec ingest`.**
 Choose a fresh staging directory under the ephemeral scratch zone (`dekspec/.scratch/brownfield-ingest/`, gitignored per ADR-040 — never the repo root) and
 run, via the Bash tool:
 
 ```
-dekspec dev ingest <path> --out <staging-dir>
+dekspec ingest <path> --out <staging-dir>
 ```
 
 The command sections the document, classifies each section with the
@@ -134,7 +134,7 @@ its error verbatim and stop. Do not reimplement any of this — the command is
 the deterministic substrate.
 
 **(c) Present the classification report.**
-Read the classification report `dekspec dev ingest` wrote into the staging
+Read the classification report `dekspec ingest` wrote into the staging
 directory (`classification-report.md`) and present it to the engineer
 section-by-section. For each source section, show: the heading text, the
 classified IR type, the confidence score, and the firing signals. Draw the
@@ -171,7 +171,7 @@ running the `/dekspec:write-*` `--analyze` flow.
 ## Boundary — this skill writes nothing and promotes nothing
 
 This skill produces conversational guidance only. It shells out to
-`dekspec dev ingest` (which writes the draft artifacts into a staging directory)
+`dekspec ingest` (which writes the draft artifacts into a staging directory)
 and it reads the classification report. It does **not**:
 
 - write or edit any artifact itself,
@@ -181,5 +181,5 @@ and it reads the classification report. It does **not**:
 
 Every promotion is an explicit engineer action through the existing
 `/dekspec:write-*` skills. The classifier is deterministic — there is no LLM in
-the `dekspec dev ingest` pipeline — and markdown is the only supported input format
+the `dekspec ingest` pipeline — and markdown is the only supported input format
 at this release (docx / pdf support is a future Intent).

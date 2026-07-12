@@ -1,5 +1,5 @@
 ---
-name: goal-loop
+name: write-goal-loop-contract
 description: Write effective goal contracts for a long-running autonomous Claude Code run — the persistent plan → act → test → review → iterate loop. Use whenever the user wants to kick off a long-running / overnight / self-paced autonomous run, mentions a "goal loop" or "Ralph loop", asks how to write a goal/agent prompt with a stop condition, or wants a one-paragraph goal contract drafted. Turns a fuzzy "go do this" into a verifiable specification with a stop condition.
 mode: lite
 model: claude-opus-4-7
@@ -7,7 +7,7 @@ reasoning_effort: high
 disable-model-invocation: false
 allowed-tools: Read Write Edit Bash
 argument-hint: [--help] [task or intent to turn into a goal contract]
-related_skills: [exec-coding-session, orchestrate-intent, prototype]
+related_skills: [orchestrate-coding-session, orchestrate-intent, prototype]
 ---
 
 Turn a fuzzy "go do this for a while" into a **goal contract** — a verifiable
@@ -48,9 +48,9 @@ agentic loop. Pick the driver that fits the run:
   job with a single completion checkpoint.
 - **`/schedule` (cron routine)** — for runs that fire on a clock (nightly,
   hourly) rather than continuously.
-- **`/dekspec:exec-coding-session`** — when the run IS a dekspec construction
+- **`/dekspec:orchestrate-coding-session`** — when the run IS a dekspec construction
   session (dispatch a ready bead set in isolated worktrees), that skill is the
-  native driver; goal-loop just sharpens the objective + stop condition feeding it.
+  native driver; write-goal-loop-contract just sharpens the objective + stop condition feeding it.
 - **Plain agentic turn** — for a sub-one-turn job, just give Claude the contract.
 
 ## When to use it
@@ -79,7 +79,7 @@ unreviewable diff.
 2. **Constraints** — what must NOT change (public API, files, libraries,
    conventions).
 3. **Validation command** — the exact shell command that proves progress
-   (`pytest -q`, `pnpm test`, `ruff check .`, `dekspec audit doctor --at .`, …).
+   (`pytest -q`, `pnpm test`, `ruff check .`, `dekspec doctor --at .`, …).
 4. **Stop condition** — verifiable: "Stop when X passes" OR "when further
    changes need human/product input."
 
@@ -161,7 +161,7 @@ underspecified" — catches ambiguity up front and prevents drift.
 1. **Branch or worktree first — never `main`.** Long autonomy means a big diff;
    keep it isolated (`git worktree add` or a feature branch).
 2. Pick the driver: `/loop <contract>` (cross-turn self-paced) · background agent
-   (single long job) · `/schedule` (clock) · `/dekspec:exec-coding-session` (a
+   (single long job) · `/schedule` (clock) · `/dekspec:orchestrate-coding-session` (a
    dekspec construction run) · paste-as-prompt (quick).
 3. Walk away — but see "Controlling" and **always review the diff**.
 
@@ -209,15 +209,15 @@ diffs compound.
 See [`_lib/help_mode_template.md`](../_lib/help_mode_template.md) for the canonical Help rendering contract. Manifest for this skill:
 
 ```yaml
-skill_name: "/dekspec:goal-loop"
-one_line:   "Write a verifiable goal contract (Objective / Constraints / Validate / Stop) for a long-running autonomous run, and drive it via /loop, a background agent, /schedule, or exec-coding-session. A spec with a stop condition, not a run-forever button."
+skill_name: "/dekspec:write-goal-loop-contract"
+one_line:   "Write a verifiable goal contract (Objective / Constraints / Validate / Stop) for a long-running autonomous run, and drive it via /loop, a background agent, /schedule, or orchestrate-coding-session. A spec with a stop condition, not a run-forever button."
 modes:
   - { flag: "",       args: "[task or intent]", description: "Draft a 4-part goal contract for the task (or explain the loop / fit-check it); forbid reward-hacking + scope creep; name the right driver. If the ask has no verifiable stop condition, push back and help narrow it." }
   - { flag: "--help", args: "",                 description: "Show this help message." }
 examples:
-  - "/dekspec:goal-loop migrate this service from Flask to FastAPI overnight"
-  - "/dekspec:goal-loop raise coverage in src/payments from 40% to 80%"
-  - "/dekspec:goal-loop --help"
+  - "/dekspec:write-goal-loop-contract migrate this service from Flask to FastAPI overnight"
+  - "/dekspec:write-goal-loop-contract raise coverage in src/payments from 40% to 80%"
+  - "/dekspec:write-goal-loop-contract --help"
 ```
 
 At runtime, render the manifest per `_lib/help_mode_template.md` and stop.
@@ -225,12 +225,12 @@ At runtime, render the manifest per `_lib/help_mode_template.md` and stop.
 ## When NOT to use
 
 - For a task with no verifiable "done" definition — narrow it to one first, or it
-  is not a goal-loop candidate.
-- To dispatch a dekspec bead set — that is `/dekspec:exec-coding-session`;
-  goal-loop only sharpens the objective + stop condition it runs against.
+  is not a write-goal-loop-contract candidate.
+- To dispatch a dekspec bead set — that is `/dekspec:orchestrate-coding-session`;
+  write-goal-loop-contract only sharpens the objective + stop condition it runs against.
 
 ## Related
 
-- `/dekspec:exec-coding-session` — the native driver when the run is a dekspec construction session.
+- `/dekspec:orchestrate-coding-session` — the native driver when the run is a dekspec construction session.
 - `/dekspec:orchestrate-intent` — walks one Intent's lifecycle to LOCKED (a governed alternative to a free-form goal loop).
 - `/dekspec:prototype` — when the goal is to explore a design shape disposably rather than drive to a verifiable outcome.

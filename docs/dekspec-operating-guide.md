@@ -88,7 +88,7 @@ When the mantra changes (rare; treated as a Constitution amendment), the table i
   → /write-evals                    (before coding — beads with model output only)
   → /write-tests                    (before coding — TDD stubs from acceptance criteria)
   → /dekspec:review-ib              PRE-impl gate (REVIEW_IB): spec packet + bead decomposition → GO / NO-GO
-  → /exec-coding-session             orchestrator dispatches sub-agents in parallel worktrees
+  → /orchestrate-coding-session             orchestrator dispatches sub-agents in parallel worktrees
   → /dekspec:review-pr              POST-impl gate (REVIEW_PR): PR diff vs IB → MERGE / NO-MERGE
       → NO-MERGE → REVIEW_PR_FAIL    grep-loop: seed /code-review --comment, fix real findings, re-review until GO
   → merge → test → promote → next round
@@ -105,7 +105,7 @@ Each step is a registered Claude Code skill in `.claude/skills/`. Invoke by name
 3. **Decompose (derivative)** — `/write-intent --decompose` fans the Intent into Working Specs + Implementation Briefs; `/write-ws` carries behavior contracts (role passes + critic), `/write-ibs` produces the IBs, `/write-ic` pins any cross-component boundary surfaced. Code-bearing IBs must declare `## Reuse Inventory` ("use X, don't reimplement"); `dekspec check lint-ib` enforces it.
 4. **Pre-build (derivative, per IB)** — `/write-code-beads` (one IB → beads + fidelity audit); `/write-evals` (model-output beads); `/write-tests` (TDD stubs from acceptance criteria).
 5. **Pre-implementation review** — at `REVIEW_IB` (post-ACCEPTED, pre-IMPLEMENTING): `/dekspec:review-ib <IB-ID>` — an Opus-tier orchestrator skill — fans 13 fresh-context adversarial lenses over the spec packet + bead decomposition (math-olympiad shell), a blind aggregator scores them, any single lens ≥80 confidence vetoes. Verdict **GO / NO-GO / INSUFFICIENT_EVIDENCE**; includes the outcome-tdd lens (git-blame: did the outcome test land red first?). Auto-fires on the `REVIEW_IB` transition (INT-108 handler) or invoked manually. No code yet → no fix-loop.
-6. **Implement** — `/exec-coding-session` packages the Intent/IB and fans the ready bead set into parallel isolated worktrees; lands an IB-aggregate PR with green CI.
+6. **Implement** — `/orchestrate-coding-session` packages the Intent/IB and fans the ready bead set into parallel isolated worktrees; lands an IB-aggregate PR with green CI.
 7. **Post-implementation review** — at `REVIEW_PR` (beads CLOSED, CI green, PR open): `/dekspec:review-pr <PR-#>` reviews the diff against the IB it claims to implement via the same shell. Verdict **MERGE / NO-MERGE / INSUFFICIENT_EVIDENCE**. Oversized diff → split into one reviewable IB-aggregate per concern, don't review.
 8. **On NO-MERGE → `REVIEW_PR_FAIL` grep-loop** — seed `/code-review <effort> --comment <PR-#>` (line-anchored inline findings), fix only real/relevant ones (read diff first, no unrelated rewrites, a test per fix), commit, re-fire `/dekspec:review-pr` until GO. **RECOMMEND-only** — the human merges.
 9. **Merge → test → promote → next round** — `dekspec audit doctor` is the dogfood gate (Mission/Intent gates require P0/P1-clean).
@@ -119,7 +119,7 @@ Both reviews are **RECOMMEND-only at landing** (they emit the verdict + a `deksp
 | Conductor gate | Phase-executor | Does |
 | --- | --- | --- |
 | Specification | `/dekspec:spec-intent <intent>` | DRAFT → ready-for-coding: sequences `/write-intent --analyze`/`--accept`(engineer-gated)/`--decompose` + the `write-*` authoring skills; stops at the coding boundary |
-| Implement | `/exec-coding-session <intent>` | codes **all** the Intent's beads in parallel isolated worktrees |
+| Implement | `/orchestrate-coding-session <intent>` | codes **all** the Intent's beads in parallel isolated worktrees |
 | Land | `/dekspec:land-intent <intent>` | drives **all** the Intent's IB-aggregate PRs through `review-pr` + the grep-loop to operator-confirmed merge (never auto-merges; ADR-026) |
 | Lock | `/write-intent --lock` | the conductor's own ownership — freeze + propagate downstream |
 
@@ -351,7 +351,7 @@ The default predicates live in `CLAUDE.md` §Verification Predicate Library so a
 
 Beads exist *before* the accept gate fires — they are authored during the `--analyze` → PROPOSED phase and are part of the spec packet the engineer reviews at `--accept` (ADR-025). The `Explore → Plan → Code → Verify` (EPCV) loop (Decision #19) therefore begins its Plan phase at the PROPOSED → ACCEPTED transition, not after `--decompose`. By the time Status reaches IMPLEMENTING, every bead's scope, constraints, and acceptance criteria are already locked in.
 
-Each bead's execution still runs through the full EPCV loop inside `/exec-coding-session`: Explore (read the bead + target files), Plan (interface-first design), Code (implement + tests), Verify (bead acceptance criteria pass). EPCV is the unit-of-work discipline at the bead level; the Intent's Verification predicate is the unit-of-work discipline at the Intent level. The two compose: each bead's Verify step ensures the bead's acceptance criteria pass before the bead closes; the Intent's `--testpass` ensures the integrated whole passes before the Intent advances.
+Each bead's execution still runs through the full EPCV loop inside `/orchestrate-coding-session`: Explore (read the bead + target files), Plan (interface-first design), Code (implement + tests), Verify (bead acceptance criteria pass). EPCV is the unit-of-work discipline at the bead level; the Intent's Verification predicate is the unit-of-work discipline at the Intent level. The two compose: each bead's Verify step ensures the bead's acceptance criteria pass before the bead closes; the Intent's `--testpass` ensures the integrated whole passes before the Intent advances.
 
 See `## Coding Session Protocol` below for the full EPCV / bead-runtime detail.
 
@@ -811,7 +811,7 @@ Layer 2 change (spec revised)
     (br delete BEAD-NNN — IB change is a start-over)
   → Re-run /write-code-beads
     (fidelity audit runs automatically — no separate step)
-  → Proceed to /exec-coding-session
+  → Proceed to /orchestrate-coding-session
 
 Layer 3 change (IB revised)
   → Delete all open beads for this IB and recreate
@@ -981,7 +981,7 @@ The session gate proves *that* work happens under a named session; it does not p
 
 **`DEKSPEC_VIBECODING=1`.** Setting this env var downgrades the off-spec **block** to a **warning**: `DEKSPEC_VIBECODING=1 git commit ...` proceeds, but the off-spec commit is recorded into session state either way — exploratory off-spec work stays possible as a deliberate, recorded choice rather than a silent one.
 
-**`dekspec session report`.** The read-only end-of-session summary. It reads the session's recorded off-spec commits and prints a per-commit breakdown plus a *ratify-or-revert* prompt — ratify (file an Intent, or expand the claimed Intent's `Components affected`, so the work is captured) or revert. The `/exec-coding-session` skill runs `dekspec session report` at session close so the operator cannot finish a session without seeing what fell off-spec.
+**`dekspec session report`.** The read-only end-of-session summary. It reads the session's recorded off-spec commits and prints a per-commit breakdown plus a *ratify-or-revert* prompt — ratify (file an Intent, or expand the claimed Intent's `Components affected`, so the work is captured) or revert. The `/orchestrate-coding-session` skill runs `dekspec session report` at session close so the operator cannot finish a session without seeing what fell off-spec.
 
 The off-spec guardrail activates only when a consumer has installed the hooks (`dekspec session install-hooks`) at a library version that carries the off-spec stage; the library ships the capability inert until then. The library's own `dekspec/` self-spec is exempt by the same policy described next.
 
@@ -997,13 +997,13 @@ The DekSpec library's own `dekspec/` self-spec is governed by **Claude Code sess
 4. Document the escape hatches (`git commit --no-verify`, `DEKSPEC_BYPASS_SESSION=1`, `DEKSPEC_MCP_GUARD_MODE=warn`) in your team's onboarding doc so engineers know how to bypass when needed and that bypasses are logged for review.
 5. (Optional) Set `DEKSPEC_MCP_GUARD_MODE=warn` in your MCP-server env during the initial rollout window to log-only without blocking; flip to reject (unset, or `=reject`) once the team has internalized the workflow.
 
-The `/exec-coding-session` skill automatically opens and closes a session around its dispatch loop, so engineers running the skill against a bead never need to touch `dekspec session start/end` manually — see `skills/exec-coding-session/SKILL.md` §Session Lifecycle Wiring.
+The `/orchestrate-coding-session` skill automatically opens and closes a session around its dispatch loop, so engineers running the skill against a bead never need to touch `dekspec session start/end` manually — see `skills/orchestrate-coding-session/SKILL.md` §Session Lifecycle Wiring.
 
 ---
 
 ## Coding Session Protocol
 
-A coding session is orchestrated by `/exec-coding-session`, which dispatches sub-agents in isolated git worktrees for parallel execution. The engineer monitors from the orchestrator session.
+A coding session is orchestrated by `/orchestrate-coding-session`, which dispatches sub-agents in isolated git worktrees for parallel execution. The engineer monitors from the orchestrator session.
 
 ### Phase 1 — Discover & Claim
 
@@ -1312,6 +1312,8 @@ Engineers run these pre-commit or post-merge; CI hook integration is the open pi
 
 *The MSN-014 surface — what the cross-MR exploratory layer (above) actually feels like end-to-end.* This section is the operator's walkthrough for the four-step lifecycle: scaffold → CoW → edit → hand-promote.
 
+> **Provisional ID scheme (ADR-043).** Every kind incubates under one form: `P-<KIND>-<NNN>-<slug>.md` with an in-file id `P-<KIND>-<NNN>`. The number is a *non-binding hint* (the next-free canonical number at authoring time); hand-promotion re-derives the real next-free number, which may differ. The `P-` prefix self-excludes a provisional file from the canonical `<KIND>-NNN` scan, so it is never miscounted (retiring the old `≥900` placeholder). A `P-` artifact parses, `dekspec check validate`s, and promotes like any other, but **stays out of the canonical spec graph** — it is never loaded by the linkage walker, never referenced by a canonical artifact, and never listed in an index, so a provisional folder is **freely abortable** (delete it with zero cascade). The `T-PROVISIONAL-NOT-LOCKED` rule (P2) guards the one hard invariant: a provisional artifact must be *promoted*, never frozen at a terminal `LOCKED`/`COMPLETE` status. The legacy numberless `<KIND>-provisional-<slug>` form is still recognized by the promotion walker during the transition.
+
 ### Step 1 — Scaffold
 
 Two equivalent entry points:
@@ -1405,9 +1407,9 @@ Provisional artifacts live under `dekspec/provisional/<incubation-slug>/`. When 
 
 *The engineer invokes `/write-code-beads` for each IB. IB-1 produces BEAD-001 and BEAD-002 — one for the serialization core, one for the deserialization and reconstruction logic. IB-2 produces BEAD-003 and BEAD-004 — one per call site integration. BEAD-003 and BEAD-004 both carry `depends_on: ["BEAD-002"]` and can run in parallel once BEAD-002 closes. The fidelity audit runs automatically — all four beads pass. The Eval Agent is not invoked here because IPC serialization round-trip fidelity is deterministic — the coding agent will write those tests during the session.*
 
-### */exec-coding-session*
+### */orchestrate-coding-session*
 
-*The engineer invokes `/exec-coding-session`. The orchestrator runs `br ready --json`, discovers BEAD-001 is the only unblocked bead (BEAD-002 depends on it, and BEAD-003/004 depend on BEAD-002), acquires exclusive file reservations via agent-mail, and claims it. The dispatch plan shows one bead. The orchestrator launches a sub-agent in an isolated worktree.*
+*The engineer invokes `/orchestrate-coding-session`. The orchestrator runs `br ready --json`, discovers BEAD-001 is the only unblocked bead (BEAD-002 depends on it, and BEAD-003/004 depend on BEAD-002), acquires exclusive file reservations via agent-mail, and claims it. The dispatch plan shows one bead. The orchestrator launches a sub-agent in an isolated worktree.*
 
 *The sub-agent reads the bead — the bead is the sole authority during construction. It does not read the IB, ADRs, interface contracts, or the Working Spec (all decisions from those sources were reconciled into the bead's Constraints and Decisions at generation time). Before writing a single line of implementation, it produces the public interface signatures for the serialization module — function signatures, return types, and error types only. The engineer reviews them against the IB's Constraints & Decisions. One signature is wrong: it accepts any tensor dtype rather than enforcing bfloat16 at the boundary. The agent corrects it before implementation begins.*
 

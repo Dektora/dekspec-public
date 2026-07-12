@@ -85,7 +85,7 @@ See [`_lib/fan_out.md`](../_lib/fan_out.md) for the canonical ds-di2 orchestrato
   6. Engineer guidance — `$ARGUMENTS` verbatim, including structured cues (subtype hint, classification hint).
   7. Constraints — full T / D / L1 / DS rule set from §Audit Mode (T1–T12, D1–D18, L1-ADR, L1-ADR-STALE, L1-AE, L1-GLOSSARY, L1-VISION, L1-WS-EXISTS, L1-ADR-SCOPE, DS1–DS3) **plus** the §Rules block (Extraction Default-Home Table, writing-time heuristics, anti-patterns, subtype enum, classifier/router rules).
 - **expected_output_path**: `dekspec/architecture-elements/AE-NNN-<slug>.md` (Creation) or the input path (`--accept` / `--revise`; subagent edits in place).
-- **validation**: `dekspec check validate <output-path>` + mode-specific post-checks (Creation: index row added, Status PROPOSED, D1–D18+L1 Verification clean; `--accept`: PROPOSED→ACCEPTED + index updated + blocking checks all green; `--revise`: full T/D/L1/DS re-run + §Revise Mode Step 6a cascade grep + Open Issues logged + reset to PROPOSED if previously ACCEPTED/LOCKED). Validation/surface contract: see [`_lib/validate_and_surface.md`](../_lib/validate_and_surface.md) — on non-zero exit, surface verbatim and stop, do not silently retry.
+- **validation**: `dekspec validate <output-path>` + mode-specific post-checks (Creation: index row added, Status PROPOSED, D1–D18+L1 Verification clean; `--accept`: PROPOSED→ACCEPTED + index updated + blocking checks all green; `--revise`: full T/D/L1/DS re-run + §Revise Mode Step 6a cascade grep + Open Issues logged + reset to PROPOSED if previously ACCEPTED/LOCKED). Validation/surface contract: see [`_lib/validate_and_surface.md`](../_lib/validate_and_surface.md) — on non-zero exit, surface verbatim and stop, do not silently retry.
 
 **End of Fan-Out Mode.**
 
@@ -394,7 +394,7 @@ Arguments: the architecture element path.
 
 ## Revise Mode
 
-> **Fan-out delegated (ds-di2).** The orchestrator dispatches this mode's body to a fresh-context `dekspec:ae-author` subagent per **Fan-Out Mode** above. The steps below are the **subagent's contract** — the orchestrator bundles them into the prompt; the subagent executes them in fresh context; the orchestrator validates the result via `dekspec check validate <path>` on return.
+> **Fan-out delegated (ds-di2).** The orchestrator dispatches this mode's body to a fresh-context `dekspec:ae-author` subagent per **Fan-Out Mode** above. The steps below are the **subagent's contract** — the orchestrator bundles them into the prompt; the subagent executes them in fresh context; the orchestrator validates the result via `dekspec validate <path>` on return.
 
 Incorporate engineer review notes (annotations, comments, corrections) into a architecture element, then re-run the audit checklist to catch any new drift introduced by the revision.
 
@@ -439,7 +439,7 @@ Arguments after the path are the engineer's notes — inline text or a path to a
 
 ## Accept Mode (PROPOSED → ACCEPTED)
 
-> **Fan-out delegated (ds-di2).** The orchestrator dispatches this mode's body to a fresh-context `dekspec:ae-author` subagent per **Fan-Out Mode** above. The steps below are the **subagent's contract** — the orchestrator bundles them into the prompt; the subagent executes them in fresh context; the orchestrator validates the result via `dekspec check validate <path>` on return.
+> **Fan-out delegated (ds-di2).** The orchestrator dispatches this mode's body to a fresh-context `dekspec:ae-author` subagent per **Fan-Out Mode** above. The steps below are the **subagent's contract** — the orchestrator bundles them into the prompt; the subagent executes them in fresh context; the orchestrator validates the result via `dekspec validate <path>` on return.
 
 Promotes a PROPOSED Architecture Element to ACCEPTED after every quality check passes. Passing the `--accept` flag is itself the deliberate engineer action of approval — no additional confirmation prompt is raised. The skill refuses to accept if any T / D / L1-ADR / L1-ADR-STALE / L1-VISION / L1-WS-EXISTS / L1-ADR-SCOPE check fails; no partial acceptance exists.
 
@@ -523,7 +523,7 @@ Engineer's description: $ARGUMENTS
 
 ## Workflow
 
-> **Fan-out delegated (ds-di2).** The orchestrator dispatches this Creation Mode body to a fresh-context `dekspec:ae-author` subagent per **Fan-Out Mode** above. The steps below — including the §AE Classifier/Router gate and §AE Subtype Selection prompt — are the **subagent's contract**: the orchestrator bundles them into the prompt; the subagent executes them in fresh context; the orchestrator validates the result via `dekspec check validate <path>` on return.
+> **Fan-out delegated (ds-di2).** The orchestrator dispatches this Creation Mode body to a fresh-context `dekspec:ae-author` subagent per **Fan-Out Mode** above. The steps below — including the §AE Classifier/Router gate and §AE Subtype Selection prompt — are the **subagent's contract**: the orchestrator bundles them into the prompt; the subagent executes them in fresh context; the orchestrator validates the result via `dekspec validate <path>` on return.
 
 1. Read the Writer role from `dekspec/project-context.md`.
 2. Read `dekspec/domain-glossary.md` for canonical domain terminology.
@@ -711,7 +711,7 @@ If the path is not claimed by any pre-ACCEPTED Intent, the verb errors unless yo
 |------|------|--------|
 | 2026-04-24 | Editorial | T7 wording restored to allow "or an explicit variant that covers all four directions" per R1 DECISION 3 of the DN-convergence run — aligns skill with proposal §3.1 (Q1-adjacent). |
 | 2026-04-24 | Editorial | L1-ADR-SCOPE interpretation clarified — direct-body count excludes ADRs listed in the Indirect governing ADRs sub-bullet regardless of where else they appear. Dual-citation remains a MINOR structural fail. Aligns skill with Phase 7 engineer interpretation used in AE-016 and AE-022 Amendment Logs; resolves ambiguity surfaced in dekspec/audits/dn-post-convergence-audit-verification-2026-04-24.md R3. | Claude (engineer-directed) |
-| 2026-05-19 | Substantive | Fan-out pattern added per bead `ds-di2`. Substantive-work modes (Creation / `--accept` / `--revise`) now delegate to a fresh-context `dekspec:ae-author` subagent via the Agent tool; orchestrator bundles context (template, system vision, glossary, related AE/ADR/WS paths, engineer guidance, constraints), invokes the subagent with a self-contained prompt, then validates the returned artifact with `dekspec check validate <path>`. Modes preserved inline: `--help`, `--teaching`, `--review`, `--audit`, `--lock`, `--unlock` (status walks + engineer-interactive queries). Front-matter `allowed-tools` gained `Bash Agent`. Three substantive-work mode sections carry a "Fan-out delegated" banner pointing back to §Fan-Out Mode. |
+| 2026-05-19 | Substantive | Fan-out pattern added per bead `ds-di2`. Substantive-work modes (Creation / `--accept` / `--revise`) now delegate to a fresh-context `dekspec:ae-author` subagent via the Agent tool; orchestrator bundles context (template, system vision, glossary, related AE/ADR/WS paths, engineer guidance, constraints), invokes the subagent with a self-contained prompt, then validates the returned artifact with `dekspec validate <path>`. Modes preserved inline: `--help`, `--teaching`, `--review`, `--audit`, `--lock`, `--unlock` (status walks + engineer-interactive queries). Front-matter `allowed-tools` gained `Bash Agent`. Three substantive-work mode sections carry a "Fan-out delegated" banner pointing back to §Fan-Out Mode. |
 | 2026-04-24 | Substantive | Applied DN-convergence lessons. (a) Refined existing check triggers: T3 verb-first title regex; T8 Modified-field discipline; T9 meta-reference detection; D3 library-call blacklist + CamelCase / ALL_CAPS regex + HuggingFace-path pattern; D6 hedge-language signal; D10 scoped-to-positive-sections regex; L1-GLOSSARY deprecated-alias sweep; L1-WS-EXISTS TODO-stub detection; L1-ADR-SCOPE duplicate-citation count + indirect-ADR structural compliance check. (b) Added D13 mirror-for-reader-convenience anti-pattern, D14 audit-ruler / canonical-process framing detection, D15 single-authoritative-reference overreach, D16 Open Issues classification (spec-coverage-gap vs code-gap). (c) Rules block gains an Extraction Default-Home Table (replaces prose "Where does drifted content go?"), writing-time heuristics (reader test, hedge-word test, single-authoritative prohibition, mirror prohibition, audit-ruler prohibition, one-date Modified rule, deprecation-pointer format), and a "Common authoring anti-patterns" subsection (completeness instinct, authoritative-reference instinct, audit-ruler instinct, mirror-for-convenience instinct, dev-mode ambition, process-narrative instinct). (d) Revise Mode gains step 6a cascade grep with explicit include/exclude scope (audits/ and archaeology/ are never cascade targets). (e) Accept Mode gains a stale-ref sweep for Open Issues that reference WS / IC / ADR that have since advanced in status. (f) Workflow Step 6a adds an ADR-scope pre-count so scope issues surface at engineer-review-of-description time rather than at Step 4a Verification. All new D13–D16 checks land at natural blocking severity (no advisory-first); per-finding exceptions use Step 4a "Keep and justify." |
 
 ## Approve Mode
@@ -745,14 +745,14 @@ python ../_lib/scripts/artifact_ops.py approve <AE-path> --target-status <STATUS
 - [ ] Step 4a Verification ran: D1–D18 drift clear (no inline numerics per D17, no rationale per D18) and every L1 finding fixed or acknowledged in-body per §3.3.
 - [ ] L1-ADR-SCOPE is within 2–8 direct-body ADRs.
 - [ ] Status is PROPOSED, `Modified` is today (single ISO-8601 date), and the file saved to `dekspec/architecture-elements/AE-NNN-<slug>.md`.
-- [ ] `dekspec/architecture-elements-index.md` row added/updated and `dekspec audit relink` run (Closing Step).
+- [ ] `dekspec/architecture-elements-index.md` row added/updated and `dekspec relink` run (Closing Step).
 
 ## Closing Step
 
 **Mandatory closing step for every substantive mode of this skill** (the modes that write or revise an Architecture Element — Creation, `--accept`, `--revise`, `--lock`, `--unlock`). After the artifact file is saved and any index update is done, run:
 
 ```
-dekspec audit relink
+dekspec relink
 ```
 
-against the repo root. This deterministically re-derives and renders the cross-artifact `Linked Artifacts` backlinks from the forward links the artifact declares, stitching the spec graph in one pass. This is a required action, not a reminder — do not defer it, do not surface a "backfill the backlinks later" note to the engineer. `dekspec audit relink` is the graph-repair pass; running it is the last thing the skill does before reporting back.
+against the repo root. This deterministically re-derives and renders the cross-artifact `Linked Artifacts` backlinks from the forward links the artifact declares, stitching the spec graph in one pass. This is a required action, not a reminder — do not defer it, do not surface a "backfill the backlinks later" note to the engineer. `dekspec relink` is the graph-repair pass; running it is the last thing the skill does before reporting back.

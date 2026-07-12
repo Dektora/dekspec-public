@@ -74,7 +74,7 @@ See [`_lib/fan_out.md`](../_lib/fan_out.md) for the canonical ds-di2 orchestrato
   - Decomposition: one or more `dekspec/impl-briefs/IB-NNN-<slug>-brief.md` files in the flat `dekspec/impl-briefs/` directory, each at `Status: PROPOSED`.
   - Accept: the existing IB path, mutated in place to `Status: ACCEPTED` with an Amendment-Log row appended.
   - Revise: the existing IB path, mutated in place, with `Engineer review` reset and (if new ambiguity surfaced) new `## Open Issues` entries.
-- **validation**: `dekspec check validate <absolute-path-to-IB> --json` per IB. Worker runs and includes the result in its return summary; orchestrator re-runs as trust-but-verify (worker's claim is suggestive; the validate call is authoritative). Validation/surface contract: see [`_lib/validate_and_surface.md`](../_lib/validate_and_surface.md). Failure-mode routing: `insufficient_context` → surface gap verbatim, do NOT retry blindly; `structural_escalation` → present per Phase 4 step 16 ("requires re-decomposition"), wait for engineer decision; `audit_failure` → present failing checks (worker already iterated up to 2 rounds per Phase 4 step 17; further iteration requires engineer judgment); `clean` → present per-IB summary (mirrors Engineer Review Gate report), serve per **Serve for Review** section, instruct engineer on next steps (accept → `/write-code-beads`). In all cases, do NOT swallow worker errors — the raw return is a first-class signal about material quality.
+- **validation**: `dekspec validate <absolute-path-to-IB> --json` per IB. Worker runs and includes the result in its return summary; orchestrator re-runs as trust-but-verify (worker's claim is suggestive; the validate call is authoritative). Validation/surface contract: see [`_lib/validate_and_surface.md`](../_lib/validate_and_surface.md). Failure-mode routing: `insufficient_context` → surface gap verbatim, do NOT retry blindly; `structural_escalation` → present per Phase 4 step 16 ("requires re-decomposition"), wait for engineer decision; `audit_failure` → present failing checks (worker already iterated up to 2 rounds per Phase 4 step 17; further iteration requires engineer judgment); `clean` → present per-IB summary (mirrors Engineer Review Gate report), serve per **Serve for Review** section, instruct engineer on next steps (accept → `/write-code-beads`). In all cases, do NOT swallow worker errors — the raw return is a first-class signal about material quality.
 
 **End of Fan-Out Mode — the inline sections below (Workflow, IB Decomposition Principles, Decomposition Checklist, Conflict Detection, Fidelity Audit, etc.) are the AUTHORITATIVE SPEC the worker follows. Do NOT execute them in the orchestrator's context.**
 
@@ -471,7 +471,7 @@ Wait for engineer confirmation before proceeding.
 Before entering the decomposition workflow, run the gate check:
 
 ```bash
-dekspec check validate <spec-path> --json
+dekspec validate <spec-path> --json
 ```
 
 Read the returned IR's `status` field and `open_issues` array.
@@ -1005,13 +1005,13 @@ One or more IB files in `dekspec/impl-briefs/`, each with **Status** set to `PRO
 
 ## Verification Checklist
 
-- [ ] L12 precondition was run via `dekspec check validate <spec-path> --json` and the WS carries zero unresolved P1 open_issues (or status was DRAFT/PROPOSED and the gate was correctly skipped).
+- [ ] L12 precondition was run via `dekspec validate <spec-path> --json` and the WS carries zero unresolved P1 open_issues (or status was DRAFT/PROPOSED and the gate was correctly skipped).
 - [ ] Every governing ADR (supersession-resolved) and every referenced IC has at least one concrete `Constraints & Decisions` entry in each IB that consumes it — no listed-but-not-inlined source.
 - [ ] Each saved IB passed Conflict Detection and the full Fidelity Audit (content + cohesion + coupling) with no severity-important-or-worse finding, and the cross-IB Phase 5 coupling pass ran once over the full set.
 - [ ] The dependency graph is a DAG, no IB depends on more than 3 others, and IB numbers encode the confirmed implementation order.
 - [ ] No IB that failed the fidelity audit was saved; failing IBs were escalated to the engineer, not silently shipped.
 - [ ] Every saved/revised IB is at `Status: PROPOSED` (decomposition/resync/revise) or the correct promoted status (`--accept` → ACCEPTED, `--lock` → LOCKED) with an Amendment-Log row appended.
-- [ ] `dekspec audit relink` was run against the repo root after the artifact writes (the mandatory Closing Step).
+- [ ] `dekspec relink` was run against the repo root after the artifact writes (the mandatory Closing Step).
 - [ ] The Engineer Review Gate summary was presented and the engineer was instructed to `--accept` before any `/write-code-beads`.
 
 ## Closing Step
@@ -1019,10 +1019,10 @@ One or more IB files in `dekspec/impl-briefs/`, each with **Status** set to `PRO
 **Mandatory closing step for every substantive mode of this skill** (the modes that write or revise an Implementation Brief — Creation, `--accept`, `--lock`, `--resync`, `--revise`, `--review`). After the artifact file(s) are saved and any index update is done, run:
 
 ```
-dekspec audit relink
+dekspec relink
 ```
 
-against the repo root. This deterministically re-derives and renders the cross-artifact `Linked Artifacts` backlinks from the forward links the artifact declares, stitching the spec graph in one pass. This is a required action, not a reminder — do not defer it, do not surface a "backfill the backlinks later" note to the engineer. `dekspec audit relink` is the graph-repair pass; running it is the last thing the skill does before reporting back.
+against the repo root. This deterministically re-derives and renders the cross-artifact `Linked Artifacts` backlinks from the forward links the artifact declares, stitching the spec graph in one pass. This is a required action, not a reminder — do not defer it, do not surface a "backfill the backlinks later" note to the engineer. `dekspec relink` is the graph-repair pass; running it is the last thing the skill does before reporting back.
 
 ## Two-Tier Review Pipeline State-Machine (MSN-017)
 
@@ -1038,7 +1038,7 @@ against the repo root. This deterministically re-derives and renders the cross-a
 | REVIEW_IB | verdict NO-GO | **REVIEW_IB_FAIL** | `dekspec.action_handlers.dispatch("REVIEW_IB_FAIL", context)` → INT-113 handler module (`/write-ibs --revise` + re-fire REVIEW_IB) |
 | REVIEW_IB | verdict INSUFFICIENT_EVIDENCE | (hold) | operator decides; sidecar logs the abstention |
 | IMPLEMENTING | green CI | TESTPASS | per **INT-123** (coding-session wiring) |
-| IMPLEMENTING | red CI | **TESTFAIL** | `dekspec.action_handlers.dispatch("TESTFAIL", context)` → INT-114 handler (`/exec-coding-session --retry` + re-eval) |
+| IMPLEMENTING | red CI | **TESTFAIL** | `dekspec.action_handlers.dispatch("TESTFAIL", context)` → INT-114 handler (`/orchestrate-coding-session --retry` + re-eval) |
 | TESTFAIL | retry green | TESTPASS | handler advances on AUTO mode; operator approves on RECOMMEND |
 | TESTFAIL | retry red | IMPLEMENTING (loop) | new failure recorded in TESTFAIL log; sidecar updated |
 | TESTPASS | PR-open on IB-aggregate branch | **REVIEW_PR** | auto-invoke `/dekspec:review-pr <PR-#>` (INT-107 LOCKED); trigger seam = `tooling/dekspec/hooks/pr_open.py` OR `dekspec review trigger <PR-#>` per INT-124 |

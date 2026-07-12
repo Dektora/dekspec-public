@@ -36,7 +36,7 @@ verdict:
 
 ## Audit-doctor reuse
 
-The orchestrator runs `dekspec audit doctor --json --at .` **exactly once** per review session and caches the result on disk (in the per-IB session directory). Lens-specialists whose attack patterns overlap existing audit rules (L7b component-glob, L10 glossary, L3/L4 backlinks) consume slices of that cached output rather than re-deriving the audit. This is enforced by the lens-registry schema: a lens that needs audit-doctor data declares `input_slice: audit_doctor.<path>` and the orchestrator projects the slice from the cache. A lens that re-derives an audit rule it could have read from the cache fails the schema lint at lens-pack load time.
+The orchestrator runs `dekspec doctor --json --at .` **exactly once** per review session and caches the result on disk (in the per-IB session directory). Lens-specialists whose attack patterns overlap existing audit rules (L7b component-glob, L10 glossary, L3/L4 backlinks) consume slices of that cached output rather than re-deriving the audit. This is enforced by the lens-registry schema: a lens that needs audit-doctor data declares `input_slice: audit_doctor.<path>` and the orchestrator projects the slice from the cache. A lens that re-derives an audit rule it could have read from the cache fails the schema lint at lens-pack load time.
 
 ## Three-mode operation
 
@@ -85,7 +85,7 @@ Persistence is INT-109's surface (peeled by ADR-028 into INT-109 narrow + INT-11
 ## Failure modes
 
 - **Lens-pack load failure.** If a lens in the pack omits any of the four required schema fields (`question`, `input_slice`, `attack_patterns`, `severity_rubric` — see `review_lens_registry.md`), the shell raises at load time. The consumer skill cannot run a malformed pack.
-- **Audit-doctor unavailable.** If `dekspec audit doctor --json --at .` fails, the shell aborts before fan-out. A review without audit-doctor grounding cannot satisfy the lens contracts that depend on it.
+- **Audit-doctor unavailable.** If `dekspec doctor --json --at .` fails, the shell aborts before fan-out. A review without audit-doctor grounding cannot satisfy the lens contracts that depend on it.
 - **All lenses abstain.** The aggregator returns `INSUFFICIENT_EVIDENCE` and the sidecar records the unanimous abstention. The operator decides whether to advance manually.
 
 ## Relation to other library surfaces

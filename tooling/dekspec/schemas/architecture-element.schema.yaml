@@ -51,7 +51,7 @@ properties:
   id:
     description: Canonical AE identifier derived from filename (e.g., AE-014).
     type: string
-    pattern: "^AE-\\d{3,}$"
+    pattern: "^(?:P-)?AE-\\d{3,}$"
 
   name:
     description: Human title from the markdown H1 (e.g., "Configurable Formula Engine").

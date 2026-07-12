@@ -1,12 +1,12 @@
 ---
-description: AFK repeat-until-dry deepening loop driver — re-invokes the orchestrate-deepening skill with fresh context each pass, consuming its { completed, remaining, dry } signal until consecutive dry passes converge or a max-iterations safety bound trips. Invoke once and walk away.
+description: AFK repeat-until-dry deepening loop driver — re-invokes the orchestrate-module-deepening skill with fresh context each pass, consuming its { completed, remaining, dry } signal until consecutive dry passes converge or a max-iterations safety bound trips. Invoke once and walk away.
 allowed-tools: Skill, Bash
 argument-hint: [--help] [--scope PATH] [--max-iterations N] [--dry-streak N]
 disable-model-invocation: false
 ---
 
 Drive an AFK (operator-walks-away) deepening loop over a repo or a scoped
-slice: re-invoke the `orchestrate-deepening` skill pass after pass until the
+slice: re-invoke the `orchestrate-module-deepening` skill pass after pass until the
 codebase is dry of new deepening opportunities, then stop. No human-in-the-loop
 prompts.
 
@@ -15,17 +15,17 @@ prompts.
 THE LOOP LIVES IN THE COMMAND. This command owns the repeat-until-dry
 iteration, the iteration state (pass count, consecutive-dry streak, beads
 created across rounds), and the termination decision. It re-invokes the
-`orchestrate-deepening` skill with FRESH context each pass — no shared
+`orchestrate-module-deepening` skill with FRESH context each pass — no shared
 cross-pass context object is threaded between rounds. The skill does the actual
 deepening work; this command decides whether to run it again.
 
 The authoritative termination-control logic — loop bound, consecutive-dry
 convergence, and scope threading — is the owned Python helper
 `dekspec.deepen_loop.run_until_dry`, which this command drives, exactly as
-`/exec-coding-session` drives `dekspec.action_handlers`. The skill-invocation
+`/orchestrate-coding-session` drives `dekspec.action_handlers`. The skill-invocation
 boundary is the helper's injected `pass_runner`: each pass calls
 `pass_runner(scope=<scope>, context=<fresh per-pass context>)`, which (at
-runtime) invokes the `orchestrate-deepening` skill and returns its
+runtime) invokes the `orchestrate-module-deepening` skill and returns its
 `{ completed, remaining, dry }` signal.
 
 ## `--help` mode
@@ -45,7 +45,7 @@ any pass:
 
 For each pass, until termination:
 
-1. Invoke the `orchestrate-deepening` skill via the Skill tool with FRESH
+1. Invoke the `orchestrate-module-deepening` skill via the Skill tool with FRESH
    context, threading the SAME `--scope` value passed to this command (omit it
    for a whole-repo pass).
 2. Read back the skill's `{ completed, remaining, dry }` convergence signal.

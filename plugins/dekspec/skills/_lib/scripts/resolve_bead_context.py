@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Resolve the IB / WS / Intent / files-under-test chain for a bead.
 
-Three DekSpec skills (`write-tests`, `write-evals`, `exec-coding-session`) ask
+Three DekSpec skills (`write-tests`, `write-evals`, `orchestrate-coding-session`) ask
 the model in prose to perform a deterministic multi-hop walk:
 
     bead ID

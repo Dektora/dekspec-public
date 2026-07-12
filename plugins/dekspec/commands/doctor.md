@@ -1,13 +1,13 @@
 ---
-description: Full DekSpec health check — schema validate + linkage + drift via `dekspec audit doctor`, then the AE-aware T/D/L fidelity audit (inlined here, v0.98.0+). Gold-standard pre-merge gate. Subsumes the previous /doctor-fidelity surface.
-allowed-tools: Bash(dekspec audit doctor:*), Bash(dekspec audit:*), Bash(python:*), Bash(git:*), Read, Grep, Glob, Edit, Write, Skill, Agent
+description: Full DekSpec health check — schema validate + linkage + drift via `dekspec doctor`, then the AE-aware T/D/L fidelity audit (inlined here, v0.98.0+). Gold-standard pre-merge gate. Subsumes the previous /doctor-fidelity surface.
+allowed-tools: Bash(dekspec doctor:*), Bash(dekspec audit:*), Bash(python:*), Bash(git:*), Read, Grep, Glob, Edit, Write, Skill, Agent
 argument-hint: [--at PATH] [--dekspec-root DIR] [--json] [--profile PROFILE] [--skip-fidelity] [--fidelity-only] [--fix | --full | --library-self-audit] [scope]
 disable-model-invocation: false
 ---
 
 Run the DekSpec health check in two stages.
 
-**Stage 1 — CLI doctor** (`dekspec audit doctor`): schema validate + linkage + drift. Bash subprocess, fast, deterministic.
+**Stage 1 — CLI doctor** (`dekspec doctor`): schema validate + linkage + drift. Bash subprocess, fast, deterministic.
 
 **Stage 2 — Fidelity audit** (inlined body below): AE-aware T/D/L family (T10/T11/T12 subtype/boundary/views, D17/D18 AE no-target + no-rationale, L1-ADR-AE through L9 linkage integrity, Phase 2A–2L cross-reference checks).
 
@@ -29,7 +29,7 @@ Optional scope filter after the flag narrows Stage 2 to one category: `skills`, 
 2. Parse stage-control flags from `$ARGUMENTS`:
    - `--skip-fidelity` → run only Stage 1.
    - `--fidelity-only` → skip Stage 1; jump to Stage 2.
-3. **Stage 1** (unless `--fidelity-only`): run `dekspec audit doctor <Stage 1 args>` via Bash. Strip stage-control + fidelity-only flags from the args before invoking. Exit code `0` → print `✓ Stage 1 (doctor): CLEAN` then summarise artifact counts from the output. Non-zero → print `✗ Stage 1 (doctor): findings detected`, surface the findings block verbatim. **Stop here unless `--fidelity-only` was passed** — Stage 1 findings usually block Stage 2's meaning.
+3. **Stage 1** (unless `--fidelity-only`): run `dekspec doctor <Stage 1 args>` via Bash. Strip stage-control + fidelity-only flags from the args before invoking. Exit code `0` → print `✓ Stage 1 (doctor): CLEAN` then summarise artifact counts from the output. Non-zero → print `✗ Stage 1 (doctor): findings detected`, surface the findings block verbatim. **Stop here unless `--fidelity-only` was passed** — Stage 1 findings usually block Stage 2's meaning.
 4. **Stage 2** (unless `--skip-fidelity`): execute the inlined Fidelity Audit body below using the remaining `$ARGUMENTS` (`--fix` / `--full` / `--library-self-audit` / scope). Render the Phase 3 report directly.
 5. **Final summary:** report combined status across both stages. If either stage surfaced findings, exit non-zero so CI gates fail.
 

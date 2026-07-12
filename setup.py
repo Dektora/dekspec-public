@@ -68,7 +68,7 @@ class VendoringBuildPy(build_py):
         # Skills: ONLY `_lib/` — the shared helpers + scripts the engine
         # imports at runtime (e.g., `dekspec._vendored.skills._lib.scripts
         # .artifact_ops`). User-facing skill bodies (write-*, archeology,
-        # exec-coding-session, etc.) are NOT vendored — they ship
+        # orchestrate-coding-session, etc.) are NOT vendored — they ship
         # exclusively through the Claude Code plugin marketplace per
         # AE-006.
         skills_lib_src = project_root / "plugins" / "dekspec" / "skills" / "_lib"

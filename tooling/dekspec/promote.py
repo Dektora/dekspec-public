@@ -52,6 +52,31 @@ class PromoteError(Exception):
 
 _KIND_FILE_RE = re.compile(r"^([A-Z]+)-provisional-(.+)\.md$")
 
+
+def _parse_incubation_filename(name: str) -> tuple[str, str, str] | None:
+    """Return ``(kind, slug, old_id)`` for a provisional incubation filename,
+    or None if ``name`` is not a provisional artifact.
+
+    Recognizes both provisional forms:
+
+    * legacy numberless ``<KIND>-provisional-<slug>.md`` — ``old_id`` is
+      ``<KIND>-provisional-<slug>``.
+    * ADR-043 numbered ``P-<KIND>-<NNN>-<slug>.md`` — ``old_id`` is
+      ``P-<KIND>-<NNN>``; the hint number is ignored by the renumberer, which
+      always allocates the next-free canonical id.
+    """
+    m = _KIND_FILE_RE.match(name)
+    if m:
+        kind, slug = m.group(1), m.group(2)
+        return kind, slug, f"{kind}-provisional-{slug}"
+    from .provisional_ids import PROVISIONAL_FILENAME_RE
+
+    pm = PROVISIONAL_FILENAME_RE.match(name)
+    if pm:
+        kind, num, slug = pm.group("kind"), pm.group("num"), pm.group("slug")
+        return kind, slug, f"P-{kind}-{num}"
+    return None
+
 # Matches a `replaces: <KIND-NNN>` line inside the YAML frontmatter (or
 # anywhere in the file body — the rule is permissive). Supports
 # `replaces: AE-007` and `replaces: ADR-019` shapes.
@@ -146,13 +171,12 @@ def plan_promotion(
     for f in sorted(incubation_dir.iterdir()):
         if not f.is_file() or f.suffix != ".md":
             continue
-        m = _KIND_FILE_RE.match(f.name)
-        if not m:
+        parsed = _parse_incubation_filename(f.name)
+        if parsed is None:
             continue
-        kind, slug = m.group(1), m.group(2)
+        kind, slug, old_id = parsed
         if kind not in KIND_TO_DIR:
             continue
-        old_id = f"{kind}-provisional-{slug}"
 
         # REPLACE mode: provisional artifact declares `replaces:
         # <KIND-NNN>` -> preserve the canonical ID; overwrite the

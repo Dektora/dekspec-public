@@ -27,6 +27,6 @@ Only after a valid reason is supplied:
 
 ### Step 4: Validate and report
 
-Re-run `dekspec check validate --kind intent <Intent-path>`. Surface any validation error and stop — the unlock has written but the artifact is structurally broken; the engineer must fix it. On success, surface a closing reminder: apply the editorial correction, then re-run `/write-intent --lock <path>` to re-freeze — ADR-017 Path B is the available re-lock path, since the Intent's downstream WS/IC/IBs are already `>= ACCEPTED`. The Intent is mutable until then.
+Re-run `dekspec validate --kind intent <Intent-path>`. Surface any validation error and stop — the unlock has written but the artifact is structurally broken; the engineer must fix it. On success, surface a closing reminder: apply the editorial correction, then re-run `/write-intent --lock <path>` to re-freeze — ADR-017 Path B is the available re-lock path, since the Intent's downstream WS/IC/IBs are already `>= ACCEPTED`. The Intent is mutable until then.
 
 **End of Unlock Mode.**

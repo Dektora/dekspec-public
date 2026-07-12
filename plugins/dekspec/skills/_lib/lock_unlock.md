@@ -58,7 +58,7 @@ Only on explicit `yes`:
 
 ### Step 4: Validate the written artifact
 
-Re-run `dekspec check validate <path>` (or `dekspec validate` over the singleton if the artifact has no path argument). Surface any validation error and stop — the lock has written but the artifact is structurally broken; the engineer must fix and re-lock.
+Re-run `dekspec validate <path>` (or `dekspec validate` over the singleton if the artifact has no path argument). Surface any validation error and stop — the lock has written but the artifact is structurally broken; the engineer must fix and re-lock.
 
 If validation passes, surface a closing line confirming the new status, the new Modified date, and the index row update (if applicable). Skills may extend this with cascade reminders (e.g., "downstream IBs may need `--resync`"), but the four substrate steps are non-negotiable.
 
@@ -92,7 +92,7 @@ After a valid reason is supplied (and any impact list has been shown):
 
 ### Step 4: Validate the written artifact
 
-Re-run `dekspec check validate <path>` (or the singleton equivalent). Surface any validation error and stop.
+Re-run `dekspec validate <path>` (or the singleton equivalent). Surface any validation error and stop.
 
 If validation passes, surface a closing reminder pointing the engineer at the right follow-on mode for applying the substantive change (typically `--revise` or `--review`), and noting that a fresh `--accept` and `--lock` will be needed when the change is complete. Skills with non-trivial cascade implications (downstream artifacts referencing this one) SHOULD also surface a cascade reminder enumerating the IB-resync / bead-recreation / dependent-artifact-review steps the engineer will need to do after the substantive edit.
 

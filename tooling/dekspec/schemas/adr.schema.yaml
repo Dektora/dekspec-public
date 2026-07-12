@@ -52,7 +52,7 @@ properties:
   id:
     description: Canonical ADR identifier derived from filename (e.g., ADR-022).
     type: string
-    pattern: "^ADR-\\d{3,}$"
+    pattern: "^(?:P-)?ADR-\\d{3,}$"
 
   name:
     description: Verb-first title from the markdown H1 (e.g., "Use Qwen3-VL model family").

@@ -39,6 +39,28 @@ Universal flags repeated across subcommands:
 - `--dekspec-root PATH` — content tree relative to repo root (default: `dekspec`).
 - `--json` — emit machine-readable output instead of formatted text.
 
+## The flat surface (ADR-042)
+
+The CLI is a **single-level, hyphenated verb-noun namespace**. Every command is a flat `dekspec <verb>`; the nested `dekspec <group> <sub>` forms (`check`/`audit`/`exec`/`library`/`dev`) are **one-release deprecated aliases** that still work but print a `[DEPRECATED]` notice pointing at the flat successor.
+
+**Public verbs** (shown in `dekspec --help`) — the surface a human or CI uses without the harness:
+
+| Verb | Purpose |
+|------|---------|
+| `audit` | Composite spec-graph health check. **Fixes to convergence by default**; `--check-only` reports without mutating (the CI-safe path). |
+| `lock-ready` | Advance lock-ready ACCEPTED artifacts to LOCKED (a separate **gated** action — never folded into `audit`'s fix default). |
+| `sync` | Reconcile the consumer repo to the installed engine version. |
+| `init` | Scaffold a new `dekspec/` tree. |
+| `regen-indexes` | Regenerate derived index files. |
+| `ingest` | Classify inherited markdown into draft artifacts (brownfield adoption). |
+| `find-spec-gaps` | Report source files no LOCKED Intent claims; feeds the archeology recovery workflow. |
+| `migrate` | Full upgrade pipeline (verify-vendored → migrate-ir → migrate-artifacts). |
+| `install` | Emit the per-host skill/command/hook tree for a harness platform. |
+
+**Internal verbs** (reachable but hidden from top-level help) — skill/hook/pipeline plumbing, not part of the advertised surface: `compile`, `validate`, `doctor`, `relink`, `aggregate`, `emit`, `graph`, `session`, `id` (allocate-ids), `config`, `archeology`, `lint-ib`, plus the ADR-043 helpers.
+
+> **CI note.** `dekspec audit` mutates (applies mechanical fixes to convergence) by design. In CI, always use `dekspec audit --check-only`.
+
 ## init
 
 ```

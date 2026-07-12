@@ -46,6 +46,6 @@ If all checks pass:
 
 1. Flip Status to `IMPLEMENTING`, bump Modified, and append the Amendment Log row — run `python ../_lib/scripts/artifact_ops.py transition <Intent-path> --from ACCEPTED --to IMPLEMENTING --note "Decomposed into N IUs (M IBs, K direct beads); transitioned ACCEPTED to IMPLEMENTING via /write-intent --decompose" --engineer <engineer-or-agent>` (fill in N/M/K from the decomposition; surface stderr on non-zero exit and STOP).
 2. Update `dekspec/intent-index.md` — run `python ../_lib/scripts/artifact_ops.py update-index dekspec/intent-index.md --id INT-NNN --status IMPLEMENTING` (surface stderr on non-zero exit), then update the row's IUs column by hand.
-3. Surface the next-step message: bead execution proceeds via `/exec-coding-session` per bead. When all beads have closed, run `/write-intent --testpass` to verify diff confinement and run the Verification predicate.
+3. Surface the next-step message: bead execution proceeds via `/orchestrate-coding-session` per bead. When all beads have closed, run `/write-intent --testpass` to verify diff confinement and run the Verification predicate.
 
 **End of Decompose Mode.**

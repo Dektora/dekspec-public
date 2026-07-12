@@ -7,7 +7,7 @@ Reads `<Intent-path>`. Refuses if Status is not `PROPOSED`.
 
 Passing the `--accept` flag counts as deliberate engineer approval — no additional confirmation is asked. The mode runs the linkage / shape / drift checks one last time before promoting.
 
-> **Fan-out delegated (ds-di2).** The orchestrator dispatches this mode's body to a fresh-context `dekspec:intent-author` subagent per **Fan-Out Mode** above. The steps below are the **subagent's contract**; on return, the orchestrator runs `dekspec check validate --kind intent <path>` and confirms Status flipped PROPOSED → ACCEPTED with the Amendment Log entry appended.
+> **Fan-out delegated (ds-di2).** The orchestrator dispatches this mode's body to a fresh-context `dekspec:intent-author` subagent per **Fan-Out Mode** above. The steps below are the **subagent's contract**; on return, the orchestrator runs `dekspec validate --kind intent <path>` and confirms Status flipped PROPOSED → ACCEPTED with the Amendment Log entry appended.
 
 ### Step 1: Validate
 
@@ -54,7 +54,7 @@ Before the Status transition, determine whether this Intent requires bead decomp
 ### Step 5: Promote
 
 1. Flip Status to `ACCEPTED`, bump Modified, and append the Amendment Log row — run `python ../_lib/scripts/artifact_ops.py transition <Intent-path> --from PROPOSED --to ACCEPTED --note "Promoted PROPOSED to ACCEPTED via /write-intent --accept" --engineer <engineer-or-agent>` (surface stderr on non-zero exit and STOP).
-2. Update `dekspec/intent-index.md` — run `python ../_lib/scripts/artifact_ops.py update-index dekspec/intent-index.md --id INT-NNN --status ACCEPTED` (surface stderr on non-zero exit). Or run `dekspec library regen-indexes` for the full deterministic refresh (MSN-015 path).
+2. Update `dekspec/intent-index.md` — run `python ../_lib/scripts/artifact_ops.py update-index dekspec/intent-index.md --id INT-NNN --status ACCEPTED` (surface stderr on non-zero exit). Or run `dekspec regen-indexes` for the full deterministic refresh (MSN-015 path).
 3. Surface the next-step message: ACCEPTED Intents become IMPLEMENTING via `--decompose`, which scaffolds the IBs/beads. For a `type: bug` Intent the first bead is the failing reproduction test — which is the Intent's ADR-029 Outcome Verification test (red-first), produced through the normal `/write-code-beads` flow (there is no separate `--bug-reproduction` mode).
 
 **End of Accept Mode.**

@@ -33,7 +33,7 @@ This flips Status to `SUPERSEDED`, rewrites the `## Superseded-By` section to th
 ### Step 4: Closing
 
 1. If the successor is in this repo, confirm it references the absorbed Intent (e.g. the Mission's Intent queue or the successor Intent's Source/Links). If it does not, surface a one-line suggestion to add the back-reference — do not edit the successor unprompted.
-2. Run `dekspec audit relink` so backlinks re-derive.
+2. Run `dekspec relink` so backlinks re-derive.
 3. Surface the result: the Intent's new terminal state, the successor recorded, and the index move.
 
 **End of Supersede Mode.**

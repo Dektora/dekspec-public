@@ -1,5 +1,5 @@
 ---
-name: deepen-codebase-architecture
+name: analyze-module-depth
 description: Surface deepening opportunities in a codebase — refactors that turn shallow modules into deep ones, grounded in the domain language in `dekspec/domain-glossary.md` and the decisions in `dekspec/adrs/`. Use when the engineer wants to improve architecture, find refactoring opportunities, consolidate tightly-coupled modules, or make a codebase more testable and AI-navigable.
 mode: lite
 # override-reason: latest Opus tier per CLAUDE.md model policy; suite default (claude-opus-4-7) predates 4-8
@@ -15,7 +15,7 @@ refactors that turn shallow modules into deep ones. The aim is testability and
 AI-navigability.
 
 This skill **surfaces → reports → interviews**. It opens no `br` beads, implements
-nothing, and lands nothing — that is the sibling `orchestrate-deepening` skill,
+nothing, and lands nothing — that is the sibling `orchestrate-module-deepening` skill,
 which is out of scope here. See **Boundary** below.
 
 The architecture vocabulary it speaks — Module, Interface, Implementation,
@@ -106,7 +106,7 @@ See [`_lib/help_mode_template.md`](../_lib/help_mode_template.md) for the
 canonical Help rendering contract. Manifest for this skill:
 
 ```yaml
-skill_name: "/dekspec:deepen-codebase-architecture"
+skill_name: "/dekspec:analyze-module-depth"
 one_line:   "Surface deepening opportunities — shallow modules made deep — and interview the chosen one"
 modes:
   - { flag: "", args: "", description: "Default mode: an unsteered, exhaustive whole-repo Explore walk, then an HTML report, then an interview loop on the chosen candidate." }
@@ -114,16 +114,16 @@ modes:
   - { flag: "--teaching", args: "", description: "Interactive tutorial — the surface → report → interview workflow explained step-by-step for an engineer new to deepening." }
   - { flag: "--help", args: "", description: "Show this help message." }
 examples:
-  - "/dekspec:deepen-codebase-architecture"
-  - "/dekspec:deepen-codebase-architecture --scope tooling/dekspec/fidelity_audit"
-  - "/dekspec:deepen-codebase-architecture --teaching"
-  - "/dekspec:deepen-codebase-architecture --help"
+  - "/dekspec:analyze-module-depth"
+  - "/dekspec:analyze-module-depth --scope tooling/dekspec/fidelity_audit"
+  - "/dekspec:analyze-module-depth --teaching"
+  - "/dekspec:analyze-module-depth --help"
 extra_sections:
   - heading: "BOUNDARY"
     body:
       - "This skill surfaces, reports (a self-contained HTML file), and interviews."
       - "It opens no br beads, implements nothing, and lands nothing — that is"
-      - "the sibling orchestrate-deepening skill. Every change is an explicit"
+      - "the sibling orchestrate-module-deepening skill. Every change is an explicit"
       - "engineer action downstream of this skill's report."
 ```
 
@@ -226,5 +226,5 @@ It does **not**:
   side-effects above, which are explicit engineer-confirmed authoring steps,
 - set or change any artifact's status.
 
-Driving a chosen deepening to landed code is the sibling `orchestrate-deepening`
+Driving a chosen deepening to landed code is the sibling `orchestrate-module-deepening`
 skill's job, not this one's.
