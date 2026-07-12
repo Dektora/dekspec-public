@@ -2,6 +2,12 @@
 
 All notable changes to DekSpec are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/); versioning follows [Semantic Versioning](https://semver.org/).
 
+## [v0.121.1] — 2026-07-13
+
+### Fixed — CLI boots on Windows
+
+- **`dekspec` crashed on startup on Windows** with `ModuleNotFoundError: No module named 'fcntl'`. `session_lifecycle.py` imported the POSIX-only `fcntl` at module top level, and `cli.py` imports that module at startup — so *every* command (even `dekspec init`) died before running. Both `fcntl` (POSIX) and `msvcrt` (Windows) imports are now guarded, and the advisory session lock uses whichever backend is present — a real lock on both platforms (`fcntl.flock` / `msvcrt.locking`). `fcntl` was the only Unix-only import in the CLI startup path.
+
 ## [v0.121.0] — 2026-07-07
 
 > Two ratified ADRs land: the CLI is flattened to a single-level verb namespace (ADR-042) and every artifact kind gains a unified, abortable provisional ID scheme (ADR-043). Plus the seven skill renames below. The CLI change is breaking-but-aliased — nested forms still work for one release with a `[DEPRECATED]` notice.

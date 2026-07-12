@@ -13,7 +13,17 @@ discoverability + ADR-006 closure discipline, nothing more.
 """
 from __future__ import annotations
 
-import fcntl
+# Advisory file locking is platform-split: POSIX has `fcntl`, Windows has
+# `msvcrt`. Import both defensively so the module (and therefore the whole CLI,
+# which imports it at startup) loads on either OS.
+try:
+    import fcntl  # POSIX-only; absent on Windows.
+except ImportError:  # pragma: no cover - Windows has no fcntl
+    fcntl = None  # type: ignore[assignment]
+try:
+    import msvcrt  # Windows-only; absent on POSIX.
+except ImportError:  # pragma: no cover - POSIX has no msvcrt
+    msvcrt = None  # type: ignore[assignment]
 import hashlib
 import json
 import os
@@ -166,17 +176,40 @@ def _ensure_state_dir() -> Path:
     return d
 
 
+def _lock_exclusive(fd: int) -> None:
+    """Acquire an exclusive advisory lock on `fd` (cross-platform).
+
+    POSIX uses ``fcntl.flock``; Windows uses ``msvcrt.locking`` (a 1-byte
+    region at offset 0). If neither is available the lock is a best-effort
+    no-op — session state is single-user and local, so its absence only
+    forgoes the guard against the rare concurrent-write race.
+    """
+    if fcntl is not None:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+    elif msvcrt is not None:  # pragma: no cover - exercised on Windows only
+        os.lseek(fd, 0, os.SEEK_SET)
+        msvcrt.locking(fd, msvcrt.LK_LOCK, 1)
+
+
+def _unlock(fd: int) -> None:
+    if fcntl is not None:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+    elif msvcrt is not None:  # pragma: no cover - exercised on Windows only
+        os.lseek(fd, 0, os.SEEK_SET)
+        msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+
+
 @contextmanager
 def _acquire_lock() -> Iterator[None]:
     _ensure_state_dir()
     lock_path = _lock_path()
     fd = os.open(str(lock_path), os.O_RDWR | os.O_CREAT, 0o600)
     try:
-        fcntl.flock(fd, fcntl.LOCK_EX)
+        _lock_exclusive(fd)
         yield
     finally:
         try:
-            fcntl.flock(fd, fcntl.LOCK_UN)
+            _unlock(fd)
         finally:
             os.close(fd)
 
