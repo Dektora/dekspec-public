@@ -8,5 +8,5 @@ Provides:
 See docs/architecture.md in the repo root for the full architectural picture.
 """
 
-__version__ = "0.121.1"
+__version__ = "0.121.2"
 

@@ -304,7 +304,29 @@ def build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.Argument
     return parser, group_parsers
 
 
+def _ensure_utf8_output() -> None:
+    """Make CLI output robust on Windows consoles (issue: cp1252 crash).
+
+    The status glyphs the CLI prints (``✓ ✗ → ≥ ~`` …) raise
+    ``UnicodeEncodeError: 'charmap' codec can't encode`` on a legacy cp1252
+    Windows console. Reconfigure stdout/stderr to UTF-8 (equivalent to the
+    ``PYTHONUTF8=1`` workaround) with ``errors="replace"`` as a
+    belt-and-suspenders fallback so output degrades to ``?`` rather than
+    crashing on any stream that can't be switched. No-op where the stream
+    exposes no ``reconfigure`` (already-wrapped / redirected / non-TTY).
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except (ValueError, OSError):  # pragma: no cover - stream can't switch
+            pass
+
+
 def main(argv: list[str] | None = None) -> int:
+    _ensure_utf8_output()
     parser, group_parsers = build_parser()
 
     check_args = argv if argv is not None else sys.argv[1:]
@@ -2489,20 +2511,33 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         try:
             drift = compute_drift(repo_root)
             unreliable = any(f.kind == "reference-unreliable" for f in drift)
-            engine_stale = next(
-                (f for f in drift if f.kind == "engine-stale-vs-vendored"), None
+            version_skew = next(
+                (f for f in drift if f.kind in
+                 ("engine-stale-vs-vendored", "vendored-stale-vs-engine")),
+                None,
             )
             mod_count = sum(1 for f in drift if f.kind == "modified")
             missing_count = sum(1 for f in drift if f.kind == "missing")
             unknown_count = sum(1 for f in drift if f.kind == "unknown")
             version_count = sum(1 for f in drift if f.kind == "version")
-            if engine_stale is not None:
+            if version_skew is not None:
                 status = "advisory"
                 worst_severity = _worse(worst_severity, "advisory")
-                summary = (
-                    "engine stale vs vendored — installed engine is older "
-                    "than consumer's vendored content; upgrade the engine"
+                _v_engine = __version__
+                _mk = repo_root / ".dekspec-version"
+                _v_vendored = (
+                    _mk.read_text(encoding="utf-8").strip() if _mk.exists() else "?"
                 )
+                if version_skew.kind == "vendored-stale-vs-engine":
+                    summary = (
+                        f"vendored content stale — engine {_v_engine} is newer "
+                        f"than vendored {_v_vendored}; run `dekspec sync`"
+                    )
+                else:
+                    summary = (
+                        f"engine stale — engine {_v_engine} is older than "
+                        f"vendored {_v_vendored}; upgrade the engine"
+                    )
             elif unreliable:
                 status = "advisory"
                 worst_severity = _worse(worst_severity, "advisory")
@@ -2636,7 +2671,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         sections.append({
             "name": "provisional",
             "status": "skipped",
-            "summary": "dekspec/provisional/ not scaffolded — run `dekspec repo init`",
+            "summary": "dekspec/provisional/ not scaffolded — run `dekspec init`",
             "findings_count": 0,
         })
 
@@ -4204,23 +4239,34 @@ def cmd_verify_vendored(args: argparse.Namespace) -> int:
         print(f"  {unreliable.detail}")
         return 0
 
-    # Engine-stale short-circuit: installed dekspec engine is older than
-    # the consumer's vendored content (versions mismatch). Per-file hashes
-    # would all mismatch by construction; we return one explanatory finding
-    # instead. Exit 0 — operator must upgrade the engine, not the content.
+    # Version-skew short-circuit: engine and vendored content are at different
+    # versions. Per-file hashes would all mismatch by construction; return one
+    # explanatory finding instead. Exit 0 — the remedy depends on direction
+    # (upgrade the engine, or `dekspec sync` the vendored content).
     # (ds-upgrade-manifest-not-regenerated-3osq, 2026-05-28)
-    engine_stale = next(
-        (f for f in findings if f.kind == "engine-stale-vs-vendored"), None
+    version_skew = next(
+        (f for f in findings if f.kind in
+         ("engine-stale-vs-vendored", "vendored-stale-vs-engine")),
+        None,
     )
-    if engine_stale is not None:
+    if version_skew is not None:
         if args.json:
             print(json.dumps([f.to_dict() for f in findings], indent=2))
             return 0
+        _mk = repo_root / ".dekspec-version"
+        _v_vendored = (
+            _mk.read_text(encoding="utf-8").strip() if _mk.exists() else "?"
+        )
+        headline = (
+            "vendored content stale vs engine — file-level drift not checked"
+            if version_skew.kind == "vendored-stale-vs-engine"
+            else "engine stale vs vendored — file-level drift not checked"
+        )
         print(f"DekSpec verify-vendored — {repo_root}")
-        print(f"Library version: {__version__}")
+        print(f"Engine version: {__version__} | vendored version: {_v_vendored}")
         print()
-        print("engine stale vs vendored — file-level drift not checked")
-        print(f"  {engine_stale.detail}")
+        print(headline)
+        print(f"  {version_skew.detail}")
         return 0
 
     if args.json:
@@ -6105,7 +6151,7 @@ def cmd_new_provisional(args: argparse.Namespace) -> int:
     if not dekspec_dir.is_dir():
         print(
             f"Error: dekspec tree not found at {dekspec_dir}. "
-            f"Run `dekspec repo init` first.",
+            f"Run `dekspec init` first.",
             file=sys.stderr,
         )
         return 1
@@ -6472,6 +6518,30 @@ def cmd_install(args: argparse.Namespace) -> int:
         except ValueError:
             shown = path
         print(f"  {shown}")
+    # Honesty guard: for non-claude hosts the skill/command/hook tree is copied
+    # from the plugin source. A pip/pipx-installed engine does not carry that
+    # source (the plugin is not bundled in the wheel), so only the host marker
+    # gets written — don't let that look like a full install. Also point at the
+    # separate command that actually updates vendored content + .dekspec-version.
+    skills_present = (source_dir / "skills").is_dir()
+    if not skills_present:
+        print(
+            f"\nWarning: only the host marker was written — the plugin "
+            f"skills/commands/hooks tree was NOT found at {source_dir}. A "
+            f"pip/pipx-installed engine does not bundle the plugin content, so "
+            f"`dekspec install --platform {result.platform}` can emit only the "
+            f"marker from it. Point --source at a `plugins/dekspec` checkout to "
+            f"emit the full tree.",
+            file=sys.stderr,
+        )
+    if result.platform != "claude":
+        print(
+            "\nNote: `dekspec install` emits only the per-host tree. To update "
+            "vendored content + the .dekspec-version marker after an engine "
+            "upgrade, run `dekspec sync` (that is what reconciles the version "
+            "metadata, not `install`).",
+            file=sys.stderr,
+        )
     return 0
 
 

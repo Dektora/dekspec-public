@@ -21,7 +21,7 @@
 #      version arg short-circuits the resolve).
 #   2. CLI:     pipx install "git+https://github.com/<MIRROR_REPO>.git@<REF>"
 #               (transitive deps resolve from PyPI).
-#   3. Content: dekspec library sync  (reconcile-only — vendoring-from-wheel +
+#   3. Content: dekspec sync  (reconcile-only — vendoring-from-wheel +
 #               migrate + breaking-guard + drift, against the just-installed
 #               engine; no network, no pip, no plugin shell).
 #   4. Deliver (per --platform):
@@ -126,12 +126,12 @@ echo "=== 1/3 CLI (pipx → pip-from-git, public mirror) ==="
 pipx install --force "git+${MIRROR_GIT_URL}@${REF}"
 echo
 
-echo "=== 2/3 Content (dekspec library sync — reconcile against the installed engine) ==="
+echo "=== 2/3 Content (dekspec sync — reconcile against the installed engine) ==="
 # Reconcile-only: vendors content from the just-installed wheel, runs migrate,
 # checks the breaking-CHANGELOG guard, and reports drift. No network, no pip,
 # no plugin shell — acquisition already happened in step 1. --yes auto-confirms
 # the BREAKING-release prompt for non-interactive installs.
-dekspec library sync --yes
+dekspec sync --yes
 echo
 
 if [[ "$PLATFORM" == "claude" ]]; then

@@ -80,9 +80,23 @@ _DRIFT_PREFIXES_CONSUMER = (
 _VENDOR_MANIFEST_FILENAME = ".dekspec-vendor-manifest"
 
 
+def _version_newer(a: str, b: str) -> bool:
+    """True iff version string ``a`` is strictly newer than ``b`` (PEP 440).
+
+    Falls back to a lexical comparison if either string can't be parsed as a
+    version (defensive — the marker file is normally a clean ``X.Y.Z``).
+    """
+    from packaging.version import InvalidVersion, Version
+
+    try:
+        return Version(a.lstrip("v")) > Version(b.lstrip("v"))
+    except InvalidVersion:
+        return a > b
+
+
 @dataclass
 class DriftFinding:
-    kind: str  # 'modified' | 'missing' | 'unknown' | 'version' | 'library-missing-content' | 'reference-unreliable' | 'engine-stale-vs-vendored'
+    kind: str  # 'modified' | 'missing' | 'unknown' | 'version' | 'library-missing-content' | 'reference-unreliable' | 'engine-stale-vs-vendored' | 'vendored-stale-vs-engine'
     library_path: str | None  # absolute path to library source-of-truth (None for 'unknown')
     consumer_path: str  # absolute path inside the consumer repo
     detail: str  # human-readable detail (sha mismatch / version mismatch / etc)
@@ -432,19 +446,41 @@ def compute_drift(
     if marker.exists():
         vendored_version = marker.read_text(encoding="utf-8").strip()
         if vendored_version and vendored_version != __version__:
+            # Either direction produces false file-level drift, so short-circuit
+            # with one explanatory finding — but the direction determines WHICH
+            # side is stale and therefore the remedy. Get it right (this was
+            # previously always reported as "engine older", inverting the common
+            # post-engine-upgrade case).
+            if _version_newer(__version__, vendored_version):
+                # Engine AHEAD of vendored content — the normal state right
+                # after upgrading the engine; the vendored content is stale.
+                return [DriftFinding(
+                    kind="vendored-stale-vs-engine",
+                    library_path=str(lib),
+                    consumer_path=str(repo_root),
+                    detail=(
+                        f"Vendored content is at {vendored_version} but the "
+                        f"installed dekspec engine is {__version__} (newer). "
+                        f"File-level drift was NOT computed (diffing older "
+                        f"vendored content against a newer engine reports false "
+                        f"drift). Reconcile the vendored content to the engine "
+                        f"with `dekspec sync`."
+                    ),
+                )]
+            # Engine BEHIND vendored content — the engine itself is stale.
             return [DriftFinding(
                 kind="engine-stale-vs-vendored",
                 library_path=str(lib),
                 consumer_path=str(repo_root),
                 detail=(
-                    f"Consumer vendored content is at {vendored_version} but "
-                    f"the installed dekspec engine is {__version__}. File-level "
-                    f"drift was NOT computed: comparing newer vendored content "
-                    f"against an older installed library reports false drift. "
-                    f"Upgrade the engine (pipx upgrade dekspec, pip install "
-                    f"--upgrade dekspec, or the equivalent for your install "
-                    f"method) so it matches the vendored version, or downgrade "
-                    f"vendored content via `dekspec repo upgrade v{__version__}`."
+                    f"Vendored content is at {vendored_version} but the "
+                    f"installed dekspec engine is {__version__} (older). "
+                    f"File-level drift was NOT computed (comparing newer "
+                    f"vendored content against an older installed library "
+                    f"reports false drift). Upgrade the engine (pipx upgrade "
+                    f"dekspec, pip install --upgrade dekspec, or the equivalent "
+                    f"for your install method) so it matches the vendored "
+                    f"version."
                 ),
             )]
 

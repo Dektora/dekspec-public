@@ -2,6 +2,24 @@
 
 All notable changes to DekSpec are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/); versioning follows [Semantic Versioning](https://semver.org/).
 
+## [v0.121.2] — 2026-07-13
+
+> Windows consistency follow-up to v0.121.1: the CLI no longer crashes on cp1252 consoles, the version-skew advisory points the right direction, `dekspec install --platform` output is honest when the plugin source is absent, and every user-facing surface now recommends the canonical `dekspec init` (never the deprecated `dekspec repo init` alias).
+
+### Fixed — Windows console + version advisory
+
+- **`UnicodeEncodeError` on cp1252 consoles.** Native Windows terminals default to a legacy code page (cp1252), so any command printing a non-latin-1 glyph crashed. `main()` now reconfigures stdout/stderr to UTF-8 with `errors="replace"` at startup — no `PYTHONUTF8=1` needed. Falls back gracefully on streams that can't be reconfigured.
+- **Version-skew advisory pointed the wrong way.** `dekspec doctor` / `dekspec audit verify-vendored` reported "engine stale" regardless of which side was older. The advisory is now direction-aware: it compares `__version__` against `.dekspec-version` (via `packaging.version`) and recommends `dekspec sync` when the vendored content is stale, or an engine upgrade when the engine is behind.
+
+### Fixed — install output honesty
+
+- **`dekspec install --platform <non-claude>` over-reported.** A pipx-installed engine doesn't carry the plugin skills/commands/hooks source, so only the host marker was written — yet the CLI reported a full install. It now warns explicitly when the plugin source is absent and points at `dekspec sync` for vendored/version updates.
+
+### Changed — `dekspec init` is canonical everywhere
+
+- **Every user-facing surface recommends `dekspec init`.** CLI diagnostics, doctor remedies, skills, commands, templates, and docs no longer recommend the deprecated `dekspec repo init`. The alias remains dispatchable for one release with a `[DEPRECATED]` notice pointing at the canonical form. A new guard test (`test_init_canonical_guard.py`) fails CI on any new user-facing `dekspec repo init` reference outside the alias-mapping doc.
+- **Native-Windows install/upgrade sequence documented** in `RELEASING.md`: `py -m pipx` PATH fallback, `--platform` belongs on `dekspec install` (not `pipx install`), and the pipx → `dekspec sync` → `dekspec install --platform` upgrade order.
+
 ## [v0.121.1] — 2026-07-13
 
 ### Fixed — CLI boots on Windows
