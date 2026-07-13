@@ -2,6 +2,23 @@
 
 All notable changes to DekSpec are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/); versioning follows [Semantic Versioning](https://semver.org/).
 
+## [v0.121.3] — 2026-07-13
+
+> Fixes two defects found on a clean native-Windows pipx install of v0.121.2, plus restores the standalone `verify-vendored` verb.
+
+### Fixed — `dekspec doctor` on a clean install
+
+- **Missing `packaging` runtime dependency.** The v0.121.2 direction-aware version-skew advisory (`vendoring._version_newer`) imports `packaging`, but it was not declared in `[project.dependencies]`. Dev/CI environments carry it transitively via pytest/pip, which masked the gap — a *genuinely clean* pip/pipx install raised `ModuleNotFoundError: No module named 'packaging'` inside `verify-vendored`. Now declared (`packaging>=20.0`).
+- **Doctor reported CLEAN after an internal error.** A section that raised an unexpected exception (e.g. the missing dep above) was labeled `skipped` — a status outside the severity ladder — so the overall stayed `clean`: doctor printed `Overall: ✓ CLEAN` + `All clean` and exit 0 despite the fault. An unexpected exception / missing runtime dependency now yields section status **`error`**, which escalates the overall status to `error` and **exits 2**. `skipped` is reserved for deliberately inapplicable checks and never escalates. JSON preserves the exception category (`error_type`) + affected section; text prints an `Internal error … Health could not be determined` banner and never `All clean`. Exit-code contract documented on `cmd_doctor` (clean/advisory→0, warning→1, critical **or error**→2).
+
+### Changed — host-appropriate doctor guidance
+
+- **Doctor's footer is host-conditional.** It previously always recommended the Claude plugin, misleading in a non-Claude (e.g. Codex) consumer repo. Doctor now detects the installed host from its marker directory (`.claude`, `.codex`, `.cursor`, `.antigravity`, `.github/skills`, `.pi`) and tailors the guidance — `dekspec install --platform <host>` for non-Claude hosts — falling back to an explicitly conditional message when no host marker is present.
+
+### Changed — restore standalone `verify-vendored`
+
+- **`dekspec verify-vendored` is dispatchable again.** ADR-042 folded it into `dekspec doctor` (Section 1) but orphaned the subparser, so the verb errored with `invalid choice`. Re-registered as a hidden internal flat verb (ADR-042 plumbing, like `doctor`/`validate`/`relink`) so a consumer can run the focused vendored-drift check without the full doctor composite; it carries the same direction-aware skew advisory.
+
 ## [v0.121.2] — 2026-07-13
 
 > Windows consistency follow-up to v0.121.1: the CLI no longer crashes on cp1252 consoles, the version-skew advisory points the right direction, `dekspec install --platform` output is honest when the plugin source is absent, and every user-facing surface now recommends the canonical `dekspec init` (never the deprecated `dekspec repo init` alias).

@@ -271,6 +271,10 @@ def build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.Argument
     _add_config_subparser(SubParserWrapper(sub, suppress=True))
     _add_archeology_subparser(SubParserWrapper(sub, suppress=True))
     _add_lint_ib_subparser(SubParserWrapper(sub, suppress=True))
+    # verify-vendored: the focused vendored-drift check. It is also run as
+    # doctor's Section 1, but stays independently dispatchable (ds-zrdh) so a
+    # consumer can check drift without the full doctor composite.
+    _add_verify_vendored_subparser(SubParserWrapper(sub, suppress=True))
     # ADR-042 — the PUBLIC flat verbs, SHOWN in top-level help. Together with
     # the already-top-level audit / migrate / install, these are the nine
     # public verbs of the flattened surface (init, ingest, sync,
@@ -2466,8 +2470,93 @@ def cmd_audit(args: argparse.Namespace) -> int:
     return cmd_doctor(doctor_args)
 
 
+_HOST_MARKERS: dict[str, str] = {
+    # host -> repo-relative marker path written by `dekspec install --platform`
+    "claude": ".claude",
+    "codex": ".codex",
+    "antigravity": ".antigravity",
+    "cursor": ".cursor",
+    "copilot": ".github/skills",
+    "pi": ".pi",
+}
+
+
+def _detect_installed_hosts(repo_root: Path) -> list[str]:
+    """Which harness hosts have a DekSpec skill tree installed in this repo.
+
+    Detection is by the per-host marker directory that
+    `dekspec install --platform <host>` writes. Returns the sorted list of
+    detected hosts (may be empty, or several in a multi-host repo).
+    """
+    return sorted(
+        host for host, marker in _HOST_MARKERS.items()
+        if (repo_root / marker).exists()
+    )
+
+
+def _plugin_guidance(repo_root: Path) -> str:
+    """Host-appropriate skill/command install guidance for doctor's footer.
+
+    Avoids implying the Claude plugin is required in a non-Claude (e.g. Codex)
+    consumer repo. Tailors to the detected host(s); falls back to an explicitly
+    conditional message when no host marker is present.
+    """
+    hosts = _detect_installed_hosts(repo_root)
+    if hosts == ["claude"]:
+        return (
+            "Claude plugin + skills: install with "
+            "`claude plugin install dekspec@dekspec` "
+            "(update: `claude plugin update dekspec@dekspec`) inside Claude Code."
+        )
+    if hosts and "claude" not in hosts:
+        joined = ", ".join(hosts)
+        return (
+            f"Skills + commands (host: {joined}): refresh with "
+            f"`dekspec install --platform {hosts[0]}` after an engine upgrade."
+        )
+    if hosts:  # claude + at least one other
+        joined = ", ".join(hosts)
+        return (
+            f"Skills + commands installed for: {joined}. Claude Code uses the "
+            "plugin (`claude plugin update dekspec@dekspec`); other hosts refresh "
+            "with `dekspec install --platform <host>`."
+        )
+    # No host marker detected — stay explicitly conditional, don't imply Claude.
+    return (
+        "Skills + commands ship per host. If you use Claude Code, install the "
+        "plugin (`claude plugin install dekspec@dekspec`); for another host "
+        "(codex, cursor, antigravity, copilot, pi) run "
+        "`dekspec install --platform <host>`."
+    )
+
+
+def _errored_section(name: str, exc: BaseException) -> dict[str, Any]:
+    """Build a doctor section for a check that raised an unexpected exception.
+
+    Distinct from a `skipped` section (a deliberately inapplicable check):
+    an `error` section could not run — a missing runtime dependency or an
+    internal fault — so it escalates the overall status to `error` and forces
+    a nonzero exit. The exception category is preserved in `error_type` so
+    structured (JSON) consumers can branch on it without parsing the summary.
+    """
+    return {
+        "name": name,
+        "status": "error",
+        "summary": f"errored: {type(exc).__name__}: {str(exc)[:120]}",
+        "error_type": type(exc).__name__,
+        "findings_count": 0,
+    }
+
+
 def cmd_doctor(args: argparse.Namespace) -> int:
-    """Composite health check. Exit 0 = clean OR advisory, 1 = warnings, 2 = critical.
+    """Composite health check. Exit 0 = clean OR advisory, 1 = warnings, 2 = critical or error.
+
+    A section that raises an unexpected exception (e.g. a missing runtime
+    dependency) is reported with status `error` — NOT `skipped` — which
+    escalates the overall status to `error` and exits 2. A diagnostic that
+    cannot complete must never be presented as CLEAN. `skipped` is reserved
+    for deliberately inapplicable checks (no vendored content, no dekspec
+    tree) and never affects the exit code.
 
     Per ADR-005 (severity-graded findings) and ds-cx6: P3 findings are
     advisory-by-design (L9-INT-CMD-RESOLVE and L10-GLOSSARY-COVERAGE both
@@ -2561,12 +2650,8 @@ def cmd_doctor(args: argparse.Namespace) -> int:
                 "findings_count": len(drift),
             })
         except Exception as e:
-            sections.append({
-                "name": "verify-vendored",
-                "status": "skipped",
-                "summary": f"errored: {type(e).__name__}: {str(e)[:120]}",
-                "findings_count": 0,
-            })
+            sections.append(_errored_section("verify-vendored", e))
+            worst_severity = _worse(worst_severity, "error")
     else:
         sections.append({
             "name": "verify-vendored",
@@ -2623,12 +2708,8 @@ def cmd_doctor(args: argparse.Namespace) -> int:
                 "findings_count": len(findings),
             })
         except Exception as e:
-            sections.append({
-                "name": "audit linkage",
-                "status": "skipped",
-                "summary": f"errored: {type(e).__name__}: {str(e)[:120]}",
-                "findings_count": 0,
-            })
+            sections.append(_errored_section("audit linkage", e))
+            worst_severity = _worse(worst_severity, "error")
     else:
         sections.append({
             "name": "audit linkage",
@@ -2727,12 +2808,8 @@ def cmd_doctor(args: argparse.Namespace) -> int:
                 "findings_count": len(failures),
             })
         except Exception as e:
-            sections.append({
-                "name": "graph parse",
-                "status": "skipped",
-                "summary": f"errored: {type(e).__name__}: {str(e)[:120]}",
-                "findings_count": 0,
-            })
+            sections.append(_errored_section("graph parse", e))
+            worst_severity = _worse(worst_severity, "error")
     else:
         sections.append({
             "name": "graph parse",
@@ -2741,7 +2818,13 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             "findings_count": 0,
         })
 
-    exit_code = {"clean": 0, "advisory": 0, "warning": 1, "critical": 2}[worst_severity]
+    # Exit-code contract: clean/advisory → 0, warning → 1, critical → 2.
+    # `error` (a section raised an unexpected exception / missing runtime
+    # dependency) → 2: a diagnostic that cannot complete must not present a
+    # zero exit, and callers already treat 2 as "action required".
+    exit_code = {
+        "clean": 0, "advisory": 0, "warning": 1, "critical": 2, "error": 2,
+    }[worst_severity]
 
     if args.json:
         print(json.dumps({
@@ -2762,7 +2845,16 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         glyph = _status_glyph(s["status"])
         print(f"  {s['name']:<20} {glyph} {s['status']:<8} {s['summary']}")
     print()
-    if worst_severity == "clean":
+    if worst_severity == "error":
+        print(
+            "Internal error: one or more checks could not run "
+            "(unexpected exception or missing runtime dependency). "
+            "Health could not be determined. Affected:"
+        )
+        for s in sections:
+            if s["status"] == "error":
+                print(f"  - {s['name']}: {s['summary']}")
+    elif worst_severity == "clean":
         print("All clean. No further action needed.")
     elif worst_severity == "advisory":
         print("Advisory findings present (P3 only; non-blocking). Run:")
@@ -2780,27 +2872,31 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             if s["status"] == "critical":
                 print(f"  - `dekspec {_remedy_command(s['name'])}` for detail")
     print()
-    print(
-        "Claude plugin + skills: install with `claude plugin install dekspec@dekspec` "
-        "(update form: `claude plugin update dekspec@dekspec`) inside Claude Code."
-    )
+    print(_plugin_guidance(repo_root))
     return exit_code
 
 
 def _worse(current: str, candidate: str) -> str:
-    rank = {"clean": 0, "advisory": 1, "warning": 2, "critical": 3}
+    # `error` sits ABOVE critical: a section that could not run (unexpected
+    # exception / missing runtime dependency) means doctor cannot vouch for
+    # that part of the repo's health, so it dominates the headline. Both
+    # `critical` and `error` map to a nonzero exit (see the exit_code map in
+    # cmd_doctor); the distinct label lets JSON consumers tell a spec-level
+    # critical finding apart from an internal diagnostic failure.
+    rank = {"clean": 0, "advisory": 1, "warning": 2, "critical": 3, "error": 4}
     return current if rank[current] >= rank[candidate] else candidate
 
 
 def _status_glyph(status: str) -> str:
     return {
-        "clean": "✓", "advisory": "~", "warning": "!", "critical": "✗", "skipped": "·",
+        "clean": "✓", "advisory": "~", "warning": "!", "critical": "✗",
+        "error": "‼", "skipped": "·",
     }.get(status, "?")
 
 
 def _remedy_command(section_name: str) -> str:
     return {
-        "verify-vendored": "audit doctor --json",
+        "verify-vendored": "sync",
         "audit linkage": "audit linkage",
         "graph parse": "audit linkage  # parse failures surface as LX-PARSE findings",
         "plugin version": "# re-install: bash <(curl -fsSL https://raw.githubusercontent.com/Dektora/dekspec/main/scripts/install.sh)",

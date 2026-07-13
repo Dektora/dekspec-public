@@ -42,6 +42,10 @@ dependencies = [
     "pyyaml>=6.0",
     "jsonschema>=4.0",
     "mcp>=0.1.0",
+    # PEP 440 version comparison in vendoring._version_newer (drift/skew
+    # advisory). Dev envs get it transitively via pytest/pip; a clean
+    # pip/pipx install does NOT, so declare it explicitly.
+    "packaging>=20.0",
 ]
 
 [project.urls]
