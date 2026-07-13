@@ -49,7 +49,7 @@ Use this design heuristic table to decide which side of the mantra a given activ
 | Implement a bead | Derived | AI default; human reviews diff | The bead is the spec. The diff is verifiable against acceptance + tests. |
 | Generate tests from acceptance criteria | Derived | AI default | The criteria are the spec. The tests are deterministic against them. |
 | Aggregate AGENTS.md from artifacts | Derived | Fully autonomous | The artifacts are the spec. The aggregator is deterministic. |
-| Re-derive backlinks (`dekspec audit relink`) | Derived | Fully autonomous | The forward links are the spec. The backlinks are pure function. |
+| Re-derive backlinks (`dekspec relink`) | Derived | Fully autonomous | The forward links are the spec. The backlinks are pure function. |
 | Migrate persisted IR forward (`dekspec migrate`) | Derived | Fully autonomous | The migration is itself a typed transformation. |
 | Run linkage + drift audits | Derived | Fully autonomous | The audit rules are the spec. The findings are pure function. |
 
@@ -102,13 +102,13 @@ Each step is a registered Claude Code skill in `.claude/skills/`. Invoke by name
 
 1. **Frame & commit (the driver)** — `/write-mission` if the work plausibly spans >1 Intent; `/write-intent` the committed direction. Every Intent ≥ ACCEPTED ships an `outcome_verification`: one user-observable proof under strong-TDD timing (test red first → impl greens it → no other test files touched; ADR-029).
 2. **Architecture inputs (on demand)** — `/write-ae` the architecture slice and `/write-adr` any undocumented decision *only if new*; the Intent links ≥1 Source AE (L5), so these are usually referenced/extended, not authored fresh each time.
-3. **Decompose (derivative)** — `/write-intent --decompose` fans the Intent into Working Specs + Implementation Briefs; `/write-ws` carries behavior contracts (role passes + critic), `/write-ibs` produces the IBs, `/write-ic` pins any cross-component boundary surfaced. Code-bearing IBs must declare `## Reuse Inventory` ("use X, don't reimplement"); `dekspec check lint-ib` enforces it.
+3. **Decompose (derivative)** — `/write-intent --decompose` fans the Intent into Working Specs + Implementation Briefs; `/write-ws` carries behavior contracts (role passes + critic), `/write-ibs` produces the IBs, `/write-ic` pins any cross-component boundary surfaced. Code-bearing IBs must declare `## Reuse Inventory` ("use X, don't reimplement"); `dekspec lint-ib` enforces it.
 4. **Pre-build (derivative, per IB)** — `/write-code-beads` (one IB → beads + fidelity audit); `/write-evals` (model-output beads); `/write-tests` (TDD stubs from acceptance criteria).
 5. **Pre-implementation review** — at `REVIEW_IB` (post-ACCEPTED, pre-IMPLEMENTING): `/dekspec:review-ib <IB-ID>` — an Opus-tier orchestrator skill — fans 13 fresh-context adversarial lenses over the spec packet + bead decomposition (math-olympiad shell), a blind aggregator scores them, any single lens ≥80 confidence vetoes. Verdict **GO / NO-GO / INSUFFICIENT_EVIDENCE**; includes the outcome-tdd lens (git-blame: did the outcome test land red first?). Auto-fires on the `REVIEW_IB` transition (INT-108 handler) or invoked manually. No code yet → no fix-loop.
 6. **Implement** — `/orchestrate-coding-session` packages the Intent/IB and fans the ready bead set into parallel isolated worktrees; lands an IB-aggregate PR with green CI.
 7. **Post-implementation review** — at `REVIEW_PR` (beads CLOSED, CI green, PR open): `/dekspec:review-pr <PR-#>` reviews the diff against the IB it claims to implement via the same shell. Verdict **MERGE / NO-MERGE / INSUFFICIENT_EVIDENCE**. Oversized diff → split into one reviewable IB-aggregate per concern, don't review.
 8. **On NO-MERGE → `REVIEW_PR_FAIL` grep-loop** — seed `/code-review <effort> --comment <PR-#>` (line-anchored inline findings), fix only real/relevant ones (read diff first, no unrelated rewrites, a test per fix), commit, re-fire `/dekspec:review-pr` until GO. **RECOMMEND-only** — the human merges.
-9. **Merge → test → promote → next round** — `dekspec audit doctor` is the dogfood gate (Mission/Intent gates require P0/P1-clean).
+9. **Merge → test → promote → next round** — `dekspec doctor` is the dogfood gate (Mission/Intent gates require P0/P1-clean).
 
 Both reviews are **RECOMMEND-only at landing** (they emit the verdict + a `dekspec/reviews/` sidecar but don't auto-advance state) and run the shared non-sycophantic math-olympiad orchestration: context-isolated lens specialists ATTACK rather than grade, a blind aggregator scores, and a single confident veto (≥80) overrides any weighted average.
 
@@ -129,7 +129,7 @@ Delegation is structural, not stylistic: the coding executor and the review pipe
 
 -  — record a system-level divergence (instruction-violation, spec-fidelity, capability-gap) as a numbered `DIV-NNN-*.md` note.
 - `/dekspec:archeology` — brownfield spec-gap recovery: scan an orphaned code surface, propose a retroactive Intent skeleton, and ratify it through `/write-intent --accept`. Replaces the retired `/do-code-archaeology` skill (2026-05-24).
-- `/dekspec:brownfield-ingest` — classify inherited markdown prose (Confluence exports, inherited PRDs, design wikis) into DekSpec artifact slots via `dekspec dev ingest`.
+- `/dekspec:brownfield-ingest` — classify inherited markdown prose (Confluence exports, inherited PRDs, design wikis) into DekSpec artifact slots via `dekspec ingest`.
 - `/write-ggc` — log domain corrections, add glossary terms, audit terminology health.
 
 *The listener side of the async inbox/listener dispatch pattern (originally `/dekspec:dispatch-inbox-listener`, later `/dekspec:factory-listen`) was excised from this library in INT-099 — 2026-05-27 — when the factory surface moved to `Dektora/dekfactory` as an independent plugin. AE-009 still defines the inbox/outbox contract; the listener implementation now lives in the dekfactory plugin.*
@@ -295,7 +295,7 @@ DRAFT → OVERSIZED ──► SUPERSEDED  (terminal off-ramp; size cap exceeded)
 | `LOCKED` | `--lock` (run from `main`) | Intent is the executed commitment; appended to Mission Intent queue if `Mission:` is set |
 | `SUPERSEDED` | `--supersede` (Phase 2-3 flag) | Replaced by a successor Intent recorded in `Superseded-By` |
 
-*`TODO` and `TESTFAIL` were retired from the Intent enum 2026-05-25 (E3 audit — neither was observed across 99-Intent history; the `TESTFAIL ↔ TESTPASS` round-trip never fired). Files authored against the legacy enum are rejected at `dekspec check validate`; transition them to `DRAFT` or `IMPLEMENTING` respectively. The TESTFAIL records section in the Intent template is retained as a captured-failure log on the IMPLEMENTING → TESTPASS path; it no longer corresponds to a Status flip. **Note (ADR-027, LOCKED 2026-05-29):** the retirement above stands at the **Intent** level. The `TESTFAIL` status was re-introduced at the **IB** level by INT-102 (LOCKED) as part of the MSN-017 two-tier review pipeline; ADR-027 formalizes that the empirical basis for retirement (zero round-trip occurrences) no longer applies because the new action-handler framework (INT-108) explicitly engineers the IB-side `IMPLEMENTING ↔ TESTFAIL ↔ IMPLEMENTING → TESTPASS` round-trip.*
+*`TODO` and `TESTFAIL` were retired from the Intent enum 2026-05-25 (E3 audit — neither was observed across 99-Intent history; the `TESTFAIL ↔ TESTPASS` round-trip never fired). Files authored against the legacy enum are rejected at `dekspec validate`; transition them to `DRAFT` or `IMPLEMENTING` respectively. The TESTFAIL records section in the Intent template is retained as a captured-failure log on the IMPLEMENTING → TESTPASS path; it no longer corresponds to a Status flip. **Note (ADR-027, LOCKED 2026-05-29):** the retirement above stands at the **Intent** level. The `TESTFAIL` status was re-introduced at the **IB** level by INT-102 (LOCKED) as part of the MSN-017 two-tier review pipeline; ADR-027 formalizes that the empirical basis for retirement (zero round-trip occurrences) no longer applies because the new action-handler framework (INT-108) explicitly engineers the IB-side `IMPLEMENTING ↔ TESTFAIL ↔ IMPLEMENTING → TESTPASS` round-trip.*
 
 **Type-default Autonomy (INT-094).** The `## Autonomy` field of a new Intent is populated by `/write-intent` Creation Mode from a type-dispatched default rather than a flat `manual`: `medium` for `bug` / `refactor` / `documentation` (categories where CI green is sufficient proof of correctness); `manual` for `feature` / `nfr` / `adr-driven` / `environment` (categories that warrant explicit operator sign-off). Engineers override per Intent via the inline `autonomy:` cue. The per-type default exists to honor downstream auto-merge surfaces (e.g. DekFactory INT-063 — auto-merges MRs at `auto-medium`+ once CI is green) without forfeiting that surface for well-bounded code-mod Intents. See `templates/intent-template.md` §Autonomy and `plugins/dekspec/skills/write-intent/modes/create.md` Step 4 for the authoritative wiring.
 
@@ -1295,8 +1295,8 @@ Index files (`intent-index.md`, `mission-index.md`, `adr-index.md`, `architectur
 
 Tools:
 
-- `dekspec library regen-indexes [--check] [--at PATH]` — rebuilds all 6 derived indexes deterministically from the canonical artifact tree.
-- `dekspec check aggregate agents-md [--at PATH] [--output PATH]` — rebuilds `AGENTS.md` from LOCKED+ACCEPTED artifacts.
+- `dekspec regen-indexes [--check] [--at PATH]` — rebuilds all 6 derived indexes deterministically from the canonical artifact tree.
+- `dekspec aggregate agents-md [--at PATH] [--output PATH]` — rebuilds `AGENTS.md` from LOCKED+ACCEPTED artifacts.
 
 Engineers run these pre-commit or post-merge; CI hook integration is the open piece of MSN-015.
 
@@ -1312,7 +1312,7 @@ Engineers run these pre-commit or post-merge; CI hook integration is the open pi
 
 *The MSN-014 surface — what the cross-MR exploratory layer (above) actually feels like end-to-end.* This section is the operator's walkthrough for the four-step lifecycle: scaffold → CoW → edit → hand-promote.
 
-> **Provisional ID scheme (ADR-043).** Every kind incubates under one form: `P-<KIND>-<NNN>-<slug>.md` with an in-file id `P-<KIND>-<NNN>`. The number is a *non-binding hint* (the next-free canonical number at authoring time); hand-promotion re-derives the real next-free number, which may differ. The `P-` prefix self-excludes a provisional file from the canonical `<KIND>-NNN` scan, so it is never miscounted (retiring the old `≥900` placeholder). A `P-` artifact parses, `dekspec check validate`s, and promotes like any other, but **stays out of the canonical spec graph** — it is never loaded by the linkage walker, never referenced by a canonical artifact, and never listed in an index, so a provisional folder is **freely abortable** (delete it with zero cascade). The `T-PROVISIONAL-NOT-LOCKED` rule (P2) guards the one hard invariant: a provisional artifact must be *promoted*, never frozen at a terminal `LOCKED`/`COMPLETE` status. The legacy numberless `<KIND>-provisional-<slug>` form is still recognized by the promotion walker during the transition.
+> **Provisional ID scheme (ADR-043).** Every kind incubates under one form: `P-<KIND>-<NNN>-<slug>.md` with an in-file id `P-<KIND>-<NNN>`. The number is a *non-binding hint* (the next-free canonical number at authoring time); hand-promotion re-derives the real next-free number, which may differ. The `P-` prefix self-excludes a provisional file from the canonical `<KIND>-NNN` scan, so it is never miscounted (retiring the old `≥900` placeholder). A `P-` artifact parses, `dekspec validate`s, and promotes like any other, but **stays out of the canonical spec graph** — it is never loaded by the linkage walker, never referenced by a canonical artifact, and never listed in an index, so a provisional folder is **freely abortable** (delete it with zero cascade). The `T-PROVISIONAL-NOT-LOCKED` rule (P2) guards the one hard invariant: a provisional artifact must be *promoted*, never frozen at a terminal `LOCKED`/`COMPLETE` status. The legacy numberless `<KIND>-provisional-<slug>` form is still recognized by the promotion walker during the transition.
 
 ### Step 1 — Scaffold
 
@@ -1357,7 +1357,7 @@ Provisional artifacts live under `dekspec/provisional/<incubation-slug>/`. When 
    - The artifact's `**<Kind> ID:**` frontmatter field.
 4. Update the parent Mission's §Intent queue if applicable.
 5. Delete the now-empty incubation folder (or leave residue files like `NOTES.md` and prune the folder later).
-6. Validate via `dekspec audit doctor --at .` and reconcile any new findings; run `dekspec library regen-indexes` (or rely on the post-merge hook) to refresh derived index files. The originating Intent's lifecycle then continues from `ACCEPTED` → `IMPLEMENTING` → … → `LOCKED` per the standard flow.
+6. Validate via `dekspec doctor --at .` and reconcile any new findings; run `dekspec regen-indexes` (or rely on the post-merge hook) to refresh derived index files. The originating Intent's lifecycle then continues from `ACCEPTED` → `IMPLEMENTING` → … → `LOCKED` per the standard flow.
 
 **The accept-gate.** Hand-promote when (and only when) every artifact in the incubation has reached Status `ACCEPTED`. The gate is the explicit acknowledgement that the engineer is converting exploration into commitment: provisional artifacts are abandonable; canonical artifacts carry forward into LOCKED state and become consumer-visible.
 
@@ -1425,7 +1425,7 @@ Provisional artifacts live under `dekspec/provisional/<incubation-slug>/`. When 
 
 The ritual is five steps. No new skill — uses existing tools (`br`, `dekspec audit`, `/dekspec:write-constitution`):
 
-1. **Engineer sees revert** — CI flips red after a merge, `git revert` lands, or `dekspec audit doctor` flags a regression.
+1. **Engineer sees revert** — CI flips red after a merge, `git revert` lands, or `dekspec doctor` flags a regression.
 2. **Engineer tags the responsible bead** with a `failure-class:<class>` label + notes:
    ```bash
    br update <bead-id> --labels failure-class:flaky-test --notes "MockedTimeService raced under parallel pytest -n auto"
@@ -1458,12 +1458,12 @@ Lowercase kebab-case. Short (≤30 chars). Self-describing without context. Exam
 
 ## Audit-loop discipline (INT-127 / ds-bqhf)
 
-> Per **INT-127** (LOCKED 2026-05-30) the existing `dekspec audit doctor` verb gains a `--loop` flag that runs the rule family until it converges (or escapes). No new verb is introduced; no `dekspec audit` refactor lands. Strict additive flag set.
+> Per **INT-127** (LOCKED 2026-05-30) the existing `dekspec doctor` verb gains a `--loop` flag that runs the rule family until it converges (or escapes). No new verb is introduced; no `dekspec audit` refactor lands. Strict additive flag set.
 
 ### Invocation
 
 ```bash
-dekspec audit doctor --loop [--pass-cap N] [--scope artifact|corpus] [--axis T,L]
+dekspec doctor --loop [--pass-cap N] [--scope artifact|corpus] [--axis T,L]
 ```
 
 - `--loop` — run the mechanical-fixed-point loop (default off).
@@ -1557,7 +1557,7 @@ As of **ADR-030 (INT-133)**, `/dekspec:write-intent <desc>` and `/dekspec:write-
 
 Canonical artifacts enter the spec graph immediately:
 
-- They are walked by `dekspec audit linkage`, `dekspec audit doctor`, the constraint compiler, the AGENTS.md soft-layer emitter, and the IR JSON used by the dispatch surface.
+- They are walked by `dekspec audit linkage`, `dekspec doctor`, the constraint compiler, the AGENTS.md soft-layer emitter, and the IR JSON used by the dispatch surface.
 - They are linked from sibling artifacts via the typed `Linked Artifacts` derivation (ADR-015).
 - They appear in `dekspec/mission-index.md` and the various index files for downstream consumers to discover.
 - They participate in the status-maturity coherence model (ADR-020 / MSN-012).
@@ -1628,7 +1628,7 @@ The `T-MISSION-CANONICAL-WITHOUT-CHILD` audit rule (INT-128, registered in `v1.y
 - `Created` is ≥7 days ago.
 - No Intent file declares this Mission via its `Mission:` field.
 
-Severity P3 (advisory; non-gating per ADR-018). Surfaces in `dekspec audit doctor` output with the recommendation to either demote to `dekspec/provisional/` or kill.
+Severity P3 (advisory; non-gating per ADR-018). Surfaces in `dekspec doctor` output with the recommendation to either demote to `dekspec/provisional/` or kill.
 
 The rule is the **catch-of-last-resort** when the commitment prompt is bypassed or the original First-Intent commitment slips. It does NOT prevent the canonical authoring — it surfaces the drift cheaply 7+ days later.
 

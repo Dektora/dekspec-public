@@ -276,10 +276,12 @@ def build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.Argument
     # consumer can check drift without the full doctor composite.
     _add_verify_vendored_subparser(SubParserWrapper(sub, suppress=True))
     # ADR-042 — the PUBLIC flat verbs, SHOWN in top-level help. Together with
-    # the already-top-level audit / migrate / install, these are the nine
-    # public verbs of the flattened surface (init, ingest, sync,
-    # regen-indexes, lock-ready, find-spec-gaps).
+    # the already-top-level audit / migrate / install, these form the public
+    # surface of the flattened CLI (init, dependencies, ingest, sync,
+    # regen-indexes, lock-ready, find-spec-gaps). `dependencies` was added by
+    # ADR-044 (user-scoped external binary acquisition).
     _add_init_subparser(sub)
+    _add_dependencies_subparser(sub)
     _add_ingest_subparser(sub)
     _add_sync_subparser(sub)
     _add_regen_indexes_subparser(sub)
@@ -2792,6 +2794,53 @@ def cmd_doctor(args: argparse.Namespace) -> int:
                 "findings_count": 0,
             })
 
+    # Section 2d: external binary dependencies (ADR-044 / INT-178).
+    # Reports `br` (beads-rust) install state. Advisory-only: a missing or
+    # unrelated `br` surfaces for visibility with a precise repair command,
+    # but never escalates past ADVISORY (the `init` precheck is the hard
+    # gate). A working beads-rust `br` — managed or not — is clean.
+    try:
+        from . import dependency_acquisition as _dep
+
+        st = _dep.br_status()
+        if st.installed and st.is_beads_rust:
+            recog = "recognized" if st.hash_recognized else "unmanaged"
+            ver = st.version or "unknown"
+            sections.append({
+                "name": "dependencies",
+                "status": "clean",
+                "summary": (
+                    f"br {ver} at {st.path} ({recog}; "
+                    f"compatible: {', '.join(st.compatible_versions)})"
+                ),
+                "findings_count": 0,
+            })
+        elif st.installed and not st.is_beads_rust:
+            sections.append({
+                "name": "dependencies",
+                "status": "advisory",
+                "summary": (
+                    f"br at {st.path} is not beads-rust (unrelated `br`, e.g. "
+                    f"brotli) — repair: {_dep.repair_command()}"
+                ),
+                "findings_count": 1,
+            })
+            worst_severity = _worse(worst_severity, "advisory")
+        else:
+            sections.append({
+                "name": "dependencies",
+                "status": "advisory",
+                "summary": (
+                    f"br (beads-rust) not installed — required for the coding "
+                    f"loop; repair: {_dep.repair_command()}"
+                ),
+                "findings_count": 1,
+            })
+            worst_severity = _worse(worst_severity, "advisory")
+    except Exception as e:  # pragma: no cover - dependency check is best-effort
+        sections.append(_errored_section("dependencies", e))
+        worst_severity = _worse(worst_severity, "error")
+
     # Section 3: graph parse failures (auto-skip if no dekspec content tree)
     if dekspec_dir.exists():
         try:
@@ -2899,7 +2948,8 @@ def _remedy_command(section_name: str) -> str:
         "verify-vendored": "sync",
         "audit linkage": "audit linkage",
         "graph parse": "audit linkage  # parse failures surface as LX-PARSE findings",
-        "plugin version": "# re-install: bash <(curl -fsSL https://raw.githubusercontent.com/Dektora/dekspec/main/scripts/install.sh)",
+        "plugin version": "# sync the plugin: `claude plugin update dekspec@dekspec` (cross-platform; no bash required)",
+        "dependencies": "dependencies install br",
     }.get(section_name, "doctor --json")
 
 
@@ -3129,6 +3179,127 @@ def cmd_resource(args: argparse.Namespace) -> int:
     return 0
 
 
+def _add_dependencies_subparser(sub: argparse._SubParsersAction) -> None:
+    """`dekspec dependencies <install|status|repair|uninstall> [br]` (ADR-044).
+
+    User-scoped acquisition of DekSpec's external binary dependencies. Only
+    `br` (beads-rust) is managed today; the name argument is accepted so the
+    surface generalizes without a breaking change.
+    """
+    p = sub.add_parser(
+        "dependencies",
+        help="Install/verify DekSpec's external binary dependencies (br).",
+        description=(
+            "Acquire required external binaries (currently `br`/beads-rust) "
+            "for this host: download the pinned official upstream release, "
+            "verify its SHA-256, and install it user-scoped (no admin, no "
+            "machine-wide PATH change). Idempotent; supports upgrade, repair, "
+            "and uninstall (ADR-044)."
+        ),
+    )
+    dsub = p.add_subparsers(dest="dependencies_command", metavar="<command>")
+    for name, helptext in (
+        ("install", "Download + verify + install a dependency (default: br)."),
+        ("status", "Report installed state, version, path, and hash recognition."),
+        ("repair", "Force a clean reinstall of the pinned version."),
+        ("uninstall", "Remove a DekSpec-managed dependency."),
+    ):
+        sp = dsub.add_parser(name, help=helptext)
+        if name in ("install", "repair", "uninstall", "status"):
+            sp.add_argument(
+                "name", nargs="?", default="br",
+                help="Dependency to act on (default: br).",
+            )
+        sp.set_defaults(func=cmd_dependencies)
+    p.set_defaults(func=cmd_dependencies)
+
+
+def cmd_dependencies(args: argparse.Namespace) -> int:
+    from . import dependency_acquisition as _dep
+
+    name = getattr(args, "name", "br") or "br"
+    if name != "br":
+        print(
+            f"Unknown dependency {name!r}. Only `br` is managed today.",
+            file=sys.stderr,
+        )
+        return 2
+
+    sub = getattr(args, "dependencies_command", None)
+    if sub is None:
+        print("Usage: dekspec dependencies <install|status|repair|uninstall> [br]")
+        return 2
+
+    if sub == "status":
+        st = _dep.br_status()
+        if not st.installed:
+            print("br: NOT installed")
+            print(f"  repair: {_dep.repair_command()}")
+            return 0
+        print(f"br: installed at {st.path}")
+        print(f"  version: {st.version or 'unknown'}")
+        print(f"  compatible range: {', '.join(st.compatible_versions)}")
+        print(f"  beads-rust identity: {'yes' if st.is_beads_rust else 'NO (unrelated br)'}")
+        print(f"  hash recognized: {'yes' if st.hash_recognized else 'no'}")
+        print(f"  managed by dekspec: {'yes' if st.managed_by_dekspec else 'no'}")
+        if not st.compatible:
+            print(f"  repair: {_dep.repair_command()}")
+        return 0
+
+    if sub == "uninstall":
+        removed = _dep.uninstall_br()
+        print("Removed DekSpec-managed br." if removed
+              else "No DekSpec-managed br to remove (unmanaged br is left untouched).")
+        return 0
+
+    # install / repair
+    try:
+        asset = _dep.resolve_asset(*_dep.detect_platform())
+    except _dep.UnsupportedPlatform as exc:
+        print(f"Cannot install br: {exc}", file=sys.stderr)
+        return 2
+
+    # Disclosure (supply-chain: clearly disclose what is being installed).
+    print("Installing dependency: br (beads-rust)")
+    print(f"  version:  {asset.version} (DekSpec-pinned)")
+    print(f"  source:   https://{_dep.BR_ALLOWLISTED_HOST}/{_dep.BR_UPSTREAM_REPO} (official upstream)")
+    print(f"  asset:    {asset.asset_name}")
+    print(f"  sha256:   {asset.sha256}")
+    print(f"  install:  {_dep.user_bin_dir()} (user-scoped, no admin)")
+    try:
+        res = (_dep.repair_br() if sub == "repair" else _dep.install_br())
+    except _dep.RefusingToClobber as exc:
+        print(f"Refusing to install: {exc}", file=sys.stderr)
+        return 2
+    except _dep.ChecksumMismatch as exc:
+        print(f"Checksum verification FAILED — nothing installed: {exc}", file=sys.stderr)
+        return 2
+    except _dep.DependencyError as exc:
+        print(f"Install failed: {exc}", file=sys.stderr)
+        return 2
+
+    print(f"br {res.action}: {res.path} (version {res.version}).")
+    bindir = _dep.user_bin_dir()
+    if _shutil_which_in(bindir, res.path) is False:
+        print(
+            f"Note: ensure `{bindir}` is on PATH (restart your shell if you "
+            "just added it) so `br` resolves. On Windows: "
+            "`setx PATH \"%PATH%;%USERPROFILE%\\.local\\bin\"` then reopen the shell."
+        )
+    return 0
+
+
+def _shutil_which_in(bindir, installed_path) -> bool:
+    """True if `br` on the current PATH resolves to the just-installed binary."""
+    found = shutil.which("br")
+    if found is None:
+        return False
+    try:
+        return Path(found).resolve() == Path(installed_path).resolve()
+    except OSError:
+        return False
+
+
 def _add_init_subparser(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser(
         "init",
@@ -3154,6 +3325,15 @@ def _add_init_subparser(sub: argparse._SubParsersAction) -> None:
         help=(
             "Overwrite existing index files / AGENTS.md placeholder, AND "
             "overwrite an existing `.dekspec/config.yaml`."
+        ),
+    )
+    p.add_argument(
+        "--install-deps",
+        action="store_true",
+        help=(
+            "If `br` (beads-rust) is missing, install it user-scoped "
+            "(no admin) before scaffolding, instead of stopping with the "
+            "install command (ADR-044)."
         ),
     )
     p.add_argument(
@@ -3489,18 +3669,29 @@ def _is_beads_rust_br(br_path: str) -> bool:
     return "beads" in combined.lower()
 
 
-def _init_dep_precheck() -> int:
+def _init_dep_precheck(
+    *,
+    auto_install: bool = False,
+    interactive: bool | None = None,
+    dest_dir=None,
+    input_fn=input,
+) -> int:
     """Verify host-environment dependencies before scaffolding.
 
-    Returns 0 when both required dependencies (`git` and `br`) are on
-    PATH AND `br` is verified to be beads-rust (not brotli); returns 2
-    with a checklist printed to stderr when either is missing or `br`
-    fails the identity check. There is no override flag and no
-    environment escape hatch: DekSpec's authoring + audit pipeline
-    depends on git, and its coding loop and bead-failure-class audit
-    rule depend on `br` end-to-end. Operating without either is
-    unsupported.
+    Returns 0 when both required dependencies (`git` and `br`) are
+    satisfied; returns 2 with a checklist printed to stderr otherwise.
+
+    `br` policy (ADR-044 / INT-178, Option A): when `br` is missing and
+    the caller permits it — `auto_install=True` (the `--install-deps`
+    flag) or an interactive TTY where the operator consents — this
+    performs the supported user-scoped acquisition
+    (`dekspec dependencies install br`) and continues. Otherwise it prints
+    the exact, host-agnostic install command (Option B fallback). `git`
+    remains an assumed host tool with no acquisition path. There is no
+    escape hatch that lets init scaffold *without* a satisfied `br`.
     """
+    from . import dependency_acquisition as _dep
+
     failures: list[str] = []
 
     if shutil.which("git") is None:
@@ -3511,24 +3702,63 @@ def _init_dep_precheck() -> int:
             "    Install git from https://git-scm.com/downloads, then re-run."
         )
 
+    if interactive is None:
+        interactive = sys.stdin.isatty()
+
     br_path = shutil.which("br")
-    if br_path is None:
-        failures.append(
-            "  ✗ br (beads-rust) not found on PATH.\n"
-            "    DekSpec's coding loop and the T-BEAD-FAILURE-CLASS-VALID "
-            "audit rule are bead-aware end-to-end and read `.beads/issues.jsonl`.\n"
-            "    Install br from https://github.com/Dicklesworthstone/beads_rust"
-            " (releases publish prebuilt linux + macOS binaries), then re-run."
-        )
-    elif not _is_beads_rust_br(br_path):
+    if br_path is not None and not _is_beads_rust_br(br_path):
         failures.append(
             f"  ✗ br on PATH at {br_path} does not look like beads-rust.\n"
             "    The 2-letter binary name `br` is also used by brotli (the "
             "compression tool) on many Linux distributions; DekSpec needs the "
             "beads-rust `br`, not brotli's.\n"
-            "    Install beads-rust from https://github.com/Dicklesworthstone/beads_rust"
+            "    Install beads-rust with `dekspec dependencies install br`"
             " and ensure its `br` resolves first on PATH, then re-run."
         )
+    elif br_path is None:
+        do_install = auto_install
+        if not do_install and interactive:
+            resp = input_fn(
+                "br (beads-rust) is required and not installed. Install it "
+                "now, user-scoped (no admin)? [Y/n] "
+            ).strip().lower()
+            do_install = resp in ("", "y", "yes")
+
+        installed_ok = False
+        if do_install:
+            try:
+                res = _dep.install_br(dest_dir=dest_dir)
+                print(
+                    f"Installed br {res.version} → {res.path} "
+                    f"({res.asset}).",
+                    file=sys.stderr,
+                )
+                print(
+                    f"    Ensure `{_dep.user_bin_dir()}` is on PATH (restart "
+                    "your shell if you just added it), then `br --version` "
+                    "resolves.",
+                    file=sys.stderr,
+                )
+                installed_ok = True
+            except _dep.DependencyError as exc:
+                failures.append(
+                    "  ✗ br (beads-rust) not found on PATH, and automatic "
+                    f"install failed: {exc}\n"
+                    "    Install it manually, then re-run:\n"
+                    "      dekspec dependencies install br"
+                )
+        if not do_install and not installed_ok:
+            failures.append(
+                "  ✗ br (beads-rust) not found on PATH.\n"
+                "    DekSpec's coding loop and the T-BEAD-FAILURE-CLASS-VALID "
+                "audit rule are bead-aware end-to-end and read "
+                "`.beads/issues.jsonl`.\n"
+                "    Install it — user-scoped, no admin, all platforms "
+                "including native Windows:\n"
+                "      dekspec dependencies install br\n"
+                "    then re-run. (Or re-run `dekspec init --install-deps` to "
+                "install it as part of init.)"
+            )
 
     if failures:
         print("Dependency precheck — required dependencies missing:", file=sys.stderr)
@@ -3540,7 +3770,7 @@ def _init_dep_precheck() -> int:
 
 
 def cmd_init(args: argparse.Namespace) -> int:
-    rc = _init_dep_precheck()
+    rc = _init_dep_precheck(auto_install=getattr(args, "install_deps", False))
     if rc != 0:
         return rc
 
@@ -3654,21 +3884,42 @@ def cmd_init(args: argparse.Namespace) -> int:
         print(f"\nSkipped ({len(skipped)}, already present; use --force to overwrite indexes/AGENTS.md):")
         for line in skipped:
             print(f"  . {line}")
-    next_steps = [
-        "\nNext steps:",
-        "  1. Install the CLI + Claude Code plugin (single-command, pins both at the same version):",
-        "       bash <(curl -fsSL https://raw.githubusercontent.com/Dektora/dekspec/main/scripts/install.sh)",
-        "  2. Draft the L0 singletons: `/write-sv`, `/write-ggc`.",
-        "  3. Author your first ADR / AE / WS via the matching skill (e.g., `/write-adr`).",
-        "  4. Run `dekspec aggregate agents-md` once you have LOCKED + ACCEPTED artifacts.",
+    next_steps = ["\nNext steps:"] + _init_install_guidance(repo_root) + [
+        "  · Draft the L0 singletons: `/write-sv`, `/write-ggc`.",
+        "  · Author your first ADR / AE / WS via the matching skill (e.g., `/write-adr`).",
+        "  · Run `dekspec aggregate agents-md` once you have LOCKED + ACCEPTED artifacts.",
     ]
     if config_warning is not None:
         next_steps.append(
-            "  5. Write `.dekspec/config.yaml` — re-run `dekspec init` with "
+            "  · Write `.dekspec/config.yaml` — re-run `dekspec init` with "
             "--executor / --endpoint / --methodology (no config was written)."
         )
     print("\n".join(next_steps))
     return 0
+
+
+def _init_install_guidance(repo_root: Path) -> list[str]:
+    """Host- and OS-aware post-init install guidance (ADR-044 / INT-178).
+
+    Replaces the Unix-only `bash <(curl …)` one-liner: gives PowerShell/pipx
+    steps on Windows, and Codex-specific (not Claude-plugin) instructions when
+    the consumer repo is a Codex host. `_detect_installed_hosts` /
+    `_plugin_guidance` own the plugin-vs-per-host wording.
+    """
+    lines = ["  · Acquire the CLI engine + `br` dependency:"]
+    if sys.platform.startswith("win"):
+        lines += [
+            '       py -m pipx install "git+https://github.com/Dektora/dekspec-public.git@vLATEST"',
+            "       dekspec dependencies install br   # user-scoped, no admin",
+        ]
+    else:
+        lines += [
+            "       pipx install \"git+https://github.com/Dektora/dekspec-public.git@vLATEST\"",
+            "       dekspec dependencies install br   # user-scoped, no admin",
+        ]
+    # Host-appropriate skills/commands guidance (Codex vs Claude vs neutral).
+    lines.append("  · " + _plugin_guidance(repo_root))
+    return lines
 
 
 def _init_resolve_answer(

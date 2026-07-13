@@ -312,7 +312,7 @@ LLM in `dekspec find-spec-gaps`.
 ## Common Pitfalls
 
 - Don't reimplement the AST walk or gap detection in the LLM — always shell out
-  to the `tooling/dekspec/archeology/` substrate and `dekspec dev archeology
+  to the `tooling/dekspec/archeology/` substrate and `dekspec archeology
   coverage`; they are the deterministic source and a hand-rolled scan drifts.
 - Don't populate §Size assessment, §Coverage report, or §Layer impact analysis
   in a `--propose-intent` skeleton — leave them as TODO markers; guessed sizing

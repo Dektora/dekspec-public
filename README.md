@@ -15,7 +15,7 @@ A five-layer **agentic-(software-)engineering toolkit** for AI-augmented teams �
 - **Human oversight** — gates every change behind the No Specless Edits guardrail, a two-tier non-sycophantic review pipeline, and operator-confirmed merge.
 - **Observable development** — verifies outcomes against the spec, not just the tests, and feeds what it learns back into the rules.
 
-DekSpec is shipped as a Python library + CLI + Claude Code skills + markdown templates, vendored into consumer repos via a single install script. The current version is **v0.121.3**.
+DekSpec is shipped as a Python library + CLI + Claude Code skills + markdown templates, vendored into consumer repos via a single install script. The current version is **v0.121.4**.
 
 ## What's here
 
@@ -129,17 +129,17 @@ Then:
 
 ```bash
 # Scaffold the dekspec/ tree (first-time only):
-dekspec library init
+dekspec init
 
 # Health check:
-dekspec audit doctor
+dekspec doctor
 # → traffic-light summary; exit 0 = clean
 
 # Author your first artifact (in Claude Code):
 /write-ae
 
 # Once you have LOCKED + ACCEPTED artifacts, build the AGENTS.md:
-dekspec check aggregate agents-md
+dekspec aggregate agents-md
 ```
 
 See [Installation](#installation) for pinned versions, manual install paths, and the plugin-only / CLI-only splits.
@@ -171,13 +171,13 @@ dekspec audit linkage
 dekspec audit linkage --fix --apply
 
 # Validate one artifact (no side effects):
-dekspec check validate dekspec/architecture-elements/AE-014-formula-engine.md
+dekspec validate dekspec/architecture-elements/AE-014-formula-engine.md
 
 # Export the full spec graph for downstream tooling:
-dekspec dev graph export --pretty --output graph.json
+dekspec graph export --pretty --output graph.json
 
 # Health check before commit:
-dekspec audit doctor
+dekspec doctor
 ```
 
 ## Installation
@@ -202,10 +202,10 @@ bash <(curl -fsSL https://raw.githubusercontent.com/Dektora/dekspec-public/main/
 The script:
 1. Resolves the ref (highest release tag on the public mirror, or the explicit tag you pass).
 2. Runs `pipx install "git+https://github.com/Dektora/dekspec-public.git@<ref>"` — pip-from-git, pulling transitive deps from PyPI.
-3. Reconciles vendored content against the installed engine (`dekspec library sync`).
+3. Reconciles vendored content against the installed engine (`dekspec sync`).
 4. Delivers for the chosen `--platform`: `claude` → adds the `Dektora/dekspec-public` Claude Code marketplace + installs the `dekspec@dekspec` plugin; every other host → emits the per-host skill/command/hook tree into the current directory via `dekspec install --platform <host>` (the plugin source is fetched from the mirror at the same ref).
 
-Steps 1–3 are host-agnostic. Re-run to upgrade. For `--platform claude`, plugin-vs-CLI drift is reported by `dekspec audit doctor` (the `plugin version` section flags ADVISORY when they disagree).
+Steps 1–3 are host-agnostic. Re-run to upgrade. For `--platform claude`, plugin-vs-CLI drift is reported by `dekspec doctor` (the `plugin version` section flags ADVISORY when they disagree).
 
 ### Requirements
 
@@ -218,12 +218,12 @@ Steps 1–3 are host-agnostic. Re-run to upgrade. For `--platform claude`, plugi
 
 CLI only via pipx (isolated venv):
 ```bash
-pipx install "git+https://github.com/Dektora/dekspec-public.git@v0.121.3"
+pipx install "git+https://github.com/Dektora/dekspec-public.git@v0.121.4"
 ```
 
 CLI only into a project venv:
 ```bash
-pip install "git+https://github.com/Dektora/dekspec-public.git@v0.121.3"
+pip install "git+https://github.com/Dektora/dekspec-public.git@v0.121.4"
 ```
 
 Plugin only (in a Claude Code session OR via the `claude` CLI):
@@ -231,6 +231,23 @@ Plugin only (in a Claude Code session OR via the `claude` CLI):
 claude plugin marketplace add Dektora/dekspec-public
 claude plugin install dekspec@dekspec
 ```
+
+### Native Windows (PowerShell / cmd)
+
+The `bash <(curl …)` one-liner does **not** run in native Windows PowerShell/cmd (no `bash`, no process substitution). Use the portable `pipx` sequence — identical to the Linux steps:
+
+```powershell
+py -m pipx install --force "git+https://github.com/Dektora/dekspec-public.git@v0.121.4"
+dekspec dependencies install br     # user-scoped, no admin — downloads + checksum-verifies the pinned br
+dekspec sync                        # reconcile vendored content + .dekspec-version
+dekspec install --platform codex    # per-host tree; --platform is on `dekspec install`, NOT on pipx
+```
+
+- **`br` (beads-rust) is a required dependency.** `dekspec dependencies install br` acquires the pinned official release for your OS/arch (native Windows included), verifies its SHA-256, and installs it into `%USERPROFILE%\.local\bin` — no Rust/Cargo, WSL, Bash, or admin. `dekspec init` will offer to do this for you (or run `dekspec init --install-deps`). Ensure `%USERPROFILE%\.local\bin` is on PATH.
+- **Use `py -m pipx`, not bare `pipx`.** The `py` launcher is already on PATH and runs pipx as a module, so it works even when the pipx shim directory isn't on PATH.
+- **Bare `pipx` not found?** That's a host PATH-inheritance issue, not a DekSpec one: `py -m pipx ensurepath` adds pipx's BIN dir to your user PATH, but an **already-running shell/session (including a Codex process) won't inherit it until you restart it** — a live process captures its environment at launch. Restart the terminal, or just keep using `py -m pipx`.
+- **`--platform` belongs on `dekspec install`**, never on `pipx install`.
+- No `PYTHONUTF8=1` workaround is needed as of v0.121.2 (the CLI reconfigures its console to UTF-8 at startup).
 
 ### Auth note
 
@@ -251,13 +268,13 @@ DekSpec source is proprietary (the source-of-truth repo is private). Consumers i
 
 Your authored artifacts under `dekspec/architecture-elements/`, `dekspec/adrs/`, `dekspec/working-specs/`, etc. are **not** touched by either install or upgrade.
 
-`dekspec audit doctor` (the doctor's `verify-vendored` section) detects drift between the vendored copy and the installed library.
+`dekspec doctor` (the doctor's `verify-vendored` section) detects drift between the vendored copy and the installed library.
 
 ## Versioning
 
 Semver. Major = breaking changes to schemas, parser output shape, or CLI flags. Minor = additive (new IRs, new emitters, new audit rules, new CLI commands). Patch = bug fixes + clarifications.
 
-Pin a specific version in your consuming repo's `pyproject.toml`. Use `dekspec audit doctor` in CI to detect drift + audit issues + parse failures in one shot.
+Pin a specific version in your consuming repo's `pyproject.toml`. Use `dekspec doctor` in CI to detect drift + audit issues + parse failures in one shot.
 
 ## Upgrading dekspec in your project
 
@@ -273,10 +290,10 @@ bash <(curl -fsSL https://raw.githubusercontent.com/Dektora/dekspec-public/main/
 dekspec audit linkage --fix --apply
 
 # 3. Health check:
-dekspec audit doctor
+dekspec doctor
 
 # 4. Regenerate the project-wide AGENTS.md:
-dekspec check aggregate agents-md
+dekspec aggregate agents-md
 
 # 5. Commit (single PR per consumer):
 git add -A && git commit -m "chore(dekspec): bump to vX.Y.Z"
@@ -303,10 +320,10 @@ dekspec audit linkage
 #    (Critical findings on a major bump usually mean a required field was added or renamed.)
 
 # 6. Health check:
-dekspec audit doctor
+dekspec doctor
 
 # 7. Regenerate AGENTS.md:
-dekspec check aggregate agents-md
+dekspec aggregate agents-md
 
 # 8. Commit:
 git add -A && git commit -m "chore(dekspec): bump to vX.Y.Z"
@@ -373,7 +390,7 @@ CI runs `pytest -q` + `ruff check` on Python 3.11 / 3.12 / 3.13 via GitHub Actio
 
 ## Status
 
-**v0.121.3** is the current release. The Constraint Compiler PoC (v0.2) has matured into an 11-IR, five-layer agentic-engineering toolkit with ~80 audit rules, a namespaced CLI, a public Python API at `dekspec.api`, an execution-attempt lifecycle DB (`dekspec.lifecycle`) that DekFactory (or any executor) writes to, and end-to-end test coverage. See [`CHANGELOG.md`](CHANGELOG.md) for the per-version detail.
+**v0.121.4** is the current release. The Constraint Compiler PoC (v0.2) has matured into an 11-IR, five-layer agentic-engineering toolkit with ~80 audit rules, a namespaced CLI, a public Python API at `dekspec.api`, an execution-attempt lifecycle DB (`dekspec.lifecycle`) that DekFactory (or any executor) writes to, and end-to-end test coverage. See [`CHANGELOG.md`](CHANGELOG.md) for the per-version detail.
 
 Open follow-ons:
 - Mission rigor calibration after lived MSN execution data (`ds-zuy`).

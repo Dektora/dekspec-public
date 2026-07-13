@@ -1,6 +1,6 @@
 ---
 description: Run `dekspec graph export` — emit the DekSpec artifact dependency graph as text / JSON / DOT / Mermaid for visualization or external tooling.
-allowed-tools: Bash(dekspec dev graph:*), Bash(dekspec dev:*)
+allowed-tools: Bash(dekspec graph:*), Bash(dekspec dev:*)
 argument-hint: [--at PATH] [--dekspec-root DIR] [--output FILE] [--include INCLUDE] [--pretty] [--format text|json|mermaid|dot]
 disable-model-invocation: false
 ---

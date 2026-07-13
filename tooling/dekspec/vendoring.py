@@ -324,7 +324,9 @@ def _load_vendor_manifest(repo_root: Path) -> set[Path]:
         line = line.strip()
         if not line or line.startswith("#"):
             continue
-        prior.add((repo_root / line).resolve())
+        # Manifest paths are stored POSIX-style (`/`). Tolerate a legacy
+        # Windows-written manifest (`\`) so it resolves on any platform.
+        prior.add((repo_root / line.replace("\\", "/")).resolve())
     return prior
 
 
@@ -332,8 +334,12 @@ def _save_vendor_manifest(repo_root: Path, vendored: set[Path]) -> None:
     """Write the new install's vendor manifest. One consumer-relative path
     per line, sorted, ASCII-only file."""
     manifest_path = repo_root / _VENDOR_MANIFEST_FILENAME
+    # Emit portable POSIX separators (`/`) regardless of host OS so the
+    # manifest is byte-identical on Windows and Unix — otherwise `dekspec
+    # sync` on Windows rewrites every entry `/` -> `\`, churning the git
+    # diff for cross-platform consumers.
     rels = sorted(
-        str(p.relative_to(repo_root.resolve())) for p in vendored
+        p.relative_to(repo_root.resolve()).as_posix() for p in vendored
     )
     body = (
         "# Files vendored by dekspec — managed by `dekspec upgrade`.\n"

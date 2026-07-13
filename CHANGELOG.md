@@ -2,6 +2,24 @@
 
 All notable changes to DekSpec are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/); versioning follows [Semantic Versioning](https://semver.org/).
 
+## [v0.121.4] — 2026-07-13
+
+> Native-Windows onboarding no longer dead-ends on the required `br` dependency: a new `dekspec dependencies` verb acquires it, checksum-verified and user-scoped. Plus a Windows vendor-manifest churn fix and a user-facing deprecated-CLI-form sweep.
+
+### Added — `dekspec dependencies` (ADR-044 / INT-178)
+
+- **Cross-platform, user-scoped acquisition of the required `br` (beads-rust) binary.** `dekspec dependencies install | status | repair | uninstall [br]` detects the host OS/arch, resolves the DekSpec-pinned upstream release (**br v0.2.16**), downloads the official artifact over HTTPS from the allowlisted origin, verifies a source-controlled **SHA-256 before extraction/execution**, and installs `br` atomically into `%USERPROFILE%\.local\bin` / `~/.local/bin` — no Rust/Cargo, WSL, Bash, administrator privileges, or machine-wide PATH change. Idempotent; supports upgrade/repair/uninstall; records provenance; cleans its temp dir; refuses to overwrite an unrelated `br` (e.g. brotli); never executes the download before verification. DekSpec downloads the genuine upstream artifact — it does not fork, vendor, or redistribute beads-rust.
+- **`dekspec doctor`** gains an advisory `dependencies` section: whether `br` is installed, its resolved path, version, the compatible range, whether the hash is recognized, and a precise repair command.
+- **`dekspec init`** now offers/performs the user-scoped `br` install (interactive consent or `--install-deps`) then continues, instead of stopping with a message that wrongly claimed only Linux/macOS binaries exist. The onboarding "Next steps" and post-init guidance are host-aware (PowerShell/pipx on Windows; Codex-appropriate, not Claude-only) — the Unix-only `bash <(curl …)` one-liner is gone.
+
+### Fixed — Windows vendor-manifest churn
+
+- **`dekspec sync` rewrote `.dekspec-vendor-manifest` separators `/` → `\` on Windows**, churning the git diff for cross-platform consumers. The manifest is now written with portable POSIX separators on every OS; the loader tolerates a legacy `\`-written manifest.
+
+### Changed — deprecated CLI forms in docs
+
+- Swept user-facing surfaces (README, RELEASING, docs, the archeology skill, the graph-export command, the post-merge hook) from deprecated nested `dekspec <group> <sub>` command forms to the ADR-042 flat verbs. Historical records (the `dekspec/` self-spec, CHANGELOG, the generated AGENTS.md) are intentionally untouched.
+
 ## [v0.121.3] — 2026-07-13
 
 > Fixes two defects found on a clean native-Windows pipx install of v0.121.2, plus restores the standalone `verify-vendored` verb.
