@@ -2,6 +2,14 @@
 
 All notable changes to DekSpec are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/); versioning follows [Semantic Versioning](https://semver.org/).
 
+## [v0.121.5] — 2026-07-13
+
+> Non-Claude hosts can now install the full DekSpec skill suite off a bare pip/pipx engine — the plugin ships in the wheel.
+
+### Fixed — `dekspec install --platform` on a pipx engine (ADR-045 / INT-179)
+
+- **`dekspec install --platform <non-claude>` emitted only the `AGENTS.md` marker** on a pip/pipx-installed engine — no `.codex/skills`, `.codex/commands`, or hooks. The per-host emit repackages the plugin, which a pipx engine did not carry (the wheel bundled only `skills/_lib`), and non-Claude hosts have no marketplace fallback. The engine wheel now bundles the **full plugin skill/command/hook tree** in `_vendored/`, and `install --platform` resolves it when no source checkout is present. A fresh pipx `install --platform codex` now emits a complete `.codex/skills` + `.codex/commands` + `.codex/hooks/hooks.json` tree (offline, deterministic, version-locked to the engine). Claude installs are unchanged — Claude keeps using the marketplace plugin. This revises ADR-009's plugin-exclusivity boundary for the multi-host case (closes ds-t50g).
+
 ## [v0.121.4] — 2026-07-13
 
 > Native-Windows onboarding no longer dead-ends on the required `br` dependency: a new `dekspec dependencies` verb acquires it, checksum-verified and user-scoped. Plus a Windows vendor-manifest churn fix and a user-facing deprecated-CLI-form sweep.

@@ -6797,20 +6797,40 @@ def cmd_cow_stage(args: argparse.Namespace) -> int:
     return 0
 
 
-def _default_skills_source() -> Path:
-    """Resolve the in-repo plugin source dir (`plugins/dekspec`).
+def _resolve_skills_source(start: Path, library_root_fn) -> Path:
+    """Resolve the plugin source dir for `install --platform` (ADR-045).
 
-    Walks up from this module to find a `plugins/dekspec` directory (repo
-    layout). Returns the path even if absent — `emit` tolerates missing
-    skills/commands/hooks subtrees gracefully.
+    Preference order:
+      1. A source checkout — the nearest `plugins/dekspec` ancestor of
+         `start` (the editing/repo layout).
+      2. The wheel-vendored plugin — `library_root_fn()` when it carries the
+         plugin tree (`skills/` + `commands/`), i.e. a pip/pipx engine where
+         no source checkout exists but the wheel bundled the plugin.
+      3. The conventional repo-relative location (may be absent; `emit`
+         tolerates a missing tree gracefully).
+
+    Split from `_default_skills_source` so the fallback is unit-testable
+    without a real wheel install.
     """
-    here = Path(__file__).resolve()
-    for parent in here.parents:
+    for parent in start.parents:
         candidate = parent / "plugins" / "dekspec"
         if candidate.is_dir():
             return candidate
-    # Fall back to the conventional location relative to the repo root.
-    return here.parents[2] / "plugins" / "dekspec"
+    lib = library_root_fn()
+    if (lib / "skills").is_dir() and (lib / "commands").is_dir():
+        return lib
+    return start.parents[2] / "plugins" / "dekspec"
+
+
+def _default_skills_source() -> Path:
+    """Resolve the plugin source dir: source checkout, else wheel-vendored.
+
+    Returns the path even if absent — `emit` tolerates missing
+    skills/commands/hooks subtrees gracefully.
+    """
+    from .vendoring import library_root
+
+    return _resolve_skills_source(Path(__file__).resolve(), library_root)
 
 
 def _add_install_subparser(sub) -> None:

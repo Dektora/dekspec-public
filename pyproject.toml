@@ -82,7 +82,10 @@ include = ["dekspec*"]
 # User-facing skill bodies (write-*, archeology, exec-coding-session,
 # etc.) are NOT vendored — they ship exclusively through the Claude
 # Code plugin marketplace per AE-006.
-"dekspec._vendored" = ["templates/**/*", "docs/**/*", "skills/_lib/**/*"]
+# ADR-045 / INT-179: ship the FULL plugin tree (skills incl. _lib, commands,
+# hooks) so `dekspec install --platform` works off a pipx engine on non-Claude
+# hosts — not just the runtime `skills/_lib` helpers.
+"dekspec._vendored" = ["templates/**/*", "docs/**/*", "skills/**/*", "commands/**/*", "hooks/**/*"]
 
 [tool.setuptools.dynamic]
 version = { attr = "dekspec.__version__" }

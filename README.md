@@ -15,7 +15,7 @@ A five-layer **agentic-(software-)engineering toolkit** for AI-augmented teams �
 - **Human oversight** — gates every change behind the No Specless Edits guardrail, a two-tier non-sycophantic review pipeline, and operator-confirmed merge.
 - **Observable development** — verifies outcomes against the spec, not just the tests, and feeds what it learns back into the rules.
 
-DekSpec is shipped as a Python library + CLI + Claude Code skills + markdown templates, vendored into consumer repos via a single install script. The current version is **v0.121.4**.
+DekSpec is shipped as a Python library + CLI + Claude Code skills + markdown templates, vendored into consumer repos via a single install script. The current version is **v0.121.5**.
 
 ## What's here
 
@@ -218,12 +218,12 @@ Steps 1–3 are host-agnostic. Re-run to upgrade. For `--platform claude`, plugi
 
 CLI only via pipx (isolated venv):
 ```bash
-pipx install "git+https://github.com/Dektora/dekspec-public.git@v0.121.4"
+pipx install "git+https://github.com/Dektora/dekspec-public.git@v0.121.5"
 ```
 
 CLI only into a project venv:
 ```bash
-pip install "git+https://github.com/Dektora/dekspec-public.git@v0.121.4"
+pip install "git+https://github.com/Dektora/dekspec-public.git@v0.121.5"
 ```
 
 Plugin only (in a Claude Code session OR via the `claude` CLI):
@@ -237,7 +237,7 @@ claude plugin install dekspec@dekspec
 The `bash <(curl …)` one-liner does **not** run in native Windows PowerShell/cmd (no `bash`, no process substitution). Use the portable `pipx` sequence — identical to the Linux steps:
 
 ```powershell
-py -m pipx install --force "git+https://github.com/Dektora/dekspec-public.git@v0.121.4"
+py -m pipx install --force "git+https://github.com/Dektora/dekspec-public.git@v0.121.5"
 dekspec dependencies install br     # user-scoped, no admin — downloads + checksum-verifies the pinned br
 dekspec sync                        # reconcile vendored content + .dekspec-version
 dekspec install --platform codex    # per-host tree; --platform is on `dekspec install`, NOT on pipx
@@ -390,7 +390,7 @@ CI runs `pytest -q` + `ruff check` on Python 3.11 / 3.12 / 3.13 via GitHub Actio
 
 ## Status
 
-**v0.121.4** is the current release. The Constraint Compiler PoC (v0.2) has matured into an 11-IR, five-layer agentic-engineering toolkit with ~80 audit rules, a namespaced CLI, a public Python API at `dekspec.api`, an execution-attempt lifecycle DB (`dekspec.lifecycle`) that DekFactory (or any executor) writes to, and end-to-end test coverage. See [`CHANGELOG.md`](CHANGELOG.md) for the per-version detail.
+**v0.121.5** is the current release. The Constraint Compiler PoC (v0.2) has matured into an 11-IR, five-layer agentic-engineering toolkit with ~80 audit rules, a namespaced CLI, a public Python API at `dekspec.api`, an execution-attempt lifecycle DB (`dekspec.lifecycle`) that DekFactory (or any executor) writes to, and end-to-end test coverage. See [`CHANGELOG.md`](CHANGELOG.md) for the per-version detail.
 
 Open follow-ons:
 - Mission rigor calibration after lived MSN execution data (`ds-zuy`).
