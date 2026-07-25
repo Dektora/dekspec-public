@@ -122,7 +122,6 @@ rules:
   - L11-MSN-STALE
   - L12-WS-BLOCKING-PRE-IB-CLEAN
   # IB-050 / INT-036 — Intent two-path lock coherence (ADR-017)
-  - L13-INT-LOCK-COHERENCE
   # IB-005 / WS-005 — Constitution L0 singleton linkage integrity
   - L-CONSTITUTION-ARTICLE-1-SV-REF
   - L-CONSTITUTION-ARTICLE-4-ADR-REFS

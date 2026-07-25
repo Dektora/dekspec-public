@@ -111,6 +111,14 @@ say so explicitly with a single row: `| none | — | net-new capability |`.
 | Write path | [shadow+buffered / neo4j_direct / n/a] |
 | Precision threshold | [max error specification / n/a] |
 
+## Environment Prerequisites
+
+Live services/tools this IB's work needs at implementation time. Each probe is a runnable shell command whose exit 0 means "available"; the coding preflight (`preflight_quality_gates.py`) RUNS these before dispatch, and a failed **required** probe defers the affected bead (held nonterminal) so a missing service is known before implementation begins. Leave the table body empty (or `n/a`) when the IB needs no live services.
+
+| Prerequisite | Probe command | Required |
+|--------------|---------------|----------|
+| [service/tool + version, e.g. PostgreSQL 15] | `[shell command, e.g. pg_isready -h $PGHOST -p $PGPORT]` | [yes/no] |
+
 ## Do Not Touch
 
 | Function/File | Reason |
@@ -165,6 +173,19 @@ Examples of correct entries:
 [List which Working Spec business rules and Interface Contract constraints this IB's tests should reference in their docstrings for promotion candidacy. This enables automated test promotion after bead closure.]
 
 Promotion refs: [WS-NNN Rule N, IC-NNN Constraint N, ...]
+
+## Test Layout
+
+Author test paths to match what `/write-tests` emits — do not invent alternate locations (`tests/acceptance/`, `tests/architecture/`, …); the skill writes only to `tests/bead/` and `tests/integration/` (DSF-005):
+
+- **Bead-level tests** → `tests/bead/test_<bead-slug>.py` — **exactly one file per bead** (bead slug lowercased, hyphens → underscores). A one-bead IB has exactly one bead test file; list multiple only when the IB decomposes into multiple beads (DSF-006).
+- **IB composition tests** → `tests/integration/test_<ib-slug>.py` — one file per IB, covering cross-bead boundaries.
+
+When a one-bead IB shares its slug with the IB, `tests/bead/test_<slug>.py` and `tests/integration/test_<slug>.py` share a basename — `/write-tests` creates `__init__.py` package markers so pytest collects both without an import-file-mismatch (DSF-012).
+
+Bead test files (one row per bead):
+
+- `tests/bead/test_<bead-slug>.py`
 
 ## Done When
 

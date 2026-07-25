@@ -712,7 +712,7 @@ Make it executable: `chmod +x .git/hooks/pre-commit`.
 |---|---|---|
 | Every commit | `dekspec validate <changed-file>` | Fast, file-scoped, catches malformed YAML / schema-validation errors before they reach main. |
 | Every commit (additional) | `dekspec doctor` | Repo-wide. Catches cross-artifact issues (linkage, parse failures) that a single-file validate misses. Exit 1 = warning, exit 2 = critical. |
-| Pre-push only | `dekspec audit linkage --severity critical` | Comprehensive but slower. Only enforce critical findings at push time. |
+| Pre-push only | `dekspec audit linkage --min-severity P1` | Comprehensive but slower. Only enforce P1-and-above findings at push time. |
 
 The validate hook is cheap (each invocation parses a single file); the doctor hook is moderate (loads the whole spec graph). For repos with >100 artifacts, consider running doctor on pre-push instead of pre-commit.
 
@@ -744,13 +744,13 @@ jobs:
         with:
           python-version: "3.13"
       - name: Install dekspec
-        run: pip install git+https://github.com/Dektora/dekspec.git@v0.121.5
+        run: pip install git+https://github.com/Dektora/dekspec.git@v0.122.0
       - name: Vendor dekspec skills + templates
         run: bash scripts/install-dekspec.sh
       - name: Run dekspec doctor
         run: dekspec doctor --json | tee dekspec-doctor.json
       - name: Run audit linkage (critical-only)
-        run: dekspec audit linkage --severity critical --json | tee dekspec-audit.json
+        run: dekspec audit linkage --min-severity P1 --json | tee dekspec-audit.json
       - name: Upload audit results
         if: always()
         uses: actions/upload-artifact@v4

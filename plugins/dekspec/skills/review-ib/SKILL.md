@@ -68,6 +68,10 @@ The orchestration shell bundles the following inputs and projects per-lens slice
 | `glossary` | `dekspec/domain-glossary.md` for glossary-discipline lens. |
 | `bead_decomposition` | Bead manifest from `/write-code-beads --audit`. |
 | `audit_doctor` | Cached `dekspec doctor --json --at .` snapshot. |
+| `parent_intent.outcome_verification` | The parent Intent's `outcome_verification` declaration, for the outcome-tdd-discipline lens. |
+| `workspace.outcome_test_run` | Result of running the declared outcome test in the working tree (expected genuinely RED at pre-implementation), for the outcome-tdd-discipline lens. |
+| `workspace.production_tree_absence` | Evidence that the production/implementation files the outcome test targets are still absent from the working tree (test-first proof at pre-implementation). |
+| `ib.environment_prerequisites` | The IB's `## Environment Prerequisites` table (typed prerequisite/probe/required rows), for the environment-prerequisites lens. |
 
 The orchestration shell pulls these once and caches; each lens sees only its declared slice.
 
@@ -91,6 +95,8 @@ The 16 REVIEW_IB lenses live in `plugins/dekspec/skills/review-ib/lenses.md`. Th
 - **Spec discipline** — scope-creep, sibling-ib-coherence, acceptance-falsifiability, test-plan-coverage, source-spec-fidelity, interface-depth, ambiguity-audit, constraint-completeness.
 - **Operational discipline** — dependency-readiness, rollout-risk-plan, glossary-discipline.
 - **Bead discipline** — bead-coverage, bead-granularity, bead-dependency-graph, bead-to-ib-fidelity.
+- **Strong-TDD timing** — outcome-tdd-discipline (workspace red-test + production-tree-absence evidence at pre-implementation; the commit-ordering half lives at REVIEW_PR's outcome-tdd-history per DSF-014).
+- **Environment readiness** — environment-prerequisites (infra-dependent IBs declare live services as typed, probeable prerequisites; the coding preflight runs the probes, per P-INT-185).
 
 Each lens conforms to the schema in `plugins/dekspec/skills/_lib/review_lens_registry.md` (4 required fields: `question`, `input_slice`, `attack_patterns`, `severity_rubric`).
 

@@ -72,7 +72,9 @@ Optional flags:
 | `ib.test_plan` | The IB's test plan, for the test-plan-execution lens. |
 | `claude_md` | `CLAUDE.md` content, for the claude-md-compliance lens. |
 | `audit_doctor` | Cached `dekspec doctor --json --at .` snapshot at the PR's head SHA. |
-| `git_history` | Recent `git log` + `git blame` on touched surfaces, for the git-blame-prior-pr lens. |
+| `git_history` | Recent `git log` + `git blame` on touched surfaces, for the git-blame-prior-pr and outcome-tdd-history lenses. |
+| `parent_intent.outcome_verification` | The parent Intent's `outcome_verification` declaration, for the outcome-tdd-history lens. |
+| `review_ib.tdd_evidence` | The REVIEW_IB workspace-evidence record (red run + production-tree absence), for the outcome-tdd-history equivalent-evidence path on squash / no-intermediate-commit workflows. |
 
 The orchestration shell pulls these once and caches; each lens sees only its declared slice.
 
@@ -88,12 +90,13 @@ REVIEW_PR leans heavily on `dekspec doctor --json --at .` output — the audit-r
 
 ## Lens pack
 
-The 9 REVIEW_PR lenses live in `plugins/dekspec/skills/review-pr/lenses.md`:
+The 10 REVIEW_PR lenses live in `plugins/dekspec/skills/review-pr/lenses.md`:
 
 - **Spec ↔ diff fidelity** — done-when-satisfied, diff-scope-vs-ib, test-plan-execution.
 - **Source quality** — bug-scan, claude-md-compliance.
 - **Operational gates** — audit-rule-preflight, doc-changelog-entry, spec-mode-discipline.
 - **Institutional memory** — git-blame-prior-pr.
+- **Strong-TDD timing** — outcome-tdd-history (commit-ordering half of the ADR-029 gate; the pre-implementation half is REVIEW_IB's outcome-tdd-discipline, per DSF-014).
 
 Each conforms to `plugins/dekspec/skills/_lib/review_lens_registry.md` (4 required fields).
 

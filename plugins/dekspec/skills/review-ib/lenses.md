@@ -258,22 +258,25 @@ Per **ADR-036** (deep-modules design principle) + **Constitution Article 4**. A 
 ```yaml
 - id: outcome-tdd-discipline
   question: |
-    Does the parent Intent declare an `outcome_verification` block,
-    and does git-blame show the outcome-test file's first commit
-    landed BEFORE the implementation files' first commits (strong-TDD
-    timing) per ADR-029?
-  input_slice: parent_intent.outcome_verification + git_history.first_commit_per_file
+    Does the parent Intent declare an `outcome_verification` block, and
+    does WORKSPACE evidence prove test-first at this pre-implementation
+    stage — the named outcome test exists and runs genuinely RED (fails
+    on the asserted behavior, not on a collection error), while the
+    production/implementation tree the test targets is still ABSENT from
+    the working tree — per ADR-029 strong-TDD timing?
+  input_slice: parent_intent.outcome_verification + workspace.outcome_test_run + workspace.production_tree_absence
   attack_patterns:
     - parent Intent lacks an outcome_verification declaration
-    - outcome-test file's first commit is AFTER the implementation file's first commit
-    - outcome-test file modified together with the implementation in the same commit (not red-first)
+    - the named outcome test does not exist in the working tree
+    - the outcome test passes (green) or errors on collection rather than failing on the asserted behavior — no genuine red
+    - the implementation/production files the test targets already exist in the working tree (not test-first)
     - elaborate-fixture outcome test that exercises scaffolding rather than the change (per ADR-029)
     - other test files modified to make the outcome test pass (collateral edits)
   severity_rubric: shared
   tdd_discipline_lens: true
 ```
 
-Per **INT-120** (Slice C peel-off of INT-112 per ADR-028). This lens fires the strong-TDD check ADR-029 commits the system to; the rule body (`T-VERIFICATION-OUTCOME`) is the audit-time mirror surfaced by INT-119.
+Per **INT-120** (Slice C peel-off of INT-112 per ADR-028) and **DSF-014** (ds-4rtm). At REVIEW_IB — pre-implementation — the review runs against a working tree with no commit history, so this lens proves test-first via WORKSPACE evidence (a genuine red run + an absent production tree), NOT git-blame ordering. The commit-ordering half of the strong-TDD gate lives at REVIEW_PR (`outcome-tdd-history`), which reads git history once it exists. The rule body (`T-VERIFICATION-OUTCOME`) is the audit-time mirror surfaced by INT-119.
 
 ## bead-to-ib-fidelity
 
@@ -290,6 +293,27 @@ Per **INT-120** (Slice C peel-off of INT-112 per ADR-028). This lens fires the s
     - bead silently omits an IB-declared deliverable
   severity_rubric: shared
 ```
+
+## environment-prerequisites
+
+```yaml
+- id: environment-prerequisites
+  question: |
+    If this IB's Done When exercises a live service (database, Docker,
+    message broker, external API), does the IB declare it in a typed
+    `## Environment Prerequisites` row with a RUNNABLE probe command
+    (exit 0 = available) and a Required flag — so the coding preflight
+    can detect a missing service before implementation begins?
+  input_slice: ib.done_when + ib.environment_prerequisites
+  attack_patterns:
+    - Done When needs a live service but the IB declares no environment prerequisite for it
+    - a declared prerequisite's probe is prose or a file reference, not a runnable shell command
+    - a required live service is declared without a probe (nothing for preflight to run)
+    - probe references an undefined variable/tool with no accompanying setup note
+  severity_rubric: shared
+```
+
+Per **P-INT-185** (ds-pvsd / DSF-015). This lens is the pre-implementation half of the environment-prerequisite gate; its executable counterpart is `orchestrate-coding-session`'s preflight, which RUNS the declared probes before dispatch. The lens checks only that infra dependencies are *declared and probeable*; it does not run the probes.
 
 ---
 

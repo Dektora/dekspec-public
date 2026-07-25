@@ -64,7 +64,7 @@ properties:
     minLength: 1
 
   status:
-    enum: [TODO, DRAFT, PROPOSED, ACCEPTED, LOCKED, DEPRECATED]
+    enum: [TODO, DRAFT, PROPOSED, ACCEPTED, DEPRECATED]
 
   audit_profile:
     description: >-

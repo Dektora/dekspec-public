@@ -186,7 +186,7 @@ Use these rule families in finding codes (full definitions and example codes in
 - `IH-*` — information hiding or information leakage.
 - `PT-*` — pass-through layer or same-abstraction layering.
 - `PCD-*` — pull complexity downward.
-- `BTA-*` — better together / better apart.
+- `BTA-*` — better together / better apart, including the `BTA-CONJOINED-METHODS` over-split red flag (you cannot understand one unit without reading another's *implementation* → the split was wrong; recombine).
 - `ERR-*` — error complexity.
 - `DOC-*` — comments and design intent.
 - `TEST-*` — test-surface quality.

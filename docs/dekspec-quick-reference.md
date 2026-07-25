@@ -169,11 +169,13 @@ tree. The mechanics:
   <slug>` copies it under the incubation folder, stamps `replaces: <KIND-NNN>`
   in the frontmatter, and the engineer edits the copy instead of the canonical.
   CoW is idempotent; re-running it on an already-staged file is a no-op.
-- **Promote** — `dekspec repo promote-provisional <slug>` migrates the
-  incubation folder into the canonical tree atomically. NEW artifacts get the
-  next-free `<KIND>-NNN`; REPLACE artifacts (those carrying `replaces:`)
+- **Promote** — hand-promote the incubation folder into the canonical tree via
+  the `dekspec.promote` helpers (`plan_promotion` → `apply_promotion`); see
+  `docs/dekspec-operating-guide.md` §Provisional Promotion. NEW artifacts get
+  the next-free `<KIND>-NNN`; REPLACE artifacts (those carrying `replaces:`)
   preserve the canonical ID and overwrite. Cross-refs inside the bundle are
-  rewritten as part of the same atomic.
+  rewritten as part of the same atomic step. (The former `dekspec repo
+  promote-provisional` CLI verb was retired 2026-05-25 and removed in ds-ib9o.)
 - **Five skills carve out.** `/write-constitution`, `/write-sv`, `/write-ggc`,
   `/write-evals`, `/write-tests` do **not** accept `--provisional` — the first
   three are singletons; the last two operate on existing beads rather than

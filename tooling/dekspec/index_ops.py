@@ -182,7 +182,7 @@ def _replace_archive_table(content: str, new_rows: list[str]) -> str:
         return (
             pre_archive.rstrip("\n")
             + "\n\n## Archive\n\n"
-            + "> Terminal-status Intents (`LOCKED`, `SUPERSEDED`). Moved here from the Active queue above on `--lock` or on supersession.\n\n"
+            + "> Terminal-status Intents (`COMPLETE`, `LOCKED`, `SUPERSEDED`). Moved here from the Active queue above on completion or supersession.\n\n"
             + _ARCHIVE_HEADER
             + "\n"
             + _ARCHIVE_SEP
@@ -203,7 +203,8 @@ _ACTIVE_QUEUE_STATUSES = frozenset(
     {"DRAFT", "PROPOSED", "ACCEPTED", "IMPLEMENTING",
      "TESTPASS", "MERGED", "OVERSIZED"}
 )
-_ARCHIVE_STATUSES = frozenset({"LOCKED", "SUPERSEDED", "DEPRECATED"})
+# ADR-046: COMPLETE is the Intent terminal (work done) — it archives like LOCKED.
+_ARCHIVE_STATUSES = frozenset({"COMPLETE", "LOCKED", "SUPERSEDED", "DEPRECATED"})
 
 
 _ARCHIVE_HEADER = (

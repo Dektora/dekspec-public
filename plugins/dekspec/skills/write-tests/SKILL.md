@@ -318,8 +318,8 @@ def test_[edge_case_name]():
 
 ### Save
 
-1. Create `tests/bead/` directory if it doesn't exist
-2. Save to `tests/bead/test_<bead-slug>.py` where `<bead-slug>` is derived from the bead title (lowercase, hyphens to underscores)
+1. Create `tests/bead/` directory if it doesn't exist, AND ensure it is a package: create `tests/bead/__init__.py` (empty) if missing. **Why:** a one-bead IB gives the bead and the IB the same slug, so `tests/bead/test_<slug>.py` and `tests/integration/test_<slug>.py` share a basename; without package markers pytest raises `import file mismatch` and refuses collection (DSF-012). (Equivalently, set `[tool.pytest.ini_options] importmode = "importlib"` in the consumer's pytest config — the package markers are the zero-config default.)
+2. Save to `tests/bead/test_<bead-slug>.py` where `<bead-slug>` is derived from the bead title (lowercase, hyphens to underscores). **Exactly one bead-level test file per bead** (DSF-006) — never emit multiple `tests/bead/` files for a single bead.
 3. Update the bead's `--acceptance-criteria` to reference the test file:
    ```bash
    br update <id> --acceptance-criteria "$(cat <<'EOF'
@@ -384,7 +384,7 @@ IB path: the argument after `--integration`.
 
 ### Save
 
-1. Create `tests/integration/` directory if it doesn't exist
+1. Create `tests/integration/` directory if it doesn't exist, AND ensure it is a package: create `tests/integration/__init__.py` (empty) if missing — so a same-basename bead test (`tests/bead/test_<slug>.py`) and this file both collect without an `import file mismatch` (DSF-012).
 2. Save to `tests/integration/test_<ib-slug>.py`
 3. If present is running, serve the test file for review.
 

@@ -6,7 +6,7 @@ model: claude-opus-4-7
 reasoning_effort: max
 disable-model-invocation: false
 allowed-tools: Read Write Edit Grep Glob Bash Agent
-argument-hint: [--provisional <slug>] [--help | --teaching | --audit | --review | --accept | --approve | --lock | --resync | --revise | --dry-run] [path to finalized spec or existing IB] [engineer notes or path to notes file]
+argument-hint: [--provisional <slug>] [--help | --teaching | --audit | --review | --accept | --approve | --resync | --revise | --dry-run] [path to finalized spec or existing IB] [engineer notes or path to notes file]
 related_skills: [write-ws, write-ic, write-code-beads, write-tests, orchestrate-intent]
 ---
 
@@ -38,8 +38,7 @@ See [`_lib/mode_detection_template.md`](../_lib/mode_detection_template.md) for 
 
 - **Help mode** — `--help` flag is present. Skip to the **Help Mode** section below.
 - **Teaching mode** — `--teaching` flag is present. Skip to the **Teaching Mode** section below.
-- **Accept mode** — `--accept` or `--approve` flag is present (`--approve` is a retained alias). Proceed to **Fan-Out Mode (default decomposition path)**.
-- **Lock mode** — `--lock` flag is present, expects a path to an existing IB in ACCEPTED. Skip to the **Lock Mode** section below. Do NOT run the decomposition workflow.
+- **Accept mode** — `--accept` or `--approve` flag is present (`--approve` is a retained alias). Proceed to **Fan-Out Mode (default decomposition path)**. Accept is the IB's terminal state (ADR-046 — IBs are consumed-once specs that rest at `ACCEPTED` and never lock); an ACCEPTED IB is ready for `/write-code-beads`.
 - **Audit mode** — `--audit` flag is present, OR the file contains `## Constraints & Decisions` and `## Done When` (i.e., it is an existing IB). Skip to the **Audit Mode** section below. Do NOT run the decomposition workflow.
 - **Review mode** — `--review` flag is present. Skip to the **Review Mode** section below.
 - **Resync mode** — `--resync` flag is present. Skip to the **Resync Mode** section below.
@@ -49,7 +48,7 @@ See [`_lib/mode_detection_template.md`](../_lib/mode_detection_template.md) for 
 
 **Routing (per [`_lib/mode_detection_template.md`](../_lib/mode_detection_template.md)):**
 - Substantive-work (fan-out via Agent tool): (no flag + WS shape, i.e. Decomposition), `--accept` / `--approve`, `--revise`
-- Inline (parent context): `--help`, `--teaching`, `--audit`, `--review`, `--resync`, `--lock`, `--dry-run`
+- Inline (parent context): `--help`, `--teaching`, `--audit`, `--review`, `--resync`, `--dry-run`
 
 ## Fan-Out Mode
 
@@ -57,7 +56,7 @@ See [`_lib/fan_out.md`](../_lib/fan_out.md) for the canonical ds-di2 orchestrato
 
 - **subagent_type**: `dekspec:ib-author`
 - **substantive_modes**: [default decomposition (no flag + Working Spec path), `--accept`, `--revise`]
-- **inline_modes**: [`--help`, `--teaching`, `--audit`, `--review`, `--resync`, `--lock`, `--dry-run`]
+- **inline_modes**: [`--help`, `--teaching`, `--audit`, `--review`, `--resync`, `--dry-run`]
 - **mechanical precondition** (orchestrator runs inline BEFORE dispatch; refuse if it fails): walk the spec graph to confirm the parent WS is `ACCEPTED` or higher (the L12 precondition — see §L12 Precondition below).
 - **bundle_list** (Step 1 context — resolve every path to absolute before dispatch; workers should not guess `cwd`):
   1. Template path — `dekspec/templates/implementation-brief-template.md` (absolute). If missing, halt and tell the engineer to vendor dekspec.
@@ -91,8 +90,7 @@ modes:
   - { flag: "--review", args: "<IB-path>", description: "Walk through open issues interactively; resolve one at a time with the engineer. (Review Mode)" }
   - { flag: "--resync", args: "<IB-path>", description: "Re-derive IB sections after the source WS / ADRs / ICs changed. Diffs upstream against IB and proposes per-section updates. (Resync Mode)" }
   - { flag: "--revise", args: "<IB-path> <notes>", description: "Targeted update from engineer feedback. Notes: inline text or path to a .md / .txt file. (Revise Mode)" }
-  - { flag: "--accept", args: "<IB-path | glob>", description: "Promote IB(s) PROPOSED → ACCEPTED after a clean audit + engineer confirmation. `--approve` is a retained alias. (Accept Mode)" }
-  - { flag: "--lock", args: "<IB-path>", description: "Promote IB ACCEPTED → LOCKED after parent-WS + cohort-coherence checks; re-runs the fidelity audit. IB must be LOCKED before downstream beads + tests can reference it. (Lock Mode)" }
+  - { flag: "--accept", args: "<IB-path | glob>", description: "Promote IB(s) PROPOSED → ACCEPTED after a clean audit + engineer confirmation. ACCEPTED is the IB's terminal state (ADR-046 — IBs never lock); an ACCEPTED IB is ready for `/write-code-beads`. `--approve` is a retained alias. (Accept Mode)" }
   - { flag: "--dry-run", args: "<spec-path>", description: "Preview the decomposition: estimated IB count, dependency graph, silent-failure-domain coverage. Lightweight (1 round of checks). (Dry-Run Mode)" }
   - { flag: "--teaching", args: "<spec-path>", description: "Interactive tutorial walking a new author through decomposing a finalized Working Spec into Implementation Briefs. (Teaching Mode)" }
   - { flag: "--help", args: "", description: "Show this help message." }
@@ -105,7 +103,6 @@ examples:
   - "/write-ibs --revise IB-001-component-brief.md \"done-when too vague; remove graph_cache.py\""
   - "/write-ibs --revise IB-001-component-brief.md review-notes.md"
   - "/write-ibs --accept IB-001-component-brief.md"
-  - "/write-ibs --lock dekspec/impl-briefs/IB-001-component-brief.md"
   - "/write-ibs --dry-run dekspec/working-specs/WS-001-foo.md"
   - "/write-ibs --help"
 ```
@@ -123,6 +120,8 @@ See [`_lib/teaching_mode.md`](../_lib/teaching_mode.md) for the canonical 4-step
 - **required_sections**: [Parent WS, Source AEs, Depends-on, Goal, Constraints & Decisions, Files to Modify, Do Not Touch, Governing ADRs, Done When]
 
 Skill-specific structural checks to surface as Open Issues: T40-IB-GOAL, T41-IB-DONE-WHEN, L5-IB-AE.
+
+**Test-path contract (DSF-005/006).** When authoring the IB's `## Test Layout` + `## Done When`, use only the `/write-tests` output locations — bead tests at `tests/bead/test_<bead-slug>.py` (**exactly one per bead**) and IB composition tests at `tests/integration/test_<ib-slug>.py`. Flag any IB that invents alternate paths (`tests/acceptance/`, `tests/architecture/`, …) or lists multiple bead-level test files for a single bead.
 
 **Skill-unique scope note:** Teaching Mode walks a single IB section-by-section. The default no-flag creation mode triggers a full Working-Spec decomposition workflow that produces multiple IBs; Teaching Mode does not — it is for the engineer who is authoring their first IB by hand.
 
@@ -159,56 +158,7 @@ If all queued IBs are now ACCEPTED, the report ends with: *"All IBs accepted. Ru
 
 **End of Accept Mode — do not continue to the decomposition workflow.**
 
-## Lock Mode
-
-Promote a single IB from ACCEPTED → LOCKED. This is the gate downstream consumers (write-code-beads, write-tests) check via `_assert_ib_locked` — without this step those skills refuse the IB and point the engineer here.
-
-Unlike `/write-intent --lock`, IBs do **not** have an engineer-judgment reason-gate or an ADR-017 Path-A/Path-B split. IBs are spec-graph artifacts whose Lock gate is mechanical: parent WS must be at status `ACCEPTED` or higher, every sibling IB in the same cohort (same parent WS) must be at status `ACCEPTED` or higher, and the IB's own fidelity audit must re-run clean.
-
-Arguments: a single IB path (no glob — Lock Mode operates on one IB at a time).
-
-### Steps
-
-1. **Read the IB at the provided path.** Confirm Status is currently `ACCEPTED`. If any other status, refuse and name the current status:
-   - `PROPOSED` → tell the engineer to run `/write-ibs --accept <IB-path>` first.
-   - `LOCKED` → already locked; report the no-op and stop.
-   - `DRAFT` / `TODO` / `QUEUED` / `ACTIVE` / `COMPLETED` → refuse with the IB's current status and the required `ACCEPTED` precondition.
-
-2. **Parent WS gate.** Read the IB's `Spec:` header field. If it names a WS path:
-   - Read the WS Status. If the WS Status is below `ACCEPTED` (i.e., `TODO`, `DRAFT`, or `PROPOSED`), refuse and name the WS path and its current status. The parent WS is the contract source; locking an IB whose contract has not been accepted creates downstream-of-pre-accepted-parent drift.
-   - If `Spec:` is `none` (legacy stand-alone IB), skip this check — the cohort gate below still applies if any siblings exist.
-   - If the WS path does not exist, refuse and tell the engineer to fix the broken `Spec:` reference via `/write-ibs --revise` before locking.
-
-3. **Cohort coherence gate.** Walk `dekspec/impl-briefs/` (flat or `queued/` / `active/` / `completed/` subdirs) for sibling IBs whose `Spec:` field matches this IB's parent WS:
-   - Every sibling must be at Status `ACCEPTED` or higher (`ACCEPTED` or `LOCKED`). If any sibling is below `ACCEPTED`, refuse and name each blocker with its current status. The "cohort coherence" rule prevents locking one IB while peers under the same WS are still in flight — the next IB the engineer locks would otherwise be operating against a partially-locked spec graph.
-   - The IB being locked counts as its own cohort entry; it does not need to wait on itself.
-   - If no siblings exist (single-IB cohort), the check passes trivially.
-
-4. **Re-run Audit Mode.** Run the full Audit Mode procedure (conflict detection + fidelity audit) against this IB. If any severity-important-or-worse finding emerges, refuse and route the engineer to `--revise` (substantive) or `--review` (editorial). A LOCKED IB must have a clean audit at the moment of lock — the engineer's earlier `--accept` is not sufficient if the IB or its sources have drifted since.
-
-5. **Promote.** Run the deterministic status walk:
-
-   ```
-   python ../_lib/scripts/artifact_ops.py transition <IB-path> --from ACCEPTED --to LOCKED --note "<note>" --engineer <engineer-or-agent>
-   ```
-
-   Where `<note>` records the path taken: `"Locked via /write-ibs --lock — parent WS + cohort gates clean, fidelity audit re-run clean"`. The script flips Status, bumps Modified (no-op for IBs which lack a Modified field), and appends the Amendment Log row in one step. Surface stderr on non-zero exit and STOP.
-
-6. **Report:**
-
-   ```
-   ✅ <IB-id> promoted ACCEPTED → LOCKED.
-      Parent WS: <WS-id> (<status>)
-      Cohort: <N> sibling IB(s), all at ACCEPTED or higher
-      Audit: clean
-      Next: this IB is now LOCKED — author beads from it via `/write-code-beads <IB-path>`.
-   ```
-
-   If the cohort still has ACCEPTED-only siblings (none yet LOCKED besides this one), append:
-
-   > Note: <M> sibling IB(s) remain at ACCEPTED. Run `/write-ibs --lock` on each in implementation order as their parent-WS + cohort gates settle.
-
-**End of Lock Mode — do not continue to the decomposition workflow.**
+> **No Lock Mode for IBs.** Per **ADR-046** (terminal status by artifact nature), an Implementation Brief is a consumed-once spec that rests at `ACCEPTED` and never locks. `ACCEPTED` *is* the terminal state and the downstream gate: `/write-code-beads` and `/write-tests` accept an IB at `ACCEPTED`. There is no `ACCEPTED → LOCKED` promotion — the earlier `--lock` mode was retired when `LOCKED` was removed from the IB status enum (ds-3fn7).
 
 ## Review Mode
 
@@ -947,7 +897,7 @@ Use this mode when:
    The CLI scaffolds the folder + skeleton + (by default) a git branch named per kind. Surface its stderr on non-zero exit and STOP.
 3. Read the scaffolded file at `dekspec/provisional/<slug>/IB-provisional-<title-slug>.md` (the CLI prints the path).
 4. **Populate the skeleton with this skill's authoring discipline** — every section the canonical-mode flow would fill in goes here (Motivation, Linked AEs, Components affected, Verification, etc.). The PROVISIONAL banner at the top stays.
-5. **Reject `--lock`** in combination with `--provisional`. LOCKED state requires linkage-walker visibility that provisional artifacts deliberately lack. The hand-promote workflow (see `docs/dekspec-operating-guide.md` §Provisional Promotion) is the canonical path to LOCKED.
+5. **IBs terminate at `ACCEPTED`** (ADR-046 — they never lock), so there is no lock step to combine with `--provisional`. A provisional IB is hand-promoted to its canonical PROPOSED file via the hand-promote workflow (see `docs/dekspec-operating-guide.md` §Provisional Promotion), then driven to `ACCEPTED` with `--accept` in the normal flow.
 6. **`--analyze` and `--review`** remain available in provisional mode — they operate on the provisional file's content without requiring canonical-graph visibility.
 7. Closing step: surface to the engineer the path of the provisional file, the branch (if created), and the next-step hand-promote workflow (see `docs/dekspec-operating-guide.md` §Provisional Promotion).
 
@@ -998,7 +948,7 @@ One or more IB files in `dekspec/impl-briefs/`, each with **Status** set to `PRO
 - Don't cut IBs along domain affinity or release timing ("all the graph changes," "everything needed for the release") — that is logical/temporal cohesion; cut along functional units with one primary failure domain each.
 - Don't keep iterating per-IB content fixes past 2 rounds or decomposition past 3 — persistent failures mean the boundary or the spec is wrong; escalate to the engineer as a re-decomposition issue instead of forcing a save.
 - Don't restructure only the failing IB after a re-decomposition — restart Phase 4 for the entire affected dependency set, since numbers, order, and file assignments shift.
-- Don't `--lock` an IB whose parent WS is below ACCEPTED or whose cohort siblings aren't all ≥ ACCEPTED — the mechanical Lock gate refuses it; lock the cohort in implementation order as gates settle.
+- Don't hold an IB back for a "lock" step — IBs terminate at `ACCEPTED` (ADR-046); once `--accept` passes, the IB is ready for `/write-code-beads`. There is no `ACCEPTED → LOCKED` promotion.
 - Don't ship a shallow interface — one whose exposed surface (operations + parameters dependents call) is nearly as complex as what it hides. That pushes the complexity onto every dependent IB and every test that mocks it; deepen it per Constitution Article 4 / ADR-036 (fewer operations, simpler parameters, more complexity hidden inside).
 - Don't make an IB construct its own dependencies or expose one generic conduit when injected dependencies and an operation-specific (SDK-style) surface would be mockable at the boundary — the latter is what makes ADR-036's boundary-only mocking (and independent testability) work.
 - Don't invent Golden I/O values for numerical IBs — the engineer or a reference implementation supplies them; STOP and ask if they're missing.
@@ -1010,13 +960,13 @@ One or more IB files in `dekspec/impl-briefs/`, each with **Status** set to `PRO
 - [ ] Each saved IB passed Conflict Detection and the full Fidelity Audit (content + cohesion + coupling) with no severity-important-or-worse finding, and the cross-IB Phase 5 coupling pass ran once over the full set.
 - [ ] The dependency graph is a DAG, no IB depends on more than 3 others, and IB numbers encode the confirmed implementation order.
 - [ ] No IB that failed the fidelity audit was saved; failing IBs were escalated to the engineer, not silently shipped.
-- [ ] Every saved/revised IB is at `Status: PROPOSED` (decomposition/resync/revise) or the correct promoted status (`--accept` → ACCEPTED, `--lock` → LOCKED) with an Amendment-Log row appended.
+- [ ] Every saved/revised IB is at `Status: PROPOSED` (decomposition/resync/revise) or `ACCEPTED` (`--accept`, the IB terminal per ADR-046) with an Amendment-Log row appended.
 - [ ] `dekspec relink` was run against the repo root after the artifact writes (the mandatory Closing Step).
 - [ ] The Engineer Review Gate summary was presented and the engineer was instructed to `--accept` before any `/write-code-beads`.
 
 ## Closing Step
 
-**Mandatory closing step for every substantive mode of this skill** (the modes that write or revise an Implementation Brief — Creation, `--accept`, `--lock`, `--resync`, `--revise`, `--review`). After the artifact file(s) are saved and any index update is done, run:
+**Mandatory closing step for every substantive mode of this skill** (the modes that write or revise an Implementation Brief — Creation, `--accept`, `--resync`, `--revise`, `--review`). After the artifact file(s) are saved and any index update is done, run:
 
 ```
 dekspec relink

@@ -123,8 +123,7 @@ L-series cross-artifact linkage integrity. Other check families (T/D/E) remain i
 
 ```
 dekspec audit linkage [-h] [--at AT] [--dekspec-root DEKSPEC_ROOT]
-                      [--json]
-                      [--severity {critical,important,minor,all}]
+                      [--json] [--min-severity {P0,P1,P2,P3}]
                       [--fix] [--apply]
 ```
 
@@ -133,7 +132,7 @@ Walk the spec graph and emit per-rule findings.
 Options:
 - `--at AT`, `--dekspec-root DEKSPEC_ROOT` — repo anchor + content tree.
 - `--json` — emit findings as JSON instead of a formatted table.
-- `--severity {critical,important,minor,all}` — minimum severity to report. Default: `all`.
+- `--min-severity {P0,P1,P2,P3}` — minimum severity to report. Default (unset): every tier (equivalent to `P3`).
 - `--fix` — compute mechanical fix proposals (L6 backlink, L7 ADR supersession mirror, L8 Mission↔Intent mirror) and show before/after diffs. Dry-run unless `--apply`.
 - `--apply` — used with `--fix`: actually write the proposed changes to disk.
 

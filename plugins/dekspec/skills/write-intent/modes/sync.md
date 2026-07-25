@@ -1,13 +1,13 @@
-# Sync Mode (LOCKED — post-merge cleanup)
+# Sync Mode (COMPLETE — post-merge cleanup)
 
 [← back to dispatcher](../SKILL.md)
 
 
-Reads `<Intent-path>`. The Intent has merged and locked; `--sync` is the structured way to handle the minor non-substantive cleanups that surface only after the diff lands.
+Reads `<Intent-path>`. The Intent has merged and completed (ADR-046 — Intents terminate at `COMPLETE`, not `LOCKED`); `--sync` is the structured way to handle the minor non-substantive cleanups that surface only after the diff lands.
 
 ### Step 1: Validate
 
-1. File exists; Status is `LOCKED`. Refuse with the expected status if not — substantive changes on a non-LOCKED Intent route through `--amend`; sync is for post-merge tail only.
+1. File exists; Status is `COMPLETE`. Refuse with the expected status if not — substantive changes on a non-`COMPLETE` Intent route through `--amend`; sync is for post-merge tail only.
 2. The `## Post-implementation sync` section exists. If absent (older Intent that predates the template revision), add the section with the template-empty shape and continue.
 
 ### Step 2: Walk the existing checklist
@@ -33,14 +33,10 @@ Each new bullet should be specific and actionable: `[ ] dekspec/working-specs/WS
 
 ### Step 4: Apply edits
 
-`--sync` edits the body of a **LOCKED** Intent via the Edit tool, which the
-`pretooluse-locked-guard` hook (ds-k24i) blocks by default. Lift the guard for
-the duration of this sync's edits by dropping the staleness-guarded exemption
-marker, then remove it in Step 5. Before the first Edit:
-
-```bash
-touch dekspec/.dekspec-locked-write-allow   # ds-k24i: authorize sync's LOCKED-body edits
-```
+`--sync` edits the body of a `COMPLETE` Intent via the Edit tool. A `COMPLETE`
+Intent is a historical record, not a frozen artifact, so the
+`pretooluse-locked-guard` hook (ds-k24i) — which blocks only `LOCKED` artifacts —
+does not fire on it. Edit directly; no exemption marker is needed.
 
 For each bullet the engineer wants resolved in this sync session:
 
@@ -54,12 +50,6 @@ Refuse to apply any edit that would touch a file outside the original Intent's `
 1. Update Modified date.
 2. Append an Amendment Log entry: `| <date> | Editorial | Sync session: marked N bullets complete, added M new bullets, applied K edits via /write-intent --sync | <engineer-or-agent> |`
 3. Save.
-4. **Remove the LOCKED-write exemption marker** (the guard re-engages immediately; it is staleness-guarded so a forgotten removal expires on its own):
-
-```bash
-rm -f dekspec/.dekspec-locked-write-allow   # ds-k24i: re-engage the LOCKED-write guard
-```
-
-5. Surface a closing summary: how many items were marked done, how many were added, how many remain open.
+4. Surface a closing summary: how many items were marked done, how many were added, how many remain open.
 
 **End of Sync Mode.**

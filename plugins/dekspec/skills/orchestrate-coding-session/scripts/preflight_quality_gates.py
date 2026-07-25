@@ -36,10 +36,18 @@ Output (JSON on stdout):
       "ok": false
     }
 
+It also parses the `## Environment Prerequisites` table (P-INT-185) — typed
+`Prerequisite | Probe command | Required` rows — and RUNS each probe. A failed
+*required* probe means the live service the work needs is unavailable, so the
+bead is a deferred infrastructure gap (hold it nonterminal, continue others)
+rather than a doomed session; a failed *optional* probe warns only.
+
 Exit codes:
   0 — every referenced quality file exists or is claimed by a bead (a deliverable)
   1 — one or more referenced files are missing AND unclaimed (the STOP condition)
   2 — an IB path itself does not exist or could not be read
+  3 — a required environment prerequisite's probe failed (DEFER: hold the bead
+      nonterminal and continue with other beads)
 
 Style mirrors `tooling/dekspec/cli.py`. Stdlib-only — vendored into consumer
 repos where the `dekspec` engine is not importable.
@@ -50,6 +58,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -75,6 +84,13 @@ _FILES_SECTION_RE = re.compile(
     r"^##\s+Files\s+to\s+Modify\s*$(.*?)(?=^##\s|\Z)",
     re.MULTILINE | re.DOTALL | re.IGNORECASE,
 )
+# `## Environment Prerequisites` table block (P-INT-185).
+_ENV_PREREQ_SECTION_RE = re.compile(
+    r"^##\s+Environment\s+Prerequisites\s*$(.*?)(?=^##\s|\Z)",
+    re.MULTILINE | re.DOTALL | re.IGNORECASE,
+)
+# A markdown table row: content between the leading and trailing pipes.
+_ENV_ROW_RE = re.compile(r"^\|(.+)\|\s*$", re.MULTILINE)
 
 # A backtick-wrapped path token. Quality files of interest are `.md` checklist
 # files and `tests/...py` test files; eval files are typically `.md`.
@@ -198,13 +214,95 @@ def check_quality_gates(
     }
 
 
+def parse_env_prerequisites(ib_text: str) -> list[dict[str, object]]:
+    """Parse the `## Environment Prerequisites` table into typed rows.
+
+    Each returned dict is ``{"name", "probe", "required": bool}``. Header,
+    separator, empty, `n/a`, and unfilled template-placeholder rows (any cell
+    containing `[`) are skipped, so an unedited template contributes nothing.
+    """
+    prereqs: list[dict[str, object]] = []
+    for section in _ENV_PREREQ_SECTION_RE.finditer(ib_text):
+        for row in _ENV_ROW_RE.finditer(section.group(1)):
+            cells = [c.strip() for c in row.group(1).split("|")]
+            if len(cells) < 3:
+                continue
+            name, probe, required = cells[0], cells[1], cells[2]
+            if not name or not probe:
+                continue
+            if name.lower() == "prerequisite":  # header
+                continue
+            if set(name) <= set("-: "):  # separator row
+                continue
+            if "[" in name or "[" in probe or "[" in required:  # template placeholder
+                continue
+            probe = probe.strip("`").strip()
+            if not probe or probe.lower() in ("n/a", "none"):
+                continue
+            is_required = required.strip("`").strip().lower() in (
+                "yes", "true", "required", "y",
+            )
+            prereqs.append({"name": name, "probe": probe, "required": is_required})
+    return prereqs
+
+
+def run_env_probes(
+    prereqs: list[dict[str, object]], timeout: int = 10
+) -> dict[str, object]:
+    """Run each prerequisite's probe. Exit 0 = available. A failed *required*
+    probe is a `gap`; a failed *optional* probe is a `warning`. `ok` is true
+    only when there are no required gaps."""
+    gaps: list[dict[str, str]] = []
+    warnings: list[dict[str, str]] = []
+    passed: list[str] = []
+    for p in prereqs:
+        probe = str(p["probe"])
+        try:
+            proc = subprocess.run(
+                probe, shell=True, capture_output=True, timeout=timeout
+            )
+            available = proc.returncode == 0
+        except (subprocess.SubprocessError, OSError):
+            available = False
+        if available:
+            passed.append(str(p["name"]))
+        elif p["required"]:
+            gaps.append({"name": str(p["name"]), "probe": probe})
+        else:
+            warnings.append({"name": str(p["name"]), "probe": probe})
+    return {"gaps": gaps, "warnings": warnings, "passed": passed, "ok": not gaps}
+
+
+def check_environment_prerequisites(
+    ib_paths: list[str], repo_root: Path
+) -> dict[str, object]:
+    """Collect + probe the environment prerequisites declared across one or
+    more IBs. Raises PreflightError if an IB path cannot be read."""
+    repo_root = Path(repo_root)
+    all_prereqs: list[dict[str, object]] = []
+    for raw in ib_paths:
+        ib_path = Path(_strip_suffix(raw))
+        if not ib_path.is_absolute():
+            ib_path = repo_root / ib_path
+        if not ib_path.is_file():
+            raise PreflightError(f"IB path does not exist: {ib_path}")
+        try:
+            text = ib_path.read_text(encoding="utf-8")
+        except OSError as exc:
+            raise PreflightError(f"failed to read IB {ib_path}: {exc}") from exc
+        all_prereqs.extend(parse_env_prerequisites(text))
+    return run_env_probes(all_prereqs)
+
+
 def cmd_check(args: argparse.Namespace) -> int:
-    """CLI dispatcher: verify quality gates for the given IB paths."""
+    """CLI dispatcher: verify quality gates + probe environment prerequisites."""
     try:
         result = check_quality_gates(args.ib_paths, Path(args.repo_root))
+        env = check_environment_prerequisites(args.ib_paths, Path(args.repo_root))
     except PreflightError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
+    result["env_prerequisites"] = env
     print(json.dumps(result, indent=2))
     if result["claimed"]:
         print(
@@ -220,6 +318,24 @@ def cmd_check(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 1
+    if env["warnings"]:
+        print(
+            "note — optional environment prerequisites unavailable (warning only):\n"
+            + "\n".join(
+                f"  - {w['name']} (probe: {w['probe']})" for w in env["warnings"]
+            ),
+            file=sys.stderr,
+        )
+    if env["gaps"]:
+        print(
+            "DEFER — required environment prerequisites unavailable; hold the "
+            "affected bead nonterminal and continue with other beads:\n"
+            + "\n".join(
+                f"  - {g['name']} (probe: {g['probe']})" for g in env["gaps"]
+            ),
+            file=sys.stderr,
+        )
+        return 3
     return 0
 
 

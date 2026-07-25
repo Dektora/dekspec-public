@@ -91,7 +91,11 @@ def resolve_intent_ibs(
             except ValueError:
                 rel_path = str(ib_path)
 
-            is_locked = ib_status == "LOCKED"
+            # ADR-046: IB is a consumed-once spec that rests at ACCEPTED and
+            # never locks. "is_locked"/"all_locked" mean "settled/finalized" —
+            # the JSON key names are kept for the consuming skill's contract,
+            # but the settled terminal is ACCEPTED.
+            is_locked = ib_status == "ACCEPTED"
             if not is_locked:
                 all_locked = False
 

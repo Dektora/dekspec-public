@@ -953,7 +953,8 @@ _AE_FILENAME = re.compile(r"^(AE-\d{3,})-.+\.md$")
 _AE_H1_TITLE = re.compile(r"^#\s+(?:(?:P-)?AE-\d{3,}|Architecture Element):\s*(.+?)\s*$", re.MULTILINE)
 _FORMER_DN = re.compile(r"\b(DN-\d{3,})\b")
 
-_AE_VALID_STATUSES = {"TODO", "DRAFT", "PROPOSED", "ACCEPTED", "LOCKED", "DEPRECATED"}
+# ADR-046: AE/WS are living references that rest at ACCEPTED — LOCKED removed.
+_AE_VALID_STATUSES = {"TODO", "DRAFT", "PROPOSED", "ACCEPTED", "DEPRECATED"}
 _AE_VALID_CLASSIFICATIONS = {"Core", "Supporting", "Generic"}
 
 _AE_SUBTYPE_SLUGS = {
@@ -1135,7 +1136,7 @@ def _extract_ae_status(ctx: _ParseContext) -> str:
         if token in _AE_VALID_STATUSES:
             return token
     raise AEParseError(
-        "Could not extract a valid Status (TODO|DRAFT|PROPOSED|ACCEPTED|LOCKED|DEPRECATED)"
+        "Could not extract a valid Status (TODO|DRAFT|PROPOSED|ACCEPTED|DEPRECATED)"
     )
 
 
@@ -1794,7 +1795,7 @@ def _extract_ws_status(ctx: _ParseContext) -> str:
         if token in _WS_VALID_STATUSES:
             return token
     raise WSParseError(
-        "Could not extract a valid Status (TODO|DRAFT|PROPOSED|ACCEPTED|LOCKED|DEPRECATED)"
+        "Could not extract a valid Status (TODO|DRAFT|PROPOSED|ACCEPTED|DEPRECATED)"
     )
 
 
@@ -2418,7 +2419,8 @@ def _validate_adr(ir: dict[str, Any]) -> None:
 
 _IB_FILENAME = re.compile(r"^(IB-\d{3,})-.+\.md$")
 _IB_VALID_STATUSES = {
-    "TODO", "DRAFT", "PROPOSED", "ACCEPTED", "LOCKED",
+    # ADR-046: IB is a consumed-once spec that rests at ACCEPTED — LOCKED removed.
+    "TODO", "DRAFT", "PROPOSED", "ACCEPTED",
     "QUEUED", "ACTIVE", "COMPLETED",
     # MSN-017 two-tier review pipeline (INT-102 IU-1, ds-2zoj):
     "REVIEW_IB", "REVIEW_IB_FAIL", "REVIEW_PR", "REVIEW_PR_FAIL", "TESTFAIL",
@@ -2601,7 +2603,7 @@ def _extract_ib_status(meta: dict[str, str], ctx: _ParseContext) -> str:
             return token
     raise IBParseError(
         "Could not extract a valid Status from `**Status:** ...` "
-        "(TODO|DRAFT|PROPOSED|ACCEPTED|LOCKED|QUEUED|ACTIVE|COMPLETED|"
+        "(TODO|DRAFT|PROPOSED|ACCEPTED|QUEUED|ACTIVE|COMPLETED|"
         "REVIEW_IB|REVIEW_IB_FAIL|REVIEW_PR|REVIEW_PR_FAIL|TESTFAIL)"
     )
 
@@ -2749,13 +2751,16 @@ _INT_VALID_STATUSES = {
     # 0 out-degree, 0 as-initial across the 99-Intent history). Files
     # authored against the legacy enum are rejected at schema validation;
     # transition them to DRAFT or IMPLEMENTING respectively before parse.
+    # ADR-046: COMPLETE is the Intent (work-item) terminal; LOCKED was retired
+    # for Intents once the tree migrated (slice 4).
     "DRAFT", "OVERSIZED", "PROPOSED", "ACCEPTED", "IMPLEMENTING",
-    "TESTPASS", "MERGED", "LOCKED", "SUPERSEDED",
+    "TESTPASS", "MERGED", "COMPLETE", "SUPERSEDED",
 }
 # Retired Intent statuses — extraction matches these so the parser can
 # emit a targeted error message instead of "could not extract a valid
-# status." Pre-retirement files surface a clear migration path.
-_INT_RETIRED_STATUSES = {"TODO", "TESTFAIL"}
+# status." Pre-retirement files surface a clear migration path. `LOCKED`
+# joined 2026-07-15 (ADR-046: Intents complete, not lock).
+_INT_RETIRED_STATUSES = {"TODO", "TESTFAIL", "LOCKED"}
 _INT_VALID_TYPES = {
     "feature", "bug", "nfr", "adr-driven", "refactor", "documentation", "environment",
 }
@@ -2926,7 +2931,11 @@ def _extract_intent_id(filename: str) -> str:
                 f"{filename} is a DRAFT artifact (INT-DRAFT-<slug>); allocate a "
                 f"canonical ID with `dekspec id allocate` before parsing."
             )
-        raise IntentParseError(f"Filename does not match INT-NNN-*.md pattern: {filename}")
+        raise IntentParseError(
+            f"Filename does not match INT-NNN-*.md pattern: {filename}. "
+            f"Provisional Intents use the P-INT-NNN-<slug> form (ADR-043) under "
+            f"dekspec/provisional/; the legacy INT-provisional-<slug> form is retired."
+        )
     return m.group(1)
 
 
@@ -2947,13 +2956,22 @@ def _extract_intent_status(ctx: _ParseContext) -> str:
         if token in _INT_VALID_STATUSES:
             return token
         if token in _INT_RETIRED_STATUSES:
+            if token == "LOCKED":
+                raise IntentParseError(
+                    "Intent Status `LOCKED` was retired for Intents (ADR-046) "
+                    "— Intents terminate at `COMPLETE` (a finished Intent is a "
+                    "historical record, not a frozen decision). Transition "
+                    "this Intent to `COMPLETE`. The lifecycle is now DRAFT -> "
+                    "PROPOSED -> ACCEPTED -> IMPLEMENTING -> TESTPASS -> "
+                    "MERGED -> COMPLETE."
+                )
             replacement = "DRAFT" if token == "TODO" else "IMPLEMENTING"
             raise IntentParseError(
                 f"Intent Status `{token}` was retired 2026-05-25 (E3 audit — "
                 f"0 in/out-degree across 99-Intent history). Transition this "
                 f"Intent to `{replacement}` (the closest live status on the "
                 f"new lifecycle: DRAFT -> PROPOSED -> ACCEPTED -> IMPLEMENTING "
-                f"-> TESTPASS -> MERGED -> LOCKED). See CHANGELOG entry for "
+                f"-> TESTPASS -> MERGED -> COMPLETE). See CHANGELOG entry for "
                 f"the retirement migration note."
             )
     raise IntentParseError("Could not extract a valid Intent Status.")
@@ -3351,7 +3369,11 @@ def _extract_msn_id(filename: str) -> str:
                 f"{filename} is a DRAFT artifact (MSN-DRAFT-<slug>); allocate a "
                 f"canonical ID with `dekspec id allocate` before parsing."
             )
-        raise MissionParseError(f"Filename does not match MSN-NNN-*.md pattern: {filename}")
+        raise MissionParseError(
+            f"Filename does not match MSN-NNN-*.md pattern: {filename}. "
+            f"Provisional Missions use the P-MSN-NNN-<slug> form (ADR-043) under "
+            f"dekspec/provisional/; the legacy MSN-provisional-<slug> form is retired."
+        )
     return m.group(1)
 
 
@@ -3929,6 +3951,11 @@ _REF_BULLET = re.compile(
     r"^-\s+(ADR-\d{3,}|AE-\d{3,})\s+—\s+(.+?)\s*$", re.MULTILINE
 )
 _REF_BULLET_ANY = re.compile(r"^-\s+(\S+)\s+—", re.MULTILINE)
+# A bullet whose FIRST token is a boundary ref ID — i.e. it is trying to be a
+# typed ref bullet. Used to catch the v0.120.1 trap: such a bullet that is NOT
+# in canonical `- (ADR|AE)-NNN — text` form matches neither ref regex and is
+# silently dropped (see _parse_ref_array_article).
+_REF_BULLET_HEAD = re.compile(r"^-\s+(?:ADR-\d{3,}|AE-\d{3,})\b")
 
 # (index 0-based, title, kind). Pinned by schema's prefixItems and
 # enforced positionally by the parser.
@@ -4126,6 +4153,23 @@ def _parse_ref_array_article(
                 f"Article {article_number} ({title!r}) contains a bullet "
                 f"with malformed ref ID {token!r}; expected pattern "
                 f"^ADR-\\d{{3,}}$ or ^AE-\\d{{3,}}$ for the typed refs."
+            )
+
+    # v0.120.1 trap guard: a bullet whose first token IS a boundary ref ID but
+    # which is not in canonical one-ID-per-bullet form (`- (ADR|AE)-NNN — text`)
+    # matches neither ref regex, so it is silently dropped — losing every ID it
+    # carries and breaking the byte-equal round-trip while `dekspec validate`
+    # still passes (the failure only surfaces in the pytest round-trip). Reject
+    # it here so validate catches the class at parse time. Canonical form is one
+    # ID per bullet; jamming (`- ADR-001 / ADR-024 — …`) is the trap.
+    for line in body.splitlines():
+        if _REF_BULLET_HEAD.match(line) and not _REF_BULLET.match(line):
+            raise ConstitutionParseError(
+                f"Article {article_number} ({title!r}) has a boundary bullet "
+                f"that is not in canonical one-ID-per-bullet form: "
+                f"{line.strip()!r}. Each reference must be its own "
+                f"`- (ADR|AE)-NNN — <text>` bullet; jamming multiple IDs into "
+                f"one bullet silently drops them and breaks the round-trip."
             )
 
     adr_refs: list[dict[str, str]] = []

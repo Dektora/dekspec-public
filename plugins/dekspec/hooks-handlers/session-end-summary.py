@@ -117,13 +117,36 @@ def _import_handoff_engine(cwd: Path):
         return None
 
 
+def _record_has_signal(record: dict) -> bool:
+    """True if the assembled record carries any real content.
+
+    Guards ds-1lcy: the hook has no transcript access, so it can only populate
+    fields the ``DEKSPEC_HANDOFF_*`` env hints supply. When nothing supplies
+    them every fire assembles an all-blank record, and — under bounded
+    retention (``DEKSPEC_HANDOFF_KEEP``, default 10) — a run of blank hook fires
+    silently EVICTS a populated record a manual ``--write`` created. Writing
+    only signal-bearing records prevents that eviction.
+    """
+    for value in record.values():
+        if isinstance(value, str) and value.strip():
+            return True
+        if isinstance(value, (list, tuple)) and any(value):
+            return True
+    return False
+
+
 def _emit_handoff(cwd: Path) -> None:
     """Write a structured, secret-redacted handoff record to .scratch/.
 
-    Best-effort: the captured session state is assembled from environment hints
-    with safe defaults, the engine applies redaction + by-path references +
-    retention, and any failure is swallowed so the parent lifecycle event is
-    never disturbed.
+    Best-effort: the captured session state is assembled from environment hints,
+    the engine applies redaction + by-path references + retention, and any
+    failure is swallowed so the parent lifecycle event is never disturbed.
+
+    Skips the write entirely when the assembled record has no signal (ds-1lcy):
+    the hook cannot read the transcript, so an unhinted fire would otherwise
+    write an all-blank record that evicts a real one under retention. A
+    populated record therefore requires the ``DEKSPEC_HANDOFF_*`` env hints or a
+    manual ``/dekspec:rotation-handoff --write``.
     """
     engine = _import_handoff_engine(cwd)
     if engine is None:
@@ -138,6 +161,8 @@ def _emit_handoff(cwd: Path) -> None:
         "files_changed": [],
         "next_safest_action": os.environ.get("DEKSPEC_HANDOFF_NEXT_ACTION", ""),
     }
+    if not _record_has_signal(record):
+        return
     try:
         engine.write_handoff(cwd, record)
     except Exception:

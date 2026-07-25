@@ -45,7 +45,7 @@ When `--editorial` is NOT passed, the rest of this mode body (Steps 1–6 below)
 
 ### Step 1: Validate
 
-1. File exists; Status is `DRAFT`, `PROPOSED`, `ACCEPTED`, `IMPLEMENTING`, or `OVERSIZED`. Refuse on TESTPASS, MERGED, LOCKED, SUPERSEDED — amendments to passed/merged/locked Intents are not allowed at this scale. Locked Intents that need a substantive change spawn a successor Intent and mark this one SUPERSEDED.
+1. File exists; Status is `DRAFT`, `PROPOSED`, `ACCEPTED`, `IMPLEMENTING`, or `OVERSIZED`. Refuse on TESTPASS, MERGED, COMPLETE, SUPERSEDED — amendments to passed/merged/completed Intents are not allowed at this scale. A `COMPLETE` Intent that needs a substantive change spawns a successor Intent and marks this one SUPERSEDED (ADR-046 — a shipped Intent terminates at `COMPLETE`, not `LOCKED`).
 
 ### Step 2: Capture the proposed change
 

@@ -80,8 +80,8 @@ modes:
   - { flag: "", args: "<description>", description: "Create a new Mission from the engineer's description. Writes the near-immutable section (Outcome, Mission Verification, Out-of-scope, Flag strategy, Rollback plan, Kill criteria, Autonomy ceiling, First Intent) up-front. Status: TODO. Adds entry to mission-index.md." }
   - { flag: "--review", args: "<Mission-path>", description: "Revise the live section (Intent queue, Discovered prerequisites, Burndown, Flag transitions, Notes). Refuses to edit near-immutable fields. Used after each child Intent transitions; surfaces anything that drifted into the live section that should be in a near-immutable field instead." }
   - { flag: "--audit", args: "<Mission-path>", description: "Read-only health check. Re-runs every check --activate / --complete would run (T17 completeness, L8 bidirectional Intent linkage, L9 Mission Verification cmd resolves, L11 stale-ACTIVE check), but mutates nothing. Reports findings and recommends the remedial action." }
-  - { flag: "--activate", args: "<Mission-path>", description: "Promote TODO → ACTIVE. Refuses unless the Mission has at least one child Intent in LOCKED status (per audit-v2 L8 backlinks). Engineer- only gate." }
-  - { flag: "--complete", args: "<Mission-path>", description: "Promote ACTIVE → COMPLETING → COMPLETE. Runs the Mission Verification predicate (every cmd in the yaml block); refuses if predicate evaluates false. Confirms flag (if any) is on and flag-removal Intent (if any) is LOCKED. Moves Mission row from Active queue to Archive in mission-index.md." }
+  - { flag: "--activate", args: "<Mission-path>", description: "Promote TODO → ACTIVE. Refuses unless the Mission has at least one child Intent in COMPLETE status (per audit-v2 L8 backlinks). Engineer- only gate." }
+  - { flag: "--complete", args: "<Mission-path>", description: "Promote ACTIVE → COMPLETING → COMPLETE. Runs the Mission Verification predicate (every cmd in the yaml block); refuses if predicate evaluates false. Confirms flag (if any) is on and flag-removal Intent (if any) is COMPLETE. Moves Mission row from Active queue to Archive in mission-index.md." }
   - { flag: "--kill", args: "<Mission-path>", description: "Mark Mission as KILLED. Requires a written reason (the kill criterion that triggered, or an engineer abandonment note). Records the rollback steps actually executed. Moves to Archive." }
   - { flag: "--supersede", args: "<Mission-path>", description: "Create a successor Mission that supersedes the given one. The successor copies the live Intent queue + carries its own near-immutable section (which the engineer revises). Marks the old Mission as SUPERSEDED." }
   - { flag: "--teaching", args: "", description: "Interactive tutorial walking a new author through writing a Mission section-by-section. Distinct from --review and from no-flag creation. (Teaching Mode)" }
@@ -108,7 +108,7 @@ See [`_lib/teaching_mode.md`](../_lib/teaching_mode.md) for the canonical 4-step
 
 Skill-specific structural checks to surface as Open Issues: T17 (near-immutable field missing), L8 (Intent queue references nonexistent Intents).
 
-**Skill-unique two-section split:** Mission templates have a near-immutable section (pinned at TODO, edited only with a rationale) and a live section (Intent queue, Discovered prerequisites, Burndown, Flag transitions, Notes). Teaching Mode walks the engineer through the **near-immutable** section only — fields per the manifest above. Briefly explain the live section's purpose but do NOT prompt the engineer to fill it during teaching; it is populated as child Intents land. The Mission is written to disk at TODO status (not DRAFT); the engineer activates with `--activate` after at least one child Intent is LOCKED.
+**Skill-unique two-section split:** Mission templates have a near-immutable section (pinned at TODO, edited only with a rationale) and a live section (Intent queue, Discovered prerequisites, Burndown, Flag transitions, Notes). Teaching Mode walks the engineer through the **near-immutable** section only — fields per the manifest above. Briefly explain the live section's purpose but do NOT prompt the engineer to fill it during teaching; it is populated as child Intents land. The Mission is written to disk at TODO status (not DRAFT); the engineer activates with `--activate` after at least one child Intent is COMPLETE.
 
 ## Creation Mode (default authoring path)
 
@@ -220,7 +220,7 @@ If the trigger is `from-oversized: <INT-NNN-path>`:
    Next steps:
    *   Run /write-intent --analyze on each child Intent to populate Coverage Report
        + Size Assessment + Layer Impact Analysis, and promote DRAFT → PROPOSED.
-   *   Run /write-mission --activate <MSN-XXX-path> once the First Intent reaches LOCKED.
+   *   Run /write-mission --activate <MSN-XXX-path> once the First Intent reaches COMPLETE.
    ================================================================================
    ```
 
@@ -328,7 +328,7 @@ When the subagent returns:
 
 1. **Validate.** Validation contract: see [`_lib/validate_and_surface.md`](../_lib/validate_and_surface.md). Run `dekspec validate --kind mission dekspec/missions/MSN-NNN-<slug>.md`; on non-zero exit, surface verbatim and stop — do not silently retry. Mission-specific audit gate: this skill's §Audit Mode (read-only health check, see below).
 2. **Index.** Add a row to `dekspec/mission-index.md` Active queue for the new Mission.
-3. **Report.** Tell the engineer: the Mission is in `TODO` at the saved path; author the First Intent via `/write-intent`; once that Intent reaches `LOCKED`, run `/write-mission --activate` to promote `TODO → ACTIVE`. Surface any `INSUFFICIENT_CONTEXT:` lines the subagent returned so the engineer can fill the gap via `--review` before activation.
+3. **Report.** Tell the engineer: the Mission is in `TODO` at the saved path; author the First Intent via `/write-intent`; once that Intent reaches `COMPLETE`, run `/write-mission --activate` to promote `TODO → ACTIVE`. Surface any `INSUFFICIENT_CONTEXT:` lines the subagent returned so the engineer can fill the gap via `--review` before activation.
 
 **End of Creation Mode.**
 
@@ -373,7 +373,7 @@ non-mechanical checks below. Then run each check in this order:
 3. **L8 bidirectional Intent linkage** — from `mission_audit.py` (`L8-MSN-INT-EXISTS` + `L8-MSN-INT-MIRROR`). The autonomy-ceiling check (`L8-INT-AUTONOMY-EXCEEDS`: each child Intent's `Autonomy:` ≤ this Mission's `Autonomy ceiling:`) is an AI judgment step — read each child Intent and compare.
 4. **L9 Mission Verification cmd-resolve** — from `mission_audit.py` (`L9-MSN-CMD-RESOLVE`; resolvability only — pytest via PATH, `scripts/*.sh` exists+executable, other tokens via `which`; no execution).
 5. **L11 stale-ACTIVE** — from `mission_audit.py` (`L11-MSN-STALE`; surfaced as P3 when Status is `ACTIVE` and `modified`/`created` is >90 days old) with recommendation to record progress + bump Modified, or transition to COMPLETING/KILLED.
-6. **Status-coherence** — flag any state-machine inconsistency: e.g., status `COMPLETING` but `mission_verification` cmds haven't all been run; status `ACTIVE` but no child Intent has reached LOCKED (per the activation gate); status `COMPLETE` but the row is still in the Active queue of `mission-index.md`.
+6. **Status-coherence** — flag any state-machine inconsistency: e.g., status `COMPLETING` but `mission_verification` cmds haven't all been run; status `ACTIVE` but no child Intent has reached COMPLETE (per the activation gate); status `COMPLETE` but the row is still in the Active queue of `mission-index.md`.
 
 ### Step 3: Report
 
@@ -420,14 +420,14 @@ If no incubation folder is detected, proceed directly to the Status transition (
 
 ## Activate Mode (TODO → ACTIVE)
 
-Promotes a Mission from `TODO` to `ACTIVE`. The promotion gate: at least one child Intent has reached `LOCKED` status. Before the transition, run the **Provisional Promotion Gate** above if a corresponding `dekspec/provisional/<slug>/` folder exists.
+Promotes a Mission from `TODO` to `ACTIVE`. The promotion gate: at least one child Intent has reached `COMPLETE` status. Before the transition, run the **Provisional Promotion Gate** above if a corresponding `dekspec/provisional/<slug>/` folder exists.
 
 ### Steps
 
 1. Read the Mission file. Refuse if Status is not `TODO`.
-2. Read `dekspec/intent-index.md` Archive section. Confirm at least one Intent's `Mission:` field references this Mission AND that Intent's Status is `LOCKED` (audit-v2 L8 — bidirectional Mission ↔ Intent linkage).
-3. If no LOCKED child Intent exists, refuse: "No LOCKED child Intent found. Author the First Intent via `/write-intent`, drive it to `LOCKED`, then run `--activate`."
-4. Flip Status to `ACTIVE`, bump Modified, and append the Amendment Log row — run `python ../_lib/scripts/artifact_ops.py transition <Mission-path> --from TODO --to ACTIVE --note "Activated: first child Intent reached LOCKED." --engineer <name>` (surface stderr on non-zero exit and STOP).
+2. Read `dekspec/intent-index.md` Archive section. Confirm at least one Intent's `Mission:` field references this Mission AND that Intent's Status is `COMPLETE` (audit-v2 L8 — bidirectional Mission ↔ Intent linkage).
+3. If no LOCKED child Intent exists, refuse: "No COMPLETE child Intent found. Author the First Intent via `/write-intent`, drive it to `COMPLETE`, then run `--activate`."
+4. Flip Status to `ACTIVE`, bump Modified, and append the Amendment Log row — run `python ../_lib/scripts/artifact_ops.py transition <Mission-path> --from TODO --to ACTIVE --note "Activated: first child Intent reached COMPLETE." --engineer <name>` (surface stderr on non-zero exit and STOP).
 
 **End of Activate Mode.**
 
@@ -438,9 +438,9 @@ Promotes a Mission from `ACTIVE` through `COMPLETING` to `COMPLETE`. The promoti
 ### Steps
 
 1. Read the Mission file. Refuse if Status is not `ACTIVE` or `COMPLETING`.
-2. Read the Intent queue. Confirm every entry's Status is `LOCKED`. If any Intent is in active status, refuse with the open Intent IDs surfaced.
+2. Read the Intent queue. Confirm every entry's Status is `COMPLETE`. If any Intent is in active status, refuse with the open Intent IDs surfaced.
 3. If `Flag strategy.Flag name` is non-`none`, confirm the flag is on (typically by checking a config-management WS or asking the engineer).
-4. If `Flag strategy.Removal plan` names a flag-removal Intent, confirm that Intent is LOCKED.
+4. If `Flag strategy.Removal plan` names a flag-removal Intent, confirm that Intent is COMPLETE.
 5. Transition Status to `COMPLETING` — run `python ../_lib/scripts/artifact_ops.py transition <Mission-path> --from ACTIVE --to COMPLETING --note "Entering COMPLETING — running Mission Verification predicate." --engineer <name>` (surface stderr on non-zero exit and STOP).
 6. Run the Mission Verification predicate via `python scripts/run_verification.py <Mission-path>` (in this skill's folder). The script executes each `cmd:` in the Mission Verification yaml block in order, fast-fails on the first non-zero exit, and emits a JSON record. Surface its stderr on a non-zero exit (code 2 = a check failed). On failure: the JSON `failing` record names the check, cmd, exit code, and captured stdout/stderr tail — record it, revert Status to `ACTIVE` via `python ../_lib/scripts/artifact_ops.py transition <Mission-path> --from COMPLETING --to ACTIVE`, then surface the failure for engineer fix.
 7. If the script exits 0 (`passed: true`), transition Status to `COMPLETE` — run `python ../_lib/scripts/artifact_ops.py transition <Mission-path> --from COMPLETING --to COMPLETE --note "All Mission Verification checks green; Mission complete." --engineer <name>` (surface stderr on non-zero exit and STOP).
@@ -599,7 +599,7 @@ python ../_lib/scripts/artifact_ops.py approve <Mission-path> --target-status <S
 - Don't author a Mission for work that fits one Intent — refuse Creation Mode and route to `/write-intent` directly; lazy Mission creation is Mission-debt (Decision #20).
 - Don't write a Mission Verification predicate as "each child Intent's tests pass" or "pytest exits 0" — that is per-component testing; assert the integrated, engineer-observable outcome instead (see Worked Examples 1 & 2).
 - Don't edit a near-immutable field (Outcome, Mission Verification, Out-of-scope, Flag strategy, Rollback plan, Kill criteria, Autonomy ceiling, First Intent) via `--review` — route substantive changes through `--supersede`; `--review` touches the live section only.
-- Don't `--activate` before a child Intent is LOCKED, or `--complete` before every queue Intent is LOCKED — the gates refuse, and forcing it leaves the Mission state-incoherent (L8 / L11 findings).
+- Don't `--activate` before a child Intent is COMPLETE, or `--complete` before every queue Intent is COMPLETE — the gates refuse, and forcing it leaves the Mission state-incoherent (L8 / L11 findings).
 - Don't reach for `--canonical` when the First Intent body isn't authored this session — Creation mode now **defaults provisional** (ADR-030 hard default, §1a.0); pass `--canonical` only for a same-session canonical landing. Canonical-without-child eradication cost is real (MSN-011 case, `T-MISSION-CANONICAL-WITHOUT-CHILD`).
 - Don't leave a SUPERSEDED shell when absorbing an OVERSIZED Intent via CONVERT-TO-MISSION — `git rm` the source Intent and drop its index row (neither Active nor Archive).
 

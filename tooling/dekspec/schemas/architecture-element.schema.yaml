@@ -60,7 +60,7 @@ properties:
 
   status:
     description: Lifecycle state. Compiler emits enforcement only for LOCKED artifacts (v0.1 PoC may relax via --treat-as-locked flag).
-    enum: [TODO, DRAFT, PROPOSED, ACCEPTED, LOCKED, DEPRECATED]
+    enum: [TODO, DRAFT, PROPOSED, ACCEPTED, DEPRECATED]
 
   subtype:
     description: "C4-aligned architectural subtype (Numbered Governance Rule 1, audit T10). Stored as snake_case slug for stable machine matching."

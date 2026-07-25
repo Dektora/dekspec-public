@@ -62,7 +62,10 @@ properties:
       99-Intent repo history; the `TESTFAIL ↔ TESTPASS` round-trip never
       fired). Pre-retirement files carrying either value will fail schema
       validation; transition them to `DRAFT` or `IMPLEMENTING` respectively.
-    enum: [DRAFT, OVERSIZED, PROPOSED, ACCEPTED, IMPLEMENTING, TESTPASS, MERGED, LOCKED, SUPERSEDED]
+    # ADR-046: COMPLETE is the Intent (work-item) terminal. LOCKED was retired
+    # for Intents once the tree migrated (slice 4) — an Intent authored at
+    # LOCKED is rejected with a migration message pointing at COMPLETE.
+    enum: [DRAFT, OVERSIZED, PROPOSED, ACCEPTED, IMPLEMENTING, TESTPASS, MERGED, COMPLETE, SUPERSEDED]
 
   source:
     type: object

@@ -30,7 +30,7 @@ Under ADR-042 the canonical form is the flat `dekspec <verb>`. The **Deprecated 
 | `dekspec audit linkage` | Cross-artifact linkage audit. | (no flat form yet — stays nested) |
 | `dekspec lock-ready` | Advance lock-ready ACCEPTED artifacts to LOCKED (gated). | `dekspec audit lock-ready` |
 | `dekspec relink` | Re-derive backlinks from forward links. Add `--check` for dry-run. | `dekspec audit relink` |
-| `dekspec init` | Scaffold the DekSpec artifact directory tree. | `dekspec library init` · `dekspec repo init` |
+| `dekspec init` | Scaffold the DekSpec artifact directory tree. | `dekspec library init` |
 | `dekspec sync` | Reconcile the consumer repo to the installed engine (reconcile-only). | `dekspec library sync` |
 | `dekspec regen-indexes` | Regenerate `*-index.md` files from the artifact tree. | `dekspec library regen-indexes` |
 | `dekspec find-spec-gaps` | Report source files no LOCKED Intent claims. | `dekspec dev archeology coverage` |
@@ -51,9 +51,10 @@ ADR-042 makes the flat verb canonical. The **nested `<group> <sub>` forms** in t
 
 Genuinely retired (removed) verbs:
 
-- `dekspec repo promote-provisional <slug>` — retired 2026-05-25 (F2 audit: zero CLI invocations in history; promotions were hand-promote). Hand-promote workflow is canonical; see `docs/dekspec-operating-guide.md` §Provisional Promotion. The CLI verb still parses but returns a non-zero exit with a pointer to the hand-promote workflow; the underlying promotion helpers (`dekspec.promote.plan_promotion` / `apply_promotion` / `render_plan`) remain importable as a Python API.
+- `dekspec repo promote-provisional <slug>` — retired 2026-05-25 (F2 audit: zero CLI invocations in history; promotions were hand-promote) and fully removed in ds-ib9o along with the whole `dekspec repo` alias namespace. Hand-promote via the `dekspec.promote` helpers (`plan_promotion` / `apply_promotion` / `render_plan`, importable as a Python API); see `docs/dekspec-operating-guide.md` §Provisional Promotion.
+- The `dekspec repo <verb>` → `dekspec library <verb>` alias namespace (ADR-033) and the legacy `dekspec audit linkage --severity` flag were removed in ds-ib9o after overstaying their one-release deprecation window. Canonical forms only: `dekspec library <verb>` and `--min-severity P0..P3`.
 
-The nested aliases survive in `LEGACY_COMMANDS` / the group parsers (in `tooling/dekspec/cli.py`) for consumer-side back-compat only — DekSpec's own authored surfaces (skills, methodology docs, release notes) use the flat verbs.
+The ADR-042 nested `<group> <sub>` aliases survive in `LEGACY_COMMANDS` / the group parsers (in `tooling/dekspec/cli.py`) for consumer-side back-compat only — DekSpec's own authored surfaces (skills, methodology docs, release notes) use the flat verbs.
 
 ---
 

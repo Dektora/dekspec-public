@@ -84,13 +84,19 @@ For each bead, verify:
 - [ ] **Domain constraints complete** — every constraint field has a value; no "n/a" where the IB specifies a concrete value
 - [ ] **Governing ADRs listed** — every ADR referenced in the IB appears in the bead's `--design` Governing ADRs
 - [ ] **Evals matched** — if the bead produces model output, eval references exist with `name`, `tests`, `pass_criterion`, and `run`; if deterministic-only, evals may be empty
-- [ ] **Acceptance criteria complete** — bead's `--acceptance-criteria` matches the IB's Done When checklist completely, each with verification type
+- [ ] **Acceptance criteria well-scoped** — bead's `--acceptance-criteria` is the *subset* of the IB's Done When this bead satisfies (not the whole checklist), each item mapping to a specific Done When entry with a verification type — not a vague superset
 - [ ] **Files correct** — every file in the bead's `--description` Files list exists in the repo and matches what the IB specifies
 - [ ] **Interface contracts listed** — if the IB references contracts, the bead's `--design` lists them
 - [ ] **Goal is single sentence** — states the observable outcome, not a summary of the IB
 - [ ] **Out of Scope populated** — at least one boundary listed in `--design`
 - [ ] **Do Not Touch populated** — populated or explicitly states "None — [reason]"
+- [ ] **Environment prerequisites carried** — a bead whose work needs a live service (its Done When exercises a DB, Docker, broker, etc.) carries the relevant `## Environment Prerequisites` rows (with runnable probes) from the IB into `--design`; a deterministic-only bead carries `None`
 - [ ] **External ref set** — `external_ref` resolves to the IB (bare path for a lone bead; `IB-NNN:<unit-slug>` for each bead of a multi-bead set, so siblings don't collide)
+
+Then, across the bead set as a whole (not per bead), verify:
+
+- [ ] **Union coverage** — every IB Done When criterion is claimed by at least one bead; the beads' acceptance criteria, taken as a union, leave no gap against the IB's Done When
+- [ ] **Granularity** — no single bead claims to ship the entire non-trivial IB, no bead would require more than ~2 hours of focused work, and beads carve along architectural seams rather than incidental ones
 
 ### Output
 
@@ -164,7 +170,7 @@ Wait for engineer confirmation before proceeding.
 2. Read the IB from the provided path — the ONLY source of bead content
 3. Do NOT read any other document for content: not ADRs, not interface contracts. Everything needed for the beads is in the IB.
 4. **Process violation check:** Run `scripts/find_beads_for_ib.py <IB path>`. Surface stderr on non-zero exit. If `by_status` contains any `in_progress` or `closed` bead — STOP. Coding has already started. Do not delete, do not create new beads. Escalate to the engineer.
-5. Decompose the IB into beads — one bead = one session = one PR
+5. Decompose the IB into beads — one bead = one session = one PR. Each bead carries the **subset** of the IB's Done When criteria it satisfies; the **union** of all beads must cover every Done When entry with no gap. A single bead may claim the whole IB only when the IB is genuinely single-PR sized — otherwise split it. A bead that needs more than ~2 hours of focused work, or that spans several Done When criteria separable along architectural seams, is too large.
 
 ### Bead Format
 
@@ -270,7 +276,13 @@ The two lines compose with the Intent IR `risk_tier` field (also Phase 1.B): `ri
 
 ## Interface Contracts
 - dekspec/interface-contracts/IC-NNN-[slug].md — traceability only, do not read; constraints are in Constraints and Decisions
+
+## Environment Prerequisites
+- [service/tool] — probe: `[shell command, exit 0 = available]` — required: [yes/no]
+(or: None — this bead needs no live services)
 ```
+
+Copy each row from the IB's `## Environment Prerequisites` table that this bead's work actually needs (a bead touching only deterministic code carries `None`). The coding preflight runs these probes before the bead is dispatched; a failed required probe defers the bead.
 
 `**--acceptance-criteria**` — done-when checklist and evals:
 
@@ -324,14 +336,20 @@ Runs before any bead is written to the queue:
 - [ ] Goal is a single sentence stating the observable outcome after this bead is complete
 - [ ] `--design` Out of Scope lists at least one boundary — not empty
 - [ ] `--design` Do Not Touch is populated or explicitly states "None — [reason]"
+- [ ] `--design` Environment Prerequisites carries the IB rows this bead's work needs (runnable probes), or "None" for a deterministic-only bead
 - [ ] Domain Constraints are complete (no "n/a" where the IB specifies a value)
 - [ ] Governing ADRs are listed with "traceability only" label
 - [ ] Evals in `--acceptance-criteria` have `name`, `tests`, `pass_criterion`, and `run` — not bare strings
 - [ ] Evals are matched (beads with model output have eval entries)
 - [ ] Acceptance criteria include verification type for each item
-- [ ] Acceptance criteria are complete (match IB's Done When checklist)
+- [ ] Acceptance criteria are well-scoped — each bead's criteria are the *subset* of the IB's Done When it satisfies (not the full checklist), each mapping to a specific Done When entry
 - [ ] Files listed in `--description` are correct (exist in repo, match IB)
 - [ ] `--external-ref` is set to the IB (bare path for a lone bead; `IB-NNN:<unit-slug>` per bead for a multi-bead set)
+
+Then, across the full bead set (before any bead is emitted):
+
+- [ ] **Union coverage** — every IB Done When criterion is claimed by ≥1 bead; the union of all beads' acceptance criteria leaves no gap against the IB's Done When
+- [ ] **Granularity** — no single bead ships the entire non-trivial IB; no bead exceeds ~2 hours of focused work; beads split along architectural seams, not incidental ones
 
 Report all failures across all beads before corrections. Engineer batches fixes.
 

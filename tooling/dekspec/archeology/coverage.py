@@ -1,7 +1,7 @@
 """Spec-gap detection helper for the archeology substrate.
 
 `run(at)` walks a consumer repo, collects the §Components-affected glob set
-from every **LOCKED** Intent under `dekspec/intents/`, and reports the files
+from every covering Intent (committed status) under `dekspec/intents/`, and reports the files
 NOT matched by any glob — the spec-orphaned surfaces a brownfield-recovery
 workflow should backfill.
 
@@ -47,6 +47,14 @@ DEFAULT_EXCLUDES: tuple[str, ...] = (
     "**/.claude/worktrees/**",
     ".beads/",
     "dekspec/_vendored/",
+    # VCS + tooling caches + packaging metadata — build/cache artifacts, not
+    # spec-coverable source (ds-rt0m).
+    "**/.git/",
+    "**/.pytest_cache/",
+    "**/.ruff_cache/",
+    "**/.mypy_cache/",
+    "**/*.egg-info/",
+    "**/*.pyc",
 )
 
 # Glob bullet inside an Intent's §Components affected section, mirroring the
@@ -60,7 +68,7 @@ class CoverageError(Exception):
 
 @dataclass
 class CoverageGap:
-    """One file not claimed by any LOCKED Intent's §Components-affected glob.
+    """One file not claimed by any covering Intent's §Components-affected glob.
 
     `path` is the repo-relative path. `last_modified` is the file's mtime as
     an ISO-8601 UTC string. `claimed_by_intent` is the id of the matching
@@ -129,8 +137,21 @@ def _intent_globs(sections: dict[str, str]) -> list[str]:
     return out
 
 
-def _collect_locked_intent_globs(repo_root: Path) -> dict[str, list[str]]:
-    """Map every LOCKED Intent id -> its §Components-affected glob list."""
+# Intent statuses whose §Components-affected globs count as spec coverage.
+# Per ADR-046 an Intent terminates at COMPLETE (not LOCKED), so coverage keys
+# on the committed ladder — every status past PROPOSED that isn't an off-ramp.
+# LOCKED is retained for pre-ADR-046 / cross-repo trees still using it.
+_COVERAGE_STATUSES: frozenset[str] = frozenset(
+    {"ACCEPTED", "IMPLEMENTING", "TESTPASS", "MERGED", "COMPLETE", "LOCKED"}
+)
+
+
+def _collect_covering_intent_globs(repo_root: Path) -> dict[str, list[str]]:
+    """Map every covering Intent id -> its §Components-affected glob list.
+
+    A covering Intent is one at a committed status (`_COVERAGE_STATUSES`);
+    DRAFT / PROPOSED / OVERSIZED / SUPERSEDED Intents do not claim coverage.
+    """
     intents_dir = repo_root / "dekspec" / "intents"
     if not intents_dir.is_dir():
         return {}
@@ -141,7 +162,7 @@ def _collect_locked_intent_globs(repo_root: Path) -> dict[str, list[str]]:
         except OSError:
             continue  # unreadable Intent — skip, best-effort
         sections = _split_sections(text)
-        if _intent_status(sections) != "LOCKED":
+        if _intent_status(sections) not in _COVERAGE_STATUSES:
             continue
         intent_id = _intent_id(sections, intent_file.name)
         out[intent_id] = _intent_globs(sections)
@@ -190,7 +211,10 @@ def _is_excluded(rel_path: str, excludes: list[str]) -> bool:
             dir_glob = glob.rstrip("/")
             # Strip a leading **/ so "foo" matches at any depth.
             bare = dir_glob[3:] if dir_glob.startswith("**/") else dir_glob
-            if bare and bare in parts:
+            # Match a path segment either exactly or by glob (e.g. `*.egg-info`).
+            if bare and (
+                bare in parts or any(fnmatch.fnmatch(seg, bare) for seg in parts)
+            ):
                 return True
             if posix == dir_glob or posix.startswith(dir_glob + "/"):
                 return True
@@ -204,7 +228,7 @@ def _is_excluded(rel_path: str, excludes: list[str]) -> bool:
 
 
 def _claimed_by(rel_path: str, intent_globs: dict[str, list[str]]) -> str | None:
-    """First LOCKED Intent id whose glob set claims `rel_path`, else `None`."""
+    """First covering Intent id whose glob set claims `rel_path`, else `None`."""
     posix = rel_path.replace("\\", "/")
     for intent_id, globs in intent_globs.items():
         for glob in globs:
@@ -223,7 +247,7 @@ def run(at: str | Path = ".") -> list[CoverageGap]:
 
     Walks every file under `at`, skips the exclude set (defaults plus the
     `.dekspec/archeology-exclude` file), and returns one `CoverageGap` per
-    file NOT matched by any LOCKED Intent's §Components-affected glob.
+    file NOT matched by any covering Intent's §Components-affected glob.
 
     The returned list is sorted by path for determinism. `run` is read-only
     against the target repo — it never writes.
@@ -236,7 +260,7 @@ def run(at: str | Path = ".") -> list[CoverageGap]:
         raise CoverageError(f"repo path is not a directory: {at}")
 
     excludes = load_excludes(repo_root)
-    intent_globs = _collect_locked_intent_globs(repo_root)
+    intent_globs = _collect_covering_intent_globs(repo_root)
 
     gaps: list[CoverageGap] = []
     for path in sorted(repo_root.rglob("*")):

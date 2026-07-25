@@ -142,7 +142,8 @@ def audit_linkage(
             ),
         )
     )
-    findings.extend(_l13_intent_lock_coherence(graph))
+    # ADR-046: L13 (Intent lock-coherence) retired — Intents terminate at
+    # COMPLETE, not LOCKED, so the ADR-017 Path A/B/C lock gate guards nothing.
     findings.extend(_l9_verification_resolves(graph))
     findings.extend(_l10_glossary_coverage(graph))
     findings.extend(
@@ -1880,86 +1881,6 @@ def _l14_intent_backlog_active(
 
 
 # --------------------------------------------------------------------------- #
-# L13 — Intent lock coherence (two-path lock gate, ADR-017)
-# --------------------------------------------------------------------------- #
-
-_BELOW_ACCEPTED = {"DRAFT", "PROPOSED", "OVERSIZED"}
-
-
-def _l13_intent_lock_coherence(graph: SpecGraph) -> list[Finding]:
-    """L13-INT-LOCK-COHERENCE (important) — a LOCKED Intent must satisfy at
-    least one of the two sufficient lock paths defined by ADR-017:
-
-      - Path A — forward flow: the Intent reached LOCKED through the canonical
-        ``--testpass`` -> TESTPASS -> MERGED -> LOCKED lifecycle.
-      - Path B — downstream-accepted: every downstream WS/IC/IB the Intent
-        produced is at status ACCEPTED or LOCKED.
-
-    The rule mirrors ``/write-intent`` Lock Mode (IB-049) so the prompt-time
-    gate and this parse-time audit agree — no skill-vs-engine drift.
-
-    It is a deliberate one-sided guard (INT-036 OI-3): it fires ONLY when it
-    can positively show Path B is unsatisfied — a LOCKED Intent with >=1
-    resolvable downstream artifact below ACCEPTED. Path A leaves no structured
-    parse-time evidence in the Intent IR, so the rule stays silent on a LOCKED
-    Intent that has no Path-B-blocking downstream artifact; a false negative is
-    acceptable here, a false positive would break the ADR-007 CLEAN gate.
-
-    Downstream set: the IB->Intent edge (an IB's ``**Intent:**`` field) is the
-    reliably-modelled edge, so the downstream set is the resolvable IB set. No
-    direct Intent<->WS / Intent<->IC edge is modelled in the IR (INT-036 OI-2),
-    so WS/IC inclusion is out of reach and the set is IBs only. DEPRECATED and
-    SUPERSEDED downstream IBs are excluded. Beads (L4) are not part of the gate.
-    """
-    out: list[Finding] = []
-
-    ibs_by_intent: dict[str, list[dict[str, Any]]] = {}
-    for ib in graph.ibs():
-        int_ref = (ib.get("intent") or {}).get("id")
-        if int_ref:
-            ibs_by_intent.setdefault(int_ref, []).append(ib)
-
-    for intent in graph.intents():
-        if (intent.get("status") or "").upper() != "LOCKED":
-            continue
-        int_id = intent["id"]
-        downstream = [
-            ib
-            for ib in ibs_by_intent.get(int_id, [])
-            if (ib.get("status") or "").upper() not in {"DEPRECATED", "SUPERSEDED"}
-        ]
-        if not downstream:
-            # No resolvable downstream artifact — bias toward silence.
-            continue
-        blockers = sorted(
-            (ib for ib in downstream if (ib.get("status") or "").upper() in _BELOW_ACCEPTED),
-            key=lambda b: b["id"],
-        )
-        if not blockers:
-            # Path B satisfied — every downstream IB is ACCEPTED or LOCKED.
-            continue
-        blocker_desc = ", ".join(
-            f"{ib['id']} is {(ib.get('status') or '').upper()}" for ib in blockers
-        )
-        out.append(
-            Finding(
-                severity=P2,
-                rule="L13-INT-LOCK-COHERENCE",
-                artifact_id=int_id,
-                message=(
-                    f"Intent is LOCKED but satisfies neither sufficient lock path "
-                    f"(ADR-017). Path B (every downstream WS/IC/IB at status "
-                    f">= ACCEPTED) is broken: {blocker_desc}. Promote the blocking "
-                    f"artifact(s) to ACCEPTED, or — if the Intent locked via the "
-                    f"forward-flow Path A — confirm its lifecycle record."
-                ),
-                fix_kind="semantic",
-            )
-        )
-    return out
-
-
-# --------------------------------------------------------------------------- #
 # L9 — Verification cmd checks resolve to executable scripts
 # --------------------------------------------------------------------------- #
 
@@ -3416,7 +3337,9 @@ def _t_sec_authn_method_consistency(graph: SpecGraph) -> list[Finding]:
 # Encodes the "14-day new-package rule" (do not lean on a dependency pinned to a
 # version published < 14 days ago without explicit human approval). Publish
 # dates are resolved OFFLINE from a local cache the consumer maintains at
-# `.dekspec/package-publish-dates.json` ({"name==version": "YYYY-MM-DD", ...}).
+# `.dekspec-cache/package-publish-dates.json` ({"name==version": "YYYY-MM-DD",
+# ...}) — the ephemeral state zone (ds-ns8s); the legacy `.dekspec/` location is
+# still read as a fallback during transition.
 # Absent / malformed cache, or an unparseable date, emits nothing — "metadata
 # not resolvable" is a clean state, never a finding. No network call is made
 # during the audit; a registry-backed resolver that POPULATES the cache is an
@@ -3424,7 +3347,26 @@ def _t_sec_authn_method_consistency(graph: SpecGraph) -> list[Finding]:
 # --------------------------------------------------------------------------- #
 
 _NEW_DEPENDENCY_AGE_DAYS = 14
-_PACKAGE_PUBLISH_DATES_CACHE = ".dekspec/package-publish-dates.json"
+# Ephemeral state zone (ds-ns8s / P-INT-188). The legacy `.dekspec/` location is
+# read as a fallback during transition — see `_resolve_publish_dates_cache`.
+_PACKAGE_PUBLISH_DATES_CACHE = ".dekspec-cache/package-publish-dates.json"
+_LEGACY_PACKAGE_PUBLISH_DATES_CACHE = ".dekspec/package-publish-dates.json"
+
+
+def _resolve_publish_dates_cache(root: Path) -> Path:
+    """Resolve the supply-chain publish-dates cache path.
+
+    Prefers the ephemeral-zone location (`.dekspec-cache/`); falls back to the
+    legacy committed-zone location (`.dekspec/`) when the new one is absent, so
+    consumers that have not yet migrated keep working. Returns the new-zone path
+    when neither exists (the canonical location to create)."""
+    new = root / _PACKAGE_PUBLISH_DATES_CACHE
+    if new.is_file():
+        return new
+    legacy = root / _LEGACY_PACKAGE_PUBLISH_DATES_CACHE
+    if legacy.is_file():
+        return legacy
+    return new
 
 
 def _audit_today() -> _date:
@@ -3450,9 +3392,10 @@ def _t_supply_chain_new_dependency(graph: SpecGraph) -> list[Finding]:
     """T-SUPPLY-CHAIN-NEW-DEPENDENCY (P3): flag dependencies pinned to a version
     published fewer than 14 days ago (offline, cache-resolved).
 
-    Fires only when the repo declares at least one Security Profile. Reads
-    `.dekspec/package-publish-dates.json` relative to graph.repo_root; absent or
-    malformed cache → []. One advisory Finding per dependency younger than the
+    Fires only when the repo declares at least one Security Profile. Reads the
+    publish-dates cache relative to graph.repo_root (`.dekspec-cache/`, legacy
+    `.dekspec/` fallback); absent or malformed cache → []. One advisory Finding
+    per dependency younger than the
     threshold. Future-dated and unparseable entries are skipped (treated as
     unresolvable, never a finding)."""
     import json as _json
@@ -3461,7 +3404,7 @@ def _t_supply_chain_new_dependency(graph: SpecGraph) -> list[Finding]:
     if not list(graph.security_profiles()):
         return out
     root = Path(graph.repo_root) if graph.repo_root else Path(".")
-    cache_path = root / _PACKAGE_PUBLISH_DATES_CACHE
+    cache_path = _resolve_publish_dates_cache(root)
     if not cache_path.is_file():
         return out
     try:
@@ -4183,14 +4126,14 @@ def _propose_si01_date_fixes(graph: SpecGraph) -> list[Fix]:
 #   band 3  ACCEPTED / Mission ACTIVE             — accepted / underway
 #   band 4  IMPLEMENTING / TESTPASS / MERGED /
 #           Mission COMPLETING                    — building
-#   band 5  LOCKED / Mission COMPLETE             — locked / done
+#   band 5  LOCKED / COMPLETE (Intent+Mission)    — done (ADR-046)
 #
 # `DEPRECATED` / `SUPERSEDED` (and Mission `KILLED`) are an off-ramp,
 # excluded from every status-coherence check.
 
 # Status token -> maturity band. Mission lifecycle tokens (ACTIVE /
 # COMPLETING / COMPLETE) are placed on the same ladder so child-Intent ->
-# Mission edges are comparable: ACTIVE (>=1 child LOCKED) sits at band 3,
+# Mission edges are comparable: ACTIVE (>=1 child COMPLETE, ADR-046) sits at band 3,
 # the Mission analogue of ACCEPTED; COMPLETING at band 4; COMPLETE at
 # band 5.
 _MATURITY_BAND: dict[str, int] = {
@@ -4209,7 +4152,7 @@ _MATURITY_BAND: dict[str, int] = {
     "MERGED": 4,
     "COMPLETING": 4,  # Mission-only
     "LOCKED": 5,
-    "COMPLETE": 5,  # Mission-only
+    "COMPLETE": 5,  # Intent terminal (ADR-046) + Mission terminal
 }
 
 # The off-ramp — excluded from every T-STATUS check on either edge end.
@@ -4908,6 +4851,12 @@ def is_lock_ready(graph: SpecGraph, artifact_id: str) -> tuple[bool, str]:
     if not ir:
         return False, "artifact not found in graph"
 
+    # ADR-046: WS and AE no longer lock — they rest at ACCEPTED as living
+    # references. Only the decision/contract kinds (ADR, IC, and the singletons)
+    # are lock-ready; never suggest locking a WS or AE.
+    if artifact_id.startswith(("WS-", "AE-")):
+        return False, "WS/AE rest at ACCEPTED under ADR-046 — not a lockable kind"
+
     status = ir.get("status")
     band = maturity_band(status)
     if band != 3:  # 3 is ACCEPTED / ACTIVE
@@ -5054,7 +5003,11 @@ def _get_ib_folders_mapping(graph: SpecGraph) -> dict[str, list[int]]:
     return {
         "queued": [0, 1, 2],  # TODO, DRAFT, OVERSIZED, PROPOSED
         "active": [3, 4],  # ACCEPTED, IMPLEMENTING, TESTPASS, MERGED
-        "completed": [5],  # LOCKED, COMPLETE
+        # ADR-046: IB rests at ACCEPTED (band 3) as its terminal — it never
+        # reaches band 5. A consumed/done IB in `completed/` is ACCEPTED, so
+        # band 3 is allowed here (folder marks done since status can't). Band 5
+        # kept for legacy/pre-migration LOCKED IBs and cross-kind tolerance.
+        "completed": [3, 5],
     }
 
 
@@ -6305,7 +6258,9 @@ def _t_mission_canonical_without_child(graph) -> list[Finding]:
 # already-shipped Intents would add advisory noise with no remediation
 # value). INT-168 (δ / MSN-020).
 _INT_NON_GOALS_TERMINAL_STATUSES = frozenset(
-    {"LOCKED", "MERGED", "SUPERSEDED", "DEPRECATED"}
+    # ADR-046: COMPLETE is the Intent terminal (== done, like LOCKED) — the rule
+    # stays silent on it, as it was on LOCKED.
+    {"COMPLETE", "LOCKED", "MERGED", "SUPERSEDED", "DEPRECATED"}
 )
 
 # Detects an authored `## Non-Goals` H2 section in an Intent body.

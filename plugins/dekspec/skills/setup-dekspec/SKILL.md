@@ -64,6 +64,13 @@ edits an existing config, it does not scaffold one.
    repo-scoped). Choose `github`/`gitlab` only if the team tracks work on the
    remote forge, `local` for an offline tracker. The issue/bead-authoring flows
    consume this.
+   - **Then initialize it (`br` only).** Setting the config does *not* create
+     the tracker DB. After persisting `issue_tracker=br`, run `br init` in the
+     repo so `br list` / the bead-authoring flows don't hit `NOT_INITIALIZED`
+     (`dekspec init`/INT-178 acquire the `br` *binary* but never init the DB).
+     It is idempotent — skip if `.beads/` already exists (`br init` on an
+     initialized repo is a no-op). No local init is needed for
+     `github`/`gitlab`/`local`.
 2. **Ephemeral-scratch location** — `ephemeral_scratch_dir` (path).
    *Recommended:* `dekspec/.scratch/` (the gitignored, disposable hand-off zone
    landed by INT-165). Where interview logs and skill hand-off notes land.

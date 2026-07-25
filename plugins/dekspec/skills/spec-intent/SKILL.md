@@ -92,7 +92,7 @@ When the parent Intent reaches `IMPLEMENTING` with its child specs at `ACCEPTED`
 - Don't auto-accept — `--accept` is the engineer gate; `spec-intent` presents and waits, it never flips PROPOSED → ACCEPTED on its own.
 - Don't reimplement authoring logic — sequence `/write-intent` and the `write-*` skills unchanged; a parallel implementation drifts from the canonical authoring surfaces.
 - Don't cross the coding boundary — never dispatch `/orchestrate-coding-session` or write implementation code; this skill ends at IMPLEMENTING.
-- Don't leave child specs raw — drive every scaffolded WS/IC/IB to ACCEPTED/LOCKED before declaring ready-for-coding.
+- Don't leave child specs raw — before declaring ready-for-coding, drive each scaffolded WS and IB to `ACCEPTED` (their terminal per ADR-046 — living references / consumed-once specs never lock) and each IC to `LOCKED` (contracts do lock).
 
 ## Verification Checklist
 

@@ -45,6 +45,40 @@ set -euo pipefail
 MIRROR_REPO="Dektora/dekspec-public"
 MIRROR_GIT_URL="https://github.com/${MIRROR_REPO}.git"
 
+# --- Install-integrity helpers (ds-0vuo / P-INT-188) -----------------------
+# Factored above the executable flow so tests can source JUST these helpers
+# (with `_DEKSPEC_INSTALL_SOURCE_ONLY=1`) without triggering require_cmd/pipx.
+
+# True (0) iff both SHAs are non-empty and identical. Empty expected/actual is
+# treated as "cannot verify" → non-match, so the caller refuses under strict.
+verify_commit_sha_match() {
+  [[ -n "${1:-}" && -n "${2:-}" && "$1" == "$2" ]]
+}
+
+# Echo the commit SHA a mirror tag resolves to, peeling annotated tags. For a
+# lightweight tag `refs/tags/<t>` is the commit; for an annotated tag the
+# peeled `refs/tags/<t>^{}` line carries the commit. Prefer the peeled line.
+resolve_tag_commit_sha() {
+  git ls-remote "$MIRROR_GIT_URL" "refs/tags/$1" "refs/tags/$1^{}" 2>/dev/null \
+    | awk '{ if ($2 ~ /\^\{\}$/) peeled=$1; else direct=$1 } END { print (peeled != "" ? peeled : direct) }'
+}
+
+# Echo the expected commit SHA published for a tag in the mirror `main`
+# SHA256SUMS ledger (lines: "<sha>  <tag>") on the mirror's dedicated
+# `integrity-ledger` branch — a branch the per-release content-wipe of `main`
+# never touches, so the ledger accumulates every release. Empty if
+# unpublished/offline. Published by `scripts/publish_integrity_ledger.sh`.
+lookup_expected_sha() {
+  curl -fsSL "https://raw.githubusercontent.com/${MIRROR_REPO}/integrity-ledger/SHA256SUMS" 2>/dev/null \
+    | awk -v t="$1" '$2 == t { print $1; exit }'
+}
+
+# Sourced-for-tests short-circuit: stop before the executable flow (and before
+# the require_cmd git/pipx invocations, which would exit on a helperless host).
+if [[ -n "${_DEKSPEC_INSTALL_SOURCE_ONLY:-}" ]]; then
+  return 0 2>/dev/null || exit 0
+fi
+
 require_cmd() {
   local cmd="$1"
   local hint="${2:-}"
@@ -121,6 +155,32 @@ fi
 
 echo "Installing dekspec ${REF} (CLI + vendored content + ${PLATFORM} delivery) from ${MIRROR_REPO}"
 echo
+
+# --- Integrity gate (ds-0vuo / P-INT-188) ---------------------------------
+# Verify the resolved tag points at the commit published in the mirror's
+# SHA256SUMS ledger before installing. A mismatch (re-pointed tag / substituted
+# commit) REFUSES. An unpublished tag or offline ledger warns + proceeds unless
+# DEKSPEC_VERIFY_STRICT is set. `@main` (no tag) is not verifiable → skipped.
+if [[ "$REF" != "main" ]]; then
+  echo "Verifying release integrity for ${REF}…"
+  _expected_sha="$(lookup_expected_sha "$REF" || true)"
+  _actual_sha="$(resolve_tag_commit_sha "$REF" || true)"
+  if [[ -n "$_expected_sha" && -n "$_actual_sha" ]]; then
+    if verify_commit_sha_match "$_actual_sha" "$_expected_sha"; then
+      echo "  ✓ integrity OK: ${REF} → ${_actual_sha:0:12} matches published SHA256SUMS."
+    else
+      echo "Error: integrity check FAILED for ${REF} — resolved ${_actual_sha:0:12} does not match published ${_expected_sha:0:12}. Refusing to install." >&2
+      exit 1
+    fi
+  else
+    echo "  Warning: no published integrity entry for ${REF} (or ledger unreachable); proceeding unverified." >&2
+    if [[ -n "${DEKSPEC_VERIFY_STRICT:-}" ]]; then
+      echo "Error: DEKSPEC_VERIFY_STRICT set — refusing to install ${REF} without a verified commit SHA." >&2
+      exit 1
+    fi
+  fi
+  echo
+fi
 
 echo "=== 1/3 CLI (pipx → pip-from-git, public mirror) ==="
 pipx install --force "git+${MIRROR_GIT_URL}@${REF}"

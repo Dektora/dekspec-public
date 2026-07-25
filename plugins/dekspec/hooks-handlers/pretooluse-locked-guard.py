@@ -12,12 +12,14 @@ Exemptions — the legitimate authoring paths stay unblocked:
     NOT use the Edit/Write TOOL, so this hook never fires on them. The canonical
     change flow is `--unlock` (LOCKED -> PROPOSED) -> edit while PROPOSED ->
     `--lock`; the edits land while the artifact is NOT LOCKED.
-  * A skill that must edit a LOCKED artifact's body via the Edit tool (e.g.
-    `/write-intent --sync` post-merge checklist cleanup) drops a marker file
-    `dekspec/.dekspec-locked-write-allow` for the duration of its edits; this
-    hook honors a FRESH marker and allows the write. The marker is staleness-
-    guarded (see MARKER_TTL_SECONDS) so a leaked marker cannot permanently
-    disable the guard.
+  * A skill that must edit a LOCKED artifact's body via the Edit tool may drop
+    a marker file `dekspec/.dekspec-locked-write-allow` for the duration of its
+    edits; this hook honors a FRESH marker and allows the write. The marker is
+    staleness-guarded (see MARKER_TTL_SECONDS) so a leaked marker cannot
+    permanently disable the guard. (No shipped skill currently needs this —
+    `/write-intent --sync` used to, but under ADR-046 it edits a `COMPLETE`
+    Intent, which is not LOCKED and so is never guarded. The escape hatch is
+    retained for any future LOCKED-body-editing skill.)
 
 Environment overrides:
     DEKSPEC_HOOK_DISABLE=1   Skip the guard entirely.
@@ -120,7 +122,8 @@ def main() -> int:
     if _status(path.resolve()) != "LOCKED":
         return 0
 
-    # Authoring-skill exemption (fresh marker) — e.g. /write-intent --sync.
+    # Authoring-skill exemption (fresh marker) — a general escape hatch for a
+    # skill that must edit a LOCKED artifact's body via the Edit tool.
     if _fresh_marker(cwd):
         return 0
 
@@ -128,8 +131,8 @@ def main() -> int:
         f"[dekspec] BLOCKED: {rel_str} is LOCKED — a direct Edit/Write to a "
         f"LOCKED artifact is refused (immutability, ds-k24i).\n"
         f"  To change it: run the artifact's authoring skill with --unlock "
-        f"(e.g. /write-intent --unlock <path>), edit it while PROPOSED, then "
-        f"--lock. Post-merge tail edits go through --sync (which is exempt).\n"
+        f"(e.g. /write-adr --unlock <path>), edit it while PROPOSED, then "
+        f"--lock.\n"
         f"  Status transitions already bypass this guard (they run via "
         f"artifact_ops, not the Edit tool). Emergency override: "
         f"DEKSPEC_HOOK_DISABLE=1.",

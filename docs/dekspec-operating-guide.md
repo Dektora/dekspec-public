@@ -278,7 +278,7 @@ An Intent is not a layer; it is a *driver* that an engineer or autonomy brain ru
 ```
 DRAFT → OVERSIZED ──► SUPERSEDED  (terminal off-ramp; size cap exceeded)
   │
-  └─────► PROPOSED → ACCEPTED → IMPLEMENTING → TESTPASS → MERGED → LOCKED
+  └─────► PROPOSED → ACCEPTED → IMPLEMENTING → TESTPASS → MERGED → COMPLETE
                                     └──► `--testpass` failures append to the
                                          TESTFAIL records log and loop back here
 ```
@@ -292,7 +292,7 @@ DRAFT → OVERSIZED ──► SUPERSEDED  (terminal off-ramp; size cap exceeded)
 | `IMPLEMENTING` | `--decompose` | IBs (multi-WS IUs) and direct beads (single-WS IUs) scaffolded; coding sessions run on the int/ branch. On `--testpass` failure (Verification or diff-confinement) a TESTFAIL record is appended and Status stays IMPLEMENTING |
 | `TESTPASS` | all Verification checks green; diff confinement clean | Branch is ready to merge to `main` |
 | `MERGED` | engineer merges branch to `main` | Manual transition; signals the diff has landed |
-| `LOCKED` | `--lock` (run from `main`) | Intent is the executed commitment; appended to Mission Intent queue if `Mission:` is set |
+| `COMPLETE` | `--lock` (run from `main`; flag retained for compatibility, now completes the Intent) | Intent terminal (ADR-046 — Intents finish, they don't lock); `MERGED → COMPLETE`; appended to Mission Intent queue if `Mission:` is set. A `COMPLETE` Intent is a historical record, editable with no unlock cycle |
 | `SUPERSEDED` | `--supersede` (Phase 2-3 flag) | Replaced by a successor Intent recorded in `Superseded-By` |
 
 *`TODO` and `TESTFAIL` were retired from the Intent enum 2026-05-25 (E3 audit — neither was observed across 99-Intent history; the `TESTFAIL ↔ TESTPASS` round-trip never fired). Files authored against the legacy enum are rejected at `dekspec validate`; transition them to `DRAFT` or `IMPLEMENTING` respectively. The TESTFAIL records section in the Intent template is retained as a captured-failure log on the IMPLEMENTING → TESTPASS path; it no longer corresponds to a Status flip. **Note (ADR-027, LOCKED 2026-05-29):** the retirement above stands at the **Intent** level. The `TESTFAIL` status was re-introduced at the **IB** level by INT-102 (LOCKED) as part of the MSN-017 two-tier review pipeline; ADR-027 formalizes that the empirical basis for retirement (zero round-trip occurrences) no longer applies because the new action-handler framework (INT-108) explicitly engineers the IB-side `IMPLEMENTING ↔ TESTFAIL ↔ IMPLEMENTING → TESTPASS` round-trip.*
@@ -345,7 +345,7 @@ The default predicates live in `CLAUDE.md` §Verification Predicate Library so a
 
 **Diff confinement** (Decision #14) runs *before* the Verification predicate. `--testpass` Step 2 computes the union of files changed on the int/ branch since it diverged from `main` and confirms every changed file matches at least one glob in the Intent's `Components affected:` (resolving named components via the CLAUDE.md Component → File-Glob Map). An out-of-scope edit appends a TESTFAIL record (Status stays IMPLEMENTING — the TESTFAIL Status flip retired 2026-05-25) even when every Verification check would have passed — the gate that prevents Intents from quietly growing scope.
 
-**`--lock`** runs post-merge from `main`. It refuses unless the Intent is in `MERGED` status and the Verification block is byte-identical to the version `--testpass` last ran against (so the commit history's executed-commitment matches what was verified). On success, it transitions `MERGED → LOCKED`, moves the Intent's row from the Active queue to the Archive in `intent-index.md`, and (when `Mission:` is set) appends a one-line LOCKED row to the Mission's Intent queue.
+**`--lock`** runs post-merge from `main` and **completes** the Intent (ADR-046 — Intents terminate at `COMPLETE`, not `LOCKED`; the flag name is retained for compatibility). It refuses unless the Intent is in `MERGED` status. On success, it transitions `MERGED → COMPLETE`, moves the Intent's row from the Active queue to the Archive in `intent-index.md`, and (when `Mission:` is set) appends a one-line `COMPLETE` row to the Mission's Intent queue. The former ADR-017 three-path lock gate + its L13 audit rule are retired — the pre-freeze audit was redundant with `MERGED` (branch already passed CI + PR review).
 
 ### Bead execution: EPCV inner loop
 
@@ -391,7 +391,7 @@ The `/write-intent` skill owns the full Intent lifecycle. Phase 1 flags (all imp
 - **`--accept`** — Engineer-only gate; PROPOSED → ACCEPTED.
 - **`--decompose`** — Scaffold IBs (multi-WS IUs, via `/write-ibs`) and direct beads (single-WS IUs, via `/write-code-beads`); for `type: bug`, scaffold the failing-test bead as IB-1 via `/write-code-beads --bug-reproduction`. ACCEPTED → IMPLEMENTING.
 - **`--testpass`** — Diff confinement + Verification predicate evaluation; IMPLEMENTING → TESTPASS on clean, or Status stays IMPLEMENTING on failure (TESTFAIL record appended to the captured-failure log; the `TESTFAIL` Status flip retired 2026-05-25).
-- **`--lock`** — Post-merge from `main`; MERGED → LOCKED; archive in `intent-index.md`; append to Mission Intent queue if applicable.
+- **`--lock`** — Post-merge from `main`; completes the Intent `MERGED → COMPLETE` (ADR-046; flag name retained for compatibility); archive in `intent-index.md`; append to Mission Intent queue if applicable.
 
 Phase 2/3 flags deferred: `--sync` (post-implementation catch-up), `--audit` (health check), `--review` (interactive walk-through), `--amend` (mid-flight changes).
 
@@ -424,10 +424,10 @@ TODO → ACTIVE → COMPLETING → COMPLETE
 
 | Status | Transition trigger | What happens |
 |---|---|---|
-| `TODO` | `/write-mission <description>` | Near-immutable section written; no child Intent has reached LOCKED yet |
-| `ACTIVE` | `--activate` (gate: ≥ 1 child Intent in LOCKED status, audit-v2 L8) | At least one Intent locked under the Mission; execution underway |
-| `COMPLETING` | `--complete` (intermediate state) | Flag (if any) on, all known Intents LOCKED; awaiting Mission Verification |
-| `COMPLETE` | `--complete` (Mission Verification predicate evaluates true) | Outcome verified; flag-removal Intent (if any) LOCKED; Mission archived |
+| `TODO` | `/write-mission <description>` | Near-immutable section written; no child Intent has reached `COMPLETE` yet |
+| `ACTIVE` | `--activate` (gate: ≥ 1 child Intent in `COMPLETE` status, audit-v2 L8) | At least one Intent completed under the Mission; execution underway |
+| `COMPLETING` | `--complete` (intermediate state) | Flag (if any) on, all known Intents `COMPLETE`; awaiting Mission Verification |
+| `COMPLETE` | `--complete` (Mission Verification predicate evaluates true) | Outcome verified; flag-removal Intent (if any) `COMPLETE`; Mission archived |
 | `KILLED` | `--kill` (kill criterion triggered or engineer abandonment) | Rollback executed; archived with reason |
 | `SUPERSEDED` | `--supersede` (substantive near-immutable change needed) | Successor Mission created; source archived |
 
@@ -452,7 +452,7 @@ Substantive changes to near-immutable fields require `/write-mission --supersede
 
 **Live section** (revised continuously via `/write-mission --review`):
 
-- **Intent queue** — ordered list of child Intents. As work proceeds, sketches become drafts, drafts become LOCKED. Order is execution order — at most one Intent in active status at a time across the repo (Decision #9), so the queue is also the serialization queue
+- **Intent queue** — ordered list of child Intents. As work proceeds, sketches become drafts, drafts become `COMPLETE`. Order is execution order — at most one Intent in active status at a time across the repo (Decision #9), so the queue is also the serialization queue
 - **Discovered prerequisites** — coverage gaps surfaced during child Intent `--analyze` runs that retroactively belong to the Mission as a whole
 - **Burndown** — LOCKED / Estimated total / Sketches. Surfaces remaining work; not a hard gate
 - **Flag transitions** — every flag flip recorded with date, action, observed effect
@@ -489,8 +489,8 @@ The `/write-mission` skill owns the full Mission lifecycle. Phase 2 flags (all i
 
 - **(no flag)** — Creation Mode. Author a new Mission from the engineer's description; gate-check that work justifies a Mission (refuse single-Intent-shaped requests); draft the near-immutable section in full; save as `TODO`.
 - **`--review`** — Revise the live section. Refuses to edit near-immutable fields; surfaces substantive-change attempts as `--supersede` candidates.
-- **`--activate`** — `TODO → ACTIVE`. Promotion gate: at least one child Intent in `LOCKED` status.
-- **`--complete`** — `ACTIVE → COMPLETING → COMPLETE`. Promotion gates: every child Intent LOCKED, flag (if any) on, flag-removal Intent (if any) LOCKED, Mission Verification predicate evaluates true.
+- **`--activate`** — `TODO → ACTIVE`. Promotion gate: at least one child Intent in `COMPLETE` status.
+- **`--complete`** — `ACTIVE → COMPLETING → COMPLETE`. Promotion gates: every child Intent `COMPLETE`, flag (if any) on, flag-removal Intent (if any) `COMPLETE`, Mission Verification predicate evaluates true.
 - **`--kill`** — Terminal abandonment. Records kill reason + rollback action; moves to Archive.
 - **`--supersede`** — Creates successor Mission; marks source `SUPERSEDED`.
 
@@ -1361,7 +1361,7 @@ Provisional artifacts live under `dekspec/provisional/<incubation-slug>/`. When 
 
 **The accept-gate.** Hand-promote when (and only when) every artifact in the incubation has reached Status `ACCEPTED`. The gate is the explicit acknowledgement that the engineer is converting exploration into commitment: provisional artifacts are abandonable; canonical artifacts carry forward into LOCKED state and become consumer-visible.
 
-> **CLI verb retired 2026-05-25.** The previous `dekspec repo promote-provisional <slug>` CLI verb was retired (per F2 audit; zero invocations in repo history — every promotion was hand-promote). Invoking it now returns a non-zero exit with a pointer to this section. Provisional folders themselves are **not** retired — `dekspec/provisional/`, the `dekspec library new-provisional` scaffold verb, the `dekspec library cow-stage` staging verb, the `replaces:` frontmatter convention, and the `L-PROVISIONAL-*` / `L-COW-*` / `T-COW-*` audit rules all remain canonical. The underlying Python helpers (`dekspec.promote.plan_promotion` / `apply_promotion` / `render_plan`) are also preserved for tooling that needs to drive the renumber programmatically.
+> **CLI verb retired 2026-05-25, removed ds-ib9o.** The previous `dekspec repo promote-provisional <slug>` CLI verb was retired (per F2 audit; zero invocations in repo history — every promotion was hand-promote), and its stub plus the whole `dekspec repo` alias namespace were removed in ds-ib9o. Invoking `dekspec repo …` now fails as an invalid command; promote via the Python helpers below. Provisional folders themselves are **not** retired — `dekspec/provisional/`, the `dekspec library new-provisional` scaffold verb, the `dekspec library cow-stage` staging verb, the `replaces:` frontmatter convention, and the `L-PROVISIONAL-*` / `L-COW-*` / `T-COW-*` audit rules all remain canonical. The underlying Python helpers (`dekspec.promote.plan_promotion` / `apply_promotion` / `render_plan`) are also preserved for tooling that needs to drive the renumber programmatically.
 
 ---
 

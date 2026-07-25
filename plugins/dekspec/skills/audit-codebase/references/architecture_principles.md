@@ -112,6 +112,39 @@ Keep code apart when:
 - there is a real seam with real adapters
 - separate lifecycle or dependency constraints justify the split
 
+### Conjoined methods (the over-split red flag)
+
+The more common cohesion mistake is over-splitting, not under-splitting. The
+sharpest signal that a split was wrong: **you cannot understand or safely modify
+one unit without reading another unit's implementation** — not just its
+interface. Ousterhout calls these *conjoined methods*: the boundary between them
+is a false seam that raises total cognitive load instead of lowering it. Fold
+them back together.
+
+This is distinct from `BTA-SHARED-INFORMATION-SPLIT`, which keys on shared
+*state* — two units mutating or depending on the same data. Conjoined methods can
+be entirely stateless and still conjoined: the coupling is *read-both-to-reason*,
+carried in neither unit's interface.
+
+Worked example: `parse_frame()` returns raw field offsets, and a separate
+`validate_frame()` in another module re-derives those same offsets to check them.
+To change the frame layout you must edit both; to understand `validate_frame()`
+you must first read `parse_frame()`'s offset logic — the offsets are an implicit
+contract living in neither interface. The split produced two shallow units joined
+by a hidden dependency. Folding them into one `Frame` module, with the layout
+hidden inside, restores a single deep unit and deletes the leaked contract.
+
+Audit questions:
+
+- To understand unit B, must I read unit A's *implementation* (not just its
+  interface)? If yes, that is conjoinment, not a clean seam.
+- Does one conceptual change routinely require editing both units together?
+- Would folding them into one module hide a contract that currently leaks between
+  them (offsets, ordering, invariants passed as bare values)?
+- Contrast with a real seam: if B depends only on A's *documented interface* and
+  could be tested against a stand-in adapter, they are correctly apart — do not
+  recombine.
+
 ## Errors As Complexity
 
 Errors add interface complexity. Prefer modules that define errors out of
@@ -220,6 +253,7 @@ Use for cohesion and separation findings.
 Examples:
 
 - `BTA-SHARED-INFORMATION-SPLIT`
+- `BTA-CONJOINED-METHODS`
 - `BTA-GENERAL-SPECIAL-MIXED`
 - `BTA-REAL-SEAM-JUSTIFIES-SPLIT`
 

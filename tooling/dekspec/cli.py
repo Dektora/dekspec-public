@@ -100,7 +100,6 @@ LEGACY_COMMANDS = {
     "emit": ("check", "emit"),
     "graph": ("dev", "graph"),
     "relink": ("audit", "relink"),
-    "init": ("repo", "init"),
     "validate": ("check", "validate"),
     "doctor": ("audit", "doctor"),
     "session": ("exec", "session"),
@@ -136,6 +135,10 @@ def build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.Argument
     parser = argparse.ArgumentParser(
         prog="dekspec",
         description="DekSpec — shared library and Constraint Compiler for Dektora projects.",
+        epilog=(
+            "Only common verbs are listed above. Run `dekspec commands` for the "
+            "complete list (including advanced verbs and deprecated aliases)."
+        ),
     )
     parser.add_argument(
         "-V", "--version", action="version", version=f"dekspec {__version__}"
@@ -204,30 +207,10 @@ def build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.Argument
     _add_library_artifact_subparsers(sub_library)
     p_library.set_defaults(func=lambda _args: (p_library.print_help() or 0))
 
-    # 4b. repo — DEPRECATION-ALIAS namespace (INT-136 / ADR-033). Every
-    # `dekspec repo <verb>` parses identically to its `library` counterpart
-    # but, on dispatch, prints a one-line `[DEPRECATED]` notice and forwards
-    # to the SAME handler (no change to logic, flags, or stdout). Removal of
-    # this alias namespace follows the next minor release. The retired
-    # `promote-provisional` stub stays as-is. The `upgrade` acquisition verb
-    # was removed (ds-d063): ADR-032 deprecated it as a one-release alias and
-    # ADR-034 killed the in-CLI acquisition model — acquire out-of-band
-    # (`pipx`/pip-from-git) and reconcile via `dekspec library sync`.
-    p_repo = sub.add_parser(
-        "repo",
-        help="DEPRECATED — alias for `dekspec library <verb>` (one release).",
-    )
-    sub_repo = p_repo.add_subparsers(dest="repo_command", metavar="<repo-command>")
-    _add_init_subparser(sub_repo)
-    _add_promote_provisional_retired_subparser(sub_repo)
-    _add_new_provisional_subparser(sub_repo)
-    _add_author_target_subparser(sub_repo)
-    _add_regen_indexes_subparser(sub_repo)
-    _add_cow_stage_subparser(sub_repo)
-    # Wrap each verb's handler to emit the deprecation notice then delegate to
-    # the same handler. `promote-provisional` is skipped — it is a retired
-    # stub that already returns a pointer to the hand-promote workflow.
-    _wrap_repo_aliases_with_deprecation(sub_repo, skip={"promote-provisional"})
+    # The `repo` deprecation-alias namespace (INT-136 / ADR-033) and its
+    # `promote-provisional` retired stub were removed (ds-ib9o) after
+    # overstaying their one-release window — `library` is the sole canonical
+    # home for these verbs.
 
     # Top-level migrate pipeline (INT-098): one verb that runs verify →
     # migrate-ir → migrate-artifacts in sequence. The underlying three
@@ -287,12 +270,12 @@ def build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.Argument
     _add_regen_indexes_subparser(sub)
     _add_lock_ready_flat_subparser(sub)
     _add_find_spec_gaps_subparser(sub)
+    _add_commands_subparser(sub)
 
     group_parsers = {
         "check": p_check,
         "audit": p_audit,
         "exec": p_exec,
-        "repo": p_repo,
         "library": p_library,
         "dev": p_dev,
     }
@@ -303,7 +286,7 @@ def build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.Argument
     # subcommands as its deprecated aliases).
     _top = _get_subparsers_action(parser)
     if _top is not None and getattr(_top, "_choices_actions", None):
-        _deprecated_groups = {"check", "exec", "repo", "library", "dev", "resource"}
+        _deprecated_groups = {"check", "exec", "library", "dev", "resource"}
         _top._choices_actions = [
             a for a in _top._choices_actions if a.dest not in _deprecated_groups
         ]
@@ -496,42 +479,117 @@ def _add_find_spec_gaps_subparser(sub: argparse._SubParsersAction) -> None:
     p.set_defaults(func=cmd_archeology_coverage)
 
 
-def _make_deprecation_alias(verb: str, handler):
-    """Wrap a verb handler so it prints a one-line `[DEPRECATED]` notice
-    pointing at the `library` canonical form, then delegates to the SAME
-    handler — identical logic, flags, exit code, and stdout.
+# --------------------------------------------------------------------------- #
+# commands — self-emitted command inventory (P-INT-184)
+# --------------------------------------------------------------------------- #
 
-    Per ADR-033: `repo <verb>` is a one-release deprecation alias.
+
+def _deprecation_for(path_parts: list[str]) -> tuple[bool, str | None]:
+    """Given a command path (e.g. ``["audit", "doctor"]``), return
+    ``(is_deprecated_alias, canonical_successor)``.
+
+    Deprecation comes from ADR-042's nested `<group> <sub>` → flat-verb map
+    (`_NESTED_TO_FLAT`). Everything else is current (not an alias). (The
+    ADR-033 `repo <verb>` → `library <verb>` alias namespace was removed in
+    ds-ib9o.)
     """
-
-    def _aliased(args: argparse.Namespace) -> int:
-        print(
-            f"[DEPRECATED] 'dekspec repo {verb}' → use 'dekspec library {verb}'",
-            file=sys.stderr,
-        )
-        return handler(args)
-
-    return _aliased
+    if len(path_parts) >= 2:
+        group, sub = path_parts[0], path_parts[1]
+        flat = _NESTED_TO_FLAT.get(group, {}).get(sub)
+        if flat:
+            return True, flat
+    return False, None
 
 
-def _wrap_repo_aliases_with_deprecation(
-    sub_repo: argparse._SubParsersAction, *, skip: set[str]
-) -> None:
-    """Re-point every `repo <verb>` subparser's `func` default at a thin
-    deprecation-alias wrapper around its existing handler (INT-136 / ADR-033).
+def _build_command_inventory(
+    parser: argparse.ArgumentParser,
+) -> list[dict[str, object]]:
+    """Walk the argparse tree and return one record per dispatchable command.
 
-    The verbs were registered by the shared `_add_*_subparser` funcs, so the
-    handler logic is the canonical one — this only prepends the stderr notice.
-    `skip` names verbs that must keep their own dispatch behavior
-    (`promote-provisional` is a retired stub).
+    Each record: ``{name, help, shown, deprecated_alias, successor}`` where
+    ``name`` is the space-joined path, ``shown`` is whether the command is
+    listed in its immediate parent's ``--help`` (ADR-042 suppresses some), and
+    ``deprecated_alias``/``successor`` come from `_deprecation_for`. The walk
+    reads argparse's own ``choices`` (complete — includes suppressed entries),
+    so the inventory cannot drift from the real command set.
     """
-    for verb, parser in sub_repo.choices.items():
-        if verb in skip:
-            continue
-        original = parser.get_default("func")
-        if original is None:
-            continue
-        parser.set_defaults(func=_make_deprecation_alias(verb, original))
+    records: list[dict[str, object]] = []
+    seen: set[tuple[int, str]] = set()
+
+    def _walk(p: argparse.ArgumentParser, prefix: list[str]) -> None:
+        action = _get_subparsers_action(p)
+        if action is None:
+            return
+        shown_names = {a.dest for a in getattr(action, "_choices_actions", [])}
+        help_by = {
+            a.dest: (a.help or "") for a in getattr(action, "_choices_actions", [])
+        }
+        for name, subparser in action.choices.items():
+            parts = prefix + [name]
+            key = " ".join(parts)
+            marker = (id(subparser), key)
+            if marker in seen:
+                continue
+            seen.add(marker)
+            help_text = help_by.get(name, "")
+            if not help_text and getattr(subparser, "description", None):
+                help_text = (subparser.description or "").strip().splitlines()[0] if (subparser.description or "").strip() else ""
+            deprecated, successor = _deprecation_for(parts)
+            records.append(
+                {
+                    "name": key,
+                    "help": help_text,
+                    "shown": name in shown_names,
+                    "deprecated_alias": deprecated,
+                    "successor": successor,
+                }
+            )
+            _walk(subparser, parts)
+
+    _walk(parser, [])
+    records.sort(key=lambda r: str(r["name"]))
+    return records
+
+
+def _add_commands_subparser(sub: argparse._SubParsersAction) -> None:
+    """`dekspec commands` — the self-emitted, complete command inventory
+    (P-INT-184). Public and shown, so the discoverability escape hatch is not
+    itself subject to the "not in --help ≠ does not exist" trap it closes."""
+    p = sub.add_parser(
+        "commands",
+        help="List every dekspec command (incl. hidden/advanced + deprecated aliases).",
+        description=(
+            "Emit the complete command inventory the parser will dispatch — the "
+            "authoritative answer to 'does verb X exist, and is it current or "
+            "deprecated?'. Advanced verbs the top-level --help omits are marked "
+            "`(hidden)`; superseded nested forms are marked `(deprecated → "
+            "successor)`."
+        ),
+    )
+    p.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit the inventory as a JSON array of {name, help, shown, deprecated_alias, successor}.",
+    )
+    p.set_defaults(func=cmd_commands)
+
+
+def cmd_commands(args: argparse.Namespace) -> int:
+    parser, _ = build_parser()
+    inventory = _build_command_inventory(parser)
+    if getattr(args, "json", False):
+        print(json.dumps(inventory, indent=2))
+        return 0
+    for record in inventory:
+        tags: list[str] = []
+        if not record["shown"]:
+            tags.append("hidden")
+        if record["deprecated_alias"]:
+            tags.append(f"deprecated → {record['successor']}")
+        suffix = f"  ({'; '.join(tags)})" if tags else ""
+        help_text = f" — {record['help']}" if record["help"] else ""
+        print(f"{record['name']}{suffix}{help_text}")
+    return 0
 
 
 # --------------------------------------------------------------------------- #
@@ -670,11 +728,15 @@ def cmd_compile(args: argparse.Namespace) -> int:
 
         run.record_artifact(ir)
 
-        # Status enforcement (LOCKED-only by default; --treat-as-locked bypasses)
+        # Status enforcement: compile from a settled artifact. ADR-046 —
+        # LOCKED for decision/contract kinds (ADR/IC/Constitution/SV), ACCEPTED
+        # for living references (AE/WS) that rest at ACCEPTED and never lock.
+        # Matches the AGENTS.md aggregate's {LOCKED,ACCEPTED} filter.
+        # `--treat-as-locked` bypasses entirely.
         status = ir.get("status")
-        if status != "LOCKED" and not args.treat_as_locked:
+        if status not in ("LOCKED", "ACCEPTED") and not args.treat_as_locked:
             print(
-                f"Error: {ir['id']} status is {status}, not LOCKED. "
+                f"Error: {ir['id']} status is {status}, not LOCKED or ACCEPTED. "
                 f"Pass --treat-as-locked to bypass (v0.1 PoC scaffold flag).",
                 file=sys.stderr,
             )
@@ -1094,18 +1156,6 @@ def _add_audit_subparser(sub: argparse._SubParsersAction) -> None:
             "Default (unset) includes every tier (equivalent to P3)."
         ),
     )
-    # Legacy flag retained for one release cycle with a deprecation warning.
-    # Routed through `_translate_legacy_severity_flag` at runtime; aliases
-    # to `--min-severity P<n>` per the ADR-013 alias map.
-    p_link.add_argument(
-        "--severity",
-        choices=["critical", "important", "minor", "all"],
-        default=None,
-        help=(
-            "[DEPRECATED] Use --min-severity instead. Legacy alias retained "
-            "for one release cycle; emits a deprecation warning to stderr."
-        ),
-    )
     p_link.add_argument(
         "--fix",
         action="store_true",
@@ -1384,16 +1434,8 @@ def cmd_audit_linkage(args: argparse.Namespace) -> int:
         )
     findings = audit_linkage(repo_root, dekspec_root=args.dekspec_root, profile=profile)
 
-    # Legacy --severity flag: translate to --min-severity with a stderr
-    # deprecation warning. --min-severity wins if both are passed
-    # (i.e. --min-severity is non-None on the parsed Namespace).
-    translated_legacy: str | None = None
-    if args.severity is not None:
-        translated_legacy = _translate_legacy_severity_flag(args.severity)
-
-    # Resolution precedence: explicit --min-severity > translated legacy
-    # --severity > default "P3" (include everything).
-    min_severity = args.min_severity or translated_legacy or "P3"
+    # Unset --min-severity defaults to "P3" (include every tier).
+    min_severity = args.min_severity or "P3"
 
     # Canonical-tier filter: include any finding at or above the threshold
     # (P0 strictest = include only P0; P3 broadest = include everything).
@@ -1455,35 +1497,6 @@ def cmd_audit_linkage(args: argparse.Namespace) -> int:
 # the `test_audit_severity_rekey.py::test_sort_order_canonical` test
 # pins the audit-side ordering and we rely on that contract here.
 _audit_severity_order: dict[str, int] = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
-
-
-# Legacy --severity → canonical --min-severity alias map. Extends the
-# audit-side map (`_AUDIT_SEVERITY_ALIAS_MAP` in
-# `dekspec.fidelity_audit.linkage`) with `"all": "P3"` — `"all"` is a
-# legacy CLI-flag value, not a legacy audit-emission value, so it lives
-# only here.
-_LEGACY_SEVERITY_TO_CANONICAL: dict[str, str] = {
-    "critical": "P1",
-    "important": "P2",
-    "minor": "P3",
-    "all": "P3",
-}
-
-
-def _translate_legacy_severity_flag(legacy_value: str) -> str:
-    """Translate legacy --severity value to canonical --min-severity P<n>.
-
-    Emits a deprecation warning to stderr (matching the existing CLI
-    convention for operator-facing warnings). Returns the canonical
-    P-tier string. The flag is scheduled for removal after one release
-    cycle.
-    """
-    canonical = _LEGACY_SEVERITY_TO_CANONICAL[legacy_value]
-    print(
-        f"warning: --severity is deprecated; use --min-severity {canonical}",
-        file=sys.stderr,
-    )
-    return canonical
 
 
 def cmd_audit_failure_classes(args: argparse.Namespace) -> int:
@@ -6306,48 +6319,6 @@ def cmd_lint_ib(args: argparse.Namespace) -> int:
     return 0
 
 
-_PROMOTE_PROVISIONAL_RETIRED_MESSAGE = (
-    "Error: `dekspec repo promote-provisional` was retired 2026-05-25 (F2 audit: "
-    "zero CLI invocations in repo history; every promotion was hand-promote). "
-    "Promote provisional artifacts manually — see `docs/dekspec-operating-guide.md` "
-    "§Provisional Promotion (hand-promote workflow). The underlying promotion "
-    "helpers (dekspec.promote.plan_promotion / apply_promotion / render_plan) "
-    "remain importable for tooling that needs them."
-)
-
-
-def _add_promote_provisional_retired_subparser(sub: argparse._SubParsersAction) -> None:
-    """Retired-verb stub for `dekspec repo promote-provisional`.
-
-    The CLI verb was retired 2026-05-25 per F2 audit; the underlying
-    promotion logic in `dekspec.promote` stays for the hand-promote
-    workflow. The subparser is preserved so invocations land on a
-    helpful error rather than argparse's generic "invalid choice".
-    """
-    p = sub.add_parser(
-        "promote-provisional",
-        help="(retired 2026-05-25) Hand-promote provisional artifacts; see docs.",
-        description=(
-            "Retired 2026-05-25 (F2 audit). Promote provisional artifacts "
-            "manually — see `docs/dekspec-operating-guide.md` §Provisional "
-            "Promotion (hand-promote workflow)."
-        ),
-    )
-    # Accept (and ignore) every legacy positional / flag so any historical
-    # invocation lands on the retired-verb message rather than an argparse
-    # "unrecognized arguments" error.
-    p.add_argument("slug", nargs="?", help=argparse.SUPPRESS)
-    p.add_argument("--at", help=argparse.SUPPRESS)
-    p.add_argument("--dekspec-root", default="dekspec", help=argparse.SUPPRESS)
-    p.add_argument("--dry-run", action="store_true", help=argparse.SUPPRESS)
-    p.set_defaults(func=cmd_promote_provisional_retired)
-
-
-def cmd_promote_provisional_retired(args: argparse.Namespace) -> int:
-    print(_PROMOTE_PROVISIONAL_RETIRED_MESSAGE, file=sys.stderr)
-    return 2
-
-
 _PROVISIONAL_BRANCH_PREFIX: dict[str, str] = {
     "INT": "int",
     "MSN": "mission",
@@ -6485,7 +6456,7 @@ def _add_new_provisional_subparser(sub: argparse._SubParsersAction) -> None:
         action="store_true",
         help=(
             "Skip the `git checkout -b` step. By default a fresh branch is "
-            "created (e.g. int/INT-provisional-<slug>)."
+            "created (e.g. int/p-int-<nnn>-<slug>)."
         ),
     )
     p.set_defaults(func=cmd_new_provisional)
@@ -6503,10 +6474,26 @@ def cmd_new_provisional(args: argparse.Namespace) -> int:
         )
         return 1
     kind = args.kind
-    slug = args.slug
-    incubation_name = args.incubation or slug
+    # Provisional filenames require a lowercase-kebab slug (provisional_ids
+    # regex); normalize so the emitted file always parses/validates.
+    slug = args.slug.lower()
+    incubation_name = (args.incubation or slug).lower()
     incubation_dir = dekspec_dir / "provisional" / incubation_name
-    artifact_path = incubation_dir / f"{kind}-provisional-{slug}.md"
+
+    # ADR-043: emit the numbered `P-<KIND>-<NNN>-<slug>` provisional form (the
+    # legacy numberless `<KIND>-provisional-<slug>` no longer parses/validates —
+    # ds-494l / ds-gvyo). The number is a NON-BINDING hint — the next-free
+    # canonical id for this kind at authoring time; hand-promotion re-derives
+    # the real next-free number, which may differ.
+    from .promote import PromoteError, _find_next_canonical_id
+    from .provisional_ids import provisional_filename, provisional_id
+
+    try:
+        number = _find_next_canonical_id(kind, dekspec_dir)
+    except PromoteError:
+        number = 1
+    prov_id = provisional_id(kind, number)
+    artifact_path = incubation_dir / provisional_filename(kind, number, slug)
     if artifact_path.exists():
         print(
             f"Error: {artifact_path.relative_to(repo_root)} already exists.",
@@ -6514,16 +6501,18 @@ def cmd_new_provisional(args: argparse.Namespace) -> int:
         )
         return 1
     incubation_dir.mkdir(parents=True, exist_ok=True)
-    title = args.title or f"{kind}-provisional-{slug} — TODO: write title"
-    body = _render_provisional_skeleton(kind, slug, title, incubation_name)
+    title = args.title or f"{prov_id} — TODO: write title"
+    body = _render_provisional_skeleton(
+        kind, slug, title, incubation_name, prov_id, number
+    )
     artifact_path.write_text(body, encoding="utf-8")
-    print(f"Created {artifact_path.relative_to(repo_root)}")
+    print(f"Created {artifact_path.relative_to(repo_root)} (provisional {prov_id})")
 
     if args.no_branch:
         print("(--no-branch) Skipped git branch creation.")
         return 0
     branch_prefix = _PROVISIONAL_BRANCH_PREFIX[kind]
-    branch_name = f"{branch_prefix}/{kind}-provisional-{slug}".lower()
+    branch_name = f"{branch_prefix}/{prov_id}-{slug}".lower()
     try:
         subprocess.run(
             ["git", "checkout", "-b", branch_name],
@@ -6619,11 +6608,13 @@ def cmd_author_target(args: argparse.Namespace) -> int:
 
 
 def _render_provisional_skeleton(
-    kind: str, slug: str, title: str, incubation_name: str
+    kind: str, slug: str, title: str, incubation_name: str,
+    prov_id: str, number: int,
 ) -> str:
     """Minimal frontmatter + PROVISIONAL banner + status + amendment-log
-    skeleton. Engineer fills in the rest via the corresponding write-*
-    skill or manual editing."""
+    skeleton for a numbered `P-<KIND>-<NNN>` provisional artifact (ADR-043).
+    Engineer fills in the rest via the corresponding write-* skill or manual
+    editing."""
     kind_long = {
         "INT": "Intent",
         "MSN": "Mission",
@@ -6636,25 +6627,51 @@ def _render_provisional_skeleton(
     }[kind]
     from datetime import datetime, timezone
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    # Mission parser requires the literal "Mission" word in H1
-    # (`# Mission MSN-NNN: <title>`). Other kinds use bare `# <id>: ...`.
-    h1_prefix = "Mission " if kind == "MSN" else ""
+    # The Mission parser requires the literal "Mission" word in H1
+    # (`# Mission <id>: <title>`); other kinds use a bare `# <id>: …`. The id
+    # carries the `P-` prefix so the artifact parses as provisional (below).
+    banner = (
+        f"> **PROVISIONAL (`{prov_id}`).** This {kind_long} incubates at "
+        f"`dekspec/provisional/{incubation_name}/` under the ADR-043 "
+        f"`P-<KIND>-<NNN>` scheme — the `{number}` is a non-binding hint "
+        f"(the next-free canonical {kind} at authoring time); hand-promotion "
+        f"re-derives the real next-free number, which may differ. Freely "
+        f"abortable: deleting this folder has zero adverse effect on the "
+        f"library. Hand-promote via the procedure in "
+        f"`docs/dekspec-operating-guide.md` §Provisional Promotion when ready "
+        f"to ratify."
+    )
+    amendment_log = (
+        f"## Amendment Log\n\n"
+        f"| Date | Type | Change | Author |\n"
+        f"|---|---|---|---|\n"
+        f"| {today} | Create | Scaffolded via `dekspec library "
+        f"new-provisional {kind} {slug}`. | TODO |\n"
+    )
+    if kind == "MSN":
+        # Missions use inline header fields (`**Status:** …`) + a
+        # near-immutable Outcome, not the generic `## Status` section.
+        return (
+            f"# Mission {prov_id}: {title}\n\n"
+            f"{banner}\n\n"
+            f"**Mission ID:** {prov_id}\n"
+            f"**Status:** TODO\n"
+            f"**Owner:** TODO\n"
+            f"**Created:** {today}\n"
+            f"**Modified:** {today}\n"
+            f"**Autonomy ceiling:** manual\n\n"
+            f"## Near-immutable section\n\n"
+            f"### Outcome\n\n_TODO: what is true after this Mission completes._\n\n"
+            f"{amendment_log}"
+        )
     return (
-        f"# {h1_prefix}{kind}-provisional-{slug}: {title}\n\n"
-        f"> **PROVISIONAL.** This {kind_long} lives at "
-        f"`dekspec/provisional/{incubation_name}/`. "
-        f"Hand-promote to canonical via `dekspec repo promote-provisional "
-        f"{incubation_name}` (or the procedure in INT-079 §Motivation) "
-        f"when ready to ratify.\n\n"
+        f"# {prov_id}: {title}\n\n"
+        f"{banner}\n\n"
         f"## Status\n\nDRAFT\n\n"
         f"## Created\n\n{today}\n\n"
         f"## Modified\n\n{today}\n\n"
         f"## Motivation\n\n_TODO: describe why this {kind_long} exists._\n\n"
-        f"## Amendment Log\n\n"
-        f"| Date | Type | Change | Author |\n"
-        f"|---|---|---|---|\n"
-        f"| {today} | Create | Scaffolded via `dekspec repo new-provisional "
-        f"{kind} {slug}`. | TODO |\n"
+        f"{amendment_log}"
     )
 
 
@@ -6790,9 +6807,10 @@ def cmd_cow_stage(args: argparse.Namespace) -> int:
             f"\n  (no Intent claim — staged under --incubation {incubation})"
         )
     print(
-        "Edit the provisional copy; the canonical stays frozen. Run "
-        "`dekspec repo promote-provisional " + incubation + "` when the "
-        "originating Intent is ready to ACCEPT."
+        "Edit the provisional copy; the canonical stays frozen. Hand-promote "
+        "the `" + incubation + "` incubation when the originating Intent is "
+        "ready to ACCEPT — see `docs/dekspec-operating-guide.md` §Provisional "
+        "Promotion (dekspec.promote.plan_promotion / apply_promotion)."
     )
     return 0
 

@@ -28,7 +28,7 @@ section to drive enforcement, file a bead to extend the Intent schema
 
 DRAFT
 
-*Valid statuses:* `DRAFT` → `OVERSIZED` → `SUPERSEDED` (terminal off-ramp) | `DRAFT` → `PROPOSED` → `ACCEPTED` → `IMPLEMENTING` → `TESTPASS` → `MERGED` → `LOCKED`
+*Valid statuses:* `DRAFT` → `OVERSIZED` → `SUPERSEDED` (terminal off-ramp) | `DRAFT` → `PROPOSED` → `ACCEPTED` → `IMPLEMENTING` → `TESTPASS` → `MERGED` → `COMPLETE`
 
 - **DRAFT** — being written; type, motivation, and rough scope present; coverage / size / verification not yet populated
 - **OVERSIZED** — `--analyze` measured at least one hard cap exceeded (≤3 IUs / ≤3 components / ≤1 new L1 / ≤3 new+revised L2 / ≤2 coverage gaps). Cannot promote to PROPOSED without splitting or re-scoping
@@ -37,7 +37,7 @@ DRAFT
 - **IMPLEMENTING** — beads (or IB → beads) in flight; coding sessions running on `int/INT-NNN-slug`. On `--testpass` failure (any Verification check exits non-zero, or diff-confinement finds out-of-scope edits) the failure is recorded in TESTFAIL records but Status remains IMPLEMENTING — fix and re-run
 - **TESTPASS** — all Verification checks green; diff confinement clean
 - **MERGED** — branch merged to main
-- **LOCKED** — `--lock` ran post-merge; Intent is the executed commitment; appended to Mission Intent queue if a Mission was specified
+- **COMPLETE** — the Intent is finished (post-merge); it is the executed historical record (ADR-046: Intents terminate at `COMPLETE`, not `LOCKED`); appended to the Mission Intent queue if a Mission was specified
 - **SUPERSEDED** — terminal; replaced by a successor Intent (recorded in `Superseded-By`)
 
 *Note: `TODO` and `TESTFAIL` were retired 2026-05-25 (E3 audit — neither appeared in 99-Intent history; the `TESTFAIL ↔ TESTPASS` round-trip never fired). The TESTFAIL records section below is retained as a captured-failure log on the IMPLEMENTING → TESTPASS path; it no longer corresponds to a Status flip.*
@@ -57,7 +57,7 @@ DRAFT
 - `manual` — every step gated by engineer approval
 - `low` — engineer approves at PROPOSED → ACCEPTED, then again at TESTPASS → MERGED
 - `medium` — engineer approves at PROPOSED → ACCEPTED only; rest runs autonomously
-- `high` — full autonomous execution from PROPOSED through LOCKED (requires `dekfactory` orchestration brain; out of scope for this repo per `docs/architecture.md` §What does NOT live here)
+- `high` — full autonomous execution from PROPOSED through COMPLETE (requires `dekfactory` orchestration brain; out of scope for this repo per `docs/architecture.md` §What does NOT live here)
 
 **Recommended default by Intent type (INT-094).** `medium` for `bug` / `refactor` / `documentation` (categories where CI green is sufficient proof of correctness); `manual` for `feature` / `nfr` / `adr-driven` / `environment` (categories warranting explicit operator sign-off — UX judgment, NFR targets, architectural ratification, blast radius beyond the test surface). Engineers override per Intent. The per-type default exists to honor downstream auto-merge surfaces (e.g. DekFactory INT-063, which auto-merges MRs at `auto-medium`+ once CI is green) without forfeiting that surface for well-bounded code-mod Intents.
 
@@ -128,7 +128,7 @@ The risk tier is **complementary** to Autonomy and Intent type: type classifies 
 
 ## Non-Goals
 
-*Optional — expected only when this Intent has **no** parent Mission (i.e. `Mission:` is `none`).* List what this Intent will deliberately **not** do: the boundary that stops scope creep on a standalone Intent. When a parent Mission **is** named, delete this section — the Mission's `Out-of-scope` contract owns non-goals and duplicating them here is discouraged. A Mission-less Intent that omits this section draws the P3-advisory `T-INT-NON-GOALS-MISSING` audit finding (INT-168 / D6) — advisory only, never a blocker, and silent on already-LOCKED Intents.
+*Optional — expected only when this Intent has **no** parent Mission (i.e. `Mission:` is `none`).* List what this Intent will deliberately **not** do: the boundary that stops scope creep on a standalone Intent. When a parent Mission **is** named, delete this section — the Mission's `Out-of-scope` contract owns non-goals and duplicating them here is discouraged. A Mission-less Intent that omits this section draws the P3-advisory `T-INT-NON-GOALS-MISSING` audit finding (INT-168 / D6) — advisory only, never a blocker, and silent on already-COMPLETE Intents.
 
 - [What this Intent will not do / not touch — and, where useful, where that work lives instead.]
 
@@ -283,7 +283,7 @@ verification:
 
 ## Amendment Log
 
-*Add an entry for every change made after LOCKED status, or when unlocking back to PROPOSED.*
+*Add an entry for every substantive change (a COMPLETE Intent is a historical record — corrections are logged here; substantive rework spawns a successor Intent).*
 
 **Compressed-format policy.** Entries SHOULD follow a one-line-per-entry format. Target: `| YYYY-MM-DD | <Type> | <one-sentence what + reference to delta-doc / commit> | <author> |`. Detailed change narrative belongs in the git commit message — not in the Intent body.
 

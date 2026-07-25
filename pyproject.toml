@@ -38,14 +38,18 @@ classifiers = [
     "Topic :: Software Development :: Testing",
     "Typing :: Typed",
 ]
+# Bounded ranges (ds-0vuo): upper caps at the next major so a breaking major
+# of a runtime dep can't land unpinned. Current installed: pyyaml 6.0, jsonschema
+# 4.26, mcp 1.28, packaging 26 — all within these ranges. Bump the cap when a
+# major is vetted.
 dependencies = [
-    "pyyaml>=6.0",
-    "jsonschema>=4.0",
-    "mcp>=0.1.0",
+    "pyyaml>=6.0,<7",
+    "jsonschema>=4.0,<5",
+    "mcp>=0.1.0,<2",
     # PEP 440 version comparison in vendoring._version_newer (drift/skew
     # advisory). Dev envs get it transitively via pytest/pip; a clean
     # pip/pipx install does NOT, so declare it explicitly.
-    "packaging>=20.0",
+    "packaging>=20.0,<28",
 ]
 
 [project.urls]
@@ -59,7 +63,12 @@ Documentation = "https://github.com/Dektora/dekspec/blob/main/README.md"
 dev = [
     "pytest>=8.0",
     "pytest-cov>=4.0",
-    "ruff>=0.4",
+    # Bounded (ds-0vuo lesson applied to [dev]): an unbounded `ruff>=0.4` let CI
+    # pull a newer ruff whose expanded default ruleset flagged 500+ pre-existing
+    # style issues and failed the v0.122.0 release lint. `[tool.ruff]` selects no
+    # explicit rule set, so ruff's defaults are load-bearing — pin the minor so
+    # CI matches local. Adopting a newer ruff's defaults is a separate cleanup.
+    "ruff>=0.15,<0.16",
 ]
 
 [project.scripts]

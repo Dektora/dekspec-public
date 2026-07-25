@@ -1,10 +1,10 @@
 # REVIEW_PR lens pack
 
-> 9 lenses for `/dekspec:review-pr` (INT-107). Each entry conforms to the schema in `plugins/dekspec/skills/_lib/review_lens_registry.md` (4 required fields). The orchestration shell (INT-105 LOCKED) loads this file and fans out one specialist per lens.
+> 10 lenses for `/dekspec:review-pr` (INT-107; +outcome-tdd-history per DSF-014). Each entry conforms to the schema in `plugins/dekspec/skills/_lib/review_lens_registry.md` (4 required fields). The orchestration shell (INT-105 LOCKED) loads this file and fans out one specialist per lens.
 >
 > Source design substrate: `~/.claude/projects/-home-dfxop-projects-dekspec/memory/reference_review_pipeline_design.md` §"Lens design (per-stage)" REVIEW_PR table.
 
-All 9 lenses share `severity_rubric: shared` (resolves to `plugins/dekspec/skills/_lib/review_confidence_rubric.md`). Surface threshold 80. Asymmetric voting per ADR-026.
+All 10 lenses share `severity_rubric: shared` (resolves to `plugins/dekspec/skills/_lib/review_confidence_rubric.md`). Surface threshold 80. Asymmetric voting per ADR-026.
 
 ---
 
@@ -158,6 +158,30 @@ All 9 lenses share `severity_rubric: shared` (resolves to `plugins/dekspec/skill
     - touched function was added by an Intent that the current IB does not link to (orphaned dependency)
   severity_rubric: shared
 ```
+
+## outcome-tdd-history
+
+```yaml
+- id: outcome-tdd-history
+  question: |
+    Now that commit history exists, does git-blame show the outcome-test
+    file's first commit landed BEFORE the implementation files' first
+    commits (strong-TDD ordering per ADR-029)? For squash /
+    no-intermediate-commit workflows where history cannot represent the
+    ordering, is a documented equivalent-evidence trail present — the
+    REVIEW_IB workspace record of a genuine red test with the production
+    tree still absent?
+  input_slice: parent_intent.outcome_verification + git_history.first_commit_per_file + review_ib.tdd_evidence
+  attack_patterns:
+    - history exists and the outcome-test file's first commit is AFTER the implementation file's first commit
+    - outcome-test file first appears in the SAME commit as the implementation (not red-first) with no equivalent-evidence trail
+    - squash / no-intermediate-commit workflow claimed but no REVIEW_IB workspace-evidence record backs the red-first ordering
+    - other test files modified to make the outcome test pass (collateral edits)
+  severity_rubric: shared
+  tdd_discipline_lens: true
+```
+
+Per **DSF-014** (ds-4rtm). This is the commit-ordering half of the strong-TDD gate; its pre-implementation sibling `outcome-tdd-discipline` (REVIEW_IB) proves test-first via workspace evidence before history exists. Together they cover the full ADR-029 timing claim without demanding git-blame ordering at a stage that has no commits.
 
 ---
 

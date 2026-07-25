@@ -2,6 +2,57 @@
 
 All notable changes to DekSpec are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/); versioning follows [Semantic Versioning](https://semver.org/).
 
+## [v0.122.0] — 2026-07-25
+
+> Two new capabilities — `dekspec commands` (self-emitted command inventory) and typed environment prerequisites with preflight probes — plus consumer-side install-integrity verification and two-dir `.dekspec` state zoning. **Breaking:** the overstayed `dekspec repo <verb>` alias namespace and the `--severity` flag alias are removed. Rounded out by review/bead-pipeline discipline fixes and a batch of Theophany-dogfood + post-ADR-046 fixes.
+
+### Fixed — bound the `ruff` dev-pin (release lint reproducibility)
+
+- The `[dev]` extra pinned `ruff>=0.4` (unbounded), so CI's `pip install -e ".[dev]"` pulled a newer ruff whose expanded default ruleset flagged pre-existing style and failed the release lint gate. Bounded to `ruff>=0.15,<0.16` so CI matches local (the `ds-0vuo` bounded-pin lesson, applied to `[dev]`). Dev-only — no consumer impact.
+
+### Added — `dekspec commands` self-emitted inventory (INT-184)
+
+- **New `dekspec commands` verb (+ `--json`)** lists every dispatchable verb — including advanced verbs the curated `--help` omits and deprecated aliases (marked `deprecated → successor`) — so "does verb X exist, and is it current?" is a lookup, not a guess. The top-level `--help` gains a footer pointing at it.
+
+### Added — typed environment prerequisites + preflight probes (INT-185)
+
+- **IBs can declare live-service prerequisites** in a typed `## Environment Prerequisites` table (`Prerequisite | Probe command | Required`). `write-code-beads` carries them into beads, REVIEW_IB assesses them via a new lens, and the coding preflight RUNS each probe before dispatch — a failed **required** probe defers that bead as an infrastructure gap (hold nonterminal, continue others) instead of starting doomed work.
+
+### Fixed — review/bead-pipeline discipline (ds-kp7v, ds-4rtm)
+
+- **Bead granularity moved pre-emission (DSF-013):** `write-code-beads` now runs the bead-granularity + union-coverage checks *before* emitting (previously only caught downstream at REVIEW_IB), and its per-bead acceptance is a *subset* mapping — authors stop emitting whole-IB beads that get vetoed and rebuilt.
+- **Outcome-TDD timing split (DSF-014):** REVIEW_IB proves test-first via workspace evidence (a genuine red run + absent production tree — no git history required pre-implementation); the commit-ordering check moved to REVIEW_PR's new `outcome-tdd-history` lens, with a documented equivalent-evidence path for squash / no-intermediate-commit workflows.
+
+### Added — install integrity verification (ds-0vuo)
+
+- **The git-URL install now verifies the release commit before installing.** `scripts/publish_integrity_ledger.sh` (a `RELEASING.md` runbook step) maintains a `SHA256SUMS` ledger (`<commit-sha>  <tag>`) on the public mirror's dedicated `integrity-ledger` branch; `scripts/install.sh` resolves the target tag's commit and **refuses** on a mismatch against the ledger (an unpublished tag / unreachable ledger warns and proceeds, unless `DEKSPEC_VERIFY_STRICT=1`). Release dependency pins are now bounded ranges (`pyyaml<7`, `jsonschema<5`, `mcp<2`, `packaging<28`), not open floors. Cosign/sigstore signatures, full SBOM, and CI-automating the ledger publish (needs the `workflow` scope) remain deferred follow-ups.
+
+### Fixed — setup initializes the `br` tracker DB (ds-zhxc / DSF-008)
+
+- **Choosing `issue_tracker: br` during setup left the tracker uninitialized** — `dekspec init`/INT-178 acquire the `br` binary but never `br init` the DB, so `br list` (and the bead-authoring flows) hit `NOT_INITIALIZED` until the consumer ran `br init` by hand. `setup-dekspec` now instructs running the idempotent `br init` right after persisting `issue_tracker=br` (skip if `.beads/` already exists; no local init for github/gitlab/local).
+
+### Fixed — mirror release tags are now lightweight (ds-q8ht)
+
+- **`scripts/mirror_tag_align.sh` created *annotated* mirror tags**, so a git-URL `pip`/`pipx` install of a tag warned `refs/tags/vX ... is not a commit!` (the checkout peeled the annotated-tag object; install still worked). Both tag sites now create **lightweight** tags (`git tag [-f] "$tag"`), which point straight at the commit — warning-free. Regression test asserts the tag object type is `commit`.
+### Changed — two-dir `.dekspec` state zoning (ds-ns8s)
+
+- **`.dekspec/` is now committed durable state only; ephemeral runtime moves to a sibling `.dekspec-cache/`.** The `.gitignore` collapses to a single `.dekspec-cache/` line — the old `.dekspec/*` blanket + per-file `!` un-ignore exceptions are gone, so durable files (`config.yaml`, `slices.json`, `review-thresholds.yaml`, `active-incubations.yaml`, `archeology-exclude`) are tracked by default. **Consumer migration:** move any `.dekspec/package-publish-dates.json` cache to `.dekspec-cache/` (the legacy location is still read as a fallback during transition); no other action needed. Session/runs state was already out-of-repo (XDG) and is unaffected; the deprecated dispatch segments (`packages/`, `inbox/`, …) had no live writers and their stale ignore lines were removed.
+
+### Fixed — spec-gap detection was blind post-ADR-046 (ds-rt0m)
+
+- **`dekspec find-spec-gaps` keyed coverage off `LOCKED` Intents, but ADR-046 moved Intents to terminal `COMPLETE`** — so no Intent was ever "covering" and every source file reported as an orphan (1,225 false gaps on this repo, incl. files that Intents plainly claim). Coverage now counts Intents at any committed status (`ACCEPTED`/`IMPLEMENTING`/`TESTPASS`/`MERGED`/`COMPLETE`/`LOCKED`); DRAFT/PROPOSED/OVERSIZED/SUPERSEDED still don't claim coverage. On this repo the report drops to 16 real gaps.
+- Default excludes extended to VCS + tooling caches + packaging metadata (`.git/`, `.pytest_cache/`, `.ruff_cache/`, `.mypy_cache/`, `*.egg-info/`, `*.pyc`); the directory-exclude matcher now glob-matches a path segment (so `*.egg-info/` catches `pkg.egg-info/`).
+
+### Fixed — provisional-Intent validation guidance (ds-494l)
+
+- **`dekspec validate` now guides authors of the retired `INT-provisional-<slug>` / `MSN-provisional-<slug>` form to the current `P-<KIND>-NNN-<slug>` provisional form** (ADR-043) instead of dead-ending on a stale `<KIND>-NNN-*.md` pattern error. The scaffolded provisional form (`P-INT-NNN-…`) already validates cleanly with kind inferred (ds-gvyo/#114); this closes the residual sharp edge for hand-authored legacy files. Regression tests pin both paths.
+
+### Removed — overstayed one-release CLI deprecation aliases (ds-ib9o)
+
+- **The `dekspec repo <verb>` alias namespace (ADR-033) is removed.** `repo` was a one-release deprecation alias for `dekspec library <verb>`; it overstayed its window. Use the canonical `dekspec library <verb>` forms (`init`, `new-provisional`, `author-target`, `regen-indexes`, `cow-stage`) — `dekspec init` also remains a top-level flat verb. `dekspec repo …` now fails as an invalid command.
+- **The `dekspec audit linkage --severity {critical,important,minor,all}` flag alias is removed.** Use `--min-severity {P0,P1,P2,P3}` (unset = every tier).
+- **The `dekspec repo promote-provisional` retired-verb stub is removed** (the verb was retired 2026-05-25). Promote provisional artifacts via the `dekspec.promote` Python helpers (`plan_promotion` / `apply_promotion`); see `docs/dekspec-operating-guide.md` §Provisional Promotion.
+
 ## [v0.121.5] — 2026-07-13
 
 > Non-Claude hosts can now install the full DekSpec skill suite off a bare pip/pipx engine — the plugin ships in the wheel.

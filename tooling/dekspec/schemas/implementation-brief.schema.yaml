@@ -65,7 +65,7 @@ properties:
     # REVIEW_PR (PR queued for PR-level review),
     # REVIEW_PR_FAIL (PR review found a blocking gap),
     # TESTFAIL (CI / pytest regressed).
-    enum: [TODO, DRAFT, PROPOSED, ACCEPTED, LOCKED, QUEUED, ACTIVE, COMPLETED,
+    enum: [TODO, DRAFT, PROPOSED, ACCEPTED, QUEUED, ACTIVE, COMPLETED,
            REVIEW_IB, REVIEW_IB_FAIL, REVIEW_PR, REVIEW_PR_FAIL, TESTFAIL]
 
   audit_profile:
