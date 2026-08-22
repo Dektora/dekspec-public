@@ -233,26 +233,30 @@ For each claimed bead, before dispatching, verify dependency merges are present:
 
 Then dispatch a sub-agent using the Agent tool with `isolation: "worktree"`. Launch all agents in a **single message** so they run in parallel.
 
+**The bead is the sub-agent's sole authority during construction (ADR-049).** All upstream decisions (IB / ADR / WS / IC) were reconciled into the bead's Constraints & Decisions by `write-code-beads`. The coding sub-agent implements (how); it does not decide (what). Do **not** inline the IB, ADRs, ICs, or the Working Spec into the sub-agent prompt — the guarantee is structural (the agent cannot follow a document it never receives). If a bead cannot be implemented without the IB, that is a `write-code-beads` defect to fix in the bead, never a reason to re-open the IB channel here.
+
 Each sub-agent prompt MUST include:
 
-1. **The full bead JSON** (from `br show <id> --json`)
-2. **The full IB content** (read and inline it — the sub-agent cannot access `br`)
-3. **Eval file contents** if referenced in the IB
-4. **Pre-written test file contents** if `tests/bead/test_<bead-slug>.py` exists (check before dispatch)
-5. **Checklist contents** if referenced (e.g., `python-quality-checklist.md`, `security-checklist.md`)
-6. **The workflow instructions** (copied verbatim from the Sub-Agent Workflow section below)
-7. **Local dependency-source paths** if present — for any library/SDK/framework the bead implements against, check for vendored source under `reference/repos/<host>/<org>/<project>` (e.g. `reference/repos/github.com/pallets/flask`) and inline the path list so the sub-agent greps the real implementation instead of guessing APIs. This is **opt-in/best-effort**: if no `reference/repos/` tree exists, pass "None" and dispatch normally — its absence never blocks dispatch.
+1. **The full bead JSON** (from `br show <id> --json`) — the reconciled decision record; the sub-agent cannot access `br`
+2. **Eval file contents** if the bead references them
+3. **Pre-written test file contents** if `tests/bead/test_<bead-slug>.py` exists (check before dispatch)
+4. **Checklist contents** if referenced (e.g., `python-quality-checklist.md`, `security-checklist.md`) — the orchestrator resolves the referenced eval/checklist paths (conductor decision-work); the sub-agent receives the files, not the IB
+5. **The workflow instructions** (copied verbatim from the Sub-Agent Workflow section below)
+6. **Local dependency-source paths** if present — for any library/SDK/framework the bead implements against, check for vendored source under `reference/repos/<host>/<org>/<project>` (e.g. `reference/repos/github.com/pallets/flask`) and inline the path list so the sub-agent greps the real implementation instead of guessing APIs. This is **opt-in/best-effort**: if no `reference/repos/` tree exists, pass "None" and dispatch normally — its absence never blocks dispatch.
 
 ### Sub-Agent Prompt Template
 
 ```
 You are implementing bead [ID]: [title]
 
+The bead below is your sole authority (ADR-049). It carries every decision
+already made upstream and reconciled by write-code-beads. Implement it exactly
+as specified — decide HOW to render it in code, not WHAT to do. Do not seek or
+infer decisions from an IB, ADR, WS, or IC; if something needed to implement is
+genuinely missing from the bead, STOP and report an expertise gap.
+
 ## Bead
 [full bead JSON]
-
-## Implementation Brief
-[full IB content]
 
 ## Evals
 [eval file contents, or "None"]
@@ -444,7 +448,7 @@ Ready-to-use phrases for the engineer during a session:
 
 - Don't proceed past Pre-Flight when `preflight_quality_gates.py` exits 1 — STOP and report the `missing` list; a referenced checklist/test/eval file that doesn't exist on disk *and is claimed by no bead* means the session cannot enforce the quality process the IB promises. (A missing file listed in an IB's `## Files to Modify` is a greenfield deliverable — it shows under `claimed`, not `missing`, and does not STOP.)
 - Don't dispatch sub-agents in separate messages — launch every Agent call in a **single message** so they run in parallel worktrees; serial dispatch defeats the entire purpose of this skill.
-- Don't let a sub-agent read ADRs, ICs, or the Working Spec — all decisions were reconciled into the IB. Inline the full IB (plus evals, tests, checklists) into the prompt; the sub-agent has no `br` access and must not re-derive contracts.
+- Don't let a sub-agent read the IB, ADRs, ICs, or the Working Spec — all decisions were reconciled into the **bead** by `write-code-beads` (ADR-049). Inline the bead (plus evals, tests, checklists) into the prompt; the sub-agent has no `br` access, implements the reconciled decisions, and must not re-derive or re-decide contracts. A bead that can't be built without the IB is a `write-code-beads` defect, not a dispatch-time exception.
 - Don't auto-resolve merge conflicts in files touched by more than one bead in this session — surface those to the engineer. Only accept-theirs on files no other dispatched bead claims.
 - Don't reach SESSION COMPLETE on a pytest collection error without running the pre-session-commit baseline check — confirm the failure is pre-existing, not a regression this session introduced, before declaring clean.
 - Don't reach for `dekspec executions` / lifecycle-DB writes — those verbs and the IC-004 attempt/event/complete contract were retired with the executor abstraction (MSN-016 / ADR-024). The skill records nothing to a lifecycle DB; do not invent a replacement.

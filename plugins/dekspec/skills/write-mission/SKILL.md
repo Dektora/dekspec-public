@@ -59,7 +59,9 @@ See [`_lib/mode_detection_template.md`](../_lib/mode_detection_template.md) for 
 
 ## Interview Rigor (default-on)
 
-This skill **composes the owned [`interview-me`](../interview-me/SKILL.md) skill** (INT-167 / D13) — it does not re-author the interview prose, and there is no `--grill` flag. When the engineer's input is fuzzy or underspecified, invoke `/dekspec:interview-me <MSN-NNN | description>` so the engineer is interviewed one decision-tree question at a time, with a recommended answer per question, repo-exploration for discoverable answers, glossary + governing ADR/AE citation with conflict-flagging, fuzzy-term sharpening, and scenario-based stress-testing of asserted relationships.
+This skill **optionally composes the [`interview-me`](../../dektools/skills/interview-me/SKILL.md) tool** (INT-167 / D13), which ships in the **DekTools** plugin (ADR-047). It does not re-author the interview prose, and there is no `--grill` flag. When the engineer's input is fuzzy or underspecified and the tool is available, invoke `/dekspec:interview-me <MSN-NNN | description>` so the engineer is interviewed one decision-tree question at a time, with a recommended answer per question, repo-exploration for discoverable answers, glossary + governing ADR/AE citation with conflict-flagging, fuzzy-term sharpening, and scenario-based stress-testing of asserted relationships.
+
+**Degrade gracefully when it is absent.** DekTools may not be installed, or `interview-me` may not be enabled in its à-la-carte selection. Core is self-sufficient by design (ADR-047), so this is a supported configuration, not an error: fall back to asking the engineer the same decisions inline, one at a time, and continue. Never block authoring on a toolkit tool, and never report its absence as a failure.
 
 **Trigger (pinned, INT-167 Open Issues):**
 
@@ -370,9 +372,9 @@ non-mechanical checks below. Then run each check in this order:
 
 1. **Schema validation** — parse via `dekspec.constraint_compiler.parse_mission`. Surface parse warnings as findings.
 2. **T17 completeness** — T17-MSN-VERIFICATION (`mission_verification` has ≥1 cmd entry), T17-MSN-OUTCOME (`Outcome` paragraph populated), T17-MSN-ROLLBACK (`Rollback plan` paragraph populated). Skipped for COMPLETE / KILLED Missions.
-3. **L8 bidirectional Intent linkage** — from `mission_audit.py` (`L8-MSN-INT-EXISTS` + `L8-MSN-INT-MIRROR`). The autonomy-ceiling check (`L8-INT-AUTONOMY-EXCEEDS`: each child Intent's `Autonomy:` ≤ this Mission's `Autonomy ceiling:`) is an AI judgment step — read each child Intent and compare.
-4. **L9 Mission Verification cmd-resolve** — from `mission_audit.py` (`L9-MSN-CMD-RESOLVE`; resolvability only — pytest via PATH, `scripts/*.sh` exists+executable, other tokens via `which`; no execution).
-5. **L11 stale-ACTIVE** — from `mission_audit.py` (`L11-MSN-STALE`; surfaced as P3 when Status is `ACTIVE` and `modified`/`created` is >90 days old) with recommendation to record progress + bump Modified, or transition to COMPLETING/KILLED.
+3. **L8 bidirectional Intent linkage** — from `mission_audit.py` (`LINK-MSN-INT-EXISTS` + `LINK-MSN-INT-MIRROR`). The autonomy-ceiling check (`LINK-INT-AUTONOMY-EXCEEDS`: each child Intent's `Autonomy:` ≤ this Mission's `Autonomy ceiling:`) is an AI judgment step — read each child Intent and compare.
+4. **L9 Mission Verification cmd-resolve** — from `mission_audit.py` (`LINK-MSN-CMD-RESOLVE`; resolvability only — pytest via PATH, `scripts/*.sh` exists+executable, other tokens via `which`; no execution).
+5. **L11 stale-ACTIVE** — from `mission_audit.py` (`LINK-MSN-STALE`; surfaced as P3 when Status is `ACTIVE` and `modified`/`created` is >90 days old) with recommendation to record progress + bump Modified, or transition to COMPLETING/KILLED.
 6. **Status-coherence** — flag any state-machine inconsistency: e.g., status `COMPLETING` but `mission_verification` cmds haven't all been run; status `ACTIVE` but no child Intent has reached COMPLETE (per the activation gate); status `COMPLETE` but the row is still in the Active queue of `mission-index.md`.
 
 ### Step 3: Report
@@ -385,9 +387,9 @@ Print a findings table grouped by severity (CRITICAL / IMPORTANT / MINOR), each 
 ```
 
 Examples:
-- `[CRITICAL] L8-INT-AUTONOMY-EXCEEDS: INT-007.autonomy=high exceeds Mission.autonomy_ceiling=medium. Fix: --review the Intent and lower its Autonomy, or --supersede this Mission with a higher ceiling.`
+- `[CRITICAL] LINK-INT-AUTONOMY-EXCEEDS: INT-007.autonomy=high exceeds Mission.autonomy_ceiling=medium. Fix: --review the Intent and lower its Autonomy, or --supersede this Mission with a higher ceiling.`
 - `[IMPORTANT] T17-MSN-VERIFICATION: no Mission Verification cmd entries. Fix: edit the near-immutable section to add at least one named cmd check, or --supersede with a corrected Mission.`
-- `[MINOR] L11-MSN-STALE: ACTIVE for 127 days since last modification. Fix: --review to record progress + bump Modified, or --complete / --kill to advance.`
+- `[MINOR] LINK-MSN-STALE: ACTIVE for 127 days since last modification. Fix: --review to record progress + bump Modified, or --complete / --kill to advance.`
 
 Print exit code `0` if no CRITICAL findings, `1` if any CRITICAL.
 

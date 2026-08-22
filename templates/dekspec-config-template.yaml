@@ -30,11 +30,11 @@ executor:
   # when `kind: dekfactory`; leave `null` for `kind: local` or `kind: inbox`.
   endpoint: null
 
-# How much DekSpec ceremony the team applies.
-#   lite — solo / minimal ceremony.
-#   team — the INT-021 approval-gate audit profile (reviewer signatures
+# How much DekSpec ceremony the repo applies.
+#   full — the default lane, at full rigor (ADR-050). The default carries no
+#          user-facing lane name; `full` is its legacy spelling.
+#   team — the default plus the INT-021 approval gates (reviewer signatures
 #          enforced on artifact status transitions).
-#   full — every gate.
 methodology_profile: full
 
 # Repository metadata for remote / cross-tenant dispatch (optional).

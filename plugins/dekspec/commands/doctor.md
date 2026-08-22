@@ -9,7 +9,7 @@ Run the DekSpec health check in two stages.
 
 **Stage 1 — CLI doctor** (`dekspec doctor`): schema validate + linkage + drift. Bash subprocess, fast, deterministic.
 
-**Stage 2 — Fidelity audit** (inlined body below): AE-aware T/D/L family (T10/T11/T12 subtype/boundary/views, D17/D18 AE no-target + no-rationale, L1-ADR-AE through L9 linkage integrity, Phase 2A–2L cross-reference checks).
+**Stage 2 — Fidelity audit** (inlined body below): AE-aware T/D/L family (T10/T11/T12 subtype/boundary/views, D17/D18 AE no-target + no-rationale, the LINK-* linkage family, Phase 2A–2L cross-reference checks).
 
 Both stages run by default. Use `--skip-fidelity` for Stage 1 only, `--fidelity-only` for Stage 2 only. The previous `/doctor-fidelity` slash command was retired in v0.98.0; its body lives here.
 
@@ -43,7 +43,7 @@ Do not paraphrase findings — pass them through verbatim.
 
 > **Vendored asset paths (INT-097):** Paths below like `dekspec/templates/X-template.md` and `dekspec/dekspec-<doc>.md` reference the consumer-vendored layout. If your install is pip-only (no `scripts/install-dekspec.sh` run), resolve any reference via `dekspec resource template X` or `dekspec resource doc <name>` (consumer-fs override wins when present).
 
-> **AE-aware v2 — DN→AE migration 2026-04-27 (Decision D7).** The rule set below was migrated from the v1 `run-dekspec-fidelity-audit` skill (FROZEN at `dekspec/skills/fidelity-audit/`) with DN→AE language migration applied. Numeric IDs preserved (DN-NNN → AE-NNN). New AE-specific T10–T12 / D17–D18; new linkage rules L1-ADR-AE / L3 / L4 / L5 / L6 / L7a / L7b / L8 / L9. Audit reports filed against v1 retain their original DN terminology and remain reproducible against the frozen skill.
+> **AE-aware v2 — DN→AE migration 2026-04-27 (Decision D7).** The rule set below was migrated from the v1 `run-dekspec-fidelity-audit` skill (FROZEN at `dekspec/skills/fidelity-audit/`) with DN→AE language migration applied. Numeric IDs preserved (DN-NNN → AE-NNN). New AE-specific T10–T12 / D17–D18; new linkage rules the LINK-* linkage family. Audit reports filed against v1 retain their original DN terminology and remain reproducible against the frozen skill.
 
 ## AE-specific T-checks
 
@@ -62,15 +62,15 @@ These run in addition to D1–D16. **The DN-era D6 NFR exemption is retired** �
 
 ## AE Linkage integrity rules
 
-> **Mechanically enforced by the CLI.** The full L1-ADR-AE to L9 rule set (path-existence, backlink integrity, supersession chains, components-affected resolution, verification-cmd resolution) is implemented in `tooling/dekspec/fidelity_audit/linkage.py` and exposed via `dekspec audit linkage`. Do **not** re-derive these checks by hand. Run, capturing the typed JSON findings and automatically caching proposed fixes:
+> **Mechanically enforced by the CLI.** The full LINK-* linkage rule set (path-existence, backlink integrity, supersession chains, components-affected resolution, verification-cmd resolution) is implemented in `tooling/dekspec/fidelity_audit/linkage.py` and exposed via `dekspec audit linkage`. Do **not** re-derive these checks by hand. Run, capturing the typed JSON findings and automatically caching proposed fixes:
 >
 > ```bash
 > dekspec audit linkage --json --write-fixes scratch/fixes-cache.json
 > ```
 >
-> Roll the emitted findings into the audit report under their `rule` tag (`L3-WS-AE-EXISTS`, `L6-BACKLINK`, `L7b-INT-COMPONENTS-RESOLVE`, `L9-INT-CMD-RESOLVE`, …). The prose definitions below remain the authoritative human-readable spec of each rule; the CLI is the execution surface. In `--library-self-audit` mode, run with `--at .` against the library repo root.
+> Roll the emitted findings into the audit report under their `rule` tag (`LINK-WS-AE-EXISTS`, `LINK-INT-COMPONENTS-RESOLVE`, `LINK-INT-CMD-RESOLVE`, …). The prose definitions below remain the authoritative human-readable spec of each rule; the CLI is the execution surface. In `--library-self-audit` mode, run with `--at .` against the library repo root.
 
-- [ ] **L1-ADR-AE — ADR → AE linkage.** Every ADR's `## Related Architecture Elements` section lists at least one AE-NNN, AND each listed AE exists in `dekspec/architecture-elements/`. Missing section, empty list, or broken AE reference = **HARD FAIL** (advisory at Audit; blocking at Lock for the ADR).
+- [ ] **LINK-ADR-AE — ADR → AE linkage.** Every ADR's `## Related Architecture Elements` section lists at least one AE-NNN, AND each listed AE exists in `dekspec/architecture-elements/`. Missing section, empty list, or broken AE reference = **HARD FAIL** (advisory at Audit; blocking at Lock for the ADR).
 - [ ] **L3 — WS → AE linkage.** Every WS's `## Related Architecture Elements` section lists at least one AE-NNN, AND each listed AE exists. Missing or broken = **HARD FAIL** at Lock.
 - [ ] **L4 — IC → AE linkage.** Every IC's `## Provider AE` is populated and points to an existing AE. `## Consumer AEs` lists at least one consumer AE-NNN OR the explicit value `none — external-facing only` with rationale. Broken provider/consumer AE references = **HARD FAIL** at Lock.
 - [ ] **L5 — IB → AE linkage.** Every IB's `Source AEs:` header field is populated with at least one AE-NNN, AND each listed AE exists. Missing, empty, or broken = **HARD FAIL** at Accept.
@@ -78,7 +78,7 @@ These run in addition to D1–D16. **The DN-era D6 NFR exemption is retired** �
 
 ## Backfill discipline
 
-Pre-migration ADR/WS/IC/IB artifacts (107 across the corpus per the Phase 0 baseline snapshot) are exempt from L1-ADR-AE to L5 hard-fail at Audit time. The backfill rule: **mandatory at next edit**. When `/write-adr --revise`, `/write-ws --revise`, `/write-ic --revise`, or `/write-ibs --revise` runs against a pre-migration artifact, the AE linkage section MUST be populated as part of the revision; advancement to ACCEPTED or LOCKED is blocked until populated. New artifacts from 2026-04-27 forward must populate at write time (HARD FAIL at PROPOSED if missing).
+Pre-migration ADR/WS/IC/IB artifacts (107 across the corpus per the Phase 0 baseline snapshot) are exempt from LINK-ADR-AE to L5 hard-fail at Audit time. The backfill rule: **mandatory at next edit**. When `/write-adr --revise`, `/write-ws --revise`, `/write-ic --revise`, or `/write-ibs --revise` runs against a pre-migration artifact, the AE linkage section MUST be populated as part of the revision; advancement to ACCEPTED or LOCKED is blocked until populated. New artifacts from 2026-04-27 forward must populate at write time (HARD FAIL at PROPOSED if missing).
 
 ## Intent + Mission T-checks
 
@@ -305,7 +305,7 @@ The quick reference (`dekspec/dekspec-quick-reference.md`; in `--library-self-au
 |---|---|---|
 | **ADRs** | `/write-adr --audit <path>` | D1–D9 drift (fenced-code, impl-paths, signatures, numbered-procedures, schema-tables, magic-number-rationale, per-type-dispatch, algorithm-math, key-files-section) + L1-AE / L1-GLOSSARY / L1-VISION consistency |
 | **Architecture Elements** | `/write-ae --audit <path>` | T1–T9 (sections, header, title, body-length, exclusions, silent-domain-coherence, expertise-record, modified-discipline, meta-reference) + D1–D16 (includes D13 mirror anti-pattern, D14 audit-ruler framing, D15 SSoT overreach, D16 Open-Issues spec-vs-code classification) + L1-ADR-SCOPE + L1-ADR-STALE + L1-ADR body-not-AL + L1-GLOSSARY + L1-WS-EXISTS + DS1–DS3 |
-| **Working Specs** | `/write-ws --audit <path>` | T1–T9 + D1–D5 + L1-ADR-AE series + E1–E4 extraction-landing + T-coverage behavioral-reachability + DS1–DS3 + BR-testability + Failure-detection-observable + Domain-constraint-populated + Contract-section-integration-test-scope |
+| **Working Specs** | `/write-ws --audit <path>` | T1–T9 + D1–D5 + LINK-ADR-AE series + E1–E4 extraction-landing + T-coverage behavioral-reachability + DS1–DS3 + BR-testability + Failure-detection-observable + Domain-constraint-populated + Contract-section-integration-test-scope |
 | **Interface Contracts** | `/write-ic --audit <path>` | Contract completeness, error-semantics coverage, consistency-guarantees-bounded, downstream-consumer-citation |
 | **Implementation Briefs** | `/write-ibs --audit <path>` | Golden I/O presence, Test Promotion Criteria, Escalation Protocol verbatim, Decomposition Checklist, coupling/cohesion |
 

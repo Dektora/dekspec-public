@@ -18,53 +18,53 @@
 profile: v1
 inherits: null
 
-# L2 is intentionally absent and reserved for a future "ADR → ADR
-# non-supersession reference" rule (no such check exists today). Audit
-# output should not flag the gap.
+# Linkage rules use the self-describing `LINK-*` prefix (ds-qzc5) — the
+# numeric `L<n>` audit-family scheme was retired because it collided with the
+# L0–L4 architecture-layer model. There is no reserved numeric slot to track.
 
 rules:
   # L-series — linkage integrity (cross-artifact reference + back-pointer)
-  - L1-ADR-AE-MISSING
-  - L1-ADR-AE-EXISTS
-  - L3-WS-AE-MISSING
-  - L3-WS-AE-EXISTS
-  - L4-IC-AE-MISSING
-  - L4-IC-AE-EXISTS
-  - L5-IB-SPEC-MISSING
-  - L5-IB-WS-EXISTS
-  - L5-IB-INTENT-EXISTS
-  - L5-IB-AE-MISSING
-  - L5-IB-AE-EXISTS
-  - L5-IB-DEPENDS-EXISTS
-  - L7-ADR-SUPER-SELF
-  - L7-ADR-SUPER-EXISTS
-  - L7-ADR-SUPER-MIRROR
-  - L7-ADR-SUPER-CYCLE
-  - L7-ADR-SUPER-STATUS
-  - L7a-INT-AE-MISSING
-  - L7a-INT-AE-EXISTS
-  - L7b-INT-COMPONENTS-MISSING
-  - L7b-INT-COMPONENTS-RESOLVE
-  - L8-MSN-INT-EXISTS
-  - L8-MSN-INT-MIRROR
-  - L8-INT-MSN-EXISTS
-  - L8-INT-MSN-MIRROR
-  - L8-INT-AUTONOMY-EXCEEDS
+  - LINK-ADR-AE-MISSING
+  - LINK-ADR-AE-EXISTS
+  - LINK-WS-AE-MISSING
+  - LINK-WS-AE-EXISTS
+  - LINK-IC-AE-MISSING
+  - LINK-IC-AE-EXISTS
+  - LINK-IB-SPEC-MISSING
+  - LINK-IB-WS-EXISTS
+  - LINK-IB-INTENT-EXISTS
+  - LINK-IB-AE-MISSING
+  - LINK-IB-AE-EXISTS
+  - LINK-IB-DEPENDS-EXISTS
+  - LINK-ADR-SUPER-SELF
+  - LINK-ADR-SUPER-EXISTS
+  - LINK-ADR-SUPER-MIRROR
+  - LINK-ADR-SUPER-CYCLE
+  - LINK-ADR-SUPER-STATUS
+  - LINK-INT-AE-MISSING
+  - LINK-INT-AE-EXISTS
+  - LINK-INT-COMPONENTS-MISSING
+  - LINK-INT-COMPONENTS-RESOLVE
+  - LINK-MSN-INT-EXISTS
+  - LINK-MSN-INT-MIRROR
+  - LINK-INT-MSN-EXISTS
+  - LINK-INT-MSN-MIRROR
+  - LINK-INT-AUTONOMY-EXCEEDS
   # ADR-016 — per-Mission Intent serialization (advisory; >1 active Intent)
-  - L8-MSN-INT-SERIALIZED
+  - LINK-MSN-INT-SERIALIZED
   # ADR-016 Open Issue 1 — repo-wide active-Intent backlog health (advisory;
   # tunable threshold via the `parameters:` block below)
-  - L14-INT-BACKLOG-ACTIVE
+  - LINK-INT-BACKLOG-ACTIVE
   # ds-tpmd — artifact-index <-> file Status/Version coherence (advisory)
-  - L15-INDEX-FILE-COHERENCE
+  - LINK-INDEX-FILE-COHERENCE
   # INT-105 / ds-xu6g — Path A accept-gate bead traceability (advisory)
-  - L16-INT-BEADS-BEFORE-ACCEPT
+  - LINK-INT-BEADS-BEFORE-ACCEPT
   # INT-119 / ADR-029 — Outcome-test + strong-TDD discipline (P2 advisory).
   - T-VERIFICATION-OUTCOME
   # INT-125 / ds-zhhk — Constitution §Class Lanes audit family.
   - T-CONST-CLASS-LANE-COVERAGE-UNIQUE
   - T-CONST-CLASS-LANE-THRESHOLDS-WELL-FORMED
-  - L-CONST-CLASS-LANE-INTENT-EXISTS
+  - LINK-CONST-CLASS-LANE-INTENT-EXISTS
   # INT-128 / ds-provisional-promotion-guardrails — stale-canonical
   # Mission advisory.
   - T-MISSION-CANONICAL-WITHOUT-CHILD
@@ -103,32 +103,34 @@ rules:
   - T-SKILL-ARG-HINT-COMPLETE
   # Provisional incubation visibility (INT-provisional-audit-treatment
   # per MSN-014). Both P3 advisory; never blocks.
-  - L-PROVISIONAL-TREE-PRESENT
-  - L-PROVISIONAL-STALE
+  - LINK-PROVISIONAL-TREE-PRESENT
+  - LINK-PROVISIONAL-STALE
   # ADR-043 abortability — a provisional artifact must be promoted, not
   # frozen at a terminal LOCKED/COMPLETE status. P2 gating.
   - T-PROVISIONAL-NOT-LOCKED
   # Copy-on-write sibling-collision detection
   # (INT-082 MVP slice; full write-time guard + accept gate
   # deferred). P2 semantic.
-  - L-COW-SIBLING-COLLISION
+  - LINK-COW-SIBLING-COLLISION
   # Copy-on-write direct-edit-bypass detection (INT-082 second rule).
   # P2 mechanical; surfaces canonical files modified vs main while a
   # pre-ACCEPTED Intent claims them without a provisional sibling.
   - T-COW-CANONICAL-EDITED
-  - L9-INT-CMD-RESOLVE
-  - L9-MSN-CMD-RESOLVE
-  - L10-GLOSSARY-COVERAGE
-  - L11-MSN-STALE
-  - L12-WS-BLOCKING-PRE-IB-CLEAN
+  - LINK-INT-CMD-RESOLVE
+  - LINK-MSN-CMD-RESOLVE
+  - LINK-GLOSSARY-COVERAGE
+  - LINK-MSN-STALE
+  - LINK-WS-BLOCKING-PRE-IB-CLEAN
   # IB-050 / INT-036 — Intent two-path lock coherence (ADR-017)
   # IB-005 / WS-005 — Constitution L0 singleton linkage integrity
-  - L-CONSTITUTION-ARTICLE-1-SV-REF
-  - L-CONSTITUTION-ARTICLE-4-ADR-REFS
-  - L-CONSTITUTION-ARTICLE-7-BOUNDARY-REFS
+  - LINK-CONSTITUTION-ARTICLE-1-SV-REF
+  - LINK-CONSTITUTION-ARTICLE-4-ADR-REFS
+  - LINK-CONSTITUTION-ARTICLE-7-BOUNDARY-REFS
   # LX — parser / corpus integrity
   - LX-PARSE
   - LX-DUP
+  - T-STATUS-BEARING-NONKIND
+  - T-PROVISIONAL-BANNER-CANONICAL
   # T-series — structural completeness
   - T-AE-PURPOSE
   - T-AE-RESPONSIBILITIES
@@ -171,12 +173,12 @@ rules:
   # Routes the spec-reviewer review path (role-spec-reviewer.md §Escalation
   # Triggers) into the audit surface via spec_review_rules.spec_review_rules.
   # Single family code; all findings emit at P2 (no per-rule graduation).
-  # lite.yaml + team.yaml inherit v1, so this flows through both.
+  # team.yaml inherits v1, so this flows through it.
   - SPEC-REVIEW
   # INT-139 / ds-uqnx — ContextSpec role-identity uniqueness (P2). The reviewer
   # dispatcher resolves a role to exactly one ContextSpec; a duplicated
   # role_identity is ambiguous. Makes ContextSpec a graph-audited IR.
-  - L-CS-ROLE-UNIQUE
+  - LINK-CS-ROLE-UNIQUE
   # ds-52p D-16 — singleton self-consistency
   - T-GLOSSARY-DUPLICATE
   - T-GLOSSARY-MISSING-DEFINITION
@@ -195,11 +197,11 @@ rules:
   # the SP-IR-pure T-SEC-* family, gated on Security Profile presence, offline.
   - T-SUPPLY-CHAIN-NEW-DEPENDENCY
   # INT-020 — DRAFT-slug temp-ID + append-only registry safety nets
-  - L-NO-DRAFT-IN-MAIN
-  - L-REGISTRY-APPEND-ONLY
+  - LINK-NO-DRAFT-IN-MAIN
+  - LINK-REGISTRY-APPEND-ONLY
 
 parameters:
-  L11-MSN-STALE:
+  LINK-MSN-STALE:
     days_threshold: 90
 
   # ADR-016 Open Issue 1 — repo-wide active-Intent backlog health. The rule
@@ -208,7 +210,7 @@ parameters:
   # review-bandwidth heuristic; a consumer dials it per repo by editing only
   # this value — no code change. When absent, linkage.py falls back to its
   # `_INT_BACKLOG_ACTIVE_THRESHOLD` module-level default (also 10).
-  L14-INT-BACKLOG-ACTIVE:
+  LINK-INT-BACKLOG-ACTIVE:
     threshold: 10
 
   # INT-065 — T-PROSE-* prose-shape family per-rule overrides.

@@ -183,6 +183,8 @@ The risk tier is **complementary** to Autonomy and Intent type: type classifies 
 
 [File-glob list of paths this Intent's diff is confined to. Required (audit-v2 T15). Drives diff-confinement at `--testpass` (Decision #14); any edit landing outside this list logs a TESTFAIL record (Status stays IMPLEMENTING — the TESTFAIL Status flip retired 2026-05-25) even if all other Verification checks pass. Each glob must resolve to existing paths in the repo (audit-v2 L7).]
 
+**Grammar (ds-352d): one backticked glob per bullet.** Write each path as its own bullet with the glob in backticks — `` - `src/**` ``. Grouped, labeled, or bare-path bullets (`- Backend: src/**, pyproject.toml`) are **not** recognized and now fail `dekspec validate` up front. A trailing prose description after the glob is fine (`` - `src/**` — the service layer ``).
+
 - `path/glob/**/*.py`
 - `dekspec/working-specs/WS-NNN-*.md`
 

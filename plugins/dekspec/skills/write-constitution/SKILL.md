@@ -448,6 +448,6 @@ No automation drives the transition. Governance is human work per the dekfactory
 
 - `T-CONST-CLASS-LANE-COVERAGE-UNIQUE` — every `(intent_type, risk_tier)` tuple resolves to exactly one row.
 - `T-CONST-CLASS-LANE-THRESHOLDS-WELL-FORMED` — budget caps + attempts + thresholds are numeric, non-negative.
-- `L-CONST-CLASS-LANE-INTENT-EXISTS` — any Intent whose `(type, risk_tier)` tuple does not match a row fires this advisory.
+- `LINK-CONST-CLASS-LANE-INTENT-EXISTS` — any Intent whose `(type, risk_tier)` tuple does not match a row fires this advisory.
 
 Registered under the `v1` audit profile; consumed by `dekspec audit linkage`.

@@ -1,7 +1,7 @@
 """Per-repo `.dekspec/config.yaml` loader / writer.
 
 `.dekspec/config.yaml` is the per-repo, committed declaration of the
-methodology profile (`lite` / `team` / `full`; how much DekSpec ceremony
+methodology profile (`full` / `team`; how much DekSpec ceremony
 the team applies). Per ADR-024 (no-factory in-process-only execution
 model, 2026-05-28), DekSpec runs in-process inside whichever coding CLI
 is loaded; there is no executor abstraction. The `executor.kind` axis
@@ -80,7 +80,7 @@ DEKSPEC_CONFIG_KEYS: tuple[str, ...] = (
 
 # Convenience aliases `get_key` / `set_key` accept and normalise to a canonical
 # key before validation. `profile` is the short, ergonomic spelling of
-# `methodology_profile` — `dekspec config get profile` / `set profile lite`
+# `methodology_profile` — `dekspec config get profile` / `set profile team`
 # resolve to the same field (MSN-006 / INT-024 / IB-112; the MSN-006 Mission
 # Verification predicate runs `dekspec config get profile`).
 DEKSPEC_CONFIG_KEY_ALIASES: dict[str, str] = {
@@ -90,9 +90,11 @@ DEKSPEC_CONFIG_KEY_ALIASES: dict[str, str] = {
 # Maps a `methodology_profile` value to the audit-profile manifest that
 # `dekspec audit linkage` / `dekspec doctor` resolve when no explicit
 # `--profile` flag is passed. `full` resolves to the `v1` baseline manifest;
-# `lite` and `team` resolve to their like-named manifests.
+# `team` resolves to its like-named manifest.
+#
+# `full` is the default lane's legacy spelling, not a lane name (ADR-050 §5):
+# the default carries no user-facing name, and `v1` is a rule-set version.
 _AUDIT_PROFILE_BY_METHODOLOGY: dict[str, str] = {
-    "lite": "lite",
     "team": "team",
     "full": "v1",
 }
@@ -242,15 +244,14 @@ def get_profile(repo_root: str | Path) -> str:
     """Return the active methodology profile for `repo_root`.
 
     Reads the `methodology_profile` field from `.dekspec/config.yaml`. This
-    is the single load-bearing profile read point — the lite skill-catalog
-    filter, the compact AGENTS.md emitter, and the CLI audit-profile
-    resolution all consult it (MSN-006 / INT-024 / IB-112).
+    is the single load-bearing profile read point — the CLI audit-profile
+    resolution consults it (MSN-006 / INT-024 / IB-112).
 
     Returns `"full"` — the backwards-compatible default — when
     `.dekspec/config.yaml` is absent or present but omits the
     `methodology_profile` field. Raises `DekspecConfigError` when the file
     exists but is malformed or carries an out-of-enum value (the schema
-    enum is `lite | team | full`).
+    enum is `full | team`).
     """
     if not config_exists(repo_root):
         return "full"
@@ -264,8 +265,8 @@ def get_profile(repo_root: str | Path) -> str:
 def resolve_audit_profile(methodology_profile: str) -> str:
     """Map a `methodology_profile` value to its audit-profile manifest name.
 
-    `full` resolves to the `v1` baseline manifest; `lite` and `team` resolve
-    to their like-named manifests. An unrecognised value falls back to `v1`
+    `full` resolves to the `v1` baseline manifest; `team` resolves to its
+    like-named manifest. An unrecognised value falls back to `v1`
     (the schema enum keeps this path unreachable for a validated config).
     """
     return _AUDIT_PROFILE_BY_METHODOLOGY.get(methodology_profile, "v1")

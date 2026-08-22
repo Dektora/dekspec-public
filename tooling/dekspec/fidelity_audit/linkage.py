@@ -15,7 +15,7 @@ Implements the cross-artifact consistency checks from
 
 Each check returns Finding objects with:
   - severity: canonical Severity ('P0' | 'P1' | 'P2' | 'P3') per ADR-013
-  - rule: short rule code (e.g., 'L1-ADR-AE-EXISTS')
+  - rule: short rule code (e.g., 'LINK-ADR-AE-EXISTS')
   - artifact_id: which artifact owns the finding
   - message: human-readable description
   - fix_kind: 'mechanical' | 'semantic'
@@ -34,6 +34,7 @@ from pathlib import Path
 from typing import Any
 
 from ..constraint_compiler.graph import SpecGraph
+from ..glob_braces import expand_braces as _expand_braces
 from ..severity import P0, P1, P2, P3, Severity
 
 
@@ -78,7 +79,7 @@ class Fix:
     `before` with `after`. apply_fixes() does the writes.
     """
 
-    rule: str  # rule code that produced this fix (e.g., L7-ADR-SUPER-MIRROR)
+    rule: str  # rule code that produced this fix (e.g., LINK-ADR-SUPER-MIRROR)
     artifact_id: str  # the artifact whose source file is being edited
     file_path: str  # absolute path to the source file
     section: str  # which IR field is being repaired (e.g., 'related_wss')
@@ -123,6 +124,8 @@ def audit_linkage(
 
     findings.extend(_lx_parse_failures(graph))
     findings.extend(_lx_duplicate_ids(graph))
+    findings.extend(_t_status_bearing_nonkind(graph))
+    findings.extend(_t_provisional_banner_canonical(graph))
     findings.extend(_l1_adr_ae_links(graph))
     findings.extend(_l3_ws_ae_links(graph))
     findings.extend(_l4_ic_ae_links(graph))
@@ -138,7 +141,7 @@ def audit_linkage(
         _l14_intent_backlog_active(
             graph,
             threshold=active_profile.param(
-                "L14-INT-BACKLOG-ACTIVE", "threshold", _INT_BACKLOG_ACTIVE_THRESHOLD
+                "LINK-INT-BACKLOG-ACTIVE", "threshold", _INT_BACKLOG_ACTIVE_THRESHOLD
             ),
         )
     )
@@ -150,7 +153,7 @@ def audit_linkage(
         _l11_mission_stale(
             graph,
             days_threshold=active_profile.param(
-                "L11-MSN-STALE", "days_threshold", _MISSION_STALE_DAYS
+                "LINK-MSN-STALE", "days_threshold", _MISSION_STALE_DAYS
             ),
         )
     )
@@ -206,25 +209,25 @@ def audit_linkage(
         _l_provisional_stale(
             graph,
             days_threshold=active_profile.param(
-                "L-PROVISIONAL-STALE",
+                "LINK-PROVISIONAL-STALE",
                 "days_threshold",
                 _PROVISIONAL_STALE_DAYS_DEFAULT,
             ),
         )
     )
-    # L-COW-SIBLING-COLLISION — copy-on-write sibling-collision
+    # LINK-COW-SIBLING-COLLISION — copy-on-write sibling-collision
     # detection (INT-082 MVP slice).
     findings.extend(_l_cow_sibling_collision(graph))
     # T-COW-CANONICAL-EDITED — direct-edit-bypass detection
     # (second audit rule from INT-082).
     findings.extend(_t_cow_canonical_edited(graph))
-    # L16-INT-BEADS-BEFORE-ACCEPT — Path A accept-gate bead traceability
+    # LINK-INT-BEADS-BEFORE-ACCEPT — Path A accept-gate bead traceability
     # (INT-105 / ds-xu6g).
     findings.extend(_l16_int_beads_before_accept(graph))
     # T-VERIFICATION-OUTCOME — outcome-test discipline at Intent level
     # (INT-119 / ADR-029). Walks graph.intents() advisory P2.
     findings.extend(_t_verification_outcome(graph))
-    # T-CONST-CLASS-LANE-* + L-CONST-CLASS-LANE-INTENT-EXISTS
+    # T-CONST-CLASS-LANE-* + LINK-CONST-CLASS-LANE-INTENT-EXISTS
     # (INT-125 / ds-zhhk).
     findings.extend(_t_const_class_lane_coverage_unique(graph))
     findings.extend(_t_const_class_lane_thresholds_well_formed(graph))
@@ -285,7 +288,7 @@ def _extract_ib_parent_ws(path: Path) -> str | None:
     """Best-effort extraction of an IB's parent WS ID from its **Spec:** line.
 
     Returns None if the line is missing/malformed — that's a separate
-    defect surfaced by L5-IB-SPEC-MISSING. LX-DUP falls back to grouping
+    defect surfaced by LINK-IB-SPEC-MISSING. LX-DUP falls back to grouping
     unknown-parent IBs together so a missing-spec defect doesn't *also*
     hide a real same-parent duplicate.
     """
@@ -377,8 +380,90 @@ def _lx_duplicate_ids(graph: SpecGraph) -> list[Finding]:
     return out
 
 
+# Kind-directories the SpecGraph loader recognizes (see
+# constraint_compiler/graph.py `loaders`). A markdown file anywhere under one
+# of these is a recognized artifact by directory (ContextSpecs are dir-keyed:
+# their filename is `role-*.md`, not `CS-*`).
+_RECOGNIZED_KIND_DIRS = frozenset(
+    {
+        "adrs",
+        "architecture-elements",
+        "working-specs",
+        "security-profiles",
+        "interface-contracts",
+        "impl-briefs",
+        "intents",
+        "missions",
+        "context-specs",
+    }
+)
+# Recognized prose singletons loaded at the dekspec root.
+_RECOGNIZED_SINGLETONS = frozenset(
+    {"system-vision.md", "domain-glossary.md", "constitution.md"}
+)
+# `## Status` section header or `**Status:**` inline — the tell that an author
+# believed a file was a DekSpec artifact.
+_STATUS_BEARING = re.compile(r"^##\s+Status\b|^\*\*Status:\*\*", re.MULTILINE)
+
+
+def _t_status_bearing_nonkind(graph: SpecGraph) -> list[Finding]:
+    """T-STATUS-BEARING-NONKIND (P3 advisory) — a markdown file under
+    ``dekspec/`` that carries a ``## Status`` section (or ``**Status:**``
+    inline) but classifies to no recognized artifact kind and sits in no
+    recognized kind-directory (ds-352d sibling; DSF-018).
+
+    A ``Status:`` field is a strong tell the author believed the file was a
+    DekSpec artifact — so a Status-bearing file that DekSpec silently ignores
+    (wrong dir / no kind-prefix, e.g. a code-consumed schema README dropped
+    under ``dekspec/schemas/``) is a low-false-positive anomaly worth an
+    advisory. Recognized artifacts, prose singletons (System Vision, glossary,
+    Constitution), and provisional incubation folders never fire; non-Status
+    prose (indexes, divergences, guidance) never fires. Advisory only — DekSpec
+    deliberately allows project-authored prose in the tree.
+    """
+    out: list[Finding] = []
+    dekspec_dir = graph.dekspec_dir
+    if dekspec_dir is None or not dekspec_dir.exists():
+        return out
+    for p in sorted(dekspec_dir.rglob("*.md")):
+        rel = p.relative_to(dekspec_dir)
+        parts = rel.parts
+        # Provisional incubation folders deliberately carry Status — skip.
+        if "provisional" in parts:
+            continue
+        # Recognized by kind-directory (any depth) or as a prose singleton.
+        if _RECOGNIZED_KIND_DIRS.intersection(parts):
+            continue
+        if len(parts) == 1 and rel.name in _RECOGNIZED_SINGLETONS:
+            continue
+        try:
+            text = p.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        if not _STATUS_BEARING.search(text):
+            continue
+        out.append(
+            Finding(
+                severity=P3,
+                rule="T-STATUS-BEARING-NONKIND",
+                artifact_id=str(rel),
+                message=(
+                    f"`dekspec/{rel}` carries a Status field but classifies to no "
+                    f"recognized artifact kind and sits in no kind-directory — "
+                    f"DekSpec silently ignores it. If this is a code-consumed "
+                    f"contract (schema / OpenAPI / protobuf), move it code-side "
+                    f"and reference it from a spec; DekSpec artifacts live in a "
+                    f"kind-directory ({', '.join(sorted(_RECOGNIZED_KIND_DIRS))}) "
+                    f"or are a known singleton."
+                ),
+                fix_kind="semantic",
+            )
+        )
+    return out
+
+
 def _l_context_spec_role_unique(graph: SpecGraph) -> list[Finding]:
-    """L-CS-ROLE-UNIQUE: each role_identity is claimed by at most one ContextSpec.
+    """LINK-CS-ROLE-UNIQUE: each role_identity is claimed by at most one ContextSpec.
 
     ContextSpec (INT-139) defines the context-window scope of a lifecycle role.
     The reviewer dispatcher (spec_review) resolves a role_identity to exactly
@@ -397,7 +482,7 @@ def _l_context_spec_role_unique(graph: SpecGraph) -> list[Finding]:
             out.append(
                 Finding(
                     severity=P2,
-                    rule="L-CS-ROLE-UNIQUE",
+                    rule="LINK-CS-ROLE-UNIQUE",
                     artifact_id=cs["id"],
                     message=(
                         f"ContextSpec role_identity '{role}' is also claimed by "
@@ -423,7 +508,7 @@ def _l1_adr_ae_links(graph: SpecGraph) -> list[Finding]:
             out.append(
                 Finding(
                     severity=P3,
-                    rule="L1-ADR-AE-MISSING",
+                    rule="LINK-ADR-AE-MISSING",
                     artifact_id=adr_id,
                     message=(
                         "ADR has no Related Architecture Elements (L1 mandatory). "
@@ -440,7 +525,7 @@ def _l1_adr_ae_links(graph: SpecGraph) -> list[Finding]:
                 out.append(
                     Finding(
                         severity=P1,
-                        rule="L1-ADR-AE-EXISTS",
+                        rule="LINK-ADR-AE-EXISTS",
                         artifact_id=adr_id,
                         message=(
                             f"ADR references AE {ae_id} which does not exist in the registry "
@@ -465,7 +550,7 @@ def _l3_ws_ae_links(graph: SpecGraph) -> list[Finding]:
             out.append(
                 Finding(
                     severity=P2,
-                    rule="L3-WS-AE-MISSING",
+                    rule="LINK-WS-AE-MISSING",
                     artifact_id=ws_id,
                     message=(
                         "WS has no Related Architecture Elements (L3 mandatory at LOCK). "
@@ -481,7 +566,7 @@ def _l3_ws_ae_links(graph: SpecGraph) -> list[Finding]:
                 out.append(
                     Finding(
                         severity=P1,
-                        rule="L3-WS-AE-EXISTS",
+                        rule="LINK-WS-AE-EXISTS",
                         artifact_id=ws_id,
                         message=(f"WS references AE {ae_id} which does not exist in the registry."),
                         fix_kind="semantic",
@@ -502,7 +587,7 @@ def _l4_ic_ae_links(graph: SpecGraph) -> list[Finding]:
             out.append(
                 Finding(
                     severity=P3,
-                    rule="L4-IC-AE-MISSING",
+                    rule="LINK-IC-AE-MISSING",
                     artifact_id=ic_id,
                     message=(
                         "IC has no parties[].ae_id populated. Provider/Consumer AE links are "
@@ -518,7 +603,7 @@ def _l4_ic_ae_links(graph: SpecGraph) -> list[Finding]:
                 out.append(
                     Finding(
                         severity=P1,
-                        rule="L4-IC-AE-EXISTS",
+                        rule="LINK-IC-AE-EXISTS",
                         artifact_id=ic_id,
                         message=(
                             f"IC references AE {ae_id} (parties[].ae_id) which does not exist "
@@ -537,8 +622,8 @@ def propose_fixes(
     """Compute mechanical fixes from the current graph state.
 
     Two families as of v0.27.0:
-      - L7-ADR-SUPER-MIRROR (since v0.27.0): add ADR.superseded_by back-pointer.
-      - L8-MSN-INT-MIRROR / L8-INT-MSN-MIRROR (since v0.27.0): add Intent.mission
+      - LINK-ADR-SUPER-MIRROR (since v0.27.0): add ADR.superseded_by back-pointer.
+      - LINK-MSN-INT-MIRROR / LINK-INT-MSN-MIRROR (since v0.27.0): add Intent.mission
         back-pointer / append a row to Mission.intent_queue.
 
     Other rule families produce findings but no auto-fix proposals; the
@@ -608,17 +693,17 @@ def _l5_ib_ws_links(graph: SpecGraph) -> list[Finding]:
     field for direct AE linkage; otherwise falls back to transitive
     AE resolution via the parent WS.
 
-      - L5-IB-SPEC-MISSING (important): IB has neither `spec` (no `**Spec:**`
+      - LINK-IB-SPEC-MISSING (important): IB has neither `spec` (no `**Spec:**`
                                         line resolving to a WS) NOR a
                                         resolvable `intent` (no `**Intent:**`
                                         line resolving to an INT). One of the
                                         two parent links is required.
-      - L5-IB-WS-EXISTS    (critical):  spec.id not in registry.
-      - L5-IB-INTENT-EXISTS (critical): intent.id set but not in registry.
-      - L5-IB-AE-MISSING   (minor):     no source_aes AND parent WS has no
+      - LINK-IB-WS-EXISTS    (critical):  spec.id not in registry.
+      - LINK-IB-INTENT-EXISTS (critical): intent.id set but not in registry.
+      - LINK-IB-AE-MISSING   (minor):     no source_aes AND parent WS has no
                                         related_architecture_elements — the
                                         IB cannot resolve any AE.
-      - L5-IB-DEPENDS-EXISTS (critical): each depends_on IB must resolve.
+      - LINK-IB-DEPENDS-EXISTS (critical): each depends_on IB must resolve.
     """
     out: list[Finding] = []
     for ib in graph.ibs():
@@ -628,7 +713,7 @@ def _l5_ib_ws_links(graph: SpecGraph) -> list[Finding]:
         intent = ib.get("intent") or {}
         int_id = intent.get("id")
 
-        # L5-IB-SPEC-MISSING fires only when BOTH parent links are absent or
+        # LINK-IB-SPEC-MISSING fires only when BOTH parent links are absent or
         # unresolvable. A populated, resolvable intent satisfies the rule
         # (Mission-less single-IB pattern — IB decomposes directly from an
         # Intent with no intervening WS; e.g., IB-038 ← INT-023).
@@ -638,7 +723,7 @@ def _l5_ib_ws_links(graph: SpecGraph) -> list[Finding]:
             out.append(
                 Finding(
                     severity=P2,
-                    rule="L5-IB-SPEC-MISSING",
+                    rule="LINK-IB-SPEC-MISSING",
                     artifact_id=ib_id,
                     message=(
                         "IB has neither a `**Spec:**` line resolving to a WS nor "
@@ -654,7 +739,7 @@ def _l5_ib_ws_links(graph: SpecGraph) -> list[Finding]:
             out.append(
                 Finding(
                     severity=P1,
-                    rule="L5-IB-WS-EXISTS",
+                    rule="LINK-IB-WS-EXISTS",
                     artifact_id=ib_id,
                     message=(
                         f"IB references parent {ws_id} which does not exist in "
@@ -668,7 +753,7 @@ def _l5_ib_ws_links(graph: SpecGraph) -> list[Finding]:
             out.append(
                 Finding(
                     severity=P1,
-                    rule="L5-IB-INTENT-EXISTS",
+                    rule="LINK-IB-INTENT-EXISTS",
                     artifact_id=ib_id,
                     message=(
                         f"IB references parent {int_id} which does not exist in "
@@ -684,7 +769,7 @@ def _l5_ib_ws_links(graph: SpecGraph) -> list[Finding]:
                 out.append(
                     Finding(
                         severity=P1,
-                        rule="L5-IB-AE-EXISTS",
+                        rule="LINK-IB-AE-EXISTS",
                         artifact_id=ib_id,
                         message=(
                             f"IB.source_aes references {ae_id} which does not "
@@ -700,7 +785,7 @@ def _l5_ib_ws_links(graph: SpecGraph) -> list[Finding]:
                 out.append(
                     Finding(
                         severity=P3,
-                        rule="L5-IB-AE-MISSING",
+                        rule="LINK-IB-AE-MISSING",
                         artifact_id=ib_id,
                         message=(
                             f"IB has no `Source AEs:` line and its parent {ws_id} "
@@ -717,7 +802,7 @@ def _l5_ib_ws_links(graph: SpecGraph) -> list[Finding]:
                 out.append(
                     Finding(
                         severity=P1,
-                        rule="L5-IB-DEPENDS-EXISTS",
+                        rule="LINK-IB-DEPENDS-EXISTS",
                         artifact_id=ib_id,
                         message=(
                             f"IB.depends_on references {dep_id} which does not "
@@ -733,11 +818,11 @@ def _l5_ib_ws_links(graph: SpecGraph) -> list[Finding]:
 def _l7_adr_supersession_integrity(graph: SpecGraph) -> list[Finding]:
     """L7: ADR.supersession references must resolve, mirror, and not cycle.
 
-    - L7-ADR-SUPER-EXISTS: each ADR ID in supersedes/superseded_by exists.
-    - L7-ADR-SUPER-SELF: an ADR cannot supersede itself.
-    - L7-ADR-SUPER-MIRROR: if A.supersedes contains B, B.superseded_by contains A.
-    - L7-ADR-SUPER-CYCLE: the supersession graph (supersedes edges) is acyclic.
-    - L7-ADR-SUPER-STATUS: ADRs with status=SUPERSEDED must populate
+    - LINK-ADR-SUPER-EXISTS: each ADR ID in supersedes/superseded_by exists.
+    - LINK-ADR-SUPER-SELF: an ADR cannot supersede itself.
+    - LINK-ADR-SUPER-MIRROR: if A.supersedes contains B, B.superseded_by contains A.
+    - LINK-ADR-SUPER-CYCLE: the supersession graph (supersedes edges) is acyclic.
+    - LINK-ADR-SUPER-STATUS: ADRs with status=SUPERSEDED must populate
       supersession.superseded_by (per schema description).
     """
     out: list[Finding] = []
@@ -754,7 +839,7 @@ def _l7_adr_supersession_integrity(graph: SpecGraph) -> list[Finding]:
                 out.append(
                     Finding(
                         severity=P1,
-                        rule="L7-ADR-SUPER-SELF",
+                        rule="LINK-ADR-SUPER-SELF",
                         artifact_id=adr_id,
                         message=f"ADR supersedes itself ({ref_id}). Remove or correct.",
                         fix_kind="semantic",
@@ -764,7 +849,7 @@ def _l7_adr_supersession_integrity(graph: SpecGraph) -> list[Finding]:
                 out.append(
                     Finding(
                         severity=P1,
-                        rule="L7-ADR-SUPER-EXISTS",
+                        rule="LINK-ADR-SUPER-EXISTS",
                         artifact_id=adr_id,
                         message=(
                             f"supersedes references {ref_id} which does not exist in the registry."
@@ -779,7 +864,7 @@ def _l7_adr_supersession_integrity(graph: SpecGraph) -> list[Finding]:
                     out.append(
                         Finding(
                             severity=P2,
-                            rule="L7-ADR-SUPER-MIRROR",
+                            rule="LINK-ADR-SUPER-MIRROR",
                             artifact_id=ref_id,
                             message=(
                                 f"{adr_id} supersedes {ref_id} but {ref_id}.superseded_by "
@@ -794,7 +879,7 @@ def _l7_adr_supersession_integrity(graph: SpecGraph) -> list[Finding]:
                 out.append(
                     Finding(
                         severity=P1,
-                        rule="L7-ADR-SUPER-SELF",
+                        rule="LINK-ADR-SUPER-SELF",
                         artifact_id=adr_id,
                         message=f"ADR is superseded_by itself ({ref_id}). Remove or correct.",
                         fix_kind="semantic",
@@ -804,7 +889,7 @@ def _l7_adr_supersession_integrity(graph: SpecGraph) -> list[Finding]:
                 out.append(
                     Finding(
                         severity=P1,
-                        rule="L7-ADR-SUPER-EXISTS",
+                        rule="LINK-ADR-SUPER-EXISTS",
                         artifact_id=adr_id,
                         message=(
                             f"superseded_by references {ref_id} which does not exist in the registry."
@@ -817,7 +902,7 @@ def _l7_adr_supersession_integrity(graph: SpecGraph) -> list[Finding]:
             out.append(
                 Finding(
                     severity=P2,
-                    rule="L7-ADR-SUPER-STATUS",
+                    rule="LINK-ADR-SUPER-STATUS",
                     artifact_id=adr_id,
                     message=(
                         "ADR.status is SUPERSEDED but supersession.superseded_by is empty. "
@@ -839,7 +924,7 @@ def _l7_adr_supersession_integrity(graph: SpecGraph) -> list[Finding]:
         out.append(
             Finding(
                 severity=P1,
-                rule="L7-ADR-SUPER-CYCLE",
+                rule="LINK-ADR-SUPER-CYCLE",
                 artifact_id=cycle[0],
                 message=(
                     f"Supersession cycle detected: {' -> '.join(cycle + (cycle[0],))}. "
@@ -1267,30 +1352,9 @@ def _truncate(text: str, max_chars: int) -> str:
 # --------------------------------------------------------------------------- #
 
 
-def _expand_braces(pattern: str) -> list[str]:
-    """Expand shell-style brace groups `{a,b,c}` into literal alternatives.
-
-    `glob.glob` does not understand brace expansion, so a pattern like
-    `src/pkg/{cli,doctor}/**/*.py` would match nothing and emit a false
-    L7b-INT-COMPONENTS-RESOLVE finding (ds-l7b). This helper turns one
-    pattern into the cartesian product of its brace branches; multiple
-    brace groups in one pattern are all expanded. A pattern with no braces
-    returns `[pattern]` unchanged. Nested braces are not supported — the
-    leftmost innermost-free group is expanded each pass until none remain.
-    """
-    _brace = re.compile(r"\{([^{}]*)\}")
-    results = [pattern]
-    while any(_brace.search(candidate) for candidate in results):
-        expanded: list[str] = []
-        for candidate in results:
-            m = _brace.search(candidate)
-            if m is None:
-                expanded.append(candidate)
-                continue
-            for alt in m.group(1).split(","):
-                expanded.append(candidate[: m.start()] + alt + candidate[m.end() :])
-        results = expanded
-    return results
+# `_expand_braces` is imported from `dekspec.glob_braces` (see the top-of-file
+# imports). Brace expansion is shared with the `--testpass` diff-confinement
+# gate so the two can never diverge again — the root cause of ds-059n.
 
 
 # Phase 1.B / ds-puvi: recommended open-enum vocabulary for Intent.risk_tier.
@@ -1325,12 +1389,12 @@ _BEAD_RECOMMENDED_FAILURE_CLASSES = {
 
 
 def _l7_intent_linkage(graph: SpecGraph) -> list[Finding]:
-    """L7-Intent linkage rules:
+    """Intent linkage rules (LINK-INT-*):
 
-      - L7a-INT-AE-MISSING (important): Intent has no linked_architecture_elements.
-      - L7a-INT-AE-EXISTS  (critical):  each linked AE-NNN must resolve in the registry.
-      - L7b-INT-COMPONENTS-MISSING (important): Intent has no components_affected.
-      - L7b-INT-COMPONENTS-RESOLVE (status-conditional): each glob must match ≥1
+      - LINK-INT-AE-MISSING (important): Intent has no linked_architecture_elements.
+      - LINK-INT-AE-EXISTS  (critical):  each linked AE-NNN must resolve in the registry.
+      - LINK-INT-COMPONENTS-MISSING (important): Intent has no components_affected.
+      - LINK-INT-COMPONENTS-RESOLVE (status-conditional): each glob must match ≥1
         path relative to repo_root. **Per ADR-019 + ds-to7s:** EVERY non-terminal
         Intent is checked, so a refactor-stale glob (a path a rename/move
         orphaned) never hides. Severity tracks the lifecycle: DRAFT, PROPOSED,
@@ -1345,7 +1409,7 @@ def _l7_intent_linkage(graph: SpecGraph) -> list[Finding]:
       - T14-INT-VERIFICATION (important): no verification cmd checks.
 
     Note: the L7 prefix here is for Intent-targeted rules (audit-v2 calls them
-    L7a/L7b). It does NOT collide with the L7-ADR-SUPER-* family because the
+    L7a/L7b). It does NOT collide with the LINK-ADR-SUPER-* family because the
     artifact_id namespace + rule prefix together disambiguate.
     """
     out: list[Finding] = []
@@ -1360,7 +1424,7 @@ def _l7_intent_linkage(graph: SpecGraph) -> list[Finding]:
             out.append(
                 Finding(
                     severity=P2,
-                    rule="L7a-INT-AE-MISSING",
+                    rule="LINK-INT-AE-MISSING",
                     artifact_id=int_id,
                     message=(
                         "Intent has no §Linked Architecture Elements entries. "
@@ -1376,7 +1440,7 @@ def _l7_intent_linkage(graph: SpecGraph) -> list[Finding]:
                     out.append(
                         Finding(
                             severity=P1,
-                            rule="L7a-INT-AE-EXISTS",
+                            rule="LINK-INT-AE-EXISTS",
                             artifact_id=int_id,
                             message=(
                                 f"Intent references AE {ae_id} which does not exist "
@@ -1391,7 +1455,7 @@ def _l7_intent_linkage(graph: SpecGraph) -> list[Finding]:
             out.append(
                 Finding(
                     severity=P2,
-                    rule="L7b-INT-COMPONENTS-MISSING",
+                    rule="LINK-INT-COMPONENTS-MISSING",
                     artifact_id=int_id,
                     message=(
                         "Intent has no §Components affected entries. "
@@ -1426,7 +1490,7 @@ def _l7_intent_linkage(graph: SpecGraph) -> list[Finding]:
                     out.append(
                         Finding(
                             severity=severity,
-                            rule="L7b-INT-COMPONENTS-RESOLVE",
+                            rule="LINK-INT-COMPONENTS-RESOLVE",
                             artifact_id=int_id,
                             message=(
                                 f"Intent.components_affected glob `{pattern}` "
@@ -1546,7 +1610,7 @@ _AUTONOMY_RANK = {"manual": 0, "low": 1, "medium": 2, "high": 3}
 
 # Per ADR-019: an Intent in one of these statuses carries its Mission
 # reference for provenance only — it is not a live queue member, so it is
-# exempt from L8-INT-MSN-MIRROR (and the matching fix proposer). An OVERSIZED
+# exempt from LINK-INT-MSN-MIRROR (and the matching fix proposer). An OVERSIZED
 # design parent decomposes into the child Intents that populate the queue;
 # a SUPERSEDED Intent keeps the reference as history.
 _L8_MIRROR_EXEMPT = {"OVERSIZED", "SUPERSEDED"}
@@ -1555,15 +1619,15 @@ _L8_MIRROR_EXEMPT = {"OVERSIZED", "SUPERSEDED"}
 def _l8_mission_intent_bidirectional(graph: SpecGraph) -> list[Finding]:
     """L8 — Mission ↔ Intent bidirectional linkage:
 
-      - L8-MSN-INT-MIRROR (important): if Mission lists INT-X in intent_queue,
+      - LINK-MSN-INT-MIRROR (important): if Mission lists INT-X in intent_queue,
         INT-X.mission must reference this Mission.
-      - L8-INT-MSN-MIRROR (important): if Intent.mission references MSN-Y,
+      - LINK-INT-MSN-MIRROR (important): if Intent.mission references MSN-Y,
         MSN-Y.intent_queue must list this Intent. Per ADR-019, OVERSIZED and
         SUPERSEDED Intents are exempt — they carry a Mission reference for
         provenance, not as a live queue obligation.
-      - L8-INT-AUTONOMY-EXCEEDS (critical): Intent.autonomy must NOT exceed
+      - LINK-INT-AUTONOMY-EXCEEDS (critical): Intent.autonomy must NOT exceed
         Mission.autonomy_ceiling (manual < low < medium < high).
-      - L8-MSN-INT-EXISTS (critical): each MSN.intent_queue[].id must resolve.
+      - LINK-MSN-INT-EXISTS (critical): each MSN.intent_queue[].id must resolve.
 
       - T17-MSN-VERIFICATION (important): Mission has no mission_verification.
       - T17-MSN-OUTCOME (important): Mission has no outcome.
@@ -1649,7 +1713,7 @@ def _l8_mission_intent_bidirectional(graph: SpecGraph) -> list[Finding]:
                 out.append(
                     Finding(
                         severity=P1,
-                        rule="L8-MSN-INT-EXISTS",
+                        rule="LINK-MSN-INT-EXISTS",
                         artifact_id=msn_id,
                         message=(
                             f"Mission.intent_queue references {int_id} which does "
@@ -1664,7 +1728,7 @@ def _l8_mission_intent_bidirectional(graph: SpecGraph) -> list[Finding]:
                 out.append(
                     Finding(
                         severity=P2,
-                        rule="L8-MSN-INT-MIRROR",
+                        rule="LINK-MSN-INT-MIRROR",
                         artifact_id=int_id,
                         message=(
                             f"Mission {msn_id}.intent_queue lists {int_id} but "
@@ -1688,7 +1752,7 @@ def _l8_mission_intent_bidirectional(graph: SpecGraph) -> list[Finding]:
             out.append(
                 Finding(
                     severity=P1,
-                    rule="L8-INT-MSN-EXISTS",
+                    rule="LINK-INT-MSN-EXISTS",
                     artifact_id=int_id,
                     message=(
                         f"Intent.mission references {msn_ref} which does not exist in the registry."
@@ -1707,7 +1771,7 @@ def _l8_mission_intent_bidirectional(graph: SpecGraph) -> list[Finding]:
             out.append(
                 Finding(
                     severity=P2,
-                    rule="L8-INT-MSN-MIRROR",
+                    rule="LINK-INT-MSN-MIRROR",
                     artifact_id=msn_ref,
                     message=(
                         f"Intent {int_id}.mission references {msn_ref} but "
@@ -1728,7 +1792,7 @@ def _l8_mission_intent_bidirectional(graph: SpecGraph) -> list[Finding]:
             out.append(
                 Finding(
                     severity=P1,
-                    rule="L8-INT-AUTONOMY-EXCEEDS",
+                    rule="LINK-INT-AUTONOMY-EXCEEDS",
                     artifact_id=int_id,
                     message=(
                         f"Intent.autonomy={int_aut} exceeds Mission "
@@ -1761,7 +1825,7 @@ _L8_ACTIVE_INTENT_STATUSES = frozenset(
 
 
 def _l8_mission_intent_serialized(graph: SpecGraph) -> list[Finding]:
-    """L8-MSN-INT-SERIALIZED (advisory) — per-Mission Intent serialization.
+    """LINK-MSN-INT-SERIALIZED (advisory) — per-Mission Intent serialization.
 
     Per ADR-016: within a single Mission, the intended discipline is at most
     one child Intent in active status at a time — child Intents are
@@ -1800,7 +1864,7 @@ def _l8_mission_intent_serialized(graph: SpecGraph) -> list[Finding]:
         out.append(
             Finding(
                 severity=P3,
-                rule="L8-MSN-INT-SERIALIZED",
+                rule="LINK-MSN-INT-SERIALIZED",
                 artifact_id=msn_id,
                 message=(
                     f"Mission carries {len(int_ids)} active Intents ({listed}). "
@@ -1815,15 +1879,15 @@ def _l8_mission_intent_serialized(graph: SpecGraph) -> list[Finding]:
 
 
 # --------------------------------------------------------------------------- #
-# L14-INT-BACKLOG-ACTIVE (advisory) — repo-wide active-Intent backlog health
+# LINK-INT-BACKLOG-ACTIVE (advisory) — repo-wide active-Intent backlog health
 # --------------------------------------------------------------------------- #
 
 # Per ADR-016 Open Issue 1: the repo-wide count of active Intents is a
-# review-bandwidth / linkage-rot signal distinct from L8-MSN-INT-SERIALIZED's
+# review-bandwidth / linkage-rot signal distinct from LINK-MSN-INT-SERIALIZED's
 # per-Mission dependency ordering. When too many Intents sit active at once,
 # cross-artifact links rot faster than they can be reviewed. The default
 # threshold is 10; consumers tune it via the v1-profile parameter
-# `L14-INT-BACKLOG-ACTIVE.threshold` (see profiles/v1.yaml) without a code
+# `LINK-INT-BACKLOG-ACTIVE.threshold` (see profiles/v1.yaml) without a code
 # change. This module-level constant is the fallback when the parameter is
 # unset — the same default the profile manifest declares.
 _INT_BACKLOG_ACTIVE_THRESHOLD = 10
@@ -1832,7 +1896,7 @@ _INT_BACKLOG_ACTIVE_THRESHOLD = 10
 def _l14_intent_backlog_active(
     graph: SpecGraph, threshold: int = _INT_BACKLOG_ACTIVE_THRESHOLD
 ) -> list[Finding]:
-    """L14-INT-BACKLOG-ACTIVE (advisory) — repo-wide active-Intent backlog.
+    """LINK-INT-BACKLOG-ACTIVE (advisory) — repo-wide active-Intent backlog.
 
     Per ADR-016 Open Issue 1: counts ALL active Intents repo-wide — Mission-
     bound and Mission-less alike — and fires a single advisory (`P3`) finding
@@ -1840,7 +1904,7 @@ def _l14_intent_backlog_active(
     `_L8_ACTIVE_INTENT_STATUSES` (DRAFT through MERGED); terminal/off-ramp
     statuses (LOCKED / SUPERSEDED / KILLED / OVERSIZED) are excluded.
 
-    This is deliberately distinct from `L8-MSN-INT-SERIALIZED`, which scopes
+    This is deliberately distinct from `LINK-MSN-INT-SERIALIZED`, which scopes
     Intent serialization per Mission. L14 is about review-bandwidth and
     linkage-rot backlog health for the repo as a whole — a large active
     Intent queue means cross-artifact links rot faster than they can be
@@ -1848,7 +1912,7 @@ def _l14_intent_backlog_active(
     Intent corpus, not by any one Intent).
 
     `threshold` defaults to 10 (the v1 audit profile value). Future profiles
-    may tighten or loosen it via the `L14-INT-BACKLOG-ACTIVE.threshold`
+    may tighten or loosen it via the `LINK-INT-BACKLOG-ACTIVE.threshold`
     parameter in their manifest.
     """
     out: list[Finding] = []
@@ -1863,7 +1927,7 @@ def _l14_intent_backlog_active(
     out.append(
         Finding(
             severity=P3,
-            rule="L14-INT-BACKLOG-ACTIVE",
+            rule="LINK-INT-BACKLOG-ACTIVE",
             artifact_id="intent-index",
             message=(
                 f"{len(active_ids)} Intents are in an active lifecycle status "
@@ -1871,7 +1935,7 @@ def _l14_intent_backlog_active(
                 f"exceeded. Per ADR-016, a large active-Intent queue means "
                 f"cross-artifact links rot faster than they can be reviewed — "
                 f"advisory: land or supersede in-flight Intents before opening "
-                f"more, or raise `L14-INT-BACKLOG-ACTIVE.threshold` in the audit "
+                f"more, or raise `LINK-INT-BACKLOG-ACTIVE.threshold` in the audit "
                 f"profile if this backlog is intentional."
             ),
             fix_kind="semantic",
@@ -1886,7 +1950,7 @@ def _l14_intent_backlog_active(
 
 
 def _l9_verification_resolves(graph: SpecGraph) -> list[Finding]:
-    """L9-INT-CMD-RESOLVE / L9-MSN-CMD-RESOLVE (minor):
+    """LINK-INT-CMD-RESOLVE / LINK-MSN-CMD-RESOLVE (minor):
 
     Per audit-v2 L9, every cmd entry in Intent.verification and
     Mission.mission_verification should resolve to an executable script
@@ -1917,7 +1981,7 @@ def _l9_verification_resolves(graph: SpecGraph) -> list[Finding]:
                 out.append(
                     Finding(
                         severity=P3,
-                        rule="L9-INT-CMD-RESOLVE",
+                        rule="LINK-INT-CMD-RESOLVE",
                         artifact_id=int_id,
                         message=(
                             f"Intent.verification[{v.get('name', '?')}].cmd `{cmd}` "
@@ -1938,7 +2002,7 @@ def _l9_verification_resolves(graph: SpecGraph) -> list[Finding]:
                 out.append(
                     Finding(
                         severity=P3,
-                        rule="L9-MSN-CMD-RESOLVE",
+                        rule="LINK-MSN-CMD-RESOLVE",
                         artifact_id=msn_id,
                         message=(
                             f"Mission.mission_verification[{v.get('name', '?')}].cmd "
@@ -1966,7 +2030,7 @@ def _l9_verification_resolves(graph: SpecGraph) -> list[Finding]:
                     out.append(
                         Finding(
                             severity=P3,
-                            rule="L9-MSN-CMD-RESOLVE",
+                            rule="LINK-MSN-CMD-RESOLVE",
                             artifact_id=msn_id,
                             message=(
                                 f"Mission.rollback_plan.steps"
@@ -1986,7 +2050,7 @@ def _l9_verification_resolves(graph: SpecGraph) -> list[Finding]:
                 out.append(
                     Finding(
                         severity=P3,
-                        rule="L9-MSN-CMD-RESOLVE",
+                        rule="LINK-MSN-CMD-RESOLVE",
                         artifact_id=msn_id,
                         message=(
                             f"Mission.kill_criteria[{step.get('name', '?')}].cmd "
@@ -2136,7 +2200,7 @@ _L10_STOPWORDS = {
 
 
 def _l10_glossary_coverage(graph: SpecGraph) -> list[Finding]:
-    """L10-GLOSSARY-COVERAGE (minor, advisory): for each artifact, surface
+    """LINK-GLOSSARY-COVERAGE (minor, advisory): for each artifact, surface
     multi-word Title-Case phrases (likely jargon) that don't appear in the
     Domain Glossary. Rolled up to one finding per artifact listing the top
     5 unknown candidates by frequency. Skipped when no glossary is present.
@@ -2226,7 +2290,7 @@ def _l10_glossary_coverage(graph: SpecGraph) -> list[Finding]:
             out.append(
                 Finding(
                     severity=P3,
-                    rule="L10-GLOSSARY-COVERAGE",
+                    rule="LINK-GLOSSARY-COVERAGE",
                     artifact_id=artifact_id,
                     message=(
                         f"{artifact_id} uses {len(recurring)} likely-jargon "
@@ -2251,14 +2315,14 @@ _MISSION_STALE_DAYS = 90
 def _l11_mission_stale(
     graph: SpecGraph, days_threshold: int = _MISSION_STALE_DAYS
 ) -> list[Finding]:
-    """L11-MSN-STALE (minor): a Mission with status=ACTIVE for more than
+    """LINK-MSN-STALE (minor): a Mission with status=ACTIVE for more than
     `days_threshold` since its last `modified` date is flagged as stale.
     Either the Mission is making progress (and should record activity in
     its Amendment Log + Modified date) or it should advance to
     COMPLETING / KILLED.
 
     `days_threshold` defaults to 90 (the v1 audit profile value).
-    Future profiles may tighten this via the L11-MSN-STALE.days_threshold
+    Future profiles may tighten this via the LINK-MSN-STALE.days_threshold
     parameter in their manifest.
     """
     out: list[Finding] = []
@@ -2278,7 +2342,7 @@ def _l11_mission_stale(
             out.append(
                 Finding(
                     severity=P3,
-                    rule="L11-MSN-STALE",
+                    rule="LINK-MSN-STALE",
                     artifact_id=msn["id"],
                     message=(
                         f"Mission has been ACTIVE for {age_days} days since last "
@@ -2293,7 +2357,7 @@ def _l11_mission_stale(
 
 
 # --------------------------------------------------------------------------- #
-# L12-WS-BLOCKING-PRE-IB-CLEAN (P1): WS gate — `blocking_pre_ib` open_issues
+# LINK-WS-BLOCKING-PRE-IB-CLEAN (P1): WS gate — `blocking_pre_ib` open_issues
 # must be resolved before status walks past PROPOSED.
 # --------------------------------------------------------------------------- #
 
@@ -2314,7 +2378,7 @@ _L12_GATE_STATUSES = frozenset(
 
 
 def _l12_ws_blocking_pre_ib_clean(graph: SpecGraph) -> list[Finding]:
-    """L12-WS-BLOCKING-PRE-IB-CLEAN (P1): a WS at status=ACCEPTED or higher
+    """LINK-WS-BLOCKING-PRE-IB-CLEAN (P1): a WS at status=ACCEPTED or higher
     must not carry P1 open_issues.
 
     P1 is the canonical severity for the `blocking_pre_ib` /
@@ -2353,7 +2417,7 @@ def _l12_ws_blocking_pre_ib_clean(graph: SpecGraph) -> list[Finding]:
             out.append(
                 Finding(
                     severity="P1",
-                    rule="L12-WS-BLOCKING-PRE-IB-CLEAN",
+                    rule="LINK-WS-BLOCKING-PRE-IB-CLEAN",
                     artifact_id=ws["id"],
                     message=(
                         f"WS status={status} carries a P1 open_issue (canonical for the "
@@ -2371,7 +2435,7 @@ def _l12_ws_blocking_pre_ib_clean(graph: SpecGraph) -> list[Finding]:
 
 
 # --------------------------------------------------------------------------- #
-# L7-ADR-SUPER-MIRROR fix proposer
+# LINK-ADR-SUPER-MIRROR fix proposer
 # --------------------------------------------------------------------------- #
 
 _SUPERSEDED_BY_LINE_RE = re.compile(
@@ -2431,7 +2495,7 @@ def _propose_l7_supersession_fixes(graph: SpecGraph) -> list[Fix]:
         line_number = text[: m.start()].count("\n") + 1
         fixes.append(
             Fix(
-                rule="L7-ADR-SUPER-MIRROR",
+                rule="LINK-ADR-SUPER-MIRROR",
                 artifact_id=target_id,
                 file_path=str(path),
                 section="supersession.superseded_by",
@@ -2445,7 +2509,7 @@ def _propose_l7_supersession_fixes(graph: SpecGraph) -> list[Fix]:
 
 
 # --------------------------------------------------------------------------- #
-# L8-MSN-INT-MIRROR / L8-INT-MSN-MIRROR fix proposers
+# LINK-MSN-INT-MIRROR / LINK-INT-MSN-MIRROR fix proposers
 # --------------------------------------------------------------------------- #
 
 _INT_MISSION_SECTION_RE = re.compile(
@@ -2462,12 +2526,12 @@ _MSN_QUEUE_LAST_ROW_RE = re.compile(
 def _propose_l8_mirror_fixes(graph: SpecGraph) -> list[Fix]:
     """Two complementary fix families:
 
-    L8-MSN-INT-MIRROR (target = Intent file):
+    LINK-MSN-INT-MIRROR (target = Intent file):
       Mission lists INT-X in intent_queue, but INT-X.mission is unset.
       Edit the Intent's §Mission section value from `none` (or template
       placeholder) to the Mission ID.
 
-    L8-INT-MSN-MIRROR (target = Mission file):
+    LINK-INT-MSN-MIRROR (target = Mission file):
       Intent.mission references MSN-Y, but MSN-Y.intent_queue has no row.
       Append a queue row to the Mission's §Intent queue table.
     """
@@ -2476,7 +2540,7 @@ def _propose_l8_mirror_fixes(graph: SpecGraph) -> list[Fix]:
     intents_by_id = {i["id"]: i for i in graph.intents()}
     missions_by_id = {m["id"]: m for m in graph.missions()}
 
-    # L8-MSN-INT-MIRROR: edit the Intent file
+    # LINK-MSN-INT-MIRROR: edit the Intent file
     for msn in missions_by_id.values():
         msn_id = msn["id"]
         for entry in msn.get("intent_queue", []) or []:
@@ -2509,7 +2573,7 @@ def _propose_l8_mirror_fixes(graph: SpecGraph) -> list[Fix]:
             line_number = text[: m.start()].count("\n") + 2  # H2 + blank + value line
             fixes.append(
                 Fix(
-                    rule="L8-MSN-INT-MIRROR",
+                    rule="LINK-MSN-INT-MIRROR",
                     artifact_id=int_id,
                     file_path=str(path),
                     section="mission",
@@ -2520,14 +2584,14 @@ def _propose_l8_mirror_fixes(graph: SpecGraph) -> list[Fix]:
                 )
             )
 
-    # L8-INT-MSN-MIRROR: append a row to the Mission's queue table
+    # LINK-INT-MSN-MIRROR: append a row to the Mission's queue table
     for intent in intents_by_id.values():
         int_id = intent["id"]
         msn_ref = (intent.get("mission") or {}).get("id")
         if not msn_ref:
             continue
         # Per ADR-019: OVERSIZED/SUPERSEDED design parents are exempt from the
-        # L8-INT-MSN-MIRROR rule — do not propose a queue row that would
+        # LINK-INT-MSN-MIRROR rule — do not propose a queue row that would
         # contradict the Mission's authored decomposition.
         if (intent.get("status") or "DRAFT").upper() in _L8_MIRROR_EXEMPT:
             continue
@@ -2562,7 +2626,7 @@ def _propose_l8_mirror_fixes(graph: SpecGraph) -> list[Fix]:
         line_number = text[: m.start()].count("\n") + 1
         fixes.append(
             Fix(
-                rule="L8-INT-MSN-MIRROR",
+                rule="LINK-INT-MSN-MIRROR",
                 artifact_id=msn_ref,
                 file_path=str(path),
                 section="intent_queue",
@@ -3032,7 +3096,7 @@ def _t_constitution_article_populated(graph: SpecGraph) -> list[Finding]:
 
 
 def _l_constitution_article_1_sv_ref(graph: SpecGraph) -> list[Finding]:
-    """L-CONSTITUTION-ARTICLE-1-SV-REF (critical): Article 1's
+    """LINK-CONSTITUTION-ARTICLE-1-SV-REF (critical): Article 1's
     `see_also` path resolves to an existing markdown file relative to
     the repo root. Kind-validation (is the target actually a SV?) is a
     follow-on enhancement — this rule checks file-existence + .md
@@ -3054,7 +3118,7 @@ def _l_constitution_article_1_sv_ref(graph: SpecGraph) -> list[Finding]:
         out.append(
             Finding(
                 severity=P1,
-                rule="L-CONSTITUTION-ARTICLE-1-SV-REF",
+                rule="LINK-CONSTITUTION-ARTICLE-1-SV-REF",
                 artifact_id="CONSTITUTION",
                 message=(
                     f"Article 1 see_also {see_also!r} does not resolve to an "
@@ -3068,7 +3132,7 @@ def _l_constitution_article_1_sv_ref(graph: SpecGraph) -> list[Finding]:
 
 
 def _l_constitution_article_4_adr_refs(graph: SpecGraph) -> list[Finding]:
-    """L-CONSTITUTION-ARTICLE-4-ADR-REFS (critical): every entry in
+    """LINK-CONSTITUTION-ARTICLE-4-ADR-REFS (critical): every entry in
     Article 4's `adr_refs` typed array resolves to a registered ADR.
     Walks the typed array only — prose mentions of `ADR-NNN` inside
     `summary` / `body` are NOT considered.
@@ -3086,7 +3150,7 @@ def _l_constitution_article_4_adr_refs(graph: SpecGraph) -> list[Finding]:
             out.append(
                 Finding(
                     severity=P1,
-                    rule="L-CONSTITUTION-ARTICLE-4-ADR-REFS",
+                    rule="LINK-CONSTITUTION-ARTICLE-4-ADR-REFS",
                     artifact_id="CONSTITUTION",
                     message=(
                         f"Article 4 cites {adr_id} which does not exist in "
@@ -3100,7 +3164,7 @@ def _l_constitution_article_4_adr_refs(graph: SpecGraph) -> list[Finding]:
 
 
 def _l_constitution_article_7_boundary_refs(graph: SpecGraph) -> list[Finding]:
-    """L-CONSTITUTION-ARTICLE-7-BOUNDARY-REFS (critical): every entry
+    """LINK-CONSTITUTION-ARTICLE-7-BOUNDARY-REFS (critical): every entry
     in Article 7's `adr_refs` AND `ae_refs` typed arrays resolves.
     Single rule code, two emit branches per WS-005 BR5 + IB-005 Open
     Issue #1 default. Walks typed arrays only.
@@ -3119,7 +3183,7 @@ def _l_constitution_article_7_boundary_refs(graph: SpecGraph) -> list[Finding]:
             out.append(
                 Finding(
                     severity=P1,
-                    rule="L-CONSTITUTION-ARTICLE-7-BOUNDARY-REFS",
+                    rule="LINK-CONSTITUTION-ARTICLE-7-BOUNDARY-REFS",
                     artifact_id="CONSTITUTION",
                     message=(
                         f"Article 7 cites {adr_id} which does not exist in "
@@ -3135,7 +3199,7 @@ def _l_constitution_article_7_boundary_refs(graph: SpecGraph) -> list[Finding]:
             out.append(
                 Finding(
                     severity=P1,
-                    rule="L-CONSTITUTION-ARTICLE-7-BOUNDARY-REFS",
+                    rule="LINK-CONSTITUTION-ARTICLE-7-BOUNDARY-REFS",
                     artifact_id="CONSTITUTION",
                     message=(
                         f"Article 7 cites {ae_id} which does not exist in "
@@ -3446,7 +3510,7 @@ def _t_supply_chain_new_dependency(graph: SpecGraph) -> list[Finding]:
 
 
 def _l_no_draft_in_main(graph: SpecGraph) -> list[Finding]:
-    """L-NO-DRAFT-IN-MAIN (P0): no DRAFT-prefixed artifact may reach main.
+    """LINK-NO-DRAFT-IN-MAIN (P0): no DRAFT-prefixed artifact may reach main.
 
     DRAFT artifacts (`<KIND>-DRAFT-<slug>.md`, INT-020) carry a temporary ID
     and must be allocated to a canonical `<KIND>-NNN` ID via
@@ -3487,7 +3551,7 @@ def _l_no_draft_in_main(graph: SpecGraph) -> list[Finding]:
             out.append(
                 Finding(
                     severity=P0,
-                    rule="L-NO-DRAFT-IN-MAIN",
+                    rule="LINK-NO-DRAFT-IN-MAIN",
                     artifact_id=p.name,
                     message=(
                         f"DRAFT artifact {rel} carries a temporary "
@@ -3502,7 +3566,7 @@ def _l_no_draft_in_main(graph: SpecGraph) -> list[Finding]:
 
 
 def _l_registry_append_only(graph: SpecGraph) -> list[Finding]:
-    """L-REGISTRY-APPEND-ONLY (P1): the registry is grow-only.
+    """LINK-REGISTRY-APPEND-ONLY (P1): the registry is grow-only.
 
     Compares the current `dekspec/registry.yaml` against its last committed
     version (`git show HEAD:dekspec/registry.yaml`). Fires if any committed
@@ -3565,7 +3629,7 @@ def _l_registry_append_only(graph: SpecGraph) -> list[Finding]:
             out.append(
                 Finding(
                     severity=P1,
-                    rule="L-REGISTRY-APPEND-ONLY",
+                    rule="LINK-REGISTRY-APPEND-ONLY",
                     artifact_id=entry_id,
                     message=(
                         f"Registry entry {entry_id} present in the committed "
@@ -3579,7 +3643,7 @@ def _l_registry_append_only(graph: SpecGraph) -> list[Finding]:
             out.append(
                 Finding(
                     severity=P1,
-                    rule="L-REGISTRY-APPEND-ONLY",
+                    rule="LINK-REGISTRY-APPEND-ONLY",
                     artifact_id=entry_id,
                     message=(
                         f"Registry entry {entry_id} has been modified vs the "
@@ -3798,7 +3862,7 @@ def _t_approval_gate(graph: SpecGraph, profile) -> list[Finding]:
 
 
 # --------------------------------------------------------------------------- #
-# L15-INDEX-FILE-COHERENCE (advisory) — artifact-index <-> file coherence
+# LINK-INDEX-FILE-COHERENCE (advisory) — artifact-index <-> file coherence
 # --------------------------------------------------------------------------- #
 
 # Each entry: (index filename, artifact ID regex, IR iterator attr name).
@@ -3926,7 +3990,7 @@ def _index_rows(text: str, id_re: re.Pattern[str]) -> dict[str, dict[str, str]]:
 
 
 def _l15_index_file_coherence(graph: SpecGraph) -> list[Finding]:
-    """L15-INDEX-FILE-COHERENCE (advisory) — artifact-index <-> file coherence.
+    """LINK-INDEX-FILE-COHERENCE (advisory) — artifact-index <-> file coherence.
 
     For each artifact index (`adr-index.md`, `architecture-elements-index.md`,
     `interface-contract-index.md`, `intent-index.md`) this rule verifies:
@@ -3964,7 +4028,7 @@ def _l15_index_file_coherence(graph: SpecGraph) -> list[Finding]:
                 out.append(
                     Finding(
                         severity=P3,
-                        rule="L15-INDEX-FILE-COHERENCE",
+                        rule="LINK-INDEX-FILE-COHERENCE",
                         artifact_id=artifact_id,
                         message=(
                             f"{artifact_id} exists on disk but has no row in "
@@ -3980,7 +4044,7 @@ def _l15_index_file_coherence(graph: SpecGraph) -> list[Finding]:
                 out.append(
                     Finding(
                         severity=P3,
-                        rule="L15-INDEX-FILE-COHERENCE",
+                        rule="LINK-INDEX-FILE-COHERENCE",
                         artifact_id=artifact_id,
                         message=(
                             f"{artifact_id} row in `{filename}` lists Status "
@@ -4001,7 +4065,7 @@ def _l15_index_file_coherence(graph: SpecGraph) -> list[Finding]:
                 out.append(
                     Finding(
                         severity=P3,
-                        rule="L15-INDEX-FILE-COHERENCE",
+                        rule="LINK-INDEX-FILE-COHERENCE",
                         artifact_id=artifact_id,
                         message=(
                             f"{artifact_id} row in `{filename}` lists Version "
@@ -4195,7 +4259,7 @@ def _t_status_auto_fixable(graph: SpecGraph, artifact_id: str) -> tuple[bool, st
         band-3 analogue `ACTIVE` is gated on a child Intent locking.
       - the artifact is a Working Spec carrying an unresolved `P1`
         open_issue — raising it to `ACCEPTED` would trip
-        L12-WS-BLOCKING-PRE-IB-CLEAN ("Clarify Before Plan" gate). The WS
+        LINK-WS-BLOCKING-PRE-IB-CLEAN ("Clarify Before Plan" gate). The WS
         is correctly sub-`ACCEPTED` until the blocker is settled.
     """
     if artifact_id.startswith("MSN-"):
@@ -4212,7 +4276,7 @@ def _t_status_auto_fixable(graph: SpecGraph, artifact_id: str) -> tuple[bool, st
                 return False, (
                     "Working Spec carries an unresolved P1 open_issue — "
                     "an `ACCEPTED` transition would trip the "
-                    'L12-WS-BLOCKING-PRE-IB-CLEAN "Clarify Before Plan" '
+                    'LINK-WS-BLOCKING-PRE-IB-CLEAN "Clarify Before Plan" '
                     "gate; settle the blocker first"
                 )
     return True, "clean metadata transition to ACCEPTED"
@@ -4301,7 +4365,7 @@ def _t_status_inversion(graph: SpecGraph) -> list[Finding]:
       - `P3` (advisory, flag-only) when the provider's `ACCEPTED` transition
         is NOT a clean metadata move — a Mission (no `ACCEPTED` status), or
         a Working Spec carrying an unresolved `P1` open_issue (an `ACCEPTED`
-        transition would itself trip L12-WS-BLOCKING-PRE-IB-CLEAN). The
+        transition would itself trip LINK-WS-BLOCKING-PRE-IB-CLEAN). The
         inversion is surfaced, not gated; the auto-fix never forges it.
 
     Off-ramp ends (`DEPRECATED` / `SUPERSEDED` / Mission `KILLED`) are
@@ -4314,11 +4378,20 @@ def _t_status_inversion(graph: SpecGraph) -> list[Finding]:
     lagging: dict[str, tuple[str, list[tuple[str, str, str]]]] = {}
 
     for consumer_id, provider_id, edge_kind in _status_dependency_edges(graph):
+        # ds-6s7k: a child Intent -> Mission edge never inverts. Missions have
+        # no ACCEPTED status (TODO -> ACTIVE -> COMPLETING -> COMPLETE) and a
+        # Mission stays TODO until a child Intent LOCKs — so an ACCEPTED/LOCKED
+        # child under a TODO Mission is the *normal* progression, not a settled
+        # consumer depending on an unsettled provider. The genuine "Mission
+        # lags behind its done children" case is caught by T-STATUS-LAG's
+        # Mission decomposition signal (ds-6s7k.1), not here.
+        if edge_kind == "Intent->Mission":
+            continue
         consumer = graph.by_id(consumer_id)
         provider = graph.by_id(provider_id)
         if consumer is None or provider is None:
-            # A dangling forward ref — that is L1/L3/L4/L5/L7a's finding,
-            # not a status-coherence one.
+            # A dangling forward ref — that is the LINK-*-AE-MISSING family's
+            # finding, not a status-coherence one.
             continue
         consumer_status = consumer.get("status")
         provider_status = provider.get("status")
@@ -4488,6 +4561,55 @@ def _t_status_lag(graph: SpecGraph) -> list[Finding]:
                 fix_kind="mechanical" if fixable else "semantic",
             )
         )
+
+    # Signal 3 (ds-6s7k.1) — Mission decomposition complete. Missions decompose
+    # into Intents (not IBs), and an `ACTIVE` Mission already clears the ACCEPTED
+    # maturity floor (band 3), so the artifact loop above — which only inspects
+    # sub-ACCEPTED artifacts against IB/Intent signals — never reaches it. A
+    # Mission whose entire live intent_queue is terminal is therefore invisible
+    # to both T-STATUS-* rules (reproduced live: MSN-020, 12/12 child Intents
+    # done, Mission still ACTIVE, doctor clean). Handle Missions explicitly.
+    # Flag-only P3 advisory (never auto-fixed): completing a Mission runs the
+    # Mission Verification predicate via `write-mission --complete`, not a bare
+    # metadata transition.
+    _INTENT_DONE = frozenset({"COMPLETE", "LOCKED"})  # LOCKED = pre-ADR-046 Intents
+    intent_status = {
+        i["id"]: (i.get("status") or "").strip().upper()
+        for i in graph.intents()
+        if i.get("id")
+    }
+    for msn in sorted(graph.missions(), key=lambda x: x.get("id", "")):
+        msn_id = msn.get("id")
+        if not msn_id or (msn.get("status") or "").strip().upper() != "ACTIVE":
+            continue
+        child_ids = [
+            (e.get("id") if isinstance(e, dict) else e)
+            for e in (msn.get("intent_queue") or [])
+        ]
+        live = [
+            (cid, intent_status[cid])
+            for cid in child_ids
+            if isinstance(cid, str) and cid in intent_status
+            and intent_status[cid] not in _STATUS_OFFRAMP
+        ]
+        if live and all(st in _INTENT_DONE for _, st in live):
+            done_ids = ", ".join(sorted(cid for cid, _ in live))
+            out.append(
+                Finding(
+                    severity=P3,
+                    rule="T-STATUS-LAG",
+                    artifact_id=msn_id,
+                    message=(
+                        f"{msn_id} is `ACTIVE` but every live child Intent in its "
+                        f"queue is terminal ({done_ids}) — the Mission's "
+                        f"decomposition is complete while its status lags. Advisory "
+                        f"only: run `/write-mission --complete` to advance "
+                        f"ACTIVE → COMPLETING → COMPLETE (the Mission Verification "
+                        f"predicate must pass; this is not a bare metadata move)."
+                    ),
+                    fix_kind="semantic",
+                )
+            )
     return out
 
 
@@ -4686,7 +4808,7 @@ def _append_amendment_row(text: str, today: str, note: str, author: str) -> str:
 def _reconcile_index_row(index_path: Path, artifact_id: str, new_status: str) -> bool:
     """Rewrite `artifact_id`'s Status cell in a markdown index. Returns True
     when a row was found and updated; False when the index has no such row
-    (a missing row is L15-INDEX-FILE-COHERENCE's concern, not the fixer's).
+    (a missing row is LINK-INDEX-FILE-COHERENCE's concern, not the fixer's).
     """
     if not index_path.exists():
         return False
@@ -5276,6 +5398,8 @@ _SKILL_CLASS_DEFAULTS: dict[str, dict[str, str]] = {
     # is pure-git, coding-session-forensics is read-only + writes one report, spike runs throwaway
     # experiments. Registered with their actual minimal tool sets.)
     "pr-branch":          {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Bash"},
+    "use-worktrees":      {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Bash"},
+    "prj-mgr":            {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Bash Grep Glob"},
     "coding-session-forensics":          {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Bash Write"},
     "spike":              {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
     "write-goal-loop-contract":          {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
@@ -5297,22 +5421,32 @@ _SKILL_REQUIRED_FIELDS = (
 )
 
 
+#: Plugins whose skills the frontmatter rules govern. The toolkit split
+#: (ADR-047) moved ~13 skills out of core; scanning only `dekspec` would
+#: silently drop them from enforcement and report "no findings", which reads
+#: as healthy rather than as unenforced.
+_SKILL_PLUGIN_NAMES = ("dekspec", "dektools")
+
+
 def _read_skill_files(graph: SpecGraph) -> list[Path]:
-    """Return the list of canonical SKILL.md paths under
-    `plugins/dekspec/skills/<skill>/SKILL.md`. Empty if the directory
-    doesn't exist (consumer repo without plugin source).
+    """Return every shipped plugin's `skills/<skill>/SKILL.md`.
+
+    Empty if no plugin source is present (consumer repo without the plugin
+    tree). Skill frontmatter discipline applies per skill, not per plugin —
+    a skill does not stop being governed by moving between them.
     """
-    skills_dir = graph.repo_root / "plugins" / "dekspec" / "skills"
-    if not skills_dir.is_dir():
-        return []
-    out = []
-    for p in sorted(skills_dir.iterdir()):
-        if not p.is_dir() or p.name.startswith("_") or p.name.startswith("."):
+    out: list[Path] = []
+    for plugin in _SKILL_PLUGIN_NAMES:
+        skills_dir = graph.repo_root / "plugins" / plugin / "skills"
+        if not skills_dir.is_dir():
             continue
-        md = p / "SKILL.md"
-        if md.is_file():
-            out.append(md)
-    return out
+        for p in sorted(skills_dir.iterdir()):
+            if not p.is_dir() or p.name.startswith("_") or p.name.startswith("."):
+                continue
+            md = p / "SKILL.md"
+            if md.is_file():
+                out.append(md)
+    return sorted(out)
 
 
 def _parse_skill_frontmatter(md: Path) -> tuple[dict[str, str], dict[str, str]]:
@@ -5561,7 +5695,7 @@ _PROVISIONAL_STALE_DAYS_DEFAULT = 30
 
 
 def _l_provisional_tree_present(graph: SpecGraph) -> list[Finding]:
-    """L-PROVISIONAL-TREE-PRESENT (P3 advisory) — fires once per
+    """LINK-PROVISIONAL-TREE-PRESENT (P3 advisory) — fires once per
     non-empty incubation folder under `dekspec/provisional/<slug>/`.
     Reports the slug, the artifact count, and the age of the oldest
     file in days (mtime-based, not git-blame, to keep the check cheap).
@@ -5584,7 +5718,7 @@ def _l_provisional_tree_present(graph: SpecGraph) -> list[Finding]:
         findings.append(
             Finding(
                 severity="P3",
-                rule="L-PROVISIONAL-TREE-PRESENT",
+                rule="LINK-PROVISIONAL-TREE-PRESENT",
                 artifact_id=f"provisional:{slug_dir.name}",
                 message=(
                     f"Provisional incubation folder `{slug_dir.name}/` has "
@@ -5662,7 +5796,7 @@ def _l_provisional_stale(
     graph: SpecGraph,
     days_threshold: int = _PROVISIONAL_STALE_DAYS_DEFAULT,
 ) -> list[Finding]:
-    """L-PROVISIONAL-STALE (P3 advisory) — fires once per incubation
+    """LINK-PROVISIONAL-STALE (P3 advisory) — fires once per incubation
     folder whose oldest artifact mtime is older than the configured
     threshold (default 30 days). Reports the slug + age.
     """
@@ -5687,7 +5821,7 @@ def _l_provisional_stale(
         findings.append(
             Finding(
                 severity="P3",
-                rule="L-PROVISIONAL-STALE",
+                rule="LINK-PROVISIONAL-STALE",
                 artifact_id=f"provisional:{slug_dir.name}",
                 message=(
                     f"Provisional incubation folder `{slug_dir.name}/` is "
@@ -5705,15 +5839,15 @@ def _l_provisional_stale(
 
 
 # --------------------------------------------------------------------------- #
-# L-COW-SIBLING-COLLISION — copy-on-write sibling-collision detection.
-# Implements the L-COW-SIBLING-COLLISION rule from
+# LINK-COW-SIBLING-COLLISION — copy-on-write sibling-collision detection.
+# Implements the LINK-COW-SIBLING-COLLISION rule from
 # INT-provisional-cow-spec-staging (MVP slice — write-time guard +
 # accept gate deferred).
 # --------------------------------------------------------------------------- #
 
 
 def _l_cow_sibling_collision(graph: SpecGraph) -> list[Finding]:
-    """L-COW-SIBLING-COLLISION (P2 semantic) — fires when 2+ provisional
+    """LINK-COW-SIBLING-COLLISION (P2 semantic) — fires when 2+ provisional
     artifacts across different incubation folders declare
     `replaces: <CANONICAL-ID>` for the same canonical artifact.
 
@@ -5747,7 +5881,7 @@ def _l_cow_sibling_collision(graph: SpecGraph) -> list[Finding]:
         findings.append(
             Finding(
                 severity="P2",
-                rule="L-COW-SIBLING-COLLISION",
+                rule="LINK-COW-SIBLING-COLLISION",
                 artifact_id=canonical_id,
                 message=(
                     f"{len(claimants)} provisional artifacts declare "
@@ -5761,6 +5895,65 @@ def _l_cow_sibling_collision(graph: SpecGraph) -> list[Finding]:
             )
         )
     return findings
+
+
+# --------------------------------------------------------------------------- #
+# T-PROVISIONAL-BANNER-CANONICAL — stale incubation banner on a canonical file
+# --------------------------------------------------------------------------- #
+
+#: The scaffolder's provisional banner. Anchored to the line start so a
+#: mid-body mention of the word never trips the rule.
+_PROVISIONAL_BANNER_RE = re.compile(r"^> \*\*PROVISIONAL\b", re.MULTILINE)
+
+
+def _t_provisional_banner_canonical(graph: SpecGraph) -> list[Finding]:
+    """T-PROVISIONAL-BANNER-CANONICAL (P2 mechanical) — a canonical artifact
+    still carrying the `> **PROVISIONAL ...**` incubation banner.
+
+    `dekspec library new-provisional` stamps a banner saying the artifact
+    incubates under `dekspec/provisional/` and is "freely abortable: deleting
+    this folder has zero adverse effect on the library". Promotion is supposed
+    to strip it. When it does not, the banner is ratified and frozen along with
+    the artifact — and every clause of it is then false.
+
+    P2 rather than advisory: the banner asserts the artifact is *disposable*.
+    On a LOCKED ADR gating a programme of work that is a correctness claim
+    about the spec graph, not cosmetics — and it invites exactly the deletion
+    it wrongly promises is safe. Observed on 13 artifacts including two LOCKED
+    ADRs and a COMPLETE Mission (ds-tnvf).
+
+    Provisional incubation folders are skipped: the banner is correct there.
+    """
+    out: list[Finding] = []
+    dekspec_dir = graph.dekspec_dir
+    if dekspec_dir is None or not dekspec_dir.exists():
+        return out
+    for path in sorted(dekspec_dir.rglob("*.md")):
+        rel = path.relative_to(dekspec_dir)
+        if "provisional" in rel.parts:
+            continue  # still incubating; the banner belongs there
+        try:
+            content = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        if not _PROVISIONAL_BANNER_RE.search(content):
+            continue
+        out.append(
+            Finding(
+                rule="T-PROVISIONAL-BANNER-CANONICAL",
+                severity="P2",
+                artifact_id=path.stem,
+                message=(
+                    f"{rel} is canonical but still carries the PROVISIONAL "
+                    f"incubation banner, which claims the artifact is freely "
+                    f"abortable. Promotion should have stripped it — remove "
+                    f"the banner block (see dekspec.promote."
+                    f"strip_provisional_banner)."
+                ),
+                file_path=str(path),
+            )
+        )
+    return out
 
 
 # --------------------------------------------------------------------------- #
@@ -5909,7 +6102,7 @@ def _t_cow_canonical_edited(graph: SpecGraph) -> list[Finding]:
 
 
 # --------------------------------------------------------------------------- #
-# L16-INT-BEADS-BEFORE-ACCEPT (P2): Path A accept-gate — an Intent at status
+# LINK-INT-BEADS-BEFORE-ACCEPT (P2): Path A accept-gate — an Intent at status
 # >= ACCEPTED with beads_before_accept=true must have at least one bead in the
 # tracker.  (INT-105 / ds-xu6g)
 # --------------------------------------------------------------------------- #
@@ -5929,7 +6122,7 @@ _L16_GATE_STATUSES = frozenset(
 
 
 def _l16_int_beads_before_accept(graph: SpecGraph) -> list[Finding]:
-    """L16-INT-BEADS-BEFORE-ACCEPT (P2): an Intent that opts into
+    """LINK-INT-BEADS-BEFORE-ACCEPT (P2): an Intent that opts into
     Path A (``beads_before_accept: true``) and has reached ACCEPTED or
     higher must have at least one bead in ``.beads/issues.jsonl`` whose
     ``external_ref`` begins with the Intent's file path.
@@ -5989,7 +6182,7 @@ def _l16_int_beads_before_accept(graph: SpecGraph) -> list[Finding]:
             out.append(
                 Finding(
                     severity="P2",
-                    rule="L16-INT-BEADS-BEFORE-ACCEPT",
+                    rule="LINK-INT-BEADS-BEFORE-ACCEPT",
                     artifact_id=intent["id"],
                     message=(
                         f"Intent {intent['id']} (status={status}) has "
@@ -6146,7 +6339,7 @@ def _t_const_class_lane_thresholds_well_formed(graph) -> list[Finding]:
 
 
 def _l_const_class_lane_intent_exists(graph) -> list[Finding]:
-    """L-CONST-CLASS-LANE-INTENT-EXISTS (P3 advisory) — every Intent's
+    """LINK-CONST-CLASS-LANE-INTENT-EXISTS (P3 advisory) — every Intent's
     (type, risk_tier) tuple must match a row in the Constitution's
     class_lanes table. Unmatched tuples fire.
     """
@@ -6163,7 +6356,7 @@ def _l_const_class_lane_intent_exists(graph) -> list[Finding]:
             continue  # risk_tier optional; skip when absent
         if tup not in keys:
             out.append(Finding(
-                rule="L-CONST-CLASS-LANE-INTENT-EXISTS",
+                rule="LINK-CONST-CLASS-LANE-INTENT-EXISTS",
                 artifact_id=intent.get("id", "<unknown>"),
                 severity="P3",
                 message=(

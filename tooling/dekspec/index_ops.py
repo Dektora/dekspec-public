@@ -20,6 +20,11 @@ from typing import Any
 
 from .constraint_compiler.graph import SpecGraph
 
+# Scaffold empty-state sentinel emitted into fresh index files by
+# `dekspec init` (e.g. `_None yet — author the first one with `/write-adr`._`).
+# Dropped by _replace_table_in_section once real rows exist (ds-q03o).
+_EMPTY_STATE_SENTINEL = re.compile(r"^_None yet\b.*_$")
+
 
 @dataclass
 class IndexResult:
@@ -139,6 +144,12 @@ def _replace_table_in_section(
     table_replaced = False
     while i < len(lines):
         line = lines[i]
+        if new_rows and _EMPTY_STATE_SENTINEL.match(line.strip()):
+            # ds-q03o: once real rows exist, drop the scaffold empty-state
+            # sentinel (`_None yet — author the first one with ...._`) — leaving
+            # it above a populated table is contradictory empty-state prose.
+            i += 1
+            continue
         if not table_replaced and any(line.startswith(a) for a in aliases):
             out.append(header)
             out.append(separator)
@@ -158,7 +169,11 @@ def _replace_table_in_section(
         out.append(separator)
         out.extend(new_rows)
         out.append("")
-    return "\n".join(out)
+    result = "\n".join(out)
+    if new_rows:
+        # Collapse any blank-line run left by dropping the sentinel (ds-q03o).
+        result = re.sub(r"\n{3,}", "\n\n", result)
+    return result
 
 
 def _replace_intent_table(content: str, new_rows: list[str]) -> str:

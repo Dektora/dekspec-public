@@ -244,6 +244,37 @@ def resolve_template(name: str, repo_root: Path | None = None) -> Path | None:
     return None
 
 
+
+def resolve_lib(name: str, repo_root: Path | None = None) -> Path | None:
+    """Resolve a shared skill-``_lib`` asset by name (e.g. ``fan_out``,
+    ``help_mode_template.md``).
+
+    ``_lib`` is the substrate every authoring skill leans on, and per ADR-047
+    it **stays in core** while the DekTools toolkit reuses it. Once the two
+    live in separate plugins a relative ``../_lib/`` link no longer resolves,
+    so toolkit skills reach it through this resolver instead of a path.
+
+    Resolution order mirrors :func:`resolve_doc`:
+
+      1. ``<repo_root>/plugins/dekspec/skills/_lib/<name>`` — source checkout
+         or a consumer that vendored the plugin tree.
+      2. ``<library_root>/skills/_lib/<name>`` — the wheel ``_vendored/``
+         copy materialized by ADR-045 / INT-179.
+
+    Returns the first hit as an absolute :class:`Path`, or ``None``.
+    Sub-paths are accepted (``handlers/x.md``) so nested assets resolve.
+    """
+    if not name.endswith(".md"):
+        name = f"{name}.md"
+    repo = repo_root if repo_root is not None else Path.cwd()
+    consumer = repo / "plugins" / "dekspec" / "skills" / "_lib" / name
+    if consumer.is_file():
+        return consumer.resolve()
+    vendored = library_root() / "skills" / "_lib" / name
+    if vendored.is_file():
+        return vendored.resolve()
+    return None
+
 def resolve_doc(name: str, repo_root: Path | None = None) -> Path | None:
     """Resolve a methodology doc file by name (e.g. ``operating-guide``,
     ``dekspec-operating-guide``, or ``dekspec-operating-guide.md``), with

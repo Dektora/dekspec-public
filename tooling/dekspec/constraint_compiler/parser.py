@@ -3076,12 +3076,35 @@ def _extract_intent_aes(body: str) -> list[dict[str, str]]:
     return out
 
 
+_INT_BULLET_LINE = re.compile(r"^[ \t]*[-*][ \t]+\S", re.MULTILINE)
+
+
 def _extract_intent_components_affected(body: str) -> list[str]:
     out: list[str] = []
     for m in _INT_GLOB_BULLET.finditer(body):
         glob = m.group(1).strip()
         if glob and not glob.startswith("path/"):
             out.append(glob)
+    if not out:
+        # ds-352d: the §Components section has bullet content but yielded no
+        # recognized file-glob — the author wrote grouped / labeled / bare-path
+        # bullets (e.g. `- Backend: src/**, foo.py`) that the parser can't read.
+        # Catch it here at parse/validate time instead of letting it slip
+        # through `dekspec validate` (non-empty section) and surface four steps
+        # later as an LINK-INT-COMPONENTS-MISSING linkage finding — the two gates
+        # must agree. A conforming section with at least one backticked glob
+        # (even alongside prose-description bullets) never reaches this branch.
+        if any(
+            _INT_BULLET_LINE.match(line) and not _INT_GLOB_BULLET.match(line.strip())
+            for line in body.splitlines()
+        ):
+            raise IntentParseError(
+                "Components affected: section has bullet entries but no recognized "
+                "file-glob. Write one backticked glob per bullet — e.g. "
+                "`- `src/**`` — not a grouped, labeled, or bare-path bullet like "
+                "`- Backend: src/**, pyproject.toml`. Split each path onto its own "
+                "backticked bullet."
+            )
     return out
 
 

@@ -221,7 +221,7 @@ def _atomic_write_yaml(path: Path, data: dict[str, Any]) -> None:
     text = (
         "# DekSpec ID-allocation registry (INT-020) — append-only.\n"
         "# Managed by `dekspec id allocate` / `dekspec id reconcile`.\n"
-        "# Audited by the L-REGISTRY-APPEND-ONLY linkage rule. Do not edit\n"
+        "# Audited by the LINK-REGISTRY-APPEND-ONLY linkage rule. Do not edit\n"
         "# existing entries by hand.\n"
         + yaml.safe_dump(data, sort_keys=False, default_flow_style=False)
     )

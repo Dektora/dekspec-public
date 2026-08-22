@@ -15,7 +15,7 @@ A five-layer **agentic-(software-)engineering toolkit** for AI-augmented teams �
 - **Human oversight** — gates every change behind the No Specless Edits guardrail, a two-tier non-sycophantic review pipeline, and operator-confirmed merge.
 - **Observable development** — verifies outcomes against the spec, not just the tests, and feeds what it learns back into the rules.
 
-DekSpec is shipped as a Python library + CLI + Claude Code skills + markdown templates, vendored into consumer repos via a single install script. The current version is **v0.122.0**.
+DekSpec is shipped as a Python library + CLI + Claude Code skills + markdown templates, vendored into consumer repos via a single install script. The current version is **v0.123.0**.
 
 ## What's here
 
@@ -25,7 +25,7 @@ DekSpec is shipped as a Python library + CLI + Claude Code skills + markdown tem
 | `tooling/dekspec/schemas/` | JSON Schema Draft 2020-12 definitions (YAML) for each artifact type. Shipped as package data; loadable via `importlib.resources`. |
 | `plugins/dekspec/skills/` | 37 Claude Code skills. **Authoring:** `/write-sv`, `/write-constitution`, `/write-ae`, `/write-adr`, `/write-ws`, `/write-ic`, `/write-ibs`, `/write-intent`, `/write-mission`, `/write-ggc`, `/write-sp`, `/write-evals`, `/write-tests`, `/write-code-beads`, `/write-issue-beads`. **Lifecycle + orchestration:** `/spec-intent`, `/orchestrate-intent`, `/orchestrate-coding-session`, `/land-intent`, `/review-ib`, `/review-pr`. **Brownfield + recovery:** `/archeology`, `/brownfield-ingest`, `/diagnose-bug`, `/debug-testfail`, `/coding-session-forensics`, `/rotation-handoff`. **Architecture + exploration:** `/audit-codebase`, `/analyze-module-depth`, `/orchestrate-module-deepening`, `/prototype`, `/spike`, `/interview-me`, `/write-goal-loop-contract`, `/pr-branch`. **Onboarding:** `/using-dekspec`, `/setup-dekspec`. Ship through the Claude Code plugin marketplace at `Dektora/dekspec`. |
 | `plugins/dekspec/commands/` | Slash-command wrappers + CLI mirrors: `/doctor`, `/compile`, `/validate-artifact`, `/migrate`, `/upgrade`, `/graph-export` (CLI verb mirrors); plus Skill-wrapper pairs for `/archeology`, `/brownfield-ingest`, `/orchestrate-coding-session`, `/orchestrate-intent`, `/using-dekspec`. |
-| `templates/` | Artifact templates (System Vision, Constitution, ADR, AE, WS, IC, IB, Intent, Mission, Domain Glossary, Context Spec, Security Profile, plus lite Constitution/Intent variants and a checklists subdirectory). |
+| `templates/` | Artifact templates (System Vision, Constitution, ADR, AE, WS, IC, IB, Intent, Mission, Domain Glossary, Context Spec, Security Profile, plus a checklists subdirectory). |
 | `docs/` | Methodology docs: `dekspec-operating-guide.md`, `dekspec-quick-reference.md`, `architecture-frameworks-reference.md`, plus the framework's own `architecture.md`. |
 | `.beads/` | Project's own bead tracker (`br` CLI; SQLite + JSONL). |
 
@@ -144,22 +144,22 @@ dekspec aggregate agents-md
 
 See [Installation](#installation) for pinned versions, manual install paths, and the plugin-only / CLI-only splits.
 
-### Smallest path to a merged one-file change
+### Shortest path to a merged change
 
-The shortest governed loop for a single-component, single-file change — the `--lite` track (skips `--analyze` and code-bead decomposition, but still LOCKs):
+The governed loop — the same three steps whatever the change's size:
 
 ```bash
-# 1. Author a lite Intent (single-component, single-IU, no ADRs/ICs), in Claude Code:
-/write-intent --lite "<one-line description of the change>"
+# 1. Author the Intent, in Claude Code:
+/write-intent "<one-line description of the change>"
 
-# 2. Dispatch the coding session — agents implement the bead in an isolated worktree:
+# 2. Dispatch the coding session — agents implement the beads in an isolated worktree:
 /orchestrate-coding-session
 
 # 3. Land it — merge the IB-aggregate PR and LOCK the Intent:
 /land-intent
 ```
 
-See the `using-dekspec` skill for the full catalog and when to step up to the full (non-lite) lifecycle.
+See the `using-dekspec` skill for the full catalog and the interactive lifecycle commands.
 
 ### Working with an existing dekspec tree
 
@@ -218,12 +218,12 @@ Steps 1–3 are host-agnostic. Re-run to upgrade. For `--platform claude`, plugi
 
 CLI only via pipx (isolated venv):
 ```bash
-pipx install "git+https://github.com/Dektora/dekspec-public.git@v0.122.0"
+pipx install "git+https://github.com/Dektora/dekspec-public.git@v0.123.0"
 ```
 
 CLI only into a project venv:
 ```bash
-pip install "git+https://github.com/Dektora/dekspec-public.git@v0.122.0"
+pip install "git+https://github.com/Dektora/dekspec-public.git@v0.123.0"
 ```
 
 Plugin only (in a Claude Code session OR via the `claude` CLI):
@@ -237,7 +237,7 @@ claude plugin install dekspec@dekspec
 The `bash <(curl …)` one-liner does **not** run in native Windows PowerShell/cmd (no `bash`, no process substitution). Use the portable `pipx` sequence — identical to the Linux steps:
 
 ```powershell
-py -m pipx install --force "git+https://github.com/Dektora/dekspec-public.git@v0.122.0"
+py -m pipx install --force "git+https://github.com/Dektora/dekspec-public.git@v0.123.0"
 dekspec dependencies install br     # user-scoped, no admin — downloads + checksum-verifies the pinned br
 dekspec sync                        # reconcile vendored content + .dekspec-version
 dekspec install --platform codex    # per-host tree; --platform is on `dekspec install`, NOT on pipx
@@ -390,7 +390,7 @@ CI runs `pytest -q` + `ruff check` on Python 3.11 / 3.12 / 3.13 via GitHub Actio
 
 ## Status
 
-**v0.122.0** is the current release. The Constraint Compiler PoC (v0.2) has matured into an 11-IR, five-layer agentic-engineering toolkit with ~80 audit rules, a namespaced CLI, a public Python API at `dekspec.api`, an execution-attempt lifecycle DB (`dekspec.lifecycle`) that DekFactory (or any executor) writes to, and end-to-end test coverage. See [`CHANGELOG.md`](CHANGELOG.md) for the per-version detail.
+**v0.123.0** is the current release. The Constraint Compiler PoC (v0.2) has matured into an 11-IR, five-layer agentic-engineering toolkit with ~80 audit rules, a namespaced CLI, a public Python API at `dekspec.api`, an execution-attempt lifecycle DB (`dekspec.lifecycle`) that DekFactory (or any executor) writes to, and end-to-end test coverage. See [`CHANGELOG.md`](CHANGELOG.md) for the per-version detail.
 
 Open follow-ons:
 - Mission rigor calibration after lived MSN execution data (`ds-zuy`).

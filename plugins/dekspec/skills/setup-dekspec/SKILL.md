@@ -85,8 +85,10 @@ edits an existing config, it does not scaffold one.
    `dekspec/domain-glossary.md` (the term corpus the authoring + interview
    skills cite).
 5. **Methodology profile** — `methodology_profile` (alias `profile`; enum
-   `lite | team | full`). *Recommended:* match team size — `lite` (solo),
-   `team` (approval-gate audit profile), `full` (every gate).
+   `full | team`). *Recommended:* `full` — the default lane at full rigor
+   (ADR-050), which is what a solo engineer wants and the value to keep
+   unless the repo has multiple engineers signing off on transitions.
+   `team` adds the INT-021 approval gates on top of it.
 
 ### Agent-config pointers
 

@@ -233,4 +233,4 @@ At runtime, render the manifest per `_lib/help_mode_template.md` and stop.
 
 - `/dekspec:orchestrate-coding-session` — the native driver when the run is a dekspec construction session.
 - `/dekspec:orchestrate-intent` — walks one Intent's lifecycle to LOCKED (a governed alternative to a free-form goal loop).
-- `/dekspec:prototype` — when the goal is to explore a design shape disposably rather than drive to a verifiable outcome.
+- `/dekspec:prototype` — when the goal is to explore a design shape disposably rather than drive to a verifiable outcome. Ships in **DekTools** (ADR-047), so it is an optional on-ramp: DekTools may not be installed, or `prototype` may not be enabled in its à-la-carte selection. Core is self-sufficient by design — when the tool is absent, say so plainly and carry on with the contract; never report its absence as a failure.

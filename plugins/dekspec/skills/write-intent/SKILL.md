@@ -6,7 +6,7 @@ model: claude-opus-4-7
 reasoning_effort: max
 disable-model-invocation: false
 allowed-tools: Read Write Edit Grep Glob Bash Agent
-argument-hint: [--canonical] [--provisional <slug>] [--help | --teaching | --audit | --review | --analyze | --accept | --approve | --decompose | --testpass | --lock | --sync | --supersede [--by <INT-NNN|MSN-NNN>] | --amend [--editorial] | --lite] [description or path to Intent]
+argument-hint: [--canonical] [--provisional <slug>] [--help | --teaching | --audit | --review | --analyze | --accept | --approve | --decompose | --testpass | --lock | --sync | --supersede [--by <INT-NNN|MSN-NNN>] | --amend [--editorial]] [description or path to Intent]
 related_skills: [orchestrate-intent, write-ws, write-ibs, write-code-beads, write-mission]
 ---
 
@@ -58,22 +58,23 @@ Parse `$ARGUMENTS` for the mode flag, then **load the corresponding per-mode bod
 - **Review mode** — `--review` flag, expects a path to an Intent in DRAFT, PROPOSED, or ACCEPTED. Load [`modes/review.md`](modes/review.md).
 - **Amend mode** — `--amend` flag, expects a path to an Intent in any non-terminal status. Load [`modes/amend.md`](modes/amend.md).
 - **Provisional mode** — `--provisional <slug>` flag (composes with other modes). Load [`modes/provisional.md`](modes/provisional.md) in addition to the chosen mode body.
-- **Lite mode** — `--lite` flag, expects a path to an Intent in DRAFT (single-component, single-IU, no ADRs, no ICs). Load [`modes/lite.md`](modes/lite.md).
 - **Fan-Out mode** — internal orchestrator dispatch for substantive-work modes (Creation, `--analyze`, `--accept`). Load [`modes/fan-out.md`](modes/fan-out.md) when dispatching a substantive-work mode to a fresh-context subagent.
 - **Creation mode** — no flag. Load [`modes/create.md`](modes/create.md). **Defaults to provisional** (ADR-030 hard default): with no opt-out the new Intent lands under `dekspec/provisional/` and no canonical id is allocated. Passing **`--canonical`** opts into canonical-direct authoring (lands in `dekspec/intents/`, allocates an `INT-NNN` id). The routing authority is the `dekspec library author-target --kind INT [--canonical]` verb — create.md calls it rather than hardcoding the directory.
 
 **Routing (per [`_lib/mode_detection_template.md`](../_lib/mode_detection_template.md)):**
 - Substantive-work (fan-out via Agent tool): (no flag), `--analyze`, `--accept`
-- Inline (parent context): `--help`, `--teaching`, `--review`, `--audit`, `--lock`, `--sync`, `--supersede`, `--testpass`, `--amend`, `--decompose`, `--approve`, `--lite`
+- Inline (parent context): `--help`, `--teaching`, `--review`, `--audit`, `--lock`, `--sync`, `--supersede`, `--testpass`, `--amend`, `--decompose`, `--approve`
 
 ## Interview Rigor (default-on)
 
-This skill **composes the owned [`interview-me`](../interview-me/SKILL.md) skill** (INT-167 / D13) — it does not re-author the interview prose, and there is no `--grill` flag. When the engineer's input is fuzzy or underspecified, invoke `/dekspec:interview-me <INT-NNN | description>` so the engineer is interviewed one decision-tree question at a time, with a recommended answer per question, repo-exploration for discoverable answers, glossary + governing ADR/AE citation with conflict-flagging, fuzzy-term sharpening, and scenario-based stress-testing of asserted relationships.
+This skill **optionally composes the [`interview-me`](../../dektools/skills/interview-me/SKILL.md) tool** (INT-167 / D13), which ships in the **DekTools** plugin (ADR-047). It does not re-author the interview prose, and there is no `--grill` flag. When the engineer's input is fuzzy or underspecified and the tool is available, invoke `/dekspec:interview-me <INT-NNN | description>` so the engineer is interviewed one decision-tree question at a time, with a recommended answer per question, repo-exploration for discoverable answers, glossary + governing ADR/AE citation with conflict-flagging, fuzzy-term sharpening, and scenario-based stress-testing of asserted relationships.
+
+**Degrade gracefully when it is absent.** DekTools may not be installed, or `interview-me` may not be enabled in its à-la-carte selection. Core is self-sufficient by design (ADR-047), so this is a supported configuration, not an error: fall back to asking the engineer the same decisions inline, one at a time, and continue. Never block authoring on a toolkit tool, and never report its absence as a failure.
 
 **Trigger (pinned, INT-167 Open Issues):**
 
 - **Auto-engages** in **Creation** (no-flag) and **`--analyze`** modes when the input is fuzzy/underspecified.
-- **Auto-skips** on **`--lite`** and **`--amend --editorial`** (editorial) and trivial passes — these are not fuzzy-input authoring.
+- **Auto-skips** on **`--amend --editorial`** (editorial) and trivial passes — these are not fuzzy-input authoring.
 - **Escape:** the `--no-interview` modifier skips the interview on demand even on a fuzzy Creation/analyze pass.
 
 At interview end, read the hand-off log `dekspec/.scratch/interview-me/<artifact-id>.md` and fold its resolved decisions into the Intent being authored. `interview-me` never writes the artifact itself — the host skill (this one) folds the decisions in.
@@ -97,7 +98,6 @@ At interview end, read the hand-off log `dekspec/.scratch/interview-me/<artifact
 | Help | `--help` | [modes/help.md](modes/help.md) | Render the USAGE / MODES / EXAMPLES block and stop. |
 | Teaching | `--teaching` | [modes/teaching.md](modes/teaching.md) | Interactive tutorial walking a new author through writing an Intent section-by-section. |
 | Provisional | `--provisional <slug>` | [modes/provisional.md](modes/provisional.md) | Redirect authoring into `dekspec/provisional/<slug>/` until `promote-provisional` runs. |
-| Lite | `--lite` | [modes/lite.md](modes/lite.md) | Single-IU single-component bypass — skips `--analyze` + `/write-code-beads`, sets `lite: true` frontmatter, retains `--testpass`. Hard-refuses on `components > 1` / `ius > 1` / `adrs ≠ []` / `ics ≠ []`. INT-088 IU-2. |
 | Fan-Out (internal) | — | [modes/fan-out.md](modes/fan-out.md) | Orchestrator/subagent dispatch contract for substantive-work modes (Creation, `--analyze`, `--accept`). |
 
 **Dispatcher contract.** After parsing the mode flag in Mode Detection above, read the corresponding `modes/<slug>.md` file with the `Read` tool and follow its body as the active mode contract. The shared scaffolding below (Write-Time CoW Guard, Rules, Output, Closing Step) runs across every substantive-mode invocation regardless of which per-mode body is loaded.
@@ -137,7 +137,6 @@ modes:
   - { flag: "--approve", args: "<Intent-path>", description: "Approve mode — see modes/approve.md." }
   - { flag: "--teaching", args: "", description: "Teaching mode — see modes/teaching.md." }
   - { flag: "--provisional", args: "<slug>", description: "Provisional mode — see modes/provisional.md." }
-  - { flag: "--lite", args: "<Intent-path>", description: "Lite mode — single-IU single-component bypass of --analyze + /write-code-beads; sets `lite: true` frontmatter; retains --testpass. Hard-refuses on components > 1 / ius > 1 / adrs ≠ [] / ics ≠ []. INT-088 IU-2. See modes/lite.md." }
   - { flag: "--help", args: "", description: "Show this help message (load modes/help.md for full per-mode descriptions)." }
 examples:
   - "/write-intent --help"

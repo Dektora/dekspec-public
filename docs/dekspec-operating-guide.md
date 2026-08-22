@@ -1273,8 +1273,8 @@ All interface contracts live in `dekspec/interface-contracts/`.
 
 | Layer | Mechanism | Solves | Workflow pattern |
 |---|---|---|---|
-| Mechanical (intra-MR) | **INT-020** — DRAFT-slug temp IDs + `dekspec id allocate` + append-only `dekspec/registry.yaml` + `L-NO-DRAFT-IN-MAIN` (P0) + `L-REGISTRY-APPEND-ONLY` (P1) | Two engineers each grep the index for next-free `<KIND>-NNN`, both pick the same number, collide at merge time. | "This Intent ships in this MR; defer canonical-ID allocation to commit time." |
-| Cross-MR exploratory | **MSN-014** — `dekspec/provisional/<incubation-slug>/` + `<KIND>-provisional-<slug>` ID convention + `dekspec library new-provisional` (scaffold + git branch) + hand-promote workflow (renumber + `git mv` — see §Provisional Promotion) + `replaces:` frontmatter for REPLACE mode + L-PROVISIONAL-* / L-COW-SIBLING-COLLISION / T-COW-CANONICAL-EDITED audit rules | A non-trivial change that may span many commits, may be abandoned, and shouldn't pollute the LOCKED spec graph during exploration. | "Author the family under `dekspec/provisional/<slug>/`; hand-promote when the originating Intent matures toward ACCEPTED." |
+| Mechanical (intra-MR) | **INT-020** — DRAFT-slug temp IDs + `dekspec id allocate` + append-only `dekspec/registry.yaml` + `LINK-NO-DRAFT-IN-MAIN` (P0) + `LINK-REGISTRY-APPEND-ONLY` (P1) | Two engineers each grep the index for next-free `<KIND>-NNN`, both pick the same number, collide at merge time. | "This Intent ships in this MR; defer canonical-ID allocation to commit time." |
+| Cross-MR exploratory | **MSN-014** — `dekspec/provisional/<incubation-slug>/` + `<KIND>-provisional-<slug>` ID convention + `dekspec library new-provisional` (scaffold + git branch) + hand-promote workflow (renumber + `git mv` — see §Provisional Promotion) + `replaces:` frontmatter for REPLACE mode + L-PROVISIONAL-* / LINK-COW-SIBLING-COLLISION / T-COW-CANONICAL-EDITED audit rules | A non-trivial change that may span many commits, may be abandoned, and shouldn't pollute the LOCKED spec graph during exploration. | "Author the family under `dekspec/provisional/<slug>/`; hand-promote when the originating Intent matures toward ACCEPTED." |
 | Semantic (cross-engineer) | **MSN-010** (TODO) — divergence detection, contradiction warnings at PROPOSED, system-vision drift advisories, engineer attribution, dependency-cycle detection, coherence health, deconfliction workflow | Two engineers ship Intents that each validate individually but collectively contradict each other or the system vision. | "After this Mission lands, semantic conflicts surface at session-start, at PROPOSED time, at LOCK time, and on a periodic sweep." |
 
 ### When to pick which
@@ -1336,14 +1336,14 @@ The verb copies the canonical file into the incubation folder, stamps `replaces:
 
 Two audit rules patrol this surface:
 
-- `L-COW-SIBLING-COLLISION` (P2) — two distinct incubations both claim the same canonical path. Resolution: one incubation merges into the other or one is killed before the other promotes.
+- `LINK-COW-SIBLING-COLLISION` (P2) — two distinct incubations both claim the same canonical path. Resolution: one incubation merges into the other or one is killed before the other promotes.
 - `T-COW-CANONICAL-EDITED` (P2) — a CoW-staged canonical was *also* edited on the working branch. Resolution: drop the working-branch edit and re-stage, or drop the CoW copy and accept the working-branch edit as canonical.
 
 ### Step 3 — Edit + iterate
 
 Engineers edit provisional artifacts using the same `/write-<kind>` skills that author canonical artifacts. Authoring passes, `--review`, `--analyze`, and `--unlock` (no-op in provisional, prints a warning) all work. `--lock` rejects with a clear error — provisional artifacts cannot be LOCKED. Status transitions inside provisional follow the canonical lifecycle (TODO → DRAFT → PROPOSED → ACCEPTED) but the ACCEPTED transition does **not** trigger promotion automatically — see Step 4.
 
-The advisory rule `L-PROVISIONAL-STALE` (P3) fires on incubation folders whose newest file is older than 30 days (mtime; engineers `touch` to reset). The rule is intentionally lenient — incubations can sit for a quarter — but flags abandoned exploration so the tree doesn't accumulate cruft.
+The advisory rule `LINK-PROVISIONAL-STALE` (P3) fires on incubation folders whose newest file is older than 30 days (mtime; engineers `touch` to reset). The rule is intentionally lenient — incubations can sit for a quarter — but flags abandoned exploration so the tree doesn't accumulate cruft.
 
 ### Step 4 — Provisional Promotion (hand-promote workflow)
 
@@ -1514,7 +1514,7 @@ The matrix is guidance, not enforcement. Consumer repos may calibrate per their 
 
 ### B-axis + P-axis placeholders
 
-The B-axis (Behavior rules) and the broader P-axis (Policy rules beyond P-citation) are documented placeholders. Specific rules are authored case-by-case as the rule families mature; today the loop respects whichever rules the audit profile (v1, team, lite) declares.
+The B-axis (Behavior rules) and the broader P-axis (Policy rules beyond P-citation) are documented placeholders. Specific rules are authored case-by-case as the rule families mature; today the loop respects whichever rules the audit profile (v1, team) declares.
 
 ## Recurring Rituals
 

@@ -3,7 +3,7 @@
 # The ID-allocation ledger (INT-020). `dekspec/registry.yaml` is an
 # append-only record of every canonical artifact ID that has been claimed.
 # `dekspec id allocate` consults it to compute the next free ID per kind and
-# appends one entry per newly-allocated artifact. The `L-REGISTRY-APPEND-ONLY`
+# appends one entry per newly-allocated artifact. The `LINK-REGISTRY-APPEND-ONLY`
 # audit rule enforces grow-only semantics.
 #
 # The file is OPTIONAL: when `dekspec/registry.yaml` is absent every code path
@@ -16,7 +16,7 @@ description: >-
   Append-only ledger of allocated DekSpec artifact IDs. One entry per
   artifact whose canonical `<KIND>-NNN` ID has been claimed. Produced and
   appended by `dekspec id allocate` / `dekspec id reconcile`; audited by the
-  `L-REGISTRY-APPEND-ONLY` linkage rule.
+  `LINK-REGISTRY-APPEND-ONLY` linkage rule.
 
 type: object
 additionalProperties: false

@@ -90,7 +90,8 @@ def _load_raw(name: str) -> dict[str, Any]:
         text = resources.files(package).joinpath(f"{name}.yaml").read_text(encoding="utf-8")
     except (FileNotFoundError, ModuleNotFoundError) as exc:
         raise ProfileNotFoundError(
-            f"no audit profile named {name!r} under tooling/dekspec/fidelity_audit/profiles/"
+            f"no audit profile named {name!r}. "
+            f"Available profiles: {', '.join(list_profiles())}."
         ) from exc
     try:
         return yaml.safe_load(text) or {}

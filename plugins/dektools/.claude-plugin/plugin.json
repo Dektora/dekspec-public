@@ -1,0 +1,10 @@
+{
+  "name": "dektools",
+  "version": "0.123.0",
+  "description": "DekTools: the optional DekSpec operator toolkit. Helper tools you reach for around the spec machine — project boards, code-quality and security review, brownfield onboarding, handoff, troubleshooting, and issue-tracker glue. À-la-carte: nothing is enabled by default. Sibling of the dekspec plugin (ADR-047).",
+  "author": {
+    "name": "Dektora"
+  },
+  "homepage": "https://github.com/Dektora/dekspec",
+  "license": "Proprietary"
+}

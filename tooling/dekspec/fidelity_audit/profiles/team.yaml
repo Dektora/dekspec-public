@@ -12,7 +12,7 @@
 #
 # `T-APPROVAL-GATE` is profile-aware: it reads `approval_gates` from the active
 # profile. Under `v1` (which declares no `approval_gates`) the rule yields
-# nothing — so solo / lite consumers see no behaviour change. Under `team` the
+# nothing — so default-lane consumers see no behaviour change. Under `team` the
 # rule enforces, per artifact kind and per status transition, that the target
 # artifact's `## Amendment Log` carries the required count of `review-approval`
 # signature rows recorded between the previous status-transition row and the

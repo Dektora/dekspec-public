@@ -6,9 +6,10 @@
 # coding CLI is loaded; there is no executor abstraction and no out-of-
 # process dispatch surface in this library.
 #
-#   - `methodology_profile` — how much DekSpec ceremony the team applies:
-#     `lite` (solo), `team` (the INT-021 approval-gate audit profile), or
-#     `full` (every gate).
+#   - `methodology_profile` — how much DekSpec ceremony the repo applies:
+#     `full` (the default lane at full rigor — ADR-050; the default carries no
+#     user-facing lane name and this value is its legacy spelling), or `team`
+#     (the default plus the INT-021 approval gates).
 #
 # Written by `dekspec init` (single-question Q&A) and edited per-key by
 # `dekspec config get` / `dekspec config set`. Validated at load time by
@@ -37,9 +38,11 @@ properties:
 
   methodology_profile:
     description: >-
-      How much DekSpec ceremony the team applies. `lite` — solo / minimal.
-      `team` — the INT-021 approval-gate audit profile. `full` — every gate.
-    enum: [lite, team, full]
+      How much DekSpec ceremony the repo applies. `full` — the default lane
+      at full rigor (ADR-050); it carries no user-facing lane name and this
+      value is its legacy spelling. `team` — the default plus the INT-021
+      approval gates.
+    enum: [team, full]
 
   ib_folders:
     description: >-

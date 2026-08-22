@@ -119,7 +119,7 @@ See [`_lib/teaching_mode.md`](../_lib/teaching_mode.md) for the canonical 4-step
 - **exemplar_paths**: `dekspec/impl-briefs/`
 - **required_sections**: [Parent WS, Source AEs, Depends-on, Goal, Constraints & Decisions, Files to Modify, Do Not Touch, Governing ADRs, Done When]
 
-Skill-specific structural checks to surface as Open Issues: T40-IB-GOAL, T41-IB-DONE-WHEN, L5-IB-AE.
+Skill-specific structural checks to surface as Open Issues: T40-IB-GOAL, T41-IB-DONE-WHEN, LINK-IB-AE.
 
 **Test-path contract (DSF-005/006).** When authoring the IB's `## Test Layout` + `## Done When`, use only the `/write-tests` output locations — bead tests at `tests/bead/test_<bead-slug>.py` (**exactly one per bead**) and IB composition tests at `tests/integration/test_<ib-slug>.py`. Flag any IB that invents alternate paths (`tests/acceptance/`, `tests/architecture/`, …) or lists multiple bead-level test files for a single bead.
 
@@ -416,7 +416,7 @@ Wait for engineer confirmation before proceeding.
 
 ## L12 Precondition — `blocking_pre_ib` open_issues must be clean
 
-**Per L12-WS-BLOCKING-PRE-IB-CLEAN audit rule + ADR-013 severity vocabulary.** A Working Spec that has walked past PROPOSED (i.e., status is `ACCEPTED`, `IMPLEMENTING`, `TESTPASS`, `TESTFAIL`, `MERGED`, or `LOCKED`) must not carry any P1 open_issues. P1 is the canonical severity for the legacy `blocking_pre_ib` / `blocking_pre_code` / `blocking` artifact-side aliases — these signal spec-blocking questions that must be settled BEFORE IBs land. This is the "Clarify Before Plan" gate documented in `templates/working-spec-template.md` ("Zero `blocking (pre-IB)` open issues must remain when `/write-ibs` is invoked.").
+**Per LINK-WS-BLOCKING-PRE-IB-CLEAN audit rule + ADR-013 severity vocabulary.** A Working Spec that has walked past PROPOSED (i.e., status is `ACCEPTED`, `IMPLEMENTING`, `TESTPASS`, `TESTFAIL`, `MERGED`, or `LOCKED`) must not carry any P1 open_issues. P1 is the canonical severity for the legacy `blocking_pre_ib` / `blocking_pre_code` / `blocking` artifact-side aliases — these signal spec-blocking questions that must be settled BEFORE IBs land. This is the "Clarify Before Plan" gate documented in `templates/working-spec-template.md` ("Zero `blocking (pre-IB)` open issues must remain when `/write-ibs` is invoked.").
 
 Before entering the decomposition workflow, run the gate check:
 
@@ -446,7 +446,7 @@ Read the returned IR's `status` field and `open_issues` array.
 
   Exit without writing any IB.
 
-**Why this exists:** the IR field already collapses `blocking_pre_ib` (and its sibling aliases) to P1 per ADR-013; the audit rule L12-WS-BLOCKING-PRE-IB-CLEAN fires when these reach ACCEPTED. Pairing the audit (a doctor-time finding) with this skill-time precondition closes the gap where an engineer could `/write-ibs` against a WS whose blockers were never resolved.
+**Why this exists:** the IR field already collapses `blocking_pre_ib` (and its sibling aliases) to P1 per ADR-013; the audit rule LINK-WS-BLOCKING-PRE-IB-CLEAN fires when these reach ACCEPTED. Pairing the audit (a doctor-time finding) with this skill-time precondition closes the gap where an engineer could `/write-ibs` against a WS whose blockers were never resolved.
 
 **No bypass flag.** The whole point of the gate is mechanical enforcement; if override is needed, unlock the WS back to PROPOSED first.
 

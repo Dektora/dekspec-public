@@ -224,6 +224,23 @@ def plan_promotion(
     return steps
 
 
+# The scaffolder emits a blockquote banner that may wrap across lines; it ends
+# at the first blank line. Anchored to the line start so a mid-body mention of
+# the word "PROVISIONAL" is never swallowed.
+_PROVISIONAL_BANNER_RE = re.compile(
+    r"^> \*\*PROVISIONAL[^\n]*(?:\n> [^\n]*)*\n(?:\n)?",
+    re.MULTILINE,
+)
+
+
+def strip_provisional_banner(content: str) -> str:
+    """Remove the `> **PROVISIONAL ...**` banner from an artifact body.
+
+    Idempotent: returns `content` unchanged when no banner is present.
+    """
+    return _PROVISIONAL_BANNER_RE.sub("", content, count=1)
+
+
 def _rewrite_file_contents(
     path: Path,
     own_old_id: str,
@@ -244,6 +261,11 @@ def _rewrite_file_contents(
        artifact's own old id.
     3. Replace every `{old_id}` -> `{new_id}` substring elsewhere in
        the body (cross-references to sibling provisional artifacts).
+    4. Strip the `> **PROVISIONAL ...**` banner. It describes an artifact
+       that incubates in `dekspec/provisional/` and is "freely abortable" --
+       false in every clause once the artifact is canonical, and actively
+       dangerous on a ratified one. Promotion is the only moment that
+       knows the claim has stopped being true.
     """
     content = path.read_text(encoding="utf-8")
 
@@ -283,6 +305,8 @@ def _rewrite_file_contents(
     # rarely overlap in practice).
     for old, new in sorted(rewrites.items(), key=lambda kv: -len(kv[0])):
         content = content.replace(old, new)
+
+    content = strip_provisional_banner(content)
 
     path.write_text(content, encoding="utf-8")
 
@@ -339,7 +363,7 @@ def apply_promotion(
             overwrite=(step.mode == "replace"),
         )
     # Best-effort folder cleanup; the audit rule
-    # L-PROVISIONAL-TREE-PRESENT surfaces lingering non-empty folders.
+    # LINK-PROVISIONAL-TREE-PRESENT surfaces lingering non-empty folders.
     try:
         incubation_dir.rmdir()
     except OSError:

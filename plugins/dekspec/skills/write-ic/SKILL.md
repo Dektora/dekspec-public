@@ -114,7 +114,7 @@ See [`_lib/teaching_mode.md`](../_lib/teaching_mode.md) for the canonical 4-step
 - **exemplar_paths**: `dekspec/interface-contracts/IC-001-contract-test-emitter.md` (compiler pipeline), `dekspec/interface-contracts/IC-004-executor-contract.md` (executor contract)
 - **required_sections**: [Provider AE, Consumer AEs, Interface Definition, Domain Constraints, Error Semantics, Consistency Guarantees, Open Issues]
 
-Skill-specific structural checks to surface as Open Issues: L4-IC-AE (missing provider, broken consumer reference). When prompting for Provider AE / Consumer AEs, validate that each AE-NNN reference resolves to an existing AE before accepting.
+Skill-specific structural checks to surface as Open Issues: LINK-IC-AE (missing provider, broken consumer reference). When prompting for Provider AE / Consumer AEs, validate that each AE-NNN reference resolves to an existing AE before accepting.
 
 ## Audit Mode
 

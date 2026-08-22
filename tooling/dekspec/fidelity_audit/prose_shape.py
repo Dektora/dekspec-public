@@ -114,7 +114,7 @@ def _resolve_config(rule_code: str, profile: Any) -> _ProseShapeConfig:
     fallback. When `profile` is None (IB-109 standalone) or names no
     override for the rule, `DEFAULT_CONFIG` is returned. This is the
     consumer side of the audit-profile `parameters:` threading wired by
-    IB-110 — it mirrors how `L11-MSN-STALE` reads `days_threshold`.
+    IB-110 — it mirrors how `LINK-MSN-STALE` reads `days_threshold`.
 
     A profile that omits the entry falls back silently — no crash, no warn.
     """

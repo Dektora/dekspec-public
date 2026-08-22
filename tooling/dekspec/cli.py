@@ -1432,7 +1432,15 @@ def cmd_audit_linkage(args: argparse.Namespace) -> int:
         profile = dekspec_config.resolve_audit_profile(
             dekspec_config.get_profile(repo_root)
         )
-    findings = audit_linkage(repo_root, dekspec_root=args.dekspec_root, profile=profile)
+    from .fidelity_audit.profiles import ProfileNotFoundError
+
+    try:
+        findings = audit_linkage(
+            repo_root, dekspec_root=args.dekspec_root, profile=profile
+        )
+    except ProfileNotFoundError as err:
+        print(f"Error: {err}", file=sys.stderr)
+        return 2
 
     # Unset --min-severity defaults to "P3" (include every tier).
     min_severity = args.min_severity or "P3"
@@ -1907,38 +1915,6 @@ def cmd_aggregate_agents_md(args: argparse.Namespace) -> int:
 
     repo_root = Path(args.at).resolve() if args.at else Path.cwd()
     graph = SpecGraph.load(repo_root, dekspec_root=args.dekspec_root)
-
-    # IB-116: under the `lite` methodology profile, emit a single-page AGENTS.md
-    # (a one-page Constitution summary + the in-flight Intent) instead of the
-    # full corpus dump. `compact_aggregate_for_profile` consults INT-024's
-    # `get_profile()` — the single load-bearing profile read point — and returns
-    # the compact render only when the profile is `lite`; it returns None
-    # otherwise so the `full`-profile path below stays byte-identical.
-    # `TESTFAIL` retired from the Intent enum 2026-05-25 (E3 audit).
-    _in_flight_statuses = {"IMPLEMENTING", "TESTPASS"}
-    _active_intent = next(
-        (
-            i
-            for i in sorted(graph.intents(), key=lambda x: x["id"])
-            if i.get("status", "").upper() in _in_flight_statuses
-        ),
-        None,
-    )
-    _compact = agents_md.compact_aggregate_for_profile(
-        repo_root, graph.constitution(), _active_intent
-    )
-    if _compact is not None:
-        if args.output == "-":
-            sys.stdout.write(_compact)
-            return 0
-        out_path = Path(args.output) if args.output else (repo_root / "AGENTS.md")
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_text(_compact, encoding="utf-8")
-        print(
-            f"Wrote AGENTS.md -> {out_path} "
-            f"({len(_compact)} bytes; lite-profile compact single-page render)"
-        )
-        return 0
 
     status_filter: set[str] | None = None
     if args.status.lower() != "all":
@@ -2574,7 +2550,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     tree) and never affects the exit code.
 
     Per ADR-005 (severity-graded findings) and ds-cx6: P3 findings are
-    advisory-by-design (L9-INT-CMD-RESOLVE and L10-GLOSSARY-COVERAGE both
+    advisory-by-design (LINK-INT-CMD-RESOLVE and LINK-GLOSSARY-COVERAGE both
     emit P3 intentionally on DRAFT/aspirational artifacts). The
     aggregation surfaces P3-only audit results as overall status
     `ADVISORY` — visible to the operator, but does NOT escalate the exit
@@ -3123,10 +3099,12 @@ def _add_resource_subparser(sub: argparse._SubParsersAction) -> None:
         ),
     )
     p.add_argument(
-        "kind", choices=["template", "doc"],
+        "kind", choices=["template", "doc", "lib"],
         help="Kind of resource to resolve. `template` reads from "
         "templates/<name>.md; `doc` reads from docs/<name>.md (methodology + "
-        "operating-guide family).",
+        "operating-guide family); `lib` reads from the shared skill substrate "
+        "plugins/dekspec/skills/_lib/<name>.md — the channel DekTools skills "
+        "use to reach core's _lib across the plugin boundary (ADR-047).",
     )
     p.add_argument(
         "name",
@@ -3158,7 +3136,7 @@ def cmd_resource(args: argparse.Namespace) -> int:
     Used by skills + agents so they work after a wheel-only
     `pip install dekspec` without requiring `scripts/install-dekspec.sh`.
     """
-    from .vendoring import resolve_template, resolve_doc
+    from .vendoring import resolve_doc, resolve_lib, resolve_template
 
     name = args.name.strip()
     if not name:
@@ -3172,6 +3150,8 @@ def cmd_resource(args: argparse.Namespace) -> int:
         if not name.endswith("-template"):
             name = f"{name}-template"
         resolved = resolve_template(name, repo_root=repo_root)
+    elif args.kind == "lib":
+        resolved = resolve_lib(name, repo_root=repo_root)
     else:
         resolved = resolve_doc(name, repo_root=repo_root)
     if resolved is None:
@@ -3351,21 +3331,8 @@ def _add_init_subparser(sub: argparse._SubParsersAction) -> None:
     )
     p.add_argument(
         "--methodology",
-        choices=["lite", "team", "full"],
+        choices=["team", "full"],
         help="Methodology profile for `.dekspec/config.yaml` (non-interactive).",
-    )
-    p.add_argument(
-        "--profile",
-        choices=["lite", "full"],
-        default="full",
-        help=(
-            "DekSpec methodology profile for the scaffold (default: full). "
-            "`full` scaffolds the complete dekspec/ tree. `lite` scaffolds a "
-            "minimal tree — Constitution + Intent index only, no "
-            "architecture-elements/, working-specs/, interface-contracts/, "
-            "missions/, or impl-briefs/ directories — and persists "
-            "`methodology_profile: lite` to `.dekspec/config.yaml`."
-        ),
     )
     p.set_defaults(func=cmd_init)
 
@@ -3516,13 +3483,10 @@ _INIT_SINGLETONS = (
 )
 
 # Constitution L0 singleton — placeholder authored by `dekspec init`.
-# Scaffolded under the `lite` profile (MSN-006 / INT-067 / IB-115): the lite
-# methodology grounds a solo engineer's single-repo work in the Constitution
-# rather than a deep AE/WS/IC graph. The stub is structurally minimal but
-# parser-valid (8 articles in canonical order; empty ref-arrays in Articles
-# 4 + 7 so no dangling ADR/AE references) so `dekspec validate` /
-# `dekspec doctor` accept a fresh lite tree. Consumers author the real text
-# via `/write-constitution`.
+# The stub is structurally minimal but parser-valid (8 articles in canonical
+# order; empty ref-arrays in Articles 4 + 7 so no dangling ADR/AE
+# references) so `dekspec validate` / `dekspec doctor` accept a fresh tree.
+# Consumers author the real text via `/write-constitution`.
 _INIT_SINGLETON_CONSTITUTION = """\
 <!--
   Constitution — placeholder authored by `dekspec init`.
@@ -3580,27 +3544,6 @@ _Not yet authored — name the project's non-goal boundaries via `/write-constit
 _No amendments yet._
 """
 
-# --- Profile-conditional scaffold subsets (MSN-006 / INT-067 / IB-115) ----- #
-# The `lite` profile scaffolds a minimal dekspec/ tree: a solo engineer
-# governing single-repo work uses the Constitution + Intent index, not a
-# deep AE/WS/IC/Mission/IB graph. The `full` profile is the default and
-# scaffolds the complete tree exactly as before — the lite branch is purely
-# additive.
-_INIT_LITE_SUBDIRS = (
-    "adrs",
-    "intents",
-    "divergences",
-    "provisional",
-)
-
-_INIT_LITE_INDEX_NAMES = frozenset({"adr-index.md", "intent-index.md"})
-
-# The L0 singletons scaffolded under `lite`: System Vision + Constitution
-# anchor a solo engineer's lite governance. Domain Glossary +
-# Guidance-and-Corrections stay full-profile-only — the lite tree omits
-# them to keep the scaffold minimal.
-_INIT_LITE_SINGLETON_NAMES = frozenset({"system-vision.md"})
-
 _INIT_AGENTS_PLACEHOLDER = """\
 <!--
   AGENTS.md — placeholder authored by `dekspec init`.
@@ -3639,7 +3582,7 @@ _INIT_CLAUDE_MD_PLACEHOLDER = """\
 
 ## DekSpec Guardrails
 
-- **Provisional-first authoring.** NEW Intents (INT-NNN) and NEW Missions (MSN-NNN) ALWAYS start under `dekspec/provisional/<slug>/` via `dekspec repo cow-stage <slug>` (or by hand-creating the directory + `INT-provisional-<slug>.md` skeleton). Canonical IDs (INT-NNN / MSN-NNN) are allocated only at hand-promote time, not at draft time. Walk DRAFT → PROPOSED → ACCEPTED in provisional; promote via `dekspec.promote.plan_promotion(incubation_dir, dekspec_dir)` + `apply_promotion(steps, incubation_dir, repo_root)` Python helpers once the family is ACCEPTED. This rule prevents collision on the canonical ID space when multiple authors draft concurrently and keeps the canonical tree free of half-baked drafts.
+- **Provisional-first authoring.** NEW Intents (INT-NNN) and NEW Missions (MSN-NNN) ALWAYS start under `dekspec/provisional/<slug>/` via `dekspec repo cow-stage <slug>` (or by hand-creating the directory + `INT-provisional-<slug>.md` skeleton). Canonical IDs (INT-NNN / MSN-NNN) are allocated only at hand-promote time, not at draft time. Walk DRAFT → PROPOSED → ACCEPTED in provisional; promote via `dekspec.promote.plan_promotion(incubation_dir, dekspec_dir)` + `apply_promotion(steps, incubation_dir, repo_root)` Python helpers once the family is ACCEPTED. **Missions are exempt from the ACCEPTED requirement (ds-6s7k):** a Mission has no ACCEPTED status (its lifecycle is TODO → ACTIVE → COMPLETING → COMPLETE), so a provisional Mission promotes at its natural `TODO` frame state — do not block Mission promotion on an ACCEPTED it can never reach. This rule prevents collision on the canonical ID space when multiple authors draft concurrently and keeps the canonical tree free of half-baked drafts.
 - **No Specless Edits.** Before making any source-code edit that introduces new capability or modifies existing behavior, halt and check whether a DekSpec artifact (Intent, Mission, ADR, active Implementation Brief under `dekspec/`) should be authored or updated first. If yes, surface 1–3 context-aware artifact-action suggestions to the engineer; do not edit code until the spec context is established or explicitly deferred. Use `/dekspec:spec-mode --on` to toggle this guardrail on, `--off` to defer it for an exploratory session.
 - **Library-side audit is the dogfood gate.** Run `dekspec audit doctor --at .` before any commit that touches `dekspec/` artifacts. CLEAN is the target; ADVISORY (P3-only findings) is tolerated for in-flight provisional work. P0 / P1 / P2 findings must be cleared before merge.
 - **LOCKED artifacts are immutable.** Never edit an artifact whose Status is `LOCKED`. Unlock to `PROPOSED` first via the `--unlock` flag on the artifact's authoring skill, then re-lock via `--lock` after the edit cycle.
@@ -3790,28 +3733,10 @@ def cmd_init(args: argparse.Namespace) -> int:
     repo_root = Path(args.at).resolve() if args.at else Path.cwd()
     dekspec_dir = repo_root / args.dekspec_root
 
-    # Profile selects the scaffold scope (MSN-006 / INT-067 / IB-115).
-    # `full` (default / --profile full) scaffolds the complete tree exactly
-    # as before; `lite` scaffolds a minimal tree — Constitution + Intent
-    # index only. The lite branch is purely additive: the `full` path below
-    # is byte-identical to the pre-IB-115 behaviour.
-    profile = getattr(args, "profile", None) or "full"
-    lite = profile == "lite"
-
-    subdirs = _INIT_LITE_SUBDIRS if lite else _INIT_SUBDIRS
-    # The full profile keeps the historical singleton set; the lite profile
-    # scaffolds only System Vision (Constitution dependency) plus the
-    # Constitution itself.
-    singletons: tuple[tuple[str, str], ...] = (
-        tuple(
-            (name, content)
-            for name, content in _INIT_SINGLETONS
-            if name in _INIT_LITE_SINGLETON_NAMES
-        )
-        + (("constitution.md", _INIT_SINGLETON_CONSTITUTION),)
-        if lite
-        else _INIT_SINGLETONS
-    )
+    # One lane, one scaffold shape (ADR-050) — `init` always scaffolds the
+    # complete dekspec/ tree.
+    subdirs = _INIT_SUBDIRS
+    singletons: tuple[tuple[str, str], ...] = _INIT_SINGLETONS
 
     created: list[str] = []
     skipped: list[str] = []
@@ -3827,10 +3752,6 @@ def cmd_init(args: argparse.Namespace) -> int:
         created.append(f"dir  {d.relative_to(repo_root)}")
 
     for filename, content in _INIT_INDEXES:
-        # Under the lite profile only the Constitution-relevant indexes are
-        # scaffolded — no AE / WS / IC / Mission index files.
-        if lite and filename not in _INIT_LITE_INDEX_NAMES:
-            continue
         p = dekspec_dir / filename
         if p.exists() and not args.force:
             skipped.append(f"file {p.relative_to(repo_root)}")
@@ -3839,23 +3760,20 @@ def cmd_init(args: argparse.Namespace) -> int:
         p.write_text(content, encoding="utf-8")
         created.append(f"file {p.relative_to(repo_root)}")
 
-    # Audit-profile config files. Full profile only — the lite scaffold
-    # omits audit registry surfaces since /doctor
-    # Phase 2J is full-profile machinery.
-    if not lite:
-        for filename, content in _INIT_AUDIT_FILES:
-            p = dekspec_dir / filename
-            if p.exists() and not args.force:
-                skipped.append(f"file {p.relative_to(repo_root)}")
-                continue
-            p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_text(content, encoding="utf-8")
-            created.append(f"file {p.relative_to(repo_root)}")
+    # Audit-profile config files.
+    for filename, content in _INIT_AUDIT_FILES:
+        p = dekspec_dir / filename
+        if p.exists() and not args.force:
+            skipped.append(f"file {p.relative_to(repo_root)}")
+            continue
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(content, encoding="utf-8")
+        created.append(f"file {p.relative_to(repo_root)}")
 
-    # L0/L1 singletons. Under `full`: system-vision, domain-glossary,
-    # guidance-and-corrections. Under `lite`: system-vision + constitution.
-    # Idempotent by design: never overwrites real content unless --force is
-    # passed. Per ds-init-does-not-seed-l0-l1-singletons-dgh.
+    # L0/L1 singletons: system-vision, domain-glossary,
+    # guidance-and-corrections. Idempotent by design: never overwrites real
+    # content unless --force is passed.
+    # Per ds-init-does-not-seed-l0-l1-singletons-dgh.
     for filename, content in singletons:
         p = dekspec_dir / filename
         if p.exists() and not args.force:
@@ -3988,28 +3906,12 @@ def _init_write_config(
 
     methodology_flag = getattr(args, "methodology", None)
 
-    # `--profile lite` (MSN-006 / INT-067 / IB-115) persists the lite
-    # methodology profile to `.dekspec/config.yaml`. The flag is a
-    # self-sufficient non-interactive shorthand: it supplies the
-    # methodology answer (`lite`). An explicit `--methodology` that
-    # contradicts `--profile lite` is a hard error.
-    if getattr(args, "profile", None) == "lite":
-        if methodology_flag is not None and methodology_flag != "lite":
-            print(
-                "Error: --profile lite implies --methodology lite; "
-                f"--methodology {methodology_flag} contradicts it. "
-                "Drop one of the two flags.",
-                file=sys.stderr,
-            )
-            return 2, None
-        methodology_flag = "lite"
-
     if methodology_flag is None and not sys.stdin.isatty():
         msg = (
             "`dekspec init` did not write `.dekspec/config.yaml`: stdin is not "
             "a TTY (cannot run the interactive Q&A) and --methodology was not "
             "supplied.\n"
-            "  Pass it non-interactively: --methodology <lite|team|full>."
+            "  Pass it non-interactively: --methodology <full|team>."
         )
         print(f"Note: {msg}", file=sys.stderr)
         return 0, msg
@@ -4017,7 +3919,7 @@ def _init_write_config(
     methodology = _init_resolve_answer(
         methodology_flag,
         "Methodology profile — how much DekSpec ceremony does the team apply?",
-        ("lite", "team", "full"),
+        ("full", "team"),
         "full",
     )
 

@@ -113,43 +113,36 @@ Every skill supports `--help` for full usage details, modes, and examples.
 
 ---
 
-## Lite vs full
+## One lane, at full rigor
 
-DekSpec ships two **methodology profiles** — `lite` and `full` — selected per repo
-via `.dekspec/config.yaml` (`methodology_profile`, short alias `profile`). The
-profile is the one knob that scales the ceremony to the team.
+DekSpec is **one system, at full rigor** (ADR-050). There is no trimmed lane and
+no "which ceremony level?" decision to make: `dekspec init` scaffolds the whole
+tree, every audit rule in the baseline rule set applies, and the behaviour you
+get by doing nothing is the behaviour the library is designed around.
 
-**Trimmed artifact set under lite.** `dekspec init --profile lite` scaffolds a
-minimal tree — System Vision + Constitution, the `adrs/` / `intents/` /
-`divergences/` directories, and the ADR + Intent indexes. It does **not**
-scaffold `architecture-elements/`, `working-specs/`, `interface-contracts/`,
-`missions/`, or `impl-briefs/`. A solo engineer grounds work in the Constitution
-plus Intents rather than a deep AE → WS → IC → IB graph. The compact AGENTS.md
-emitter follows suit: under `lite`, `dekspec aggregate agents-md` emits a
-single-page artifact (a one-page Constitution summary + the in-flight Intent)
-instead of the full corpus dump.
+**The default lane has no name.** Only a *deviation* needs one, because only a
+deviation must be asked for. There is no `--profile` flag on `init` and no lane
+name in `.dekspec/config.yaml` to choose. The `methodology_profile: full` value
+is the default's legacy spelling, retained so existing configs keep working;
+`v1` names the *rule-set version*, not a lane. In prose the default lane is
+described as serving a **solo engineer** — one person directing agents — but
+that word is an audience description, never an identifier.
 
-**Escalation path — the upgrade is monotonic.** Run
-`dekspec config set profile full` to switch an existing repo. The full profile
-*surfaces new requirements* (e.g. an Intent must link an Architecture Element)
-without flagging existing lite Intents as malformed: the lite Intent body is a
-strict subset of the full body — same section headings, same parser — so a lite
-Intent still parses as a structurally valid Intent after the switch. The audit
-simply reports the newly-applicable rules as additions, not as schema
-violations. The upgrade adds requirements; it never invalidates prior work.
-*Downgrading (`full → lite`) is not monotonic* — full-profile artifacts (AEs,
-WSs, ICs, Missions) have no home in a lite tree.
+**`team` is the sole named opt-in, and it is a future lane.** Setting
+`methodology_profile: team` resolves the `team` audit profile, which inherits
+the baseline rule set and *adds* the INT-021 approval gates (reviewer signatures
+enforced on artifact status transitions). It is additive by construction — it
+never subtracts a rule. The full definition of team-oriented agentic
+engineering is deliberately open and will be settled by a later Mission; see
+ADR-051 for the shape it is expected to take.
 
-**Decision rubric — which profile?**
-
-| Choose `lite` when... | Choose `full` when... |
-|---|---|
-| Solo engineer | Multiple engineers coordinating |
-| Single repo | Cross-repo / shared-library work |
-| Non-autonomous (you drive each step) | Autonomous-build (agents execute beads) |
-| Throwaway / exploratory project | Long-lived production system |
-
-When in doubt start `lite` and escalate — the upgrade is cheap and monotonic.
+**Why there is no lite lane.** A trimmed lane is a small step up from
+vibecoding: it optimises for prototyping, which is the opposite of what this
+library exists to promote. The "ceremony is too heavy" concern that motivated
+the old `lite` profile is real, but it is a **usability** problem — simpler
+commands, fewer flags, better guidance — not a rigor problem. For genuine
+exploration, use the governed pre-spec surfaces `/prototype` and `/spike`, whose
+output is *knowledge* rather than production code under relaxed governance.
 
 ---
 
@@ -181,7 +174,7 @@ tree. The mechanics:
   three are singletons; the last two operate on existing beads rather than
   authoring new artifacts.
 
-The advisory audit rule `L-PROVISIONAL-STALE` fires on incubation folders older
+The advisory audit rule `LINK-PROVISIONAL-STALE` fires on incubation folders older
 than 30 days (mtime-based; engineers `touch` to reset). `T-COW-CANONICAL-EDITED`
 fires when a CoW-staged canonical was also edited on the working branch.
 
@@ -195,9 +188,9 @@ gate — is in the operating guide §Provisional incubation.
 Run `/doctor` periodically or after major changes. It checks skill / template / index / guide alignment, header-metadata freshness, glossary consistency, cross-artifact coherence, sibling-SSoT duplication, extraction-landing, and cascade-scope discipline. See the skill `--help` for `--fix`, `--full`, and the full scope list.
 
 **Provisional + CoW audit rules** (P3 advisory unless noted):
-`L-PROVISIONAL-TREE-PRESENT` (incubation folder exists),
-`L-PROVISIONAL-STALE` (>30 days old, mtime),
-`L-COW-SIBLING-COLLISION` (P2 — two incubations claim the same canonical path),
+`LINK-PROVISIONAL-TREE-PRESENT` (incubation folder exists),
+`LINK-PROVISIONAL-STALE` (>30 days old, mtime),
+`LINK-COW-SIBLING-COLLISION` (P2 — two incubations claim the same canonical path),
 `T-COW-CANONICAL-EDITED` (P2 — CoW-staged canonical was also edited on the
 working branch).
 

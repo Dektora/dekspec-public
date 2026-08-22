@@ -682,28 +682,8 @@ def editorial_amend(
 
 
 # --------------------------------------------------------------------------
-# lite-gate — refusal-contract check + `lite: true` frontmatter marker for
-# `/write-intent --lite` (INT-088 IU-2, bead ds-49mc).
-#
-# Lite Mode REFUSES unless ALL four gates pass:
-#   1. Components affected ≤ 1
-#   2. Implementation Units ≤ 1
-#   3. Linked ADRs = [] (empty / "n/a" / "(none)")
-#   4. Linked Interface Contracts = [] (empty / "n/a" / "(none)")
-#
-# The 4-gate check is mechanical: parse the canonical sections of the Intent
-# file. Gate 1 reads `## Components affected`; gate 2 reads the IU list under
-# `## Layer impact analysis` (or counts IU footnote bullets); gates 3 and 4
-# read `## Linked ADRs` / `## Linked Interface Contracts` sections when
-# present, else fall back to scanning `## Layer impact analysis` for ADR-NNN
-# / IC-NNN tokens.
-#
-# Refusal message contract (the bead-body wording is the spec):
-#   "--lite refused: gate <gate-name> failed (<reason>). Use full
-#    /write-intent without --lite for this Intent."
+# section readers — shared markdown-section helpers
 # --------------------------------------------------------------------------
-
-_LITE_GATES = ("components", "ius", "adrs", "ics")
 
 
 def _section_lines(text: str, heading: str) -> list[str]:
@@ -719,194 +699,6 @@ def _section_lines(text: str, heading: str) -> list[str]:
             break
         out.append(line)
     return out
-
-
-def _count_bullet_items(lines: list[str]) -> int:
-    """Count Markdown bullet items in `lines`. Ignores narrative paragraphs,
-    fenced commentary, italic notes, and `(none)` / `n/a` sentinels."""
-    n = 0
-    for raw in lines:
-        s = raw.strip()
-        if not s:
-            continue
-        # Italic note / commentary block (e.g. `*Note: ...*`).
-        if s.startswith("*") and s.endswith("*") and not s.startswith("* "):
-            continue
-        # Bullet markers: `- `, `* `, `+ `, or numbered like `1. `.
-        if s.startswith(("- ", "* ", "+ ")) or re.match(r"^\d+\.\s", s):
-            # Ignore explicit emptiness markers.
-            body = re.sub(r"^[-*+]\s+|^\d+\.\s+", "", s).strip().lower()
-            if body in {"(none)", "none", "n/a", "—", "-"}:
-                continue
-            n += 1
-    return n
-
-
-def _section_is_empty(lines: list[str]) -> bool:
-    """Return True when a section body has no semantic content (only blanks,
-    italic commentary, or explicit `(none)` / `n/a` sentinels)."""
-    for raw in lines:
-        s = raw.strip()
-        if not s:
-            continue
-        if s.startswith("*") and s.endswith("*") and not s.startswith("* "):
-            continue
-        if s.lower() in {"(none)", "none", "n/a", "—", "-"}:
-            continue
-        # Explicit "none" bullets count as empty too.
-        body = re.sub(r"^[-*+]\s+|^\d+\.\s+", "", s).strip().lower()
-        if body in {"(none)", "none", "n/a", "—", "-"}:
-            continue
-        return False
-    return True
-
-
-def _count_components_affected(text: str) -> int:
-    """Count components in `## Components affected`. Each bullet is one entry."""
-    lines = _section_lines(text, "Components affected")
-    return _count_bullet_items(lines)
-
-
-def _count_ius(text: str) -> int:
-    """Count Implementation Units. Prefers the IU footnote-bullet block
-    (lines beginning with `- IU N`) under `## Layer impact analysis`; falls
-    back to the L3/L4 row count when no footnotes are present.
-
-    Returns 0 when the section is absent or contains no IU bullets — a Lite
-    Intent with no Layer impact analysis populated still has IU count = 0
-    (which is ≤ 1, so the gate passes).
-    """
-    lines = _section_lines(text, "Layer impact analysis")
-    if not lines:
-        return 0
-    # Look for explicit IU footnote bullets — `- IU 1` / `- IU-1` / `**IU 1**`.
-    iu_pat = re.compile(r"^[-*+]\s+(?:\*\*)?IU[-\s]?\d+", re.IGNORECASE)
-    iu_count = sum(1 for raw in lines if iu_pat.match(raw.strip()))
-    if iu_count:
-        return iu_count
-    # Fallback: count IB-NNN / bead references in L3/L4 table rows. Cheap
-    # heuristic — when a Lite Intent has no layer analysis at all we want 0.
-    return 0
-
-
-def _adr_section_empty(text: str) -> bool:
-    """True when `## Linked ADRs` is absent or empty.
-
-    The canonical Intent template does NOT include a `## Linked ADRs` section,
-    so absence is the dominant case and means "no ADRs linked." When the
-    section IS present (as in INT-088), it must have no ADR-NNN bullets.
-    """
-    lines = _section_lines(text, "Linked ADRs")
-    if not lines:
-        return True
-    return _section_is_empty(lines)
-
-
-def _ic_section_empty(text: str) -> bool:
-    """True when `## Linked Interface Contracts` is absent or empty."""
-    lines = _section_lines(text, "Linked Interface Contracts")
-    if not lines:
-        return True
-    return _section_is_empty(lines)
-
-
-def lite_gate_check(intent_path: Path) -> tuple[bool, str]:
-    """Run the 4-gate refusal-contract check on `intent_path`.
-
-    Returns `(True, summary)` when ALL four gates pass. Returns
-    `(False, refusal_message)` naming the FIRST failing gate when any gate
-    fails. The refusal-message format follows the bead ds-49mc contract:
-
-        --lite refused: gate <gate-name> failed (<reason>). Use full
-        /write-intent without --lite for this Intent.
-
-    The four gate names (in evaluation order) are `components`, `ius`,
-    `adrs`, `ics`.
-    """
-    text = intent_path.read_text(encoding="utf-8")
-
-    # Gate 1 — components ≤ 1
-    n_components = _count_components_affected(text)
-    if n_components > 1:
-        return False, (
-            f"--lite refused: gate components failed "
-            f"(measured {n_components} components, required ≤ 1). "
-            f"Use full /write-intent without --lite for this Intent."
-        )
-
-    # Gate 2 — ius ≤ 1
-    n_ius = _count_ius(text)
-    if n_ius > 1:
-        return False, (
-            f"--lite refused: gate ius failed "
-            f"(measured {n_ius} IUs, required ≤ 1). "
-            f"Use full /write-intent without --lite for this Intent."
-        )
-
-    # Gate 3 — adrs = []
-    if not _adr_section_empty(text):
-        return False, (
-            "--lite refused: gate adrs failed "
-            "(Linked ADRs section has at least one entry, required []). "
-            "Use full /write-intent without --lite for this Intent."
-        )
-
-    # Gate 4 — ics = []
-    if not _ic_section_empty(text):
-        return False, (
-            "--lite refused: gate ics failed "
-            "(Linked Interface Contracts section has at least one entry, "
-            "required []). Use full /write-intent without --lite for this "
-            "Intent."
-        )
-
-    return True, (
-        f"{intent_path}: all 4 lite gates pass "
-        f"(components={n_components}, ius={n_ius}, adrs=[], ics=[])"
-    )
-
-
-# Frontmatter regex: detects a YAML block at the very top of the file. The
-# Intent template stores Status in a `## Status` section rather than YAML
-# frontmatter, so most Intents have NO frontmatter at all. `lite_mark`
-# handles both cases: when frontmatter exists, insert/replace `lite: true`
-# inside; when absent, prepend a minimal `---\nlite: true\n---\n` block.
-_FRONTMATTER_RE = re.compile(
-    r"\A---[ \t]*\n(?P<body>.*?)\n---[ \t]*\n",
-    re.DOTALL,
-)
-_LITE_KEY_RE = re.compile(r"^lite:[ \t]*\S.*$", re.MULTILINE)
-
-
-def lite_mark(intent_path: Path) -> str:
-    """Set `lite: true` in the Intent's YAML frontmatter (creating the block
-    if absent). Returns a human-readable summary.
-
-    The marker is the audit signal — fidelity audit rules can filter
-    lite-path Intents in later phases (OI-D, deferred). The function is
-    idempotent: re-running it on an already-marked Intent leaves the file
-    unchanged.
-    """
-    text = intent_path.read_text(encoding="utf-8")
-    m = _FRONTMATTER_RE.match(text)
-    if m:
-        body = m.group("body")
-        if _LITE_KEY_RE.search(body):
-            # Already set — rewrite to canonical value, idempotent.
-            new_body = _LITE_KEY_RE.sub("lite: true", body, count=1)
-            if new_body == body:
-                return f"{intent_path}: lite: true already set (no change)"
-        else:
-            # Append `lite: true` to the existing frontmatter block.
-            sep = "" if body.endswith("\n") else "\n"
-            new_body = body + sep + "lite: true"
-        new_text = text[: m.start("body")] + new_body + text[m.end("body"):]
-    else:
-        # No frontmatter — prepend a minimal block.
-        new_text = "---\nlite: true\n---\n" + text
-
-    intent_path.write_text(new_text, encoding="utf-8")
-    return f"{intent_path}: lite: true marker set in frontmatter"
 
 
 # --------------------------------------------------------------------------
@@ -1355,24 +1147,6 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
 
-    p_lg = sub.add_parser(
-        "lite-gate",
-        help=(
-            "run the /write-intent --lite 4-gate refusal-contract check on "
-            "an Intent file (INT-088 IU-2)"
-        ),
-    )
-    p_lg.add_argument("path", type=Path)
-
-    p_lm = sub.add_parser(
-        "lite-mark",
-        help=(
-            "set `lite: true` in an Intent's YAML frontmatter (creating "
-            "the block if absent; idempotent)"
-        ),
-    )
-    p_lm.add_argument("path", type=Path)
-
     p_idx = sub.add_parser("update-index", help="update a markdown index row")
     p_idx.add_argument("index_path", type=Path)
     p_idx.add_argument("--id", dest="art_id", required=True)
@@ -1491,18 +1265,6 @@ def main(argv: list[str] | None = None) -> int:
                     args.engineer,
                 )
             )
-            return 0
-
-        if args.command == "lite-gate":
-            ok, msg = lite_gate_check(args.path)
-            if ok:
-                print(msg)
-                return 0
-            print(msg, file=sys.stderr)
-            return 1
-
-        if args.command == "lite-mark":
-            print(lite_mark(args.path))
             return 0
 
         if args.command == "update-index":

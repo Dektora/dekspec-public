@@ -172,7 +172,7 @@ def audit_mission(
     repo_root: Path,
     today: datetime.date | None = None,
 ) -> dict[str, object]:
-    """Run L8 / L9 / L11. Return findings grouped by severity."""
+    """Run the LINK-MSN-* rules (MSN-INT / MSN-CMD-RESOLVE / MSN-STALE). Return findings grouped by severity."""
     today = today or datetime.date.today()
     text = mission_path.read_text(encoding="utf-8")
     mission_id = _mission_id(text, mission_path)
@@ -192,7 +192,7 @@ def audit_mission(
         if not matches:
             findings["P1"].append(
                 {
-                    "rule": "L8-MSN-INT-EXISTS",
+                    "rule": "LINK-MSN-INT-EXISTS",
                     "detail": f"{int_id} in Intent queue resolves to no file.",
                 }
             )
@@ -207,7 +207,7 @@ def audit_mission(
         if mission_id.upper() not in back_val.upper():
             findings["P1"].append(
                 {
-                    "rule": "L8-MSN-INT-MIRROR",
+                    "rule": "LINK-MSN-INT-MIRROR",
                     "detail": (
                         f"{int_id} does not back-point at {mission_id} "
                         f"(its Mission field reads '{back_val or 'none'}')."
@@ -221,7 +221,7 @@ def audit_mission(
         if resolve_cmd(cmd, repo_root) == "unresolved":
             findings["P2"].append(
                 {
-                    "rule": "L9-MSN-CMD-RESOLVE",
+                    "rule": "LINK-MSN-CMD-RESOLVE",
                     "detail": (
                         f"Mission Verification cmd does not resolve: "
                         f"[{rec.get('name', '?')}] {cmd}"
@@ -237,7 +237,7 @@ def audit_mission(
         if ref_date and (today - ref_date).days > STALE_DAYS:
             findings["P3"].append(
                 {
-                    "rule": "L11-MSN-STALE",
+                    "rule": "LINK-MSN-STALE",
                     "detail": (
                         f"ACTIVE for {(today - ref_date).days} days since "
                         "last modification (>90)."

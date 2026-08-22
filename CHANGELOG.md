@@ -2,6 +2,116 @@
 
 All notable changes to DekSpec are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/); versioning follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+## [v0.123.0] — 2026-08-22
+
+### Fixed — the release machinery could not ship a second plugin (ds-dektools-packaging-k7wz)
+
+`plugins/dektools/` was declared in `marketplace.json` but absent from `scripts/mirror-include.txt`, so it was never rsynced to `Dektora/dekspec-public`. The marketplace entry pointed at a subdirectory that does not exist in the mirror at any tag, which made `claude plugin install dektools@dekspec` unresolvable — the plugin has been undeliverable since it was created in #148. Two adjacent gaps would have kept it broken even once mirrored:
+
+- **`scripts/bump-version.py` synced one plugin manifest.** `MIRRORS` named `plugins/dekspec/.claude-plugin/plugin.json` only, so `plugins/dektools/.claude-plugin/plugin.json` would hold its authored version through every future bump and ship stale. Both manifests are now listed, and `--check` fails on drift in either.
+- **`release.yml`'s version-quad assertion read `marketplace.json['plugins'][0]`.** The second plugin's `ref` was unasserted, so a stale dektools ref passed the gate and would resolve the *previous* plugin — the exact failure ds-dv6r fixed for dekspec, left unfixed for its sibling. The gate now iterates every plugin entry and names the offender. (`bump-version.py`'s marketplace pattern was already a global substitution and did rewrite both refs; nothing verified it.)
+
+`tests/test_public_mirror_distribution.py` was single-plugin throughout and is now plural, with a new `test_marketplace_plugins_are_all_mirrored` asserting the invariant that actually gates installability: every marketplace `git-subdir` path must be carried by the mirror manifest.
+
+### Added — `/prj-mgr` gains Items, Ingest and Adopt modes (ds-prj-mgr-backport-items-ingest-adopt-bew8o)
+
+Back-ported from the consumer repo where `prj-mgr` has been in daily use since the DekTools extraction. Three new modes, all on the issue side of ADR-052 — code beads (`cb-`) remain out of scope, unread and unrendered.
+
+**`--items [<project>]`** prints the individual beads on a board, grouped by phase, defaulting to the *whole* bead: title, id, type, priority, labels, status, last-updated, both ends of every open `blocks` edge, the full description and the acceptance criteria. `--ls` and `--status` answer at board granularity and `br` cannot fill the gap — `br list` has no `--parent` filter and `br dep tree` walks `blocks` rather than `parent-child`, so rooting it at an epic returns just the epic. Filters: `--open`, `--ready` (open **and** unblocked — the "what can I start" query), `--phase N`, `--priority-max N`, `--compact`, `--width N`. Every run ends with `N shown, M hidden by filters`.
+
+**`--ingest <file|text>`** turns a document, a report, or pasted text into board-shaped beads. The judgement half — deciding what the work items are — stays with the model and follows `write-issue-beads`' existing stages rather than restating them; every step after that is back in script hands. `ingest_plan.py context` prints the boards, their phase ids, and every open bead for duplicate judging; `review` validates a plan against the live tracker and refuses a bad one (phase titles normalized to `Phase <N>: <title>`, `br`'s per-type required headings, every `parent`/`blocks`/`related` referent resolvable, unique keys, priority and type in range); `apply` writes, and is resumable — each created id is recorded back into the plan, so a re-run after a failure continues rather than duplicating. **Nothing is written until the engineer approves the rendered summary.**
+
+**`--adopt <bead-id>… --into <bead-id>`** wires existing beads under a parent — the deterministic half of ingest, on its own.
+
+A bare positional is now classified rather than rejected: a board name means `--status`, a file or several words means `--ingest`, and a bead id or an unrecognised short token is **refused** with a pointer rather than guessed at.
+
+### Fixed — `/prj-mgr` argument handling, alias resolution, and board README rendering
+
+- **Flags and positionals are separated before dispatch.** `prj_mgr.py` matched exact argv shapes, so `--bootstrap` and `--where` were documented but rejected, and `--status <project>` failed in the flag-first order SKILL.md used as its own example. Either order now works.
+- **Alias lookup goes through `_project_alias`.** `_project_dir` re-parsed the README's `- Alias:` line while the status table rendered the alias from `_project_alias`, so a board with no such line displayed an initials-based alias that could not be resolved.
+- **The README `- Scope:` bullet takes the epic's first paragraph.** It inlined the whole description, which for a real epic is multi-paragraph markdown carrying its own `##` headings — putting a heading inside a bullet list and splitting it in two.
+- **`_run()` flushes before spawning a child.** With stdout not a tty the parent's buffered output was overtaken by the child's, landing the `INGEST REQUEST` header after the JSON it introduces.
+
+### Changed — `prj-mgr --bootstrap` defaults to a single-store layout
+
+`bootstrap_beads.py` now offers two layouts. **`independent`** (the new default) creates one workspace holding `iss-` at the repo root: every `br` command works bare, with no `--db` and none of the never-run-a-bare-mutation discipline the split layout requires. **`--dekspec`** creates the three ADR-052 workspaces (`cb-` at the root, `iss-` and `ds-` as siblings) and is the right choice whenever a coding agent will run bare `br ready` here. The two are not a subset of one another — they disagree about what lives at the root — so an *explicit* mode that conflicts with the existing layout refuses and prints the migration, while a *defaulted* mode against an established repo reports what is there and exits 0.
+
+`_SKILL_CLASS_DEFAULTS["prj-mgr"]` gains `Write`, which ingest needs to author its plan file under the board's gitignored `.scratch/`.
+
+### Removed — **BREAKING:** the lite methodology profile (ADR-050, ds-prj-remove-lite-3mjz.3/.4/.5/.6)
+
+The second and final half of the lite-lane removal. **DekSpec is now one system at full rigor, and the default lane carries no name** (ADR-050 §2) — only a deviation needs one, and `team` is the sole named opt-in.
+
+**Migration.** A `.dekspec/config.yaml` carrying `methodology_profile: lite` now **fails validation on load** — every `dekspec` command against that repo errors until the value is changed to `full` (the default lane's retained legacy spelling) or `team`. There is no shim and no auto-migration: the value must be edited. `dekspec init --profile lite|full` is gone entirely — the flag selected between a trimmed and a complete scaffold, and with one lane left it had exactly one legal value, so keeping it would preserve the branch this change exists to remove. `dekspec init` now always scaffolds the complete tree; pass `--methodology full|team` for the config value. `dekspec audit linkage --profile lite` (and `dekspec doctor --profile lite`) now exit **2** with `Error: no audit profile named 'lite'. Available profiles: team, v1.` — previously an unknown profile name escaped as an uncaught `ProfileNotFoundError` traceback, which is fixed for every unknown name, not just `lite`.
+
+Deleted: `profiles/lite.yaml` and its `_AUDIT_PROFILE_BY_METHODOLOGY` entry; the `lite` value in the `methodology_profile` schema enum; `init --profile`; the lite scaffold subsets (`_INIT_LITE_SUBDIRS` / `_INIT_LITE_INDEX_NAMES` / `_INIT_LITE_SINGLETON_NAMES`); the compact single-page `AGENTS.md` emitter (`emit_compact_aggregate` / `compact_aggregate_for_profile` + helpers, ~178 lines) and its `aggregate agents-md` branch; the skill-catalog profile filter (`discover_skills` no longer takes `profile=` and never narrows); `templates/lite-intent-template.md`; `templates/lite-constitution-template.md`; `scripts/smoke-lite-init.sh`; `scripts/smoke-roundtrip-lite-to-full.sh`; and `tests/test_lite_profile.py`, `tests/test_lite_init.py`, `tests/test_skill_catalog_lite.py`, `tests/test_agents_md_compact_emitter.py`.
+
+Unchanged: the skill-frontmatter `mode: lite | full` key. It classifies a skill's authoring weight and is enforced by `T-SKILL-FRONTMATTER-NORMAL`; it shares a word with the removed lane but nothing else, and no filter consumes it any more.
+
+Docs: `docs/dekspec-quick-reference.md` §"Lite vs full" is replaced by §"One lane, at full rigor", stating the unnamed default, `team` as the sole named opt-in, and `/prototype` + `/spike` as the sanctioned answer to "I'm just exploring."
+
+### Removed — **BREAKING:** the `/write-intent --lite` flag (ADR-050, ds-prj-remove-lite-3mjz.2)
+
+Per **ADR-050** DekSpec is one system at full rigor; the lite lane is removed in its entirety. This release drops the first half — the per-Intent `--lite` fast path shipped by INT-088 IU-2. `--lite` let a single-component / single-IU Intent skip `--analyze` and code-bead decomposition and walk `DRAFT → ACCEPTED → IMPLEMENTING` in one shot; that shortcut is exactly the second path ADR-050 eliminates. Removal is by deletion, not deprecated shims — passing `--lite` is now an unrecognized flag, and there is no replacement. Author the Intent with plain `/write-intent`; the governed loop is the same three steps at any change size.
+
+Deleted: `plugins/dekspec/skills/write-intent/modes/lite.md` and `_lib/lite_gate.py`; the `lite_gate_check` / `lite_mark` helpers and the `lite-gate` / `lite-mark` subcommands in `artifact_ops.py`; `scripts/audit-lite-path-intent.sh`; `tests/test_skills_write_intent_lite.py` (19 tests). The `lite: true` Intent frontmatter marker is no longer written by any surface. The lite **audit profile** and the `methodology_profile: lite` config value are a separate change (`ds-prj-remove-lite-3mjz.3`) and still resolve today.
+
+### Changed — **BREAKING:** audit linkage rules renamed `L<n>-*` → `LINK-*` (ds-qzc5)
+
+The linkage audit-rule family used a numeric `L<n>` prefix (`L7b-INT-COMPONENTS-RESOLVE`, `L8-MSN-INT-EXISTS`, …) that **collided with the L0–L4 architecture-layer model** — an overloaded token that invites human *and* agent misattribution. All 45 linkage rules now carry the self-describing `LINK-*` prefix; the numeric scheme is retired. `LX-PARSE` / `LX-DUP` (parser/corpus integrity) are unchanged. This is a **hard cut** — any consumer suppression, config, or DIV-handoff keyed on an old code must migrate. Full map:
+
+| Old code | New code |
+|---|---|
+| `L-CONST-CLASS-LANE-INTENT-EXISTS` | `LINK-CONST-CLASS-LANE-INTENT-EXISTS` |
+| `L-CONSTITUTION-ARTICLE-1-SV-REF` | `LINK-CONSTITUTION-ARTICLE-1-SV-REF` |
+| `L-CONSTITUTION-ARTICLE-4-ADR-REFS` | `LINK-CONSTITUTION-ARTICLE-4-ADR-REFS` |
+| `L-CONSTITUTION-ARTICLE-7-BOUNDARY-REFS` | `LINK-CONSTITUTION-ARTICLE-7-BOUNDARY-REFS` |
+| `L-COW-SIBLING-COLLISION` | `LINK-COW-SIBLING-COLLISION` |
+| `L-CS-ROLE-UNIQUE` | `LINK-CS-ROLE-UNIQUE` |
+| `L-NO-DRAFT-IN-MAIN` | `LINK-NO-DRAFT-IN-MAIN` |
+| `L-PROVISIONAL-STALE` | `LINK-PROVISIONAL-STALE` |
+| `L-PROVISIONAL-TREE-PRESENT` | `LINK-PROVISIONAL-TREE-PRESENT` |
+| `L-REGISTRY-APPEND-ONLY` | `LINK-REGISTRY-APPEND-ONLY` |
+| `L1-ADR-AE-EXISTS` | `LINK-ADR-AE-EXISTS` |
+| `L1-ADR-AE-MISSING` | `LINK-ADR-AE-MISSING` |
+| `L10-GLOSSARY-COVERAGE` | `LINK-GLOSSARY-COVERAGE` |
+| `L11-MSN-STALE` | `LINK-MSN-STALE` |
+| `L12-WS-BLOCKING-PRE-IB-CLEAN` | `LINK-WS-BLOCKING-PRE-IB-CLEAN` |
+| `L14-INT-BACKLOG-ACTIVE` | `LINK-INT-BACKLOG-ACTIVE` |
+| `L15-INDEX-FILE-COHERENCE` | `LINK-INDEX-FILE-COHERENCE` |
+| `L16-INT-BEADS-BEFORE-ACCEPT` | `LINK-INT-BEADS-BEFORE-ACCEPT` |
+| `L3-WS-AE-EXISTS` | `LINK-WS-AE-EXISTS` |
+| `L3-WS-AE-MISSING` | `LINK-WS-AE-MISSING` |
+| `L4-IC-AE-EXISTS` | `LINK-IC-AE-EXISTS` |
+| `L4-IC-AE-MISSING` | `LINK-IC-AE-MISSING` |
+| `L5-IB-AE-EXISTS` | `LINK-IB-AE-EXISTS` |
+| `L5-IB-AE-MISSING` | `LINK-IB-AE-MISSING` |
+| `L5-IB-DEPENDS-EXISTS` | `LINK-IB-DEPENDS-EXISTS` |
+| `L5-IB-INTENT-EXISTS` | `LINK-IB-INTENT-EXISTS` |
+| `L5-IB-SPEC-MISSING` | `LINK-IB-SPEC-MISSING` |
+| `L5-IB-WS-EXISTS` | `LINK-IB-WS-EXISTS` |
+| `L7-ADR-SUPER-CYCLE` | `LINK-ADR-SUPER-CYCLE` |
+| `L7-ADR-SUPER-EXISTS` | `LINK-ADR-SUPER-EXISTS` |
+| `L7-ADR-SUPER-MIRROR` | `LINK-ADR-SUPER-MIRROR` |
+| `L7-ADR-SUPER-SELF` | `LINK-ADR-SUPER-SELF` |
+| `L7-ADR-SUPER-STATUS` | `LINK-ADR-SUPER-STATUS` |
+| `L7a-INT-AE-EXISTS` | `LINK-INT-AE-EXISTS` |
+| `L7a-INT-AE-MISSING` | `LINK-INT-AE-MISSING` |
+| `L7b-INT-COMPONENTS-MISSING` | `LINK-INT-COMPONENTS-MISSING` |
+| `L7b-INT-COMPONENTS-RESOLVE` | `LINK-INT-COMPONENTS-RESOLVE` |
+| `L8-INT-AUTONOMY-EXCEEDS` | `LINK-INT-AUTONOMY-EXCEEDS` |
+| `L8-INT-MSN-EXISTS` | `LINK-INT-MSN-EXISTS` |
+| `L8-INT-MSN-MIRROR` | `LINK-INT-MSN-MIRROR` |
+| `L8-MSN-INT-EXISTS` | `LINK-MSN-INT-EXISTS` |
+| `L8-MSN-INT-MIRROR` | `LINK-MSN-INT-MIRROR` |
+| `L8-MSN-INT-SERIALIZED` | `LINK-MSN-INT-SERIALIZED` |
+| `L9-INT-CMD-RESOLVE` | `LINK-INT-CMD-RESOLVE` |
+| `L9-MSN-CMD-RESOLVE` | `LINK-MSN-CMD-RESOLVE` |
+
+Also removed the dangling `L6-BACKLINK` documented family and the `L2 reserved` manifest note (never emitted rules). Note: the write-`*` `--audit` skills carry a *separate* internal `L1-*` consistency-check namespace (`L1-GLOSSARY`, `L1-VISION`, …) — out of scope here, tracked as a follow-up.
+
 ## [v0.122.0] — 2026-07-25
 
 > Two new capabilities — `dekspec commands` (self-emitted command inventory) and typed environment prerequisites with preflight probes — plus consumer-side install-integrity verification and two-dir `.dekspec` state zoning. **Breaking:** the overstayed `dekspec repo <verb>` alias namespace and the `--severity` flag alias are removed. Rounded out by review/bead-pipeline discipline fixes and a batch of Theophany-dogfood + post-ADR-046 fixes.

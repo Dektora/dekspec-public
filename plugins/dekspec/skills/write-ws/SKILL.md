@@ -112,7 +112,7 @@ See [`_lib/teaching_mode.md`](../_lib/teaching_mode.md) for the canonical 4-step
 - **exemplar_paths**: `dekspec/working-specs/WS-001-audit-rule-semantics.md` (audit-rule semantics), `dekspec/working-specs/WS-003-executor-swap-contract.md` (executor-swap contract)
 - **required_sections**: [Status, Silent Failure Domains, Related Architecture Elements, Business Rules, Failure Behavior, Acceptance Criteria, Domain Constraints, Open Issues]
 
-Skill-specific structural checks to surface as Open Issues: T20-WS-BUSINESS-RULES, T21-WS-FAILURE-BEHAVIOR, L3-WS-AE.
+Skill-specific structural checks to surface as Open Issues: T20-WS-BUSINESS-RULES, T21-WS-FAILURE-BEHAVIOR, LINK-WS-AE.
 
 **Skill-unique prompts and scope:** for Silent Failure Domains, walk the engineer through the project-specific enum and which apply before accepting input. Teaching Mode walks a single WS section-by-section; the default no-flag creation mode triggers a full expertise-audit + serialized role-passes workflow that Teaching Mode deliberately skips for new authors.
 
@@ -125,7 +125,7 @@ Read-only quality check on an existing Working Spec.
    - [ ] All template sections are populated — no placeholders, no TODOs in the body
    - [ ] All Domain Constraints populated (no unexplained n/a)
    - [ ] All required contract sections present (based on active silent failure domains)
-   - [ ] Zero `P1` open issues remain — count every blocking-family alias that normalizes to `P1` per ADR-013: canonical `P1`, plus the legacy aliases `blocking_pre_ib` / `blocking (pre-IB)` and bare `blocking`. (This is exactly what audit rule `L12-WS-BLOCKING-PRE-IB-CLEAN` enforces on any ACCEPTED+ WS; `blocking (pre-code)` / `blocking_pre_code` normalizes to `P2` and is not part of this gate.)
+   - [ ] Zero `P1` open issues remain — count every blocking-family alias that normalizes to `P1` per ADR-013: canonical `P1`, plus the legacy aliases `blocking_pre_ib` / `blocking (pre-IB)` and bare `blocking`. (This is exactly what audit rule `LINK-WS-BLOCKING-PRE-IB-CLEAN` enforces on any ACCEPTED+ WS; `blocking (pre-code)` / `blocking_pre_code` normalizes to `P2` and is not part of this gate.)
    - [ ] All business rules are testable
    - [ ] All failure modes have stated behavior
    - [ ] No contradictions with governing ADRs (read each and verify consistency)
@@ -264,7 +264,7 @@ Run the complete Audit Mode check list — every check must pass, including IB c
 - [ ] All template sections are populated — no placeholders, no TODOs in the body
 - [ ] All Domain Constraints populated (no unexplained n/a)
 - [ ] All required contract sections present (based on active silent failure domains)
-- [ ] Zero `P1` open issues remain — count every blocking-family alias that normalizes to `P1` per ADR-013: canonical `P1`, plus the legacy aliases `blocking_pre_ib` / `blocking (pre-IB)` and bare `blocking`. This gate must match audit rule `L12-WS-BLOCKING-PRE-IB-CLEAN` exactly — it fires P1 on ANY `P1` open issue once a WS is ACCEPTED+, so a narrower gate here lets a WS pass `--accept` then immediately fail `dekspec doctor`. (`blocking (pre-code)` / `blocking_pre_code` normalizes to `P2` and is NOT part of this gate.)
+- [ ] Zero `P1` open issues remain — count every blocking-family alias that normalizes to `P1` per ADR-013: canonical `P1`, plus the legacy aliases `blocking_pre_ib` / `blocking (pre-IB)` and bare `blocking`. This gate must match audit rule `LINK-WS-BLOCKING-PRE-IB-CLEAN` exactly — it fires P1 on ANY `P1` open issue once a WS is ACCEPTED+, so a narrower gate here lets a WS pass `--accept` then immediately fail `dekspec doctor`. (`blocking (pre-code)` / `blocking_pre_code` normalizes to `P2` and is NOT part of this gate.)
 - [ ] All business rules are testable
 - [ ] All failure modes have stated behavior
 - [ ] No contradictions with governing ADRs (read each and verify consistency)
@@ -317,7 +317,7 @@ WS-specific pre-lock audit extensions (added on top of the substrate's audit run
 - All business rules are testable
 - Expertise Audit Record is complete (all triggered roles show evidence of their pass)
 - If Implementation Briefs exist for this spec, verify they are consistent with current spec content
-- Zero `P1` open issues remain — count every blocking-family alias that normalizes to `P1` per ADR-013: canonical `P1`, plus the legacy aliases `blocking_pre_ib` / `blocking (pre-IB)` and bare `blocking`. This gate must match audit rule `L12-WS-BLOCKING-PRE-IB-CLEAN` exactly (it fires P1 on ANY `P1` open issue on a LOCKED WS). `blocking (pre-code)` / `blocking_pre_code` normalizes to `P2` and is NOT part of this gate.
+- Zero `P1` open issues remain — count every blocking-family alias that normalizes to `P1` per ADR-013: canonical `P1`, plus the legacy aliases `blocking_pre_ib` / `blocking (pre-IB)` and bare `blocking`. This gate must match audit rule `LINK-WS-BLOCKING-PRE-IB-CLEAN` exactly (it fires P1 on ANY `P1` open issue on a LOCKED WS). `blocking (pre-code)` / `blocking_pre_code` normalizes to `P2` and is NOT part of this gate.
 
 ## Unlock Mode (LOCKED → PROPOSED)
 
@@ -423,7 +423,7 @@ Before declaring the spec complete, verify:
 - [ ] Created and Modified dates are set
 - [ ] All Domain Constraints populated (no unexplained n/a)
 - [ ] All required contract sections present (Model, Graph, Timeline, Quantization — based on active silent failure domains)
-- [ ] Zero `P1` open issues remain — count canonical `P1` plus the blocking-family aliases `blocking_pre_ib` / `blocking (pre-IB)` and bare `blocking` (all normalize to `P1` per ADR-013, matching audit rule `L12-WS-BLOCKING-PRE-IB-CLEAN`)
+- [ ] Zero `P1` open issues remain — count canonical `P1` plus the blocking-family aliases `blocking_pre_ib` / `blocking (pre-IB)` and bare `blocking` (all normalize to `P1` per ADR-013, matching audit rule `LINK-WS-BLOCKING-PRE-IB-CLEAN`)
 - [ ] Spec fits 1-2 pages
 - [ ] All business rules testable
 - [ ] All failure modes have stated behavior
@@ -522,7 +522,7 @@ python ../_lib/scripts/artifact_ops.py approve <WS-path> --target-status <STATUS
 
 - Don't reference another Working Spec (`see WS-NNN for details`) — restate the interface contract from THIS component's perspective so the spec stays self-contained for a coding agent reading only it plus its ADRs/AEs.
 - Don't run the Phase 3 expert passes in parallel — serialize them strictly (ML → Quantization → CUDA → Graph → Embedding → Pipeline), saving after each, so every expert builds on the prior one's edits.
-- Don't pass `--accept` / `--lock` with any `P1` open issue still open — count the blocking-family aliases (`blocking_pre_ib` / `blocking (pre-IB)` / bare `blocking`) that normalize to `P1` per ADR-013, or the WS clears the skill gate then immediately fails `L12-WS-BLOCKING-PRE-IB-CLEAN` under `dekspec doctor`.
+- Don't pass `--accept` / `--lock` with any `P1` open issue still open — count the blocking-family aliases (`blocking_pre_ib` / `blocking (pre-IB)` / bare `blocking`) that normalize to `P1` per ADR-013, or the WS clears the skill gate then immediately fails `LINK-WS-BLOCKING-PRE-IB-CLEAN` under `dekspec doctor`.
 - Don't combine `--lock` with `--provisional` — LOCKED requires linkage-walker visibility that provisional artifacts lack; route to LOCKED through the hand-promote workflow instead.
 - Don't `Edit`/`Write` a claimed canonical artifact without first running `dekspec library cow-stage <path>` — redirect to the printed provisional sibling when it exits 0, or `T-COW-CANONICAL-EDITED` fires advisory on the next linkage run.
 - Don't silently correct a domain misinterpretation — invoke `/write-ggc --log` with the correction before proceeding so the glossary-promotion pipeline sees it.

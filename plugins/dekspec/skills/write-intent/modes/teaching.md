@@ -8,7 +8,7 @@ See [`_lib/teaching_mode.md`](../_lib/teaching_mode.md) for the canonical 4-step
 - **artifact_kind**: Intent (INT-NNN)
 - **template_path**: `templates/intent-template.md`
 - **methodology_section**: §4 Intent + Mission of `docs/dekspec-methodology.md`
-- **exemplar_paths**: `dekspec/intents/INT-001-constitution-artifact.md` (documentation-typed design parent), `dekspec/intents/INT-006-lite-profile-for-solo-engineers.md` (methodology refactor)
+- **exemplar_paths**: `dekspec/intents/INT-001-constitution-artifact.md` (documentation-typed design parent), `dekspec/intents/INT-096-using-dekspec-skill-and-audit-rename.md` (methodology refactor)
 - **required_sections**: [Status, Intent type, Autonomy, Linked Architecture Elements, Components affected, Verification, Motivation, Desired Outcome, type-specific block]
 
 Skill-specific structural checks to surface as Open Issues: T13 (Intent type enum), T14 (≥1 Verification cmd), T15 (≥1 Components glob), T16 (Autonomy enum), L7a (Linked AE existence), L9 (Verification cmd resolves).

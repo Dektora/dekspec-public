@@ -28,6 +28,8 @@ from __future__ import annotations
 import fnmatch
 from collections.abc import Iterable
 
+from dekspec.glob_braces import expand_braces
+
 __all__ = [
     "IMPLICIT_LIFECYCLE_GLOBS",
     "check_diff_confinement",
@@ -93,11 +95,17 @@ def _glob_matches(path: str, glob: str) -> bool:
 
 
 def matches_any_glob(path: str, globs: Iterable[str]) -> bool:
-    """True if ``path`` matches any glob in ``globs``."""
+    """True if ``path`` matches any glob in ``globs``.
+
+    Shell-style brace groups ``{a,b}`` are expanded before matching so this
+    gate agrees with the L7b component-resolve audit, which also expands
+    them (ds-059n) — both go through :func:`dekspec.glob_braces.expand_braces`.
+    """
 
     for glob in globs:
-        if _glob_matches(path, glob):
-            return True
+        for expanded in expand_braces(glob):
+            if _glob_matches(path, expanded):
+                return True
     return False
 
 

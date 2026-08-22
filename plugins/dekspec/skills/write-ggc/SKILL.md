@@ -678,19 +678,19 @@ Use this mode when:
 
 ## Write-Time CoW Guard (INT-082 phase 4)
 
-Before any edit to the Glossary, Guidance & Corrections singleton at `dekspec/domain-glossary.md`, consult the CoW guard:
+Before any edit to either singleton this skill owns — `dekspec/domain-glossary.md` (the `--add-term` path) or `dekspec/guidance-and-corrections.md` (the `--log` path) — consult the CoW guard on **the file you are about to write**:
 
 ```bash
-dekspec library cow-stage dekspec/domain-glossary.md [--incubation <slug>] [--at <repo>]
+dekspec library cow-stage <dekspec/domain-glossary.md | dekspec/guidance-and-corrections.md> [--incubation <slug>] [--at <repo>]
 ```
 
 If a pre-ACCEPTED Intent (DRAFT/PROPOSED) claims the singleton's path via Components-affected globs, the verb copies the canonical into the incubation folder + stamps `replaces:`. Edit the staged copy; the canonical stays frozen.
 
 If the singleton is unclaimed, the verb errors unless `--incubation <slug>` is passed explicitly — the canonical-only path is then the normal edit flow.
 
-**Skill discipline.** Inside this skill body, before any canonical `Edit`/`Write` call on `dekspec/domain-glossary.md`:
+**Skill discipline.** Inside this skill body, before any canonical `Edit`/`Write` call on either singleton:
 
-1. Run `dekspec library cow-stage dekspec/domain-glossary.md` once.
+1. Run `dekspec library cow-stage <the singleton you are writing>` once. `--log` guards `dekspec/guidance-and-corrections.md`; `--add-term` guards `dekspec/domain-glossary.md`; `--review` guards whichever it revises. A mode that touches both runs the verb once per file.
 2. On exit 0 (provisional path printed): redirect the edit there.
 3. On exit 1 (no claim + no `--incubation`): proceed with the canonical edit (direct-flow legal).
 

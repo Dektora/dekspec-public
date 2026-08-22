@@ -106,7 +106,7 @@ def _compose_storage_key(ir: dict[str, Any], kind: str) -> str:
 
     The fix: scope the storage key by the parent WS, ``<spec_id>:<ib_id>``.
     If the IB's ``spec`` field is missing/malformed (a separate defect,
-    surfaced by L5-IB-SPEC-MISSING), fall back to a ``<unknown>:<ib_id>``
+    surfaced by LINK-IB-SPEC-MISSING), fall back to a ``<unknown>:<ib_id>``
     placeholder so the IR still lands in the graph and remains
     discoverable. The placeholder collisions are themselves caught by
     LX-DUP.

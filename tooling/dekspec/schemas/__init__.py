@@ -117,7 +117,7 @@ LATEST_VERSIONS: dict[str, str] = {
     # schema, not a parsed artifact IR.
     "team_profile": "0.1.0",
     # dekspec_config — the per-repo `.dekspec/config.yaml` schema. Declares
-    # the `methodology_profile` axis (lite / team / full). The `executor`
+    # the `methodology_profile` axis (full / team). The `executor`
     # axis introduced in INT-018 was retired by MSN-016 / ADR-024 (2026-05-28
     # — no-factory in-process-only execution model).
     "dekspec_config": "0.1.0",

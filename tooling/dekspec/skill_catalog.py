@@ -1,34 +1,23 @@
-"""Profile-aware skill-catalog discovery filter — MSN-006 / INT-066 / IB-114.
+"""Skill-catalog discovery — MSN-006 / INT-066 / IB-114.
 
-Every plugin-delivered skill at ``plugins/dekspec/skills/*/SKILL.md`` carries a
-``mode:`` YAML frontmatter key valued ``lite`` or ``full``. This module reads
-that frontmatter and narrows *default* skill discovery according to the active
-methodology profile:
+Every plugin-delivered skill at ``plugins/<plugin>/skills/*/SKILL.md`` carries a
+``mode:`` YAML frontmatter key valued ``lite`` or ``full``. The key classifies
+a skill's authoring weight and is enforced by the ``T-SKILL-FRONTMATTER-NORMAL``
+audit rule; it no longer narrows discovery.
 
-- Under the ``lite`` profile, default discovery omits ``mode: full`` skills
-  (the heavy-ceremony authoring skills ``write-mission`` / ``write-ws`` /
-  ``write-ic`` / ``write-ibs``).
-- Under the ``full`` profile (the backwards-compatible default), every skill
-  surfaces in default discovery exactly as before.
-
-CRITICAL INVARIANT — the filter narrows DEFAULT discovery only; it never
-deregisters or disables a skill. Every skill — including the four hidden under
-``lite`` — remains fully resolvable on explicit invocation and under
-``<skill> --help`` regardless of profile. ``resolve_skill`` and
-``is_resolvable`` are profile-blind by design.
-
-The active profile is read via INT-024's :func:`dekspec.dekspec_config.get_profile`
-— the single load-bearing profile read point. This module does not invent its
-own profile-detection path.
+DekSpec runs one lane at full rigor (ADR-050), so discovery is unconditional:
+every skill surfaces, and ``resolve_skill`` / ``is_resolvable`` resolve every
+skill by name.
 
 Public API:
 
 - :data:`SKILLS_SUBDIR` — the repo-relative skills directory.
 - :class:`SkillCatalogError` — raised on a malformed / missing ``SKILL.md``.
 - :class:`SkillEntry` — one parsed skill (``name``, ``mode``, ``path``).
-- :func:`skills_root(repo_root)` — the ``plugins/dekspec/skills`` directory.
+- :func:`skills_root(repo_root)` — the core ``plugins/dekspec/skills`` directory.
+- :func:`skills_roots(repo_root)` — every plugin's skills directory (ADR-047).
 - :func:`load_catalog(repo_root)` — parse every ``SKILL.md`` into entries.
-- :func:`discover_skills(repo_root, *, profile=None)` — the default-discovery
+- :func:`discover_skills(repo_root)` — the default-discovery
   list, narrowed per the active (or supplied) profile.
 - :func:`resolve_skill(repo_root, name)` — resolve one skill by name,
   profile-blind (the ``--help`` / explicit-invocation escape hatch).
@@ -40,7 +29,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from .dekspec_config import get_profile
 
 __all__ = [
     "SKILLS_SUBDIR",
@@ -57,6 +45,13 @@ __all__ = [
 # Repo-relative location of the plugin-delivered skills (post-commit 67a5801,
 # skills moved under the Claude Code plugin marketplace layout).
 SKILLS_SUBDIR = Path("plugins") / "dekspec" / "skills"
+
+#: Every shipped plugin that delivers skills. ADR-047 split the surface into
+#: core (`dekspec`) and toolkit (`dektools`); the catalog is the union, because
+#: a consumer enumerating skills wants what is installed, not what happens to
+#: live in one plugin. Order is core-first so a name present in both resolves
+#: to the core copy.
+SKILL_PLUGIN_NAMES: tuple[str, ...] = ("dekspec", "dektools")
 
 # The valid `mode:` frontmatter values.
 SKILL_MODES: tuple[str, ...] = ("lite", "full")
@@ -76,8 +71,21 @@ class SkillEntry:
 
 
 def skills_root(repo_root: str | Path) -> Path:
-    """Return the ``<repo_root>/plugins/dekspec/skills`` directory path."""
+    """Return the ``<repo_root>/plugins/dekspec/skills`` directory path.
+
+    Core only. Use :func:`skills_roots` for the full set across plugins.
+    """
     return Path(repo_root) / SKILLS_SUBDIR
+
+
+def skills_roots(repo_root: str | Path) -> list[Path]:
+    """Return every plugin skills directory that exists, core first."""
+    base = Path(repo_root) / "plugins"
+    return [
+        d
+        for d in (base / name / "skills" for name in SKILL_PLUGIN_NAMES)
+        if d.is_dir()
+    ]
 
 
 def _parse_frontmatter(skill_md: Path) -> dict:
@@ -143,47 +151,37 @@ def load_catalog(repo_root: str | Path) -> list[SkillEntry]:
     Returns the entries sorted by ``name``. Raises :class:`SkillCatalogError`
     if the skills directory is absent or any ``SKILL.md`` is malformed.
     """
-    root = skills_root(repo_root)
-    if not root.is_dir():
-        raise SkillCatalogError(f"No plugin skills directory at {root}.")
-    entries = [
-        _entry_from_skill_md(skill_md)
-        for skill_md in sorted(root.glob("*/SKILL.md"))
-    ]
+    roots = skills_roots(repo_root)
+    if not roots:
+        raise SkillCatalogError(
+            f"No plugin skills directory under {Path(repo_root) / 'plugins'} "
+            f"(looked for {', '.join(SKILL_PLUGIN_NAMES)})."
+        )
+    seen: set[str] = set()
+    entries: list[SkillEntry] = []
+    for root in roots:
+        for skill_md in sorted(root.glob("*/SKILL.md")):
+            entry = _entry_from_skill_md(skill_md)
+            if entry.name in seen:
+                continue  # core wins on a cross-plugin name collision
+            seen.add(entry.name)
+            entries.append(entry)
     return sorted(entries, key=lambda e: e.name)
 
 
-def discover_skills(
-    repo_root: str | Path,
-    *,
-    profile: Optional[str] = None,
-) -> list[SkillEntry]:
-    """Return the default-discovery skill list, narrowed per the active profile.
+def discover_skills(repo_root: str | Path) -> list[SkillEntry]:
+    """Return the default-discovery skill list — every catalogued skill.
 
-    Under the ``lite`` profile, ``mode: full`` skills are omitted from default
-    discovery. Under ``full`` (the default) every skill is surfaced. ``profile``
-    may be passed explicitly; when ``None`` it is resolved via INT-024's
-    :func:`get_profile` — the single load-bearing profile read point.
-
-    This narrows DEFAULT discovery only — it never deregisters a skill. Use
-    :func:`resolve_skill` for the profile-blind, explicit-invocation /
-    ``--help`` escape hatch.
+    DekSpec runs one lane at full rigor (ADR-050); discovery is unconditional.
     """
-    if profile is None:
-        profile = get_profile(repo_root)
-    catalog = load_catalog(repo_root)
-    if profile == "lite":
-        return [entry for entry in catalog if entry.mode != "full"]
-    return catalog
+    return load_catalog(repo_root)
 
 
 def resolve_skill(repo_root: str | Path, name: str) -> Optional[SkillEntry]:
-    """Resolve a skill by ``name``, profile-blind.
+    """Resolve a skill by ``name``.
 
-    This is the ``<skill> --help`` / explicit-invocation escape hatch: it
-    resolves EVERY plugin-delivered skill regardless of the active profile,
-    including the ``mode: full`` skills that :func:`discover_skills` hides
-    under ``lite``. Returns ``None`` if no skill of that name exists.
+    Resolves EVERY plugin-delivered skill. Returns ``None`` if no skill of
+    that name exists.
     """
     for entry in load_catalog(repo_root):
         if entry.name == name:
@@ -192,5 +190,5 @@ def resolve_skill(repo_root: str | Path, name: str) -> Optional[SkillEntry]:
 
 
 def is_resolvable(repo_root: str | Path, name: str) -> bool:
-    """Return whether a skill named ``name`` resolves at all (profile-blind)."""
+    """Return whether a skill named ``name`` resolves at all."""
     return resolve_skill(repo_root, name) is not None

@@ -32,7 +32,7 @@ if str(_SHARED_SCRIPTS) not in sys.path:
 # Re-export the load-bearing helpers from the shared module. Engineering
 # discipline: do NOT redefine these locally; if behavior needs to change,
 # change it in `artifact_ops.py` so `approve` / `transition` / the future
-# `--lite` and `--auto` flags share the same guard surface.
+# `--auto` flag share the same guard surface.
 from artifact_ops import (  # noqa: E402  (sys.path mutation precedes import)
     classify_intent_diff,
     editorial_amend,

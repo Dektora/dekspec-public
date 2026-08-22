@@ -52,7 +52,7 @@ TODO
 
 [For contracts with multiple consumers (e.g., adapter patterns), list each consumer and what it uses the interface for.]
 
-[**Party-AE linkage is structured-only.** Declare every AE link in the `### Provider AE` / `### Consumer AEs` subsections below. AE-NNN references inside Party body prose are treated as references, not links — they will not show up in the IR's `parties[].ae_id` field and will not satisfy `L4-IC-AE-MISSING` / `L6-BACKLINK`. Keep prose mentions for narrative context; declare the linkage explicitly in the subsections.]
+[**Party-AE linkage is structured-only.** Declare every AE link in the `### Provider AE` / `### Consumer AEs` subsections below. AE-NNN references inside Party body prose are treated as references, not links — they will not show up in the IR's `parties[].ae_id` field and will not satisfy `LINK-IC-AE-MISSING`. Keep prose mentions for narrative context; declare the linkage explicitly in the subsections.]
 
 ### Provider AE
 

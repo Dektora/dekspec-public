@@ -5,7 +5,7 @@
 
 Reads `<Intent-path>`. Re-runs every check the lifecycle methods enforce, but mutates nothing — no Status transitions, no Amendment Log entries, no Intent-file edits.
 
-**Schema-vs-linkage division of labor (ds-52p, D-14).** Some Intent checks are enforced by `jsonschema` validation *at parse time* — Intent type enum, autonomy tier enum, components_affected glob shape. Those never reach the audit; if the Intent's IR validates, those constraints are satisfied. Other checks (L7a-INT-AE-MISSING, L7b-INT-COMPONENTS-RESOLVE, T14-INT-VERIFICATION, D19/D20 prose drift) run in `linkage.py` against the IR graph. This skill's audit-mode report lists findings from both layers without distinguishing them; the split affects only where the check lives in code.
+**Schema-vs-linkage division of labor (ds-52p, D-14).** Some Intent checks are enforced by `jsonschema` validation *at parse time* — Intent type enum, autonomy tier enum, components_affected glob shape. Those never reach the audit; if the Intent's IR validates, those constraints are satisfied. Other checks (LINK-INT-AE-MISSING, LINK-INT-COMPONENTS-RESOLVE, T14-INT-VERIFICATION, D19/D20 prose drift) run in `linkage.py` against the IR graph. This skill's audit-mode report lists findings from both layers without distinguishing them; the split affects only where the check lives in code.
 
 ### Step 1: Validate
 
@@ -33,8 +33,8 @@ Print a findings table grouped by severity (CRITICAL / IMPORTANT / MINOR), each 
 ```
 
 Examples:
-- `[CRITICAL] L7a-INT-AE-EXISTS: AE-099 referenced in Linked Architecture Elements does not exist. Fix: --amend to rewrite the AE reference, or author the missing AE.`
-- `[IMPORTANT] L9-INT-CMD-RESOLVE: scripts/measure-nfr.sh in verification[1].cmd is not executable. Fix: chmod or replace.`
+- `[CRITICAL] LINK-INT-AE-EXISTS: AE-099 referenced in Linked Architecture Elements does not exist. Fix: --amend to rewrite the AE reference, or author the missing AE.`
+- `[IMPORTANT] LINK-INT-CMD-RESOLVE: scripts/measure-nfr.sh in verification[1].cmd is not executable. Fix: chmod or replace.`
 - `[MINOR] D19-INT-NUMERIC-NO-WS-CITE: motivation contains "≤ 250 ms" without a WS citation. Fix: --amend to move the target to a WS or add the WS reference.`
 
 Print exit code `0` if no CRITICAL findings, `1` if any CRITICAL.
