@@ -54,8 +54,8 @@ Every authoring skill ships with **at minimum** these four modes:
 | `--activate` | write-mission | Promote TODO → ACTIVE Mission. Requires at least one child Intent LOCKED (L8). |
 | `--complete` | write-mission | Promote COMPLETING → COMPLETE. Requires every child Intent LOCKED + Mission Verification predicate true. |
 | `--kill` | write-mission | Terminal KILLED. Records kill reason + executed rollback steps. |
-| `--log` | write-ggc | Append a correction entry to `guidance-and-corrections.md`. |
-| `--add-term` | write-ggc | Promote a recurring correction to a glossary term. |
+| `--log` | write-corrections | Append a correction entry to `terminology-corrections.md`. |
+| `--add-term` | write-glossary | Add a term to `domain-glossary.md` — directly, or composed from a correction handed over at the promotion threshold. |
 | `--all`, `--integration` | write-tests | Test-tier selectors (run-all vs integration-only). |
 
 ## Canonical Mode-Detection prose (inline this in your SKILL.md)

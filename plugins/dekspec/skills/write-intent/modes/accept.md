@@ -55,6 +55,6 @@ Before the Status transition, determine whether this Intent requires bead decomp
 
 1. Flip Status to `ACCEPTED`, bump Modified, and append the Amendment Log row — run `python ../_lib/scripts/artifact_ops.py transition <Intent-path> --from PROPOSED --to ACCEPTED --note "Promoted PROPOSED to ACCEPTED via /write-intent --accept" --engineer <engineer-or-agent>` (surface stderr on non-zero exit and STOP).
 2. Update `dekspec/intent-index.md` — run `python ../_lib/scripts/artifact_ops.py update-index dekspec/intent-index.md --id INT-NNN --status ACCEPTED` (surface stderr on non-zero exit). Or run `dekspec regen-indexes` for the full deterministic refresh (MSN-015 path).
-3. Surface the next-step message: ACCEPTED Intents become IMPLEMENTING via `--decompose`, which scaffolds the IBs/beads. For a `type: bug` Intent the first bead is the failing reproduction test — which is the Intent's ADR-029 Outcome Verification test (red-first), produced through the normal `/write-code-beads` flow (there is no separate `--bug-reproduction` mode).
+3. Surface the next-step message: ACCEPTED Intents become IMPLEMENTING via `--decompose`, which scaffolds the IBs/beads. For a `type: bug` Intent the first bead is the failing reproduction test — which is the Intent's ADR-029 Outcome Verification test (strong-TDD red-first), produced through the normal `/write-code-beads` flow (there is no separate `--bug-reproduction` mode).
 
 **End of Accept Mode.**

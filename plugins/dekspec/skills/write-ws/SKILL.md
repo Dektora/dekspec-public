@@ -66,7 +66,7 @@ See [`_lib/fan_out.md`](../_lib/fan_out.md) for the canonical ds-di2 orchestrato
   4. Related artifacts from the spec graph (paths only — subagent reads what it needs): `dekspec/architecture-elements-index.md` (for `Related Architecture Elements:` population); run `python ../_lib/scripts/bundle_related.py --keywords "<spec-domain-keywords>" --include ae,adr,ic` to get candidate provider/consumer AE paths, related IC paths (the IC dir is `dekspec/interface-contracts/`), and ADR paths whose linkage sections touch this spec's boundary — judge which AEs are providers vs consumers and which ICs/ADRs are relevant, then bundle those; resolve each referenced ADR via `python ../_lib/scripts/resolve_supersession.py <ADR-ID>` so supersession chains are followed deterministically; for `--accept` / `--revise` — run `python ../_lib/scripts/bundle_related.py --for <target-spec-path> --include ae,adr,ic,ib --backlinks` to also surface IBs referencing this spec, plus the target spec path + (for `--revise`) engineer's notes (inline or file path); `dekspec/domain-glossary.md`; `dekspec/working-spec-index.md` (next-WS-NNN for Creation; status row for Accept / Revise).
   5. Expertise-audit role list (pass verbatim — subagent runs Phase 2 + Phase 3 in fresh context): Writer (Phase 1); ML Expert (injection / position IDs / KV cache); Quantization Expert (quantization / precision / serialization); CUDA Expert (CUDA device / process isolation); Graph Expert (mind map / shadow graph / multi-store / timeline / topic segmentation / decay / shadow timeline / quantization tier); Embedding Geometer (embedding scoring / compression); Pipeline Analyst (pipeline stage ordering); Options Architect (architectural alternatives — Phase 4; may invoke `/write-adr`); Critic (Phase 6 + conditional Phase 7 on changed sections only). Role prompts file: `dekspec/project-context.md` (subagent loads each triggered role's prompt).
   6. Engineer guidance — `$ARGUMENTS` verbatim (Creation: the description; `--accept`: the spec path; `--revise`: spec path + notes).
-  7. Constraints — the Rules block at the bottom of this skill (1-2 pages max; every business rule testable; every failure mode has stated behavior; serialized role passes; template fully populated; self-contained spec — no cross-WS references; cascade awareness for IBs; corrections logged via `/write-ggc --log`).
+  7. Constraints — the Rules block at the bottom of this skill (1-2 pages max; every business rule testable; every failure mode has stated behavior; serialized role passes; template fully populated; self-contained spec — no cross-WS references; cascade awareness for IBs; corrections logged via `/write-corrections --log`).
 - **expected_output_path**: `dekspec/working-specs/WS-NNN-<slug>.md` (Creation) or the input path (`--accept` / `--revise`; subagent edits in place).
 - **validation**: `dekspec validate <output-path>`. Validation/surface contract: see [`_lib/validate_and_surface.md`](../_lib/validate_and_surface.md) — on non-zero exit, surface verbatim and stop, do not silently retry. Mode-specific post-checks: Creation — Status PROPOSED + index row added + Expertise Audit Record present; `--accept` — Status ACCEPTED + index updated + no Amendment Log entry (reserved for post-LOCK changes); `--revise` — Modified updated + reset to PROPOSED if previously ACCEPTED/LOCKED + new ambiguities under `## Open Issues` + IB cascade reminder surfaced if IBs exist.
 
@@ -463,33 +463,13 @@ Use this mode when:
 
 ## Write-Time CoW Guard (INT-082 phase 4)
 
-Before any edit to a canonical artifact (anything under `dekspec/<kind-dir>/`), consult the CoW guard:
+See [`_lib/cow_write_guard.md`](../_lib/cow_write_guard.md) for the canonical contract.
 
-```bash
-dekspec library cow-stage <path-to-canonical> [--incubation <slug>] [--at <repo>]
-```
-
-If the target path is claimed by a pre-ACCEPTED Intent (DRAFT/PROPOSED) via that Intent's `Components affected` globs, the verb:
-
-1. Copies the canonical to `dekspec/provisional/<incubation-slug>/<KIND>-provisional-<file-slug>.md`.
-2. Stamps `replaces: <CANONICAL-ID>` in the frontmatter so the eventual `promote-provisional` run does a REPLACE (preserving the canonical ID) instead of allocating a new one.
-3. Returns the new provisional path. Edit that file instead; the canonical stays frozen.
-
-If the path is not claimed by any pre-ACCEPTED Intent, the verb errors unless you pass an explicit `--incubation <slug>` (the canonical-only path is the normal edit flow).
-
-**Skill discipline.** Inside this skill body, before any canonical-file `Edit`/`Write` call:
-
-1. Compute the target path you intend to write.
-2. Run `dekspec library cow-stage <target-path>` once. Surface the verb's stdout to the engineer.
-3. If the verb exits 0 with a new provisional path printed, redirect the edit to that path.
-4. If the verb exits 1 (no claim + no `--incubation`), proceed with the canonical edit as normal — the canonical is unclaimed and the edit is direct-flow legal.
-
-**Audit pairing.** The `T-COW-CANONICAL-EDITED` rule (P2 mechanical) fires on every `git diff --name-only main` entry that is claimed AND lacks a provisional sibling with `replaces:` set — so a skill that skips this guard surfaces as advisory in the next `dekspec audit linkage` run, but never blocks.
-
+**Form:** kind-dir — canonical artifacts under `dekspec/<kind-dir>/`.
 
 ## Rules
 
-- **Log corrections.** When any mode (creation, audit, review, revise) corrects a domain misinterpretation — wrong term usage, confused concepts, contradicted architectural facts — invoke `/write-ggc --log` with the correction details before proceeding. This feeds the glossary promotion pipeline.
+- **Log corrections.** When any mode (creation, audit, review, revise) corrects a domain misinterpretation — wrong term usage, confused concepts, contradicted architectural facts — invoke `/write-corrections --log` with the correction details before proceeding. This feeds the glossary promotion pipeline.
 - 1-2 pages maximum — if more is needed, split the spec
 - Every business rule must be testable
 - Every failure mode must have a stated behavior
@@ -525,7 +505,7 @@ python ../_lib/scripts/artifact_ops.py approve <WS-path> --target-status <STATUS
 - Don't pass `--accept` / `--lock` with any `P1` open issue still open — count the blocking-family aliases (`blocking_pre_ib` / `blocking (pre-IB)` / bare `blocking`) that normalize to `P1` per ADR-013, or the WS clears the skill gate then immediately fails `LINK-WS-BLOCKING-PRE-IB-CLEAN` under `dekspec doctor`.
 - Don't combine `--lock` with `--provisional` — LOCKED requires linkage-walker visibility that provisional artifacts lack; route to LOCKED through the hand-promote workflow instead.
 - Don't `Edit`/`Write` a claimed canonical artifact without first running `dekspec library cow-stage <path>` — redirect to the printed provisional sibling when it exits 0, or `T-COW-CANONICAL-EDITED` fires advisory on the next linkage run.
-- Don't silently correct a domain misinterpretation — invoke `/write-ggc --log` with the correction before proceeding so the glossary-promotion pipeline sees it.
+- Don't silently correct a domain misinterpretation — invoke `/write-corrections --log` with the correction before proceeding so the glossary-promotion pipeline sees it.
 - Don't skip `dekspec relink` at the end of a substantive run — the backlinks are not optional and must not be deferred with a "backfill later" note.
 
 ## Verification Checklist

@@ -62,7 +62,7 @@ When refactoring an existing authoring skill to this substrate:
 - [ ] Confirm the skill already cites `_lib/mode_dispatcher.md` (the sibling substrate). If not, add the citation per the mode-dispatcher migration checklist first.
 - [ ] Replace the existing `## Teaching Mode` body with the recommended skill-side template above.
 - [ ] Fill in `artifact_kind`, `template_path`, `methodology_section`, `exemplar_paths`, and `required_sections` from the skill's prior Teaching Mode body (do not re-derive — the prior body already enumerated them).
-- [ ] If the skill had skill-unique teaching prose (e.g., write-ae's AE-Classifier routing gate, write-ggc's two-path log-vs-add-term distinction, write-mission's near-immutable-vs-live split, write-sp's loud-placeholder discipline), preserve that prose verbatim beneath the parameter manifest.
+- [ ] If the skill had skill-unique teaching prose (e.g., write-ae's AE-Classifier routing gate, write-corrections's recurrence-threshold promotion hand-off, write-mission's near-immutable-vs-live split, write-sp's loud-placeholder discipline), preserve that prose verbatim beneath the parameter manifest.
 - [ ] Run `pytest tests/test_skills_dispatcher.py` — must be green. The dispatcher tests assert that the `## Teaching Mode` H2 still exists in every authoring skill; they do not assert on the body shape.
 
 ## Reconsideration triggers

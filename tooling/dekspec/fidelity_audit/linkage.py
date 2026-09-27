@@ -168,6 +168,22 @@ def audit_linkage(
     # role_identity makes that resolution ambiguous.
     findings.extend(_l_context_spec_role_unique(graph))
     findings.extend(_t_glossary_self_consistency(graph))
+    # Terminology pipeline (INT-191) — the cross-artifact half of what
+    # `write-ggc`'s Audit Mode did in prose. The corrections log is read as
+    # a non-IR file; the glossary side is the DOMAIN-GLOSSARY IR.
+    findings.extend(
+        _t_corrections_promotion_pipeline(
+            graph,
+            stale_days=active_profile.param(
+                "T-CORRECTIONS-ENTRY-STALE",
+                "stale_days",
+                _CORRECTIONS_STALE_DAYS_DEFAULT,
+            ),
+        )
+    )
+    findings.extend(_l_corrections_glossary_consistency(graph))
+    findings.extend(_t_term_variant_collision(graph))
+    findings.extend(_t_corrections_pipeline_wiring(graph))
     findings.extend(_t_vision_completeness(graph))
     findings.extend(_t_constitution_article_present(graph))
     findings.extend(_t_constitution_article_populated(graph))
@@ -200,6 +216,11 @@ def audit_linkage(
     findings.extend(_t_skill_frontmatter_normal(graph))
     findings.extend(_t_skill_help_mode_present(graph))
     findings.extend(_t_skill_arg_hint_complete(graph))
+    # ds-9ht3a / ds-n3prf — the two halves the family was missing: a skill's
+    # trigger policy is only real if its command wrapper honors it, and the
+    # code table is only authoritative if it matches the doc that says so.
+    findings.extend(_t_skill_command_trigger_consistent(graph))
+    findings.extend(_t_skill_defaults_doc_sync(graph))
     # L-PROVISIONAL-* — provisional incubation visibility
     # (INT-provisional-audit-treatment per MSN-014).
     findings.extend(_l_provisional_tree_present(graph))
@@ -2860,6 +2881,505 @@ def _t_glossary_self_consistency(graph: SpecGraph) -> list[Finding]:
 
 
 # --------------------------------------------------------------------------- #
+# Terminology pipeline — corrections-log <-> glossary cross-artifact rules
+# (INT-191).
+#
+# `write-ggc` hand-rolled four cross-artifact checks in skill prose because
+# only one end of the pipeline was a graph artifact: `domain-glossary.md`
+# parses to the `DOMAIN-GLOSSARY` IR, while the corrections log does not
+# parse at all. INT-191 split that skill in two and moved the checks that
+# span both artifacts here, where cross-artifact consistency already lives.
+#
+# The corrections log stays a NON-IR file — INT-191 explicitly rejects
+# promoting it to an 11th IR kind. It is read off disk with a local
+# tolerant parser, the same shape as `_read_skill_files()` below: absent
+# file => zero findings, never a parse failure.
+#
+# Provenance of each rule, against write-ggc's Audit Mode:
+#   Step 3 (promotion pipeline health)  -> T-CORRECTIONS-PROMOTION-MISSED,
+#                                          T-CORRECTIONS-PROMOTION-PREMATURE,
+#                                          T-CORRECTIONS-ENTRY-STALE
+#   Step 5 (corrections <-> glossary)   -> LINK-CORRECTIONS-GLOSSARY-ORPHAN,
+#                                          LINK-CORRECTIONS-GLOSSARY-REDUNDANT
+#   Step 7 (terminology normalization)  -> T-TERM-VARIANT-COLLISION
+#   Step 8 (pipeline wiring)            -> T-CORRECTIONS-PIPELINE-WIRING
+#
+# Severity follows the T-SKILL family's split (see that section's header):
+#   - P2 when the shipped surface is itself wrong, so an operator or the
+#     model reads a wrong artifact: a promotion the pipeline decided on
+#     that never reached the glossary, or an authoring skill that silently
+#     drops corrections on the floor.
+#   - P3 when only bookkeeping drifted, or when the check is a heuristic:
+#     a threshold bypassed, a redundant entry, a spelling-variant guess.
+#     Heuristics never gate, per the T-PROSE-* precedent.
+#
+# Step 7's *corpus-wide* synonym sweep (write-ggc Audit 7b/7c — "is some
+# artifact or some identifier using a non-canonical name for a glossary
+# concept?") is deliberately NOT mechanized. Measured against this repo it
+# is ~25 findings, essentially all of them legitimate: declared
+# `code_convention` identifiers, kebab-case filename slugs, and prose
+# references to a term by its slug. There is no separator-and-case
+# predicate that separates those from a real synonym, so it stays a
+# judgment step in the successor skills. What IS decidable — two names in
+# the pipeline's own vocabulary that differ only in separators or case —
+# is T-TERM-VARIANT-COLLISION below.
+# --------------------------------------------------------------------------- #
+
+#: Non-IR corrections log, renamed from `guidance-and-corrections.md` by
+#: INT-191 ("Guidance" named nothing that was ever implemented).
+_CORRECTIONS_FILENAME = "terminology-corrections.md"
+
+#: Recurrences needed before an entry is promoted into the glossary.
+#: Mirrors `PROMOTION_THRESHOLD` in the successor skill's `ggc_ops.py`.
+#: INT-191 is a repartition, not a retune — this stays 3 and is a constant
+#: rather than a profile parameter so no profile can quietly diverge from
+#: the value the skill enforces at write time.
+_CORRECTIONS_PROMOTION_THRESHOLD = 3
+
+#: An active single-recurrence entry older than this is advisory-stale:
+#: the misinterpretation may have been a one-off. Flag only — deletion is
+#: the engineer's call (write-ggc Audit Step 3).
+_CORRECTIONS_STALE_DAYS_DEFAULT = 90
+
+#: Synthetic artifact id. The corrections log has no IR and therefore no
+#: real graph id; `skill:<name>` sets the precedent for naming a non-IR
+#: subject in a Finding.
+_CORRECTIONS_ARTIFACT_ID = "TERMINOLOGY-CORRECTIONS"
+
+#: Authoring skills whose Rules section must route a corrected
+#: misinterpretation into the corrections log (write-ggc Audit Step 8).
+_CORRECTIONS_WIRED_SKILLS = ("write-adr", "write-ae", "write-ic", "write-ws", "write-ibs")
+
+_CORRECTIONS_HEADING_RE = re.compile(r"^###[ \t]+(\S.*?)[ \t]*$", re.MULTILINE)
+_CORRECTIONS_NEXT_HEADING_RE = re.compile(r"^#{1,3}[ \t]+\S", re.MULTILINE)
+# Recurrence lines are written `  - YYYY-MM-DD — source — description`.
+# Accept an en/em dash or a plain hyphen as the separator: hand-edited
+# logs use all three and the count must not depend on which.
+_CORRECTIONS_RECURRENCE_RE = re.compile(r"^\s*-\s+(\d{4}-\d{2}-\d{2})\s+[—–-]")
+_CORRECTIONS_SEED_RE = re.compile(r"\(\s*seed entry\s*\)", re.IGNORECASE)
+
+#: Words too common to carry a concept. Used only to decide whether a
+#: promoted entry left ANY lexical trace in the glossary.
+_CORRECTIONS_STOPWORDS = frozenset(
+    """a an and are as at be but by for from has have in into is it its
+    not of on or that the this to was were will with when which who whom
+    use used uses using should must may can not no nor than then them they
+    these those there here what where why how all any both each few more
+    most other some such only own same so too very does did done doing""".split()
+)
+
+
+@dataclass(frozen=True)
+class _CorrectionEntry:
+    """One `### <slug>` block of the non-IR corrections log."""
+
+    slug: str
+    category: str
+    correction: str
+    status: str
+    recurrences: tuple[str, ...]
+
+    @property
+    def promoted(self) -> bool:
+        return "promoted" in self.status.lower()
+
+    @property
+    def seed(self) -> bool:
+        """Front-loaded entry, promoted by hand rather than by threshold.
+
+        write-ggc Audit Step 3 exempts these from the premature-promotion
+        check: they were seeded into the glossary before the pipeline
+        existed, so their recurrence count was never the reason.
+        """
+        return bool(_CORRECTIONS_SEED_RE.search(self.status))
+
+
+def _correction_field(block: str, field: str) -> str:
+    m = re.search(
+        rf"^\s*-\s+\*\*{re.escape(field)}:\*\*[ \t]*(.*)$", block, re.MULTILINE
+    )
+    return m.group(1).strip() if m else ""
+
+
+def _read_corrections_log(graph: SpecGraph) -> tuple[Path | None, list[_CorrectionEntry]]:
+    """Read `dekspec/terminology-corrections.md` as a non-IR file.
+
+    Returns `(path, entries)`, or `(None, [])` when the file is absent or
+    unreadable. Absence is the normal state of a repo that has never
+    logged a correction — it is not a finding, and no rule in this family
+    may treat it as one.
+    """
+    dekspec_dir = graph.dekspec_dir
+    if dekspec_dir is None:
+        return (None, [])
+    path = dekspec_dir / _CORRECTIONS_FILENAME
+    if not path.is_file():
+        return (None, [])
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return (None, [])
+
+    entries: list[_CorrectionEntry] = []
+    for m in _CORRECTIONS_HEADING_RE.finditer(text):
+        slug = m.group(1).strip()
+        rest = text[m.end():]
+        nxt = _CORRECTIONS_NEXT_HEADING_RE.search(rest)
+        block = rest[: nxt.start()] if nxt else rest
+        recurrences = tuple(
+            r.group(1)
+            for line in block.splitlines()
+            if (r := _CORRECTIONS_RECURRENCE_RE.match(line))
+        )
+        entries.append(
+            _CorrectionEntry(
+                slug=slug,
+                category=_correction_field(block, "Category"),
+                correction=_correction_field(block, "Correction"),
+                status=_correction_field(block, "Status"),
+                recurrences=recurrences,
+            )
+        )
+    return (path, entries)
+
+
+def _corrections_rel(path: Path, graph: SpecGraph) -> str:
+    try:
+        return str(path.relative_to(graph.repo_root)) if graph.repo_root else str(path)
+    except ValueError:  # pragma: no cover — path outside the repo
+        return str(path)
+
+
+def _significant_words(text: str) -> set[str]:
+    return {
+        w
+        for w in re.findall(r"[a-z0-9]+", text.lower())
+        if len(w) >= 4 and w not in _CORRECTIONS_STOPWORDS
+    }
+
+
+def _normalize_term(text: str) -> str:
+    """Separator- and case-insensitive form of a term name."""
+    return re.sub(r"[^a-z0-9]", "", text.lower())
+
+
+def _t_corrections_promotion_pipeline(
+    graph: SpecGraph,
+    stale_days: int = _CORRECTIONS_STALE_DAYS_DEFAULT,
+) -> list[Finding]:
+    """write-ggc Audit Step 3 — is the threshold mechanism working?
+
+    T-CORRECTIONS-PROMOTION-MISSED (P2): an entry at or past the
+      recurrence threshold that carries no promoted status. The pipeline
+      decided this misinterpretation needed a glossary term and the
+      promotion never fired, so every agent that reads the glossary still
+      gets the wrong answer. Shipped-surface defect.
+    T-CORRECTIONS-PROMOTION-PREMATURE (P3): an entry below the threshold
+      carrying a promoted status, seed entries excepted. The glossary is
+      not thereby wrong — the threshold was bypassed. Bookkeeping.
+    T-CORRECTIONS-ENTRY-STALE (P3): an active entry with a single
+      recurrence older than `stale_days`. Flag only; the engineer decides
+      whether a one-off correction is worth keeping.
+    """
+    out: list[Finding] = []
+    path, entries = _read_corrections_log(graph)
+    if path is None:
+        return out
+    rel = _corrections_rel(path, graph)
+    today = _date.today()
+
+    for entry in entries:
+        count = len(entry.recurrences)
+        if count >= _CORRECTIONS_PROMOTION_THRESHOLD and not entry.promoted:
+            out.append(
+                Finding(
+                    severity=P2,
+                    rule="T-CORRECTIONS-PROMOTION-MISSED",
+                    artifact_id=_CORRECTIONS_ARTIFACT_ID,
+                    message=(
+                        f"Correction `{entry.slug}` has {count} recurrences "
+                        f"(threshold {_CORRECTIONS_PROMOTION_THRESHOLD}) but no "
+                        f"`- **Status:** promoted to glossary <date>` line. The "
+                        f"auto-promote step was skipped or failed, so the "
+                        f"glossary is missing a term the pipeline already "
+                        f"decided it needs. Re-run the promotion via "
+                        f"`/write-corrections --review`."
+                    ),
+                    fix_kind="semantic",
+                    file_path=rel,
+                )
+            )
+        if (
+            count < _CORRECTIONS_PROMOTION_THRESHOLD
+            and entry.promoted
+            and not entry.seed
+        ):
+            out.append(
+                Finding(
+                    severity=P3,
+                    rule="T-CORRECTIONS-PROMOTION-PREMATURE",
+                    artifact_id=_CORRECTIONS_ARTIFACT_ID,
+                    message=(
+                        f"Correction `{entry.slug}` is marked promoted with only "
+                        f"{count} recurrence(s), below the threshold of "
+                        f"{_CORRECTIONS_PROMOTION_THRESHOLD}. Either the "
+                        f"recurrence log is incomplete or the threshold was "
+                        f"bypassed by hand; a front-loaded entry should say "
+                        f"`(seed entry)` in its Status."
+                    ),
+                    fix_kind="semantic",
+                    file_path=rel,
+                )
+            )
+        if count == 1 and not entry.promoted:
+            try:
+                age = (today - _date.fromisoformat(entry.recurrences[0])).days
+            except ValueError:  # pragma: no cover — malformed date
+                continue
+            if age > stale_days:
+                out.append(
+                    Finding(
+                        severity=P3,
+                        rule="T-CORRECTIONS-ENTRY-STALE",
+                        artifact_id=_CORRECTIONS_ARTIFACT_ID,
+                        message=(
+                            f"Correction `{entry.slug}` has a single recurrence "
+                            f"from {entry.recurrences[0]} ({age} days old) and is "
+                            f"still active. The misinterpretation may have been a "
+                            f"one-off. Flag only — keep or retire it deliberately."
+                        ),
+                        fix_kind="semantic",
+                        file_path=rel,
+                    )
+                )
+    return out
+
+
+def _l_corrections_glossary_consistency(graph: SpecGraph) -> list[Finding]:
+    """write-ggc Audit Step 5 — does the pipeline's output match the glossary?
+
+    LINK-CORRECTIONS-GLOSSARY-ORPHAN (P2): a promoted entry that left no
+      lexical trace anywhere in the glossary. Deliberately conservative —
+      it fires only when NO glossary row shares even one significant word
+      with the entry's slug or correction text, i.e. when the promotion
+      demonstrably never wrote a row. Judging whether the *right* row
+      landed stays a reading task for `/write-glossary`.
+    LINK-CORRECTIONS-GLOSSARY-REDUNDANT (P3): an active entry whose slug
+      normalizes onto an existing glossary term. The glossary already
+      defines the concept, so the entry is very likely a compliance
+      failure filed as a new correction. Advisory — the entry may still
+      be adding a new "NOT this" the row lacks.
+    """
+    out: list[Finding] = []
+    path, entries = _read_corrections_log(graph)
+    if path is None or not entries:
+        return out
+    glossary = graph.glossary()
+    if glossary is None:
+        return out
+    terms = glossary.get("terms", []) or []
+    if not terms:
+        return out
+    rel = _corrections_rel(path, graph)
+
+    glossary_words: set[str] = set()
+    by_normalized_term: dict[str, str] = {}
+    for term in terms:
+        name = (term.get("term") or "").strip()
+        if not name:
+            continue
+        by_normalized_term.setdefault(_normalize_term(name), name)
+        glossary_words |= _significant_words(
+            " ".join(
+                str(term.get(k) or "")
+                for k in ("term", "canonical_definition", "not_this", "code_convention")
+            )
+        )
+
+    for entry in entries:
+        entry_words = _significant_words(f"{entry.slug} {entry.correction}")
+        if entry.promoted:
+            if entry_words and not (entry_words & glossary_words):
+                out.append(
+                    Finding(
+                        severity=P2,
+                        rule="LINK-CORRECTIONS-GLOSSARY-ORPHAN",
+                        artifact_id=_CORRECTIONS_ARTIFACT_ID,
+                        message=(
+                            f"Correction `{entry.slug}` is marked promoted, but no "
+                            f"glossary row shares a single significant word with "
+                            f"it. The status was flipped without the glossary row "
+                            f"being written — the promotion is incomplete. Compose "
+                            f"the row with `/write-glossary --add-term`."
+                        ),
+                        fix_kind="semantic",
+                        file_path=rel,
+                    )
+                )
+            continue
+        match = by_normalized_term.get(_normalize_term(entry.slug))
+        if match:
+            out.append(
+                Finding(
+                    severity=P3,
+                    rule="LINK-CORRECTIONS-GLOSSARY-REDUNDANT",
+                    artifact_id=_CORRECTIONS_ARTIFACT_ID,
+                    message=(
+                        f"Active correction `{entry.slug}` names glossary term "
+                        f"`{match}`, which is already defined. This reads as a "
+                        f"compliance failure against an existing definition "
+                        f"rather than a new correction; log the recurrence "
+                        f"against the promoted entry, or say what the row is "
+                        f"missing."
+                    ),
+                    fix_kind="semantic",
+                    file_path=rel,
+                )
+            )
+    return out
+
+
+def _t_term_variant_collision(graph: SpecGraph) -> list[Finding]:
+    """write-ggc Audit Step 7 — the same concept under two names.
+
+    T-TERM-VARIANT-COLLISION (P3 advisory) — two names in the pipeline's
+    own vocabulary that are identical once separators and case are
+    stripped, but are spelled differently: two glossary terms
+    ("Spec Graph" / "spec-graph"), or a corrections slug against a
+    glossary term. Both surfaces are supposed to hold one canonical
+    spelling each, so a normalization collision between them is a real
+    consolidation target rather than a guess.
+
+    Exact-duplicate terms are already T-GLOSSARY-DUPLICATE's; this rule
+    fires only on pairs that differ in their lowercased form, so the two
+    never double-report. The corpus-wide sweep (Audit 7b/7c) stays a
+    judgment step — see the family header for the measurement.
+    """
+    out: list[Finding] = []
+    glossary = graph.glossary()
+    if glossary is None:
+        return out
+    terms = [
+        (t.get("term") or "").strip()
+        for t in glossary.get("terms", []) or []
+        if (t.get("term") or "").strip()
+    ]
+    buckets: dict[str, list[str]] = {}
+    for name in terms:
+        buckets.setdefault(_normalize_term(name), []).append(name)
+
+    for key, names in sorted(buckets.items()):
+        distinct = sorted({n for n in names})
+        if len({n.lower() for n in distinct}) > 1:
+            out.append(
+                Finding(
+                    severity=P3,
+                    rule="T-TERM-VARIANT-COLLISION",
+                    artifact_id="DOMAIN-GLOSSARY",
+                    message=(
+                        f"Glossary terms {', '.join(repr(n) for n in distinct)} "
+                        f"differ only in separators or case. The glossary is the "
+                        f"canonical spelling — consolidate to one row, or "
+                        f"register the variant as an alias."
+                    ),
+                    fix_kind="semantic",
+                )
+            )
+
+    path, entries = _read_corrections_log(graph)
+    if path is None:
+        return out
+    rel = _corrections_rel(path, graph)
+    for entry in entries:
+        key = _normalize_term(entry.slug)
+        for name in buckets.get(key, []):
+            if entry.slug.lower() == name.lower():
+                continue  # same name, not a variant
+            out.append(
+                Finding(
+                    severity=P3,
+                    rule="T-TERM-VARIANT-COLLISION",
+                    artifact_id=_CORRECTIONS_ARTIFACT_ID,
+                    message=(
+                        f"Correction slug `{entry.slug}` and glossary term "
+                        f"`{name}` differ only in separators or case, so the "
+                        f"same concept is carried under two spellings across "
+                        f"the two pipeline artifacts. Adopt the glossary's "
+                        f"spelling."
+                    ),
+                    fix_kind="semantic",
+                    file_path=rel,
+                )
+            )
+            break
+    return out
+
+
+def _t_corrections_pipeline_wiring(graph: SpecGraph) -> list[Finding]:
+    """write-ggc Audit Step 8 — are the authoring skills wired to route
+    corrections?
+
+    T-CORRECTIONS-PIPELINE-WIRING (P2 mechanical) — each shipped authoring
+    skill in `_CORRECTIONS_WIRED_SKILLS` must name `write-corrections`
+    together with `--log` on one line of its body. An unwired skill
+    silently corrects a misinterpretation and never records it, so the
+    recurrence counter never advances and nothing is ever promoted: the
+    pipeline appears healthy while producing nothing.
+
+    Library-scoped by construction. `_read_skill_files` returns nothing in
+    a consumer repo with no `plugins/` tree, so the rule cannot fire on a
+    consumer that merely vendors the skills.
+    """
+    out: list[Finding] = []
+    shipped = {md.parent.name: md for md in _read_skill_files(graph)}
+    if not shipped:
+        return out
+    for skill in _CORRECTIONS_WIRED_SKILLS:
+        md = shipped.get(skill)
+        if md is None:
+            continue  # skill not shipped in this tree — nothing to wire
+        try:
+            body = md.read_text(encoding="utf-8")
+        except OSError:  # pragma: no cover
+            continue
+        wired = any(
+            "write-corrections" in line and "--log" in line
+            for line in body.splitlines()
+        )
+        if wired:
+            continue
+        stale = "write-ggc" in body
+        out.append(
+            Finding(
+                severity=P2,
+                rule="T-CORRECTIONS-PIPELINE-WIRING",
+                artifact_id=f"skill:{skill}",
+                message=(
+                    f"Skill `{skill}` is not wired to the corrections pipeline: "
+                    f"no line routes a corrected misinterpretation to "
+                    f"`/write-corrections --log`."
+                    + (
+                        " It still references the removed `write-ggc` surface "
+                        "(INT-191 split it into `write-glossary` + "
+                        "`write-corrections` and removed the old name rather "
+                        "than aliasing it)."
+                        if stale
+                        else ""
+                    )
+                    + " Corrections this skill makes will never reach the "
+                    "recurrence counter."
+                ),
+                fix_kind="mechanical",
+                file_path=str(md.relative_to(graph.repo_root))
+                if graph.repo_root
+                else str(md),
+            )
+        )
+    return out
+
+
+
+# --------------------------------------------------------------------------- #
 # T-vision completeness (ds-52p, D-16)
 # --------------------------------------------------------------------------- #
 
@@ -5343,7 +5863,16 @@ def _apply_ib_relocation(
 # --------------------------------------------------------------------------- #
 # T-SKILL-* — skill catalog hygiene rules (Phase B of
 # INT-provisional-skill-flag-normalization). Canonical defaults table at
-# docs/dekspec-skill-flag-defaults.md. All 3 rules are P2 mechanical.
+# docs/dekspec-skill-flag-defaults.md.
+#
+# Severity within the family splits on whether the finding describes a
+# shipped-surface defect or a bookkeeping one:
+#   - P2 mechanical — the shipped surface itself is wrong, so an operator
+#     or the model sees the wrong behaviour: T-SKILL-FRONTMATTER-NORMAL,
+#     T-SKILL-HELP-MODE-PRESENT, T-SKILL-ARG-HINT-COMPLETE,
+#     T-SKILL-COMMAND-TRIGGER-CONSISTENT.
+#   - P3 advisory — the shipped surface is correct and only the
+#     code/doc bookkeeping has drifted: T-SKILL-DEFAULTS-DOC-SYNC.
 # --------------------------------------------------------------------------- #
 
 # Canonical class defaults per docs/dekspec-skill-flag-defaults.md.
@@ -5353,7 +5882,8 @@ _SKILL_CLASS_DEFAULTS: dict[str, dict[str, str]] = {
     "write-adr":          {"mode": "lite", "reasoning_effort": "max",  "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Grep Glob Bash Agent"},
     "write-ae":           {"mode": "lite", "reasoning_effort": "max",  "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Grep Glob Bash Agent"},
     "write-constitution": {"mode": "lite", "reasoning_effort": "max",  "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Grep Glob Bash Agent"},
-    "write-ggc":          {"mode": "lite", "reasoning_effort": "max",  "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Grep Glob Bash Agent"},
+    "write-corrections":  {"mode": "lite", "reasoning_effort": "max",  "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Grep Glob Bash Agent"},
+    "write-glossary":     {"mode": "lite", "reasoning_effort": "max",  "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Grep Glob Bash Agent"},
     "write-intent":       {"mode": "lite", "reasoning_effort": "max",  "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Grep Glob Bash Agent"},
     "write-sp":           {"mode": "lite", "reasoning_effort": "max",  "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Grep Glob Bash Agent"},
     "write-sv":           {"mode": "lite", "reasoning_effort": "max",  "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Grep Glob Bash Agent"},
@@ -5365,16 +5895,19 @@ _SKILL_CLASS_DEFAULTS: dict[str, dict[str, str]] = {
     # dispatch (high-risk; disable-model-invocation: true)
     "orchestrate-coding-session":     {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "true",  "allowed-tools": "Read Bash Agent"},
     "orchestrate-module-deepening":   {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "true",  "allowed-tools": "Read Bash Agent"},
-    "factory-dispatch-intent":  {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "true",  "allowed-tools": "Read Bash Agent"},
-    "factory-listen":           {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "true",  "allowed-tools": "Read Bash Agent"},
-    # diagnostic (read-mostly CLI-wrap probes; slash-invocation only, no sub-agent spawn)
-    "factory":                  {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "true",  "allowed-tools": "Read Bash"},
+    # The `factory`, `factory-dispatch-intent` and `factory-listen` keys were
+    # removed 2026-09-27 (ds-n3prf): their skills were excised in INT-099 when
+    # the factory surface moved to Dektora/dekfactory, and the doc's
+    # diagnostic-class row was deleted at the same time. The code table kept
+    # the keys for four months because nothing audited this direction;
+    # T-SKILL-DEFAULTS-DOC-SYNC now does.
     # recovery
     "archeology":              {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Grep Glob Bash"},
     "brownfield-ingest":       {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Grep Glob Bash"},
     # architecture (read-mostly source-architecture analysis; spawn Explore/Design-It-Twice sub-agents, propose-only)
     "analyze-module-depth": {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Grep Glob Bash Agent"},
     "audit-codebase": {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Grep Glob Bash Agent"},
+    "security-review":  {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Grep Glob Bash Agent"},
     # audit class row retired v0.98.0 (doctor-fidelity inlined into /doctor Stage 2)
     # review (read-only adversarial reviewers; reasoning_effort max, spawn lens sub-agents, no Write/Edit)
     "review-ib":          {"mode": "lite", "reasoning_effort": "max",  "disable-model-invocation": "false", "allowed-tools": "Read Grep Glob Bash Agent"},
@@ -5387,6 +5920,7 @@ _SKILL_CLASS_DEFAULTS: dict[str, dict[str, str]] = {
     "land-intent":        {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
     "using-dekspec":      {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
     "setup-dekspec":      {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
+    "setup-dektools":     {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
     "interview-me":       {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
     "diagnose-bug":           {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
     "debug-testfail":     {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
@@ -5682,6 +6216,289 @@ def _t_skill_arg_hint_complete(graph: SpecGraph) -> list[Finding]:
                     file_path=rel,
                 )
             )
+    return findings
+
+
+#: The authoritative class-defaults table, relative to the repo root. The
+#: doc calls itself AUTHORITATIVE; `_SKILL_CLASS_DEFAULTS` above is the
+#: runtime mirror. T-SKILL-DEFAULTS-DOC-SYNC keeps the two honest.
+_SKILL_FLAG_DEFAULTS_DOC = "docs/dekspec-skill-flag-defaults.md"
+
+
+def _read_command_files(graph: SpecGraph) -> list[Path]:
+    """Return every shipped plugin's `commands/<command>.md` wrapper.
+
+    Empty if no plugin source is present. Command wrappers are the
+    *slash-command* surface; `_read_skill_files` returns the *skill*
+    surface. A skill's trigger policy is only real if both agree, which
+    is what T-SKILL-COMMAND-TRIGGER-CONSISTENT checks.
+    """
+    out: list[Path] = []
+    for plugin in _SKILL_PLUGIN_NAMES:
+        cmd_dir = graph.repo_root / "plugins" / plugin / "commands"
+        if not cmd_dir.is_dir():
+            continue
+        for p in sorted(cmd_dir.iterdir()):
+            if not p.is_file() or p.suffix != ".md":
+                continue
+            if p.name.startswith(("_", ".")):
+                continue
+            out.append(p)
+    return sorted(out)
+
+
+def _skill_trigger_policy(skill_files: list[Path]) -> dict[str, str]:
+    """Map skill name -> effective `disable-model-invocation` value.
+
+    The SKILL.md's own declaration wins; a skill that omits the field
+    falls back to its class default, because that is what
+    T-SKILL-FRONTMATTER-NORMAL would make it declare.
+    """
+    policy: dict[str, str] = {}
+    for md in skill_files:
+        name = md.parent.name
+        values, _overrides = _parse_skill_frontmatter(md)
+        declared = values.get("disable-model-invocation")
+        if declared is None:
+            declared = _SKILL_CLASS_DEFAULTS.get(name, {}).get("disable-model-invocation")
+        if declared is not None:
+            policy[name] = declared.strip().strip("`\"'").lower()
+    return policy
+
+
+def _command_skill_targets(stem: str, text: str, candidates: set[str]) -> set[str]:
+    """Skills in `candidates` that the command wrapper `stem` dispatches.
+
+    Two signals, both deliberate:
+
+    * **Same name.** A plugin command and a plugin skill with the same
+      name share one `/plugin:name` slash surface, so the command *is*
+      that skill's wrapper.
+    * **Named invocation.** The body says ``the `X` skill`` — the shape
+      every wrapper in this repo uses for "invoke X via the Skill tool".
+
+    A slash-prefixed or namespaced mention (``/orchestrate-coding-session``,
+    ``/dekspec:orchestrate-coding-session``) is prose about another
+    surface, not an invocation, and is excluded by the lookbehind.
+    """
+    hits: set[str] = set()
+    if stem in candidates:
+        hits.add(stem)
+    for name in candidates:
+        pat = re.compile(r"(?<![-/:\w])" + re.escape(name) + r"`?\s+skill\b")
+        if pat.search(text):
+            hits.add(name)
+    return hits
+
+
+def _t_skill_command_trigger_consistent(graph: SpecGraph) -> list[Finding]:
+    """T-SKILL-COMMAND-TRIGGER-CONSISTENT (P2 mechanical) — a command
+    wrapper may not be model-invocable when the skill it dispatches
+    declares `disable-model-invocation: true`.
+
+    `disable-model-invocation: true` on a SKILL.md stops the model
+    reaching that skill directly. It does nothing about the skill's
+    slash-command wrapper: a wrapper that omits the key, or sets it
+    `false`, stays exposed to the model, and invoking the wrapper runs
+    the wrapper's body — which invokes the skill. The policy is then
+    decorative. That is exactly how the dispatch class's guard was
+    defeated for both of its skills (ds-9ht3a, verified 2026-09-27).
+
+    P2 mechanical, matching the rest of the T-SKILL-* enforcement rules:
+    the shipped surface really does behave wrongly, and the fix is one
+    frontmatter value. Removing the key does NOT fix it — absent means
+    model-invocable — so the fix is always to set the wrapper `true`.
+    """
+    skill_files = _read_skill_files(graph)
+    if not skill_files:
+        return []
+    policy = _skill_trigger_policy(skill_files)
+    guarded = {name for name, value in policy.items() if value == "true"}
+    if not guarded:
+        return []
+
+    findings: list[Finding] = []
+    for cmd in _read_command_files(graph):
+        rel = str(cmd.relative_to(graph.repo_root))
+        try:
+            text = cmd.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        values, _overrides = _parse_skill_frontmatter(cmd)
+        declared = values.get("disable-model-invocation")
+        # Absent is the harness default: model-invocable.
+        cmd_policy = (declared or "false").strip().strip("`\"'").lower()
+        if cmd_policy == "true":
+            continue
+        for skill in sorted(_command_skill_targets(cmd.stem, text, guarded)):
+            findings.append(
+                Finding(
+                    severity="P2",
+                    rule="T-SKILL-COMMAND-TRIGGER-CONSISTENT",
+                    artifact_id=f"command:{cmd.stem}",
+                    message=(
+                        f"Command wrapper declares "
+                        f"`disable-model-invocation: {declared or '(absent)'}` "
+                        f"but dispatches skill `{skill}`, which declares "
+                        f"`disable-model-invocation: true`. The model can "
+                        f"reach the guarded skill through the wrapper, so "
+                        f"the skill's policy is not enforced. Set "
+                        f"`disable-model-invocation: true` on the wrapper "
+                        f"(omitting the key leaves it model-invocable). See "
+                        f"docs/dekspec-skill-flag-defaults.md."
+                    ),
+                    fix_kind="mechanical",
+                    file_path=rel,
+                )
+            )
+    return findings
+
+
+def _parse_skill_defaults_doc(path: Path) -> set[str] | None:
+    """Skill names listed in the doc's `## Canonical defaults` table.
+
+    Returns `None` when the doc or that section is unreadable, so the
+    caller can distinguish "no rows" from "could not parse". Only the
+    Canonical-defaults table is read — the prose notes below it name
+    deliberately-removed skills (`doctor-fidelity`, `/dekspec:factory`,
+    `record-divergence`) and must not be mistaken for live rows.
+    """
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    m = re.search(
+        r"^##\s+Canonical defaults\s*$(.*?)(?=^##\s)",
+        text,
+        re.MULTILINE | re.DOTALL,
+    )
+    if not m:
+        return None
+    names: set[str] = set()
+    for line in m.group(1).split("\n"):
+        line = line.strip()
+        if not line.startswith("|"):
+            continue
+        cells = [c.strip() for c in line.strip("|").split("|")]
+        if len(cells) < 2:
+            continue
+        skills_cell = cells[1]
+        if skills_cell.lower() == "skills":
+            continue  # header row
+        if skills_cell and set(skills_cell) <= set("-: "):
+            continue  # separator row
+        for tok in skills_cell.split(","):
+            tok = tok.strip().strip("`*_ ")
+            if re.fullmatch(r"[a-z][a-z0-9-]*", tok):
+                names.add(tok)
+    return names
+
+
+def _t_skill_defaults_doc_sync(graph: SpecGraph) -> list[Finding]:
+    """T-SKILL-DEFAULTS-DOC-SYNC (P3 advisory) — the `_SKILL_CLASS_DEFAULTS`
+    table in this module and the `## Canonical defaults` table in
+    docs/dekspec-skill-flag-defaults.md name the same skills, and every
+    name is a skill that actually ships.
+
+    T-SKILL-FRONTMATTER-NORMAL enforces SKILL.md against the code table;
+    nothing enforced the code table against the doc that calls itself
+    AUTHORITATIVE, so both directions rotted silently (ds-n3prf):
+    `security-review` and `setup-dektools` were registered in code and
+    never documented, while three excised `factory*` keys outlived their
+    skills by four months.
+
+    P3 advisory, unlike its P2 siblings: when this rule fires, every
+    shipped skill still behaves correctly — only the two mirrors of the
+    bookkeeping disagree. It stays out of the ADR-018 P0/P1/P2 doctor
+    gate on purpose.
+
+    The two table-vs-table checks run wherever any plugin ships. The
+    "no longer ships" check needs every governed plugin present: under
+    ADR-047 the DekTools toolkit is optional, and in a core-only tree a
+    toolkit key is absent-by-design, not stale. Firing there would give
+    core a dependency on the toolkit, which ADR-047 forbids.
+    """
+    skill_files = _read_skill_files(graph)
+    if not skill_files:
+        return []  # consumer repo without the plugin tree
+
+    doc_rel = _SKILL_FLAG_DEFAULTS_DOC
+    documented = _parse_skill_defaults_doc(graph.repo_root / doc_rel)
+    if documented is None:
+        return [
+            Finding(
+                severity="P3",
+                rule="T-SKILL-DEFAULTS-DOC-SYNC",
+                artifact_id="skill-defaults-table",
+                message=(
+                    f"Could not read a `## Canonical defaults` table from "
+                    f"{doc_rel}. That table is the authoritative mirror of "
+                    f"`_SKILL_CLASS_DEFAULTS`; without it the code table is "
+                    f"unaudited."
+                ),
+                fix_kind="mechanical",
+                file_path=doc_rel,
+            )
+        ]
+
+    shipped = {md.parent.name for md in skill_files}
+    registered = set(_SKILL_CLASS_DEFAULTS)
+    all_plugins_present = all(
+        (graph.repo_root / "plugins" / plugin / "skills").is_dir()
+        for plugin in _SKILL_PLUGIN_NAMES
+    )
+    findings: list[Finding] = []
+
+    for name in sorted(registered - documented):
+        findings.append(
+            Finding(
+                severity="P3",
+                rule="T-SKILL-DEFAULTS-DOC-SYNC",
+                artifact_id=f"skill:{name}",
+                message=(
+                    f"Skill `{name}` is registered in `_SKILL_CLASS_DEFAULTS` "
+                    f"but is absent from the `## Canonical defaults` table in "
+                    f"{doc_rel}. Add it to the row for its class."
+                ),
+                fix_kind="mechanical",
+                file_path=doc_rel,
+            )
+        )
+
+    for name in sorted(documented - registered):
+        findings.append(
+            Finding(
+                severity="P3",
+                rule="T-SKILL-DEFAULTS-DOC-SYNC",
+                artifact_id=f"skill:{name}",
+                message=(
+                    f"Skill `{name}` is listed in the `## Canonical defaults` "
+                    f"table in {doc_rel} but has no `_SKILL_CLASS_DEFAULTS` "
+                    f"key in tooling/dekspec/fidelity_audit/linkage.py, so "
+                    f"nothing enforces its frontmatter."
+                ),
+                fix_kind="mechanical",
+                file_path=doc_rel,
+            )
+        )
+
+    stale = sorted(registered - shipped) if all_plugins_present else []
+    for name in stale:
+        findings.append(
+            Finding(
+                severity="P3",
+                rule="T-SKILL-DEFAULTS-DOC-SYNC",
+                artifact_id=f"skill:{name}",
+                message=(
+                    f"`_SKILL_CLASS_DEFAULTS` carries a key for `{name}`, but "
+                    f"no `plugins/*/skills/{name}/SKILL.md` ships. Remove the "
+                    f"stale key (and its doc row) or restore the skill."
+                ),
+                fix_kind="mechanical",
+                file_path="tooling/dekspec/fidelity_audit/linkage.py",
+            )
+        )
+
     return findings
 
 

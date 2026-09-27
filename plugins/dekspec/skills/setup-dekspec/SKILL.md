@@ -7,7 +7,7 @@ reasoning_effort: high
 disable-model-invocation: false
 allowed-tools: Read Write Edit Bash
 argument-hint: [--help] [--at PATH]
-related_skills: [using-dekspec, write-ggc, write-code-beads]
+related_skills: [using-dekspec, write-glossary, write-code-beads]
 ---
 
 Run the per-repo DekSpec initial-configuration walkthrough: front-end the
@@ -32,7 +32,7 @@ surface of its own.
 Walk me through the per-repo DekSpec config one question at a time, recommend a
 sensible default per question, and persist each answer with `dekspec config set`
 so it round-trips. When a question is genuinely a domain-term decision, route it
-to /dekspec:write-ggc rather than inventing a definition inline.
+to /dekspec:write-glossary rather than inventing a definition inline.
 ```
 
 ## Mode Detection
@@ -144,6 +144,6 @@ At runtime, render the manifest per `_lib/help_mode_template.md` and stop.
 ## Related
 
 - `/dekspec:using-dekspec` — the onboarding entry point that scaffolds + toggles the guardrail + renders the catalog, and calls this skill for the configuration step.
-- `/dekspec:write-ggc` — domain-term clarifications surfaced during setup route here.
+- `/dekspec:write-glossary` — domain-term clarifications surfaced during setup route here.
 - `dekspec config get` / `dekspec config set` — the CLI surface this skill front-ends.
 - AE-006 (Skills Library) — the AE this skill registers under; AE-005 (CLI) — the config verb it drives.

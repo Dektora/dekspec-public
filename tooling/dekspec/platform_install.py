@@ -55,7 +55,9 @@ pi           ``<target>/.pi/...``. Pi (pi.dev) minimal terminal harness.
 """
 from __future__ import annotations
 
+import json
 import shutil
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -76,9 +78,23 @@ class EmitResult:
     written: list[Path] = field(default_factory=list)
 
 
-def emit(platform: str, *, source_dir: Path, target_dir: Path) -> EmitResult:
+def emit(
+    platform: str,
+    *,
+    source_dir: Path,
+    target_dir: Path,
+    dektools_source: Path | None = None,
+    dektools_tools: Iterable[str] = (),
+) -> EmitResult:
     """Emit the per-host tree for ``platform`` from ``source_dir`` into
     ``target_dir``.
+
+    ``dektools_source`` + ``dektools_tools`` add the à-la-carte DekTools
+    selection (ADR-047): exactly the named tools are emitted alongside core,
+    and catalogued tools that are *not* named are pruned, so re-running after
+    a selection change both adds and removes. Omitting them — or passing an
+    empty selection — leaves the output byte-identical to a core-only emit,
+    which is ADR-047's core self-sufficiency property.
 
     Returns an :class:`EmitResult` listing the written paths. Raises
     :class:`HarnessUnsupported` (``primitive="install"``) for an unknown
@@ -93,7 +109,109 @@ def emit(platform: str, *, source_dir: Path, target_dir: Path) -> EmitResult:
     target_dir = Path(target_dir)
     result = EmitResult(platform=platform)
     layout(source_dir, target_dir, result)
+    _apply_dektools_selection(
+        platform, dektools_source, dektools_tools, target_dir, result
+    )
     return result
+
+
+# --------------------------------------------------------------------------- #
+# DekTools a-la-carte selection (ADR-047)
+# --------------------------------------------------------------------------- #
+def _catalogued_tools(dektools_source: Path) -> set[str]:
+    """Every tool name the DekTools catalog declares.
+
+    Read from the source tree rather than via `dekspec_config` so this module
+    keeps its single responsibility (and no import cycle): the plugin source
+    is the thing that knows its own catalog.
+    """
+    path = dektools_source / "tool-catalog.json"
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return set()
+    return {t["name"] for t in payload.get("tools", []) if "name" in t}
+
+
+def _apply_dektools_selection(
+    platform: str,
+    dektools_source: Path | None,
+    tools: Iterable[str],
+    target_dir: Path,
+    result: EmitResult,
+) -> None:
+    """Emit the selected DekTools tools and prune the deselected ones."""
+    if dektools_source is None:
+        return
+    dektools_source = Path(dektools_source)
+    if not dektools_source.is_dir():
+        # A pip/pipx-installed engine carries no plugin tree. Core is
+        # self-sufficient, so this is silence, not an error.
+        return
+
+    host_root = target_dir / _HOST_ROOTS[platform]
+    catalogued = _catalogued_tools(dektools_source)
+    selected = [t for t in dict.fromkeys(tools) if t in catalogued]
+
+    # Names core just wrote. Core and DekTools ship disjoint skill names
+    # today; if that ever stops being true, pruning must not delete the core
+    # copy just because the name appears in the DekTools catalog.
+    core_written = {
+        p.relative_to(host_root).parts[1]
+        for p in result.written
+        if p.is_relative_to(host_root)
+        and len(p.relative_to(host_root).parts) > 1
+        and p.relative_to(host_root).parts[0] == "skills"
+    }
+
+    for name in sorted(catalogued - set(selected) - core_written):
+        _prune_tool(host_root, name)
+
+    # The ADR-047 preflight (ds-4985i). Every dekspec-required SKILL.md tells
+    # the agent to run the guard at `../../scripts/dependency_guard.py`,
+    # resolved from the skill's own directory. That one relative path holds in
+    # all three layouts — monorepo, packaged plugin, and this emitted tree —
+    # but only if the guard and its catalog are mirrored here at the same
+    # offsets they occupy in the plugin root. Without this the instruction
+    # points at nothing and the guard cannot fire on any consumer install.
+    if selected:
+        _copy_file(
+            dektools_source / "scripts" / "dependency_guard.py",
+            host_root / "scripts" / "dependency_guard.py",
+            target_dir,
+            result,
+        )
+        _copy_file(
+            dektools_source / "tool-catalog.json",
+            host_root / "tool-catalog.json",
+            target_dir,
+            result,
+        )
+    else:
+        # No tools selected means no DekTools surface at all.
+        shutil.rmtree(host_root / "scripts", ignore_errors=True)
+        (host_root / "tool-catalog.json").unlink(missing_ok=True)
+
+    for name in selected:
+        src = dektools_source / "skills" / name
+        if src.is_dir():
+            _copy_tree(src, host_root / "skills" / name, target_dir, result)
+        command = dektools_source / "commands" / f"{name}.md"
+        if command.is_file():
+            _copy_file(
+                command, host_root / "commands" / f"{name}.md", target_dir, result
+            )
+
+
+def _prune_tool(host_root: Path, name: str) -> None:
+    """Remove one deselected tool's emitted surface.
+
+    Scoped to the exact paths an emit would have written for that tool, so
+    "non-destructive" holds: a disabled tool loses its surface, and nothing
+    else in the host tree is touched.
+    """
+    shutil.rmtree(host_root / "skills" / name, ignore_errors=True)
+    (host_root / "commands" / f"{name}.md").unlink(missing_ok=True)
 
 
 # --------------------------------------------------------------------------- #
@@ -232,6 +350,18 @@ def _write_marker(dst: Path, text: str, target_dir: Path, result: EmitResult) ->
     dst.write_text(text)
     result.written.append(dst)
 
+
+# Where each layout roots its skills/ + commands/ tree. Kept beside
+# `_LAYOUTS` because the two must agree: the DekTools selection pass writes
+# and prunes under exactly this directory.
+_HOST_ROOTS = {
+    "claude": ".claude",
+    "codex": ".codex",
+    "antigravity": ".antigravity",
+    "cursor": ".cursor",
+    "copilot": ".github",
+    "pi": ".pi",
+}
 
 _LAYOUTS = {
     "claude": _layout_claude,

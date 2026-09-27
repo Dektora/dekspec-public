@@ -329,9 +329,9 @@ Artifact headers `## Modified` and `## Amendment Log` must co-advance. For each 
 
 #### 2H. Glossary Consistency
 
-- [ ] **2H.1 Sample-drift check (SI-FA-3).** Sample N=10 glossary terms uniformly at random. For each: grep the corpus for usages and flag any usage where the surrounding sentence redefines or contradicts. Findings are recorded as GGC candidates (via `/write-ggc`), not hard-stop failures. Fix kind: **semantic**.
+- [ ] **2H.1 Sample-drift check (SI-FA-3).** Sample N=10 glossary terms uniformly at random. For each: grep the corpus for usages and flag any usage where the surrounding sentence redefines or contradicts. Findings are recorded as GGC candidates (via `/write-glossary`), not hard-stop failures. Fix kind: **semantic**.
 - [ ] **2H.2 Deprecated-alias sweep** (mechanical, hard-fail). Parse `dekspec/domain-glossary.md` for the deprecated-aliases list. Grep the corpus for each deprecated alias. Any occurrence outside an Amendment Log historical note = IMPORTANT. Fix kind: **mechanical**.
-- [ ] **2H.3 Composite-term auto-promotion.** A multi-word phrase consistently capitalized or backticked appearing in ≥2 artifacts but absent from glossary → file a `/write-ggc` candidate.
+- [ ] **2H.3 Composite-term auto-promotion.** A multi-word phrase consistently capitalized or backticked appearing in ≥2 artifacts but absent from glossary → file a `/write-glossary` candidate.
 
 #### 2I. Cross-Artifact Coherence
 

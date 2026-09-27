@@ -101,6 +101,13 @@ rules:
   - T-SKILL-FRONTMATTER-NORMAL
   - T-SKILL-HELP-MODE-PRESENT
   - T-SKILL-ARG-HINT-COMPLETE
+  # ds-9ht3a — P2 mechanical: a command wrapper that stays model-invocable
+  # while the skill it dispatches declares `disable-model-invocation: true`.
+  - T-SKILL-COMMAND-TRIGGER-CONSISTENT
+  # ds-n3prf — P3 advisory: `_SKILL_CLASS_DEFAULTS` vs the authoritative
+  # table in docs/dekspec-skill-flag-defaults.md vs what actually ships.
+  # Bookkeeping only; stays out of the P0/P1/P2 doctor gate.
+  - T-SKILL-DEFAULTS-DOC-SYNC
   # Provisional incubation visibility (INT-provisional-audit-treatment
   # per MSN-014). Both P3 advisory; never blocks.
   - LINK-PROVISIONAL-TREE-PRESENT
@@ -183,6 +190,27 @@ rules:
   - T-GLOSSARY-DUPLICATE
   - T-GLOSSARY-MISSING-DEFINITION
   - T-GLOSSARY-DANGLING-ALIAS
+  # INT-191 — terminology pipeline: the cross-artifact half of write-ggc's
+  # Audit Mode, moved into the engine when that skill split into
+  # write-glossary + write-corrections. The corrections log is read as a
+  # non-IR file (no 11th IR kind); the glossary side is the DOMAIN-GLOSSARY
+  # IR. Severity follows the T-SKILL split — P2 where the shipped surface is
+  # itself wrong, P3 where only bookkeeping drifted or the check is a
+  # heuristic.
+  #
+  # P2: a promotion the pipeline decided on that never reached the glossary.
+  - T-CORRECTIONS-PROMOTION-MISSED
+  - LINK-CORRECTIONS-GLOSSARY-ORPHAN
+  # P2: an authoring skill that corrects a misinterpretation without routing
+  # it to `/write-corrections --log`, so the recurrence counter never moves.
+  # Library-scoped — needs a `plugins/` tree to fire at all.
+  - T-CORRECTIONS-PIPELINE-WIRING
+  # P3 advisory: threshold bypassed, entry redundant, entry gone cold, or a
+  # separator/case variant of a canonical term. Never gates.
+  - T-CORRECTIONS-PROMOTION-PREMATURE
+  - T-CORRECTIONS-ENTRY-STALE
+  - LINK-CORRECTIONS-GLOSSARY-REDUNDANT
+  - T-TERM-VARIANT-COLLISION
   - T-VISION-MISSING-WHY
   - T-VISION-INCOMPLETE
   # IB-004 / WS-005 — Constitution L0 singleton structural completeness
@@ -203,6 +231,11 @@ rules:
 parameters:
   LINK-MSN-STALE:
     days_threshold: 90
+
+  # INT-191 — an active single-recurrence correction older than this is
+  # advisory-stale (write-ggc Audit Step 3). Flag only; never gates.
+  T-CORRECTIONS-ENTRY-STALE:
+    stale_days: 90
 
   # ADR-016 Open Issue 1 — repo-wide active-Intent backlog health. The rule
   # fires a single advisory (P3) finding when the count of active Intents

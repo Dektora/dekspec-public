@@ -10,6 +10,8 @@ allowed-tools: Read Grep Glob Bash Agent
 argument-hint: [--help] [--teaching] [--scope PATH]
 ---
 
+> **Preflight (ADR-047).** This is a `dekspec-required` tool. From this skill's own directory run `python ../../scripts/dependency_guard.py analyze-module-depth` before anything else — it exits non-zero with install instructions when the DekSpec engine is absent. (The path is relative to this file so it resolves identically in the monorepo, a packaged plugin install, and an emitted per-host tree.) If it fires, stop and surface its message; do not proceed.
+
 > **Shared `_lib` lives in the DekSpec core plugin** (ADR-047). Resolve it with `dekspec resource lib <name> --path-only`, then read that path — a relative `../_lib/` link does not cross the plugin boundary.
 Surface architectural friction and propose **deepening opportunities** —
 refactors that turn shallow modules into deep ones. The aim is testability and
@@ -132,12 +134,19 @@ At runtime, render the manifest per `_lib/help_mode_template.md` and stop.
 
 ## Teaching Mode
 
-Teaching Mode walks an engineer new to deepening through the same workflow as
-the default mode, but slowly and with explanation at each step. It is **not** a
-fast one-shot — it is the workflow with teaching scaffolding.
+See ``_lib/teaching_mode.md`` (resolve: `dekspec resource lib teaching_mode`) for the canonical
+Teaching Mode contract — a tutorial for an engineer meeting this surface for the first time,
+explicitly **not** `--review` and **not** a fast one-shot, walked one unit at a time and exited
+with a summary of what was covered.
 
-Run the three **Workflow Mode** steps below, and before each step pause to
-explain:
+**How this skill instantiates the ritual.** The substrate's walk unit is a required template
+section, because the substrate was written for the `write-*` authoring skills. This skill authors
+no artifact (see §Boundary), so its walk unit is a **Workflow Mode step**: run the three steps
+below for real, pausing before each one to teach it. Ritual step 4 — name a failing check rather
+than silently accepting it — applies unchanged to whatever each step's own output reports. Exit
+when the engineer can run the default mode unaided, and stop there: land nothing.
+
+Teaching payload, delivered before the matching step:
 
 1. **Before step 1 (Explore)** — explain what a *deep* vs *shallow* module is
    (see [language.md](language.md)), and the **deletion test** that decides it.
@@ -149,9 +158,6 @@ explain:
 3. **Before step 3 (Interview)** — explain the Design-It-Twice interview loop and
    that the skill stops at the design boundary — it opens no beads and lands
    nothing.
-
-After the walk-through, confirm the engineer can run the default mode unaided,
-and stop.
 
 ## Workflow Mode
 

@@ -10,6 +10,8 @@ argument-hint: [--groom | --help] [path-or-text-or-bead-id]
 related_skills: [write-code-beads, send-issue, diagnose-bug, write-intent]
 ---
 
+> **Preflight (ADR-047).** This is a `dekspec-required` tool. From this skill's own directory run `python ../../scripts/dependency_guard.py write-issue-beads` before anything else — it exits non-zero with install instructions when the DekSpec engine is absent. (The path is relative to this file so it resolves identically in the monorepo, a packaged plugin install, and an emitted per-host tree.) If it fires, stop and surface its message; do not proceed.
+
 > **Shared `_lib` lives in the DekSpec core plugin** (ADR-047). Resolve it with `dekspec resource lib <name> --path-only`, then read that path — a relative `../_lib/` link does not cross the plugin boundary.
 Ingest arbitrary input and triage it into the non-coding `br` backlog.
 

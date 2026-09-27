@@ -395,29 +395,9 @@ Use this mode when:
 
 ## Write-Time CoW Guard (INT-082 phase 4)
 
-Before any edit to a canonical artifact (anything under `dekspec/<kind-dir>/`), consult the CoW guard:
+See [`_lib/cow_write_guard.md`](../_lib/cow_write_guard.md) for the canonical contract.
 
-```bash
-dekspec library cow-stage <path-to-canonical> [--incubation <slug>] [--at <repo>]
-```
-
-If the target path is claimed by a pre-ACCEPTED Intent (DRAFT/PROPOSED) via that Intent's `Components affected` globs, the verb:
-
-1. Copies the canonical to `dekspec/provisional/<incubation-slug>/<KIND>-provisional-<file-slug>.md`.
-2. Stamps `replaces: <CANONICAL-ID>` in the frontmatter so the eventual `promote-provisional` run does a REPLACE (preserving the canonical ID) instead of allocating a new one.
-3. Returns the new provisional path. Edit that file instead; the canonical stays frozen.
-
-If the path is not claimed by any pre-ACCEPTED Intent, the verb errors unless you pass an explicit `--incubation <slug>` (the canonical-only path is the normal edit flow).
-
-**Skill discipline.** Inside this skill body, before any canonical-file `Edit`/`Write` call:
-
-1. Compute the target path you intend to write.
-2. Run `dekspec library cow-stage <target-path>` once. Surface the verb's stdout to the engineer.
-3. If the verb exits 0 with a new provisional path printed, redirect the edit to that path.
-4. If the verb exits 1 (no claim + no `--incubation`), proceed with the canonical edit as normal — the canonical is unclaimed and the edit is direct-flow legal.
-
-**Audit pairing.** The `T-COW-CANONICAL-EDITED` rule (P2 mechanical) fires on every `git diff --name-only main` entry that is claimed AND lacks a provisional sibling with `replaces:` set — so a skill that skips this guard surfaces as advisory in the next `dekspec audit linkage` run, but never blocks.
-
+**Form:** kind-dir — canonical artifacts under `dekspec/<kind-dir>/`.
 
 ## Common Pitfalls
 

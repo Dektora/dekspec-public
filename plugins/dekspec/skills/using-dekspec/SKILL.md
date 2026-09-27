@@ -160,7 +160,8 @@ Use the table below as a quick reference sheet:
 |---|---|---|
 | **`write-sv`** | System Vision (L0 Singleton) | *"Let's write/edit the System Vision"* |
 | **`write-constitution`**| Project Constitution (L0 Singleton) | *"Review or amend the Constitution"* |
-| **`write-ggc`** | Glossary / Guidance / Corrections (L0 Singleton) | *"Log a correction"* / *"Add a glossary term"* |
+| **`write-glossary`** | Domain Glossary (L0 Singleton) | *"Add a glossary term"* / *"Extract term candidates"* |
+| **`write-corrections`** | Terminology Corrections (L0 Singleton) | *"Log a correction"* / *"Review open corrections"* |
 | **`write-ae`** | Architecture Element (AE) | *"Create a new Architecture Element for [component]"* |
 | **`write-adr`** | Architectural Decision Record (ADR) | *"Let's author an ADR choosing X over Y"* |
 | **`write-sp`** | Security Profile (SP) | *"Capture the security posture for [context]"* |

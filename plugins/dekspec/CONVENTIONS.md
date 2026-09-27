@@ -59,7 +59,7 @@ Heavy, stateful expertise for authoring an artifact (an AE, ADR, IC, WS, IB, Int
 - **Cost**: 1 skill dir (`skills/<name>/SKILL.md`).
 
 **Pattern-B members today:**
-- Authoring (lite): `write-adr`, `write-ae`, `write-constitution`, `write-evals`, `write-ggc`, `write-intent`, `write-sp`, `write-sv`, `write-tests`
+- Authoring (lite): `write-adr`, `write-ae`, `write-constitution`, `write-corrections`, `write-evals`, `write-glossary`, `write-intent`, `write-sp`, `write-sv`, `write-tests`
 - Authoring (deep, mode=full): `write-ibs`, `write-ic`, `write-mission`, `write-ws`
 - Utility authoring: `write-code-beads`
 

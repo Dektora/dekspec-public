@@ -9,6 +9,8 @@ allowed-tools: Read Grep Glob Bash
 argument-hint: [--help] [--teaching] [PATH]
 ---
 
+> **Preflight (ADR-047).** This is a `dekspec-required` tool. From this skill's own directory run `python ../../scripts/dependency_guard.py brownfield-ingest` before anything else — it exits non-zero with install instructions when the DekSpec engine is absent. (The path is relative to this file so it resolves identically in the monorepo, a packaged plugin install, and an emitted per-host tree.) If it fires, stop and surface its message; do not proceed.
+
 > **Shared `_lib` lives in the DekSpec core plugin** (ADR-047). Resolve it with `dekspec resource lib <name> --path-only`, then read that path — a relative `../_lib/` link does not cross the plugin boundary.
 Drive the end-to-end brownfield-ingest workflow: run `dekspec ingest` on an
 inherited markdown document, walk the engineer through the confidence-scored
@@ -77,13 +79,20 @@ At runtime, render the manifest per `_lib/help_mode_template.md` and stop.
 
 ## Teaching Mode
 
-Teaching Mode walks an engineer who is new to brownfield ingest through the
-same workflow as the default mode, but slowly and with explanation at each
-step. It is **not** a re-run of a prior ingest and it is **not** a fast one-shot
-— it is the workflow with teaching scaffolding.
+See ``_lib/teaching_mode.md`` (resolve: `dekspec resource lib teaching_mode`) for the canonical
+Teaching Mode contract — a tutorial for an engineer meeting this surface for the first time,
+explicitly **not** `--review` and **not** a fast one-shot, walked one unit at a time and exited
+with a summary of what was covered.
 
-Run the five **Workflow Mode** steps below, and before each step pause to
-explain:
+**How this skill instantiates the ritual.** The substrate's walk unit is a required template
+section, because the substrate was written for the `write-*` authoring skills. This skill authors
+no artifact (see §Boundary), so its walk unit is a **Workflow Mode step**: run the five steps
+below for real, pausing before each one to teach it. Ritual step 4 — name a failing check rather
+than silently accepting it — maps to the classification report's low-confidence and
+`UNCLASSIFIED` rows: call them out, do not wave them through. Exit when the engineer can run the
+default mode unaided, and stop there: promote nothing.
+
+Teaching payload, delivered before the matching step:
 
 1. **Before step (a)** — explain what brownfield ingest is *for*: an inherited
    document is prose, not DekSpec artifacts; the ingest command does the first
@@ -105,9 +114,6 @@ explain:
 5. **Before step (e)** — explain the staging-directory boundary: nothing has
    landed in the live `dekspec/` tree; the drafts are unpromoted and the
    engineer copies the keepers in by hand as part of promotion.
-
-After the walk-through, confirm the engineer can now run the default mode
-unaided, and stop.
 
 ## Workflow Mode
 

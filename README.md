@@ -15,7 +15,7 @@ A five-layer **agentic-(software-)engineering toolkit** for AI-augmented teams �
 - **Human oversight** — gates every change behind the No Specless Edits guardrail, a two-tier non-sycophantic review pipeline, and operator-confirmed merge.
 - **Observable development** — verifies outcomes against the spec, not just the tests, and feeds what it learns back into the rules.
 
-DekSpec is shipped as a Python library + CLI + Claude Code skills + markdown templates, vendored into consumer repos via a single install script. The current version is **v0.123.0**.
+DekSpec is shipped as a Python library + CLI + Claude Code skills + markdown templates, vendored into consumer repos via a single install script. The current version is **v0.124.0**.
 
 ## What's here
 
@@ -23,8 +23,9 @@ DekSpec is shipped as a Python library + CLI + Claude Code skills + markdown tem
 |------|----------|
 | `tooling/dekspec/` | Python package: Constraint Compiler (parsers + 11 IR schemas + emitters), fidelity audit (~80 audit rules across the L-, T-, and D- families), persistence layer (SQLite-indexed run history), and the `dekspec` CLI. |
 | `tooling/dekspec/schemas/` | JSON Schema Draft 2020-12 definitions (YAML) for each artifact type. Shipped as package data; loadable via `importlib.resources`. |
-| `plugins/dekspec/skills/` | 37 Claude Code skills. **Authoring:** `/write-sv`, `/write-constitution`, `/write-ae`, `/write-adr`, `/write-ws`, `/write-ic`, `/write-ibs`, `/write-intent`, `/write-mission`, `/write-ggc`, `/write-sp`, `/write-evals`, `/write-tests`, `/write-code-beads`, `/write-issue-beads`. **Lifecycle + orchestration:** `/spec-intent`, `/orchestrate-intent`, `/orchestrate-coding-session`, `/land-intent`, `/review-ib`, `/review-pr`. **Brownfield + recovery:** `/archeology`, `/brownfield-ingest`, `/diagnose-bug`, `/debug-testfail`, `/coding-session-forensics`, `/rotation-handoff`. **Architecture + exploration:** `/audit-codebase`, `/analyze-module-depth`, `/orchestrate-module-deepening`, `/prototype`, `/spike`, `/interview-me`, `/write-goal-loop-contract`, `/pr-branch`. **Onboarding:** `/using-dekspec`, `/setup-dekspec`. Ship through the Claude Code plugin marketplace at `Dektora/dekspec`. |
-| `plugins/dekspec/commands/` | Slash-command wrappers + CLI mirrors: `/doctor`, `/compile`, `/validate-artifact`, `/migrate`, `/upgrade`, `/graph-export` (CLI verb mirrors); plus Skill-wrapper pairs for `/archeology`, `/brownfield-ingest`, `/orchestrate-coding-session`, `/orchestrate-intent`, `/using-dekspec`. |
+| `plugins/dekspec/skills/` | 25 Claude Code skills — **the spec machine** (ADR-047 core). **Authoring:** `/write-sv`, `/write-constitution`, `/write-ae`, `/write-adr`, `/write-ws`, `/write-ic`, `/write-ibs`, `/write-intent`, `/write-mission`, `/write-ggc`, `/write-sp`, `/write-evals`, `/write-tests`, `/write-code-beads`. **Lifecycle + orchestration:** `/spec-intent`, `/orchestrate-intent`, `/orchestrate-coding-session`, `/land-intent`, `/review-ib`, `/review-pr`, `/pr-branch`, `/use-worktrees`, `/write-goal-loop-contract`. **Onboarding:** `/using-dekspec`, `/setup-dekspec`. Ships as the `dekspec` plugin through the Claude Code marketplace at `Dektora/dekspec-public`. |
+| `plugins/dekspec/commands/` | Slash-command wrappers + CLI mirrors: `/compile`, `/doctor`, `/graph-export`, `/migrate`, `/validate-artifact`, `/man`, `/send-issue` (CLI verb mirrors); plus Skill-wrapper pairs for `/spec-intent`, `/orchestrate-intent`, `/orchestrate-coding-session`, `/land-intent`, `/pr-branch`, `/use-worktrees`, `/using-dekspec`, `/setup-dekspec`, `/deepen-until-dry`, `/write-goal-loop-contract`. |
+| `plugins/dektools/` | **DekTools** — the optional operator toolkit shipped as a *sibling* plugin (ADR-047): project boards (`/prj-mgr`), code-quality & security review (`/audit-codebase`, `/analyze-module-depth`, `/orchestrate-module-deepening`, `/security-review`), brownfield onboarding (`/brownfield-ingest`, `/archeology`), handoff (`/rotation-handoff`), brainstorming (`/interview-me`), troubleshoot (`/coding-session-forensics`, `/debug-testfail`, `/diagnose-bug`), explore (`/prototype`, `/spike`), issue-tracker glue (`/write-issue-beads`), and the à-la-carte selector (`/setup-dektools`). Installed separately as `dektools@dekspec`; **nothing is on by default**. `tool-catalog.json` is the authoritative roster. See `plugins/dektools/README.md`. |
 | `templates/` | Artifact templates (System Vision, Constitution, ADR, AE, WS, IC, IB, Intent, Mission, Domain Glossary, Context Spec, Security Profile, plus a checklists subdirectory). |
 | `docs/` | Methodology docs: `dekspec-operating-guide.md`, `dekspec-quick-reference.md`, `architecture-frameworks-reference.md`, plus the framework's own `architecture.md`. |
 | `.beads/` | Project's own bead tracker (`br` CLI; SQLite + JSONL). |
@@ -218,12 +219,12 @@ Steps 1–3 are host-agnostic. Re-run to upgrade. For `--platform claude`, plugi
 
 CLI only via pipx (isolated venv):
 ```bash
-pipx install "git+https://github.com/Dektora/dekspec-public.git@v0.123.0"
+pipx install "git+https://github.com/Dektora/dekspec-public.git@v0.124.0"
 ```
 
 CLI only into a project venv:
 ```bash
-pip install "git+https://github.com/Dektora/dekspec-public.git@v0.123.0"
+pip install "git+https://github.com/Dektora/dekspec-public.git@v0.124.0"
 ```
 
 Plugin only (in a Claude Code session OR via the `claude` CLI):
@@ -232,12 +233,48 @@ claude plugin marketplace add Dektora/dekspec-public
 claude plugin install dekspec@dekspec
 ```
 
+### DekTools — the optional operator toolkit (second plugin)
+
+DekSpec ships **two** plugins from the one marketplace. `dekspec` is the spec machine and is self-sufficient — it runs the whole `author → decompose → audit → review → orchestrate → code → COMPLETE` flow with nothing else installed. **DekTools** (`dektools`) is the optional sibling holding the helper tools you reach for *around* that machine: project boards, code-quality and security review, brownfield onboarding, handoff, troubleshooting, exploration, and issue-tracker glue (**ADR-047**).
+
+`scripts/install.sh` installs the core plugin only. Add the toolkit deliberately:
+
+```bash
+# DekSpec alone — the default, and a complete system
+claude plugin marketplace add Dektora/dekspec-public
+claude plugin install dekspec@dekspec
+
+# DekSpec + DekTools — add the helpers
+claude plugin install dektools@dekspec
+```
+
+**The dependency guard is per tool, not per plugin.** Every DekTools tool declares a `dependency_tier` in `plugins/dektools/tool-catalog.json`, and the guard keys on it — the probe is simply `dekspec` on PATH:
+
+- **`dekspec-required`** (the default, and most of the suite) — the tool imports the engine, reads the IR, or keys off the audit/review model. With DekSpec absent it **refuses loudly** with an install remediation, rather than failing with a silent missing-`_lib` error.
+- **`dekspec-enhanced`** — zero hard coupling; **runs standalone** and merely enriches when DekSpec is detected. The guard stays silent for these. **`prj-mgr` is the only tool holding this tier**, so a DekTools-only install is narrow but real: project boards work, everything else refuses.
+
+ADR-047 explicitly withdrew the blanket "DekTools requires DekSpec" rule — it manufactures a dependency that does not exist for an uncoupled tool. A `SessionStart` preflight surfaces the same remediation once at session start; it prints and **exits 0**, never blocking the session, and honours `DEKTOOLS_HOOK_DISABLE=1`.
+
+**Nothing is enabled by default.** The active tool set is the `dektools.enabled` key in `.dekspec/config.yaml`, persisted with the repo so it travels with the project. `/setup-dektools` is the re-runnable interactive selector over it; the CLI form is the same contract:
+
+```bash
+dekspec config set dektools.enabled prj-mgr,spike   # comma-separated; unknown names are rejected
+dekspec config get dektools.enabled                 # → prj-mgr,spike
+dekspec install --platform claude                   # emits exactly that subset
+```
+
+`dekspec install --platform <host>` honours the selection on every host (`claude` · `codex` · `antigravity` · `cursor` · `copilot` · `pi`): re-running after a change adds newly-enabled tools and removes deselected ones. Removal is **non-destructive** — it deletes only the paths that tool's emit wrote, never a core skill and never your own files. With nothing enabled, or with the DekTools tree absent, the install output is byte-for-byte what it was before the feature existed.
+
+Note which route enforces the selection: `dekspec install --platform <host>` emits only the enabled subset, while `claude plugin install dektools@dekspec` installs the plugin whole — the harness has no partial-install semantics, which is exactly why DekTools owns the selection itself.
+
+See `plugins/dektools/README.md` for the full tool roster and tier table.
+
 ### Native Windows (PowerShell / cmd)
 
 The `bash <(curl …)` one-liner does **not** run in native Windows PowerShell/cmd (no `bash`, no process substitution). Use the portable `pipx` sequence — identical to the Linux steps:
 
 ```powershell
-py -m pipx install --force "git+https://github.com/Dektora/dekspec-public.git@v0.123.0"
+py -m pipx install --force "git+https://github.com/Dektora/dekspec-public.git@v0.124.0"
 dekspec dependencies install br     # user-scoped, no admin — downloads + checksum-verifies the pinned br
 dekspec sync                        # reconcile vendored content + .dekspec-version
 dekspec install --platform codex    # per-host tree; --platform is on `dekspec install`, NOT on pipx
@@ -390,7 +427,7 @@ CI runs `pytest -q` + `ruff check` on Python 3.11 / 3.12 / 3.13 via GitHub Actio
 
 ## Status
 
-**v0.123.0** is the current release. The Constraint Compiler PoC (v0.2) has matured into an 11-IR, five-layer agentic-engineering toolkit with ~80 audit rules, a namespaced CLI, a public Python API at `dekspec.api`, an execution-attempt lifecycle DB (`dekspec.lifecycle`) that DekFactory (or any executor) writes to, and end-to-end test coverage. See [`CHANGELOG.md`](CHANGELOG.md) for the per-version detail.
+**v0.124.0** is the current release. The Constraint Compiler PoC (v0.2) has matured into an 11-IR, five-layer agentic-engineering toolkit with ~80 audit rules, a namespaced CLI, a public Python API at `dekspec.api`, an execution-attempt lifecycle DB (`dekspec.lifecycle`) that DekFactory (or any executor) writes to, and end-to-end test coverage. See [`CHANGELOG.md`](CHANGELOG.md) for the per-version detail.
 
 Open follow-ons:
 - Mission rigor calibration after lived MSN execution data (`ds-zuy`).

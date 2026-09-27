@@ -274,7 +274,7 @@ Path to the architecture element.
 - [ ] **L1-ADR** — For each ADR referenced by number, read the ADR and verify either (a) full consistency, or (b) explicit acknowledgment of the deviation **in the AE body (`Key Concepts` or `What We Are Not Building`)** — Amendment Log acknowledgment does not satisfy this check (Q5 resolution, §3.3). Silent contradictions are a fail.
 - [ ] **L1-ADR-STALE** (Q7 resolution) — For each ADR referenced in the AE body, read the ADR's `Status` field. If the referenced ADR is `SUPERSEDED` or `DEPRECATED`, raise a MINOR flag. When SUPERSEDED, the check also reports the replacement ADR from the `*Superseded by:*` field so the fix is one-step. The skill also runs a subject-phrase heuristic: match cited ADR slug against subject keywords in the same sentence (e.g., "tier-percentage formula" near "ADR-042" → flag candidate mis-citation).
 - [ ] **L1-AE** — For each other AE referenced by number, verify the referenced DN exists, is not DEPRECATED, and its claims in the referenced area match.
-- [ ] **L1-GLOSSARY** — Every domain term used in the AE body matches the domain glossary. The AE must not redefine a term, use a deprecated alias, or coin a new term without a glossary entry (composite-term auto-promotion per Q4 policy: if a term appears in ≥2 DNs, flag as "promote via `/write-ggc`" rather than as an AE defect). **Deprecated-alias sweep:** grep the AE body against the glossary's deprecated-alias list directly (e.g. `API Server` → `Cortex Service`, `chat model server` → `Cooccurrence Service`, `embedding model server` → `Semantic Embedding Service`). A hit on any deprecated alias is a fail regardless of whether the alias is also in current prose. **Advisory at Accept, blocking at Lock (§9 row 1).**
+- [ ] **L1-GLOSSARY** — Every domain term used in the AE body matches the domain glossary. The AE must not redefine a term, use a deprecated alias, or coin a new term without a glossary entry (composite-term auto-promotion per Q4 policy: if a term appears in ≥2 DNs, flag as "promote via `/write-glossary --add-term`" rather than as an AE defect). **Deprecated-alias sweep:** grep the AE body against the glossary's deprecated-alias list directly (e.g. `API Server` → `Cortex Service`, `chat model server` → `Cooccurrence Service`, `embedding model server` → `Semantic Embedding Service`). A hit on any deprecated alias is a fail regardless of whether the alias is also in current prose. **Advisory at Accept, blocking at Lock (§9 row 1).**
 - [ ] **L1-VISION** — If the DN's scope touches top-level system claims, verify no contradiction with `dekspec/system-vision.md`.
 - [ ] **L1-WS-EXISTS** — For each WS referenced by number, verify the file exists and is not `TODO` (unless Open Issues flags it as pending). Section-name mismatches are ADVISORY. **TODO-stub detection:** if the linked WS exists and is not formally `TODO` but its body is under 50 lines (effectively a stub — content hasn't been written), flag as an ADVISORY "linked WS is a stub — the citation may not point to meaningful content." Precedent: WS-025 Injection Pipeline Orchestration was ~30 lines of pointer-only content despite not being TODO status.
 - [ ] **L1-ADR-SCOPE** — Scope-discipline check: the AE references between 2 and 8 **direct-body** ADRs. **Direct-body** is defined as: unique ADRs cited anywhere in the AE *minus* the set of ADRs listed under an explicit **Indirect governing ADRs:** sub-bullet of §Relationship to Other Components. Indirect-listed ADRs are fully exempt from the count regardless of where else they appear; the structural check below is what flags dual-citation. Fewer than 2 direct-body ADRs = too narrow. More than 8 direct-body ADRs = too broad — split the AE. **Duplicate-citation count:** report each ADR's citation count separately. Repeated citations (e.g. ADR-005 cited 4×) count once for the scope bound but signal potential consolidation. **Indirect-ADR compliance (structural check):** verify each ADR under **Indirect governing ADRs:** carries a one-line rationale explaining why it is indirect (governing a peer concern rather than this AE's direct scope). An ADR must not appear in both the body and the indirect sub-bullet; dual-citation is a MINOR structural fail — the body citation should be removed, leaving only the indirect listing.
@@ -598,33 +598,13 @@ Use this mode when:
 
 ## Write-Time CoW Guard (INT-082 phase 4)
 
-Before any edit to a canonical artifact (anything under `dekspec/<kind-dir>/`), consult the CoW guard:
+See [`_lib/cow_write_guard.md`](../_lib/cow_write_guard.md) for the canonical contract.
 
-```bash
-dekspec library cow-stage <path-to-canonical> [--incubation <slug>] [--at <repo>]
-```
-
-If the target path is claimed by a pre-ACCEPTED Intent (DRAFT/PROPOSED) via that Intent's `Components affected` globs, the verb:
-
-1. Copies the canonical to `dekspec/provisional/<incubation-slug>/<KIND>-provisional-<file-slug>.md`.
-2. Stamps `replaces: <CANONICAL-ID>` in the frontmatter so the eventual `promote-provisional` run does a REPLACE (preserving the canonical ID) instead of allocating a new one.
-3. Returns the new provisional path. Edit that file instead; the canonical stays frozen.
-
-If the path is not claimed by any pre-ACCEPTED Intent, the verb errors unless you pass an explicit `--incubation <slug>` (the canonical-only path is the normal edit flow).
-
-**Skill discipline.** Inside this skill body, before any canonical-file `Edit`/`Write` call:
-
-1. Compute the target path you intend to write.
-2. Run `dekspec library cow-stage <target-path>` once. Surface the verb's stdout to the engineer.
-3. If the verb exits 0 with a new provisional path printed, redirect the edit to that path.
-4. If the verb exits 1 (no claim + no `--incubation`), proceed with the canonical edit as normal — the canonical is unclaimed and the edit is direct-flow legal.
-
-**Audit pairing.** The `T-COW-CANONICAL-EDITED` rule (P2 mechanical) fires on every `git diff --name-only main` entry that is claimed AND lacks a provisional sibling with `replaces:` set — so a skill that skips this guard surfaces as advisory in the next `dekspec audit linkage` run, but never blocks.
-
+**Form:** kind-dir — canonical artifacts under `dekspec/<kind-dir>/`.
 
 ## Rules
 
-- **Log corrections.** When any mode (creation, audit, review, revise) corrects a domain misinterpretation — wrong term usage, confused concepts, contradicted architectural facts — invoke `/write-ggc --log` with the correction details before proceeding. This feeds the glossary promotion pipeline.
+- **Log corrections.** When any mode (creation, audit, review, revise) corrects a domain misinterpretation — wrong term usage, confused concepts, contradicted architectural facts — invoke `/write-corrections --log` with the correction details before proceeding. This feeds the glossary promotion pipeline.
 
 - **DNs are about vision and principles — never about mechanics, numbers, or names.** A Architecture Element describes *what the subsystem is, what success looks like, what it is not, its key concepts, and how it relates to other components.* It must not contain:
   - Code — no fenced code blocks, no inline code-shaped identifiers with parens, no import paths, no library-function names.

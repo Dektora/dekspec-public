@@ -25,12 +25,14 @@ Public API:
   re-validate.
 
 Recognised dotted keys: `schema_version`, `methodology_profile`, `repo.scope`,
-and the setup-dekspec fields (INT-174) `issue_tracker`,
-`ephemeral_scratch_dir`, `glossary_path`, `triage_labels.hitl`,
-`triage_labels.afk`, `triage_labels.buckets`.
+the setup-dekspec fields (INT-174) `issue_tracker`, `ephemeral_scratch_dir`,
+`glossary_path`, `triage_labels.hitl`, `triage_labels.afk`,
+`triage_labels.buckets`, and the DekTools enabled-set (ADR-047)
+`dektools.enabled`.
 """
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 from typing import Any
@@ -49,6 +51,9 @@ __all__ = [
     "DekspecConfigError",
     "config_exists",
     "config_path",
+    "dektools_catalog_path",
+    "enabled_dektools_tools",
+    "known_dektools_tools",
     "get_key",
     "get_profile",
     "load_config",
@@ -75,6 +80,15 @@ DEKSPEC_CONFIG_KEYS: tuple[str, ...] = (
     "triage_labels.hitl",
     "triage_labels.afk",
     "triage_labels.buckets",
+    # DekTools a-la-carte enabled-set (ADR-047). Array-valued: see
+    # `DEKSPEC_CONFIG_ARRAY_KEYS`.
+    "dektools.enabled",
+)
+
+# Dotted keys whose value is a LIST. The CLI hands `set_key` a raw string, so
+# these are split on commas there; the Python API takes a real list either way.
+DEKSPEC_CONFIG_ARRAY_KEYS: frozenset[str] = frozenset(
+    {"dektools.enabled", "triage_labels.buckets"}
 )
 
 
@@ -213,11 +227,80 @@ def get_key(repo_root: str | Path, dotted_key: str) -> Any:
     return node
 
 
+def dektools_catalog_path(start: Path | None = None) -> Path | None:
+    """Locate `plugins/dektools/tool-catalog.json`, or None if unreachable.
+
+    None is the normal answer for a pip/pipx-installed engine: the plugin
+    trees are not bundled in the wheel (AE-008 / ADR-009), so the catalog
+    simply is not there. Callers must treat that as "cannot know", never as
+    "no tools exist".
+    """
+    start = (start or Path(__file__)).resolve()
+    for parent in start.parents:
+        candidate = parent / "plugins" / "dektools" / "tool-catalog.json"
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def known_dektools_tools(catalog_path: Path | None = None) -> set[str]:
+    """Tool names declared in the DekTools catalog.
+
+    Returns an empty set when the catalog cannot be found or read — which
+    disables name validation rather than rejecting every name (see
+    `_validate_dektools_selection`).
+    """
+    path = catalog_path or dektools_catalog_path()
+    if path is None:
+        return set()
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return set()
+    return {t["name"] for t in payload.get("tools", []) if "name" in t}
+
+
+def enabled_dektools_tools(repo_root: str | Path) -> list[str]:
+    """The repo's DekTools enabled-set, or `[]` when unset.
+
+    ADR-047 forces nothing on, so absent and empty mean the same thing and
+    neither is an error — unlike `get_key`, which raises on an unset key.
+    """
+    try:
+        config = load_config(repo_root)
+    except DekspecConfigError:
+        return []
+    value = config.get("dektools", {}).get("enabled", [])
+    return list(value) if isinstance(value, list) else []
+
+
+def _validate_dektools_selection(value: Any) -> None:
+    """Reject names absent from the catalog (ADR-047: the catalog is the list
+    of known tools).
+
+    Skipped entirely when the catalog is unresolvable. Refusing every name
+    because the plugin tree is not checked out would make the key unusable on
+    a pip-installed engine, and core must not depend on DekTools being
+    present at all.
+    """
+    known = known_dektools_tools()
+    if not known or not isinstance(value, list):
+        return
+    unknown = [v for v in value if v not in known]
+    if unknown:
+        raise DekspecConfigError(
+            f"{', '.join(repr(u) for u in unknown)} "
+            f"{'is' if len(unknown) == 1 else 'are'} not a DekTools tool. "
+            f"Valid tools: {', '.join(sorted(known))}"
+        )
+
+
 def set_key(repo_root: str | Path, dotted_key: str, value: Any) -> Path:
     """Set `dotted_key` to `value`, re-validate, and atomically rewrite.
 
     Raises `DekspecConfigError` if the key is unrecognised, the config file
-    is absent, or the resulting document fails schema validation.
+    is absent, the value names an unknown DekTools tool, or the resulting
+    document fails schema validation.
     """
     dotted_key = DEKSPEC_CONFIG_KEY_ALIASES.get(dotted_key, dotted_key)
     if dotted_key not in DEKSPEC_CONFIG_KEYS:
@@ -225,6 +308,8 @@ def set_key(repo_root: str | Path, dotted_key: str, value: Any) -> Path:
             f"Unknown config key {dotted_key!r}. "
             f"Valid keys: {', '.join(DEKSPEC_CONFIG_KEYS)}"
         )
+    if dotted_key == "dektools.enabled":
+        _validate_dektools_selection(value)
     config = load_config(repo_root)
     parts = dotted_key.split(".")
     node: dict[str, Any] = config

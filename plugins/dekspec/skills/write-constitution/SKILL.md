@@ -7,7 +7,7 @@ reasoning_effort: max
 disable-model-invocation: false
 allowed-tools: Read Write Edit Grep Glob Bash Agent
 argument-hint: [--provisional <slug>] [--help | --teaching | --audit | --review | --resync | --revise | --accept | --approve | --dry-run] [path to Constitution or target slug] [engineer notes or path to notes file]
-related_skills: [write-sv, write-ggc, write-adr, write-ae, write-evals]
+related_skills: [write-sv, write-corrections, write-adr, write-ae, write-evals]
 ---
 
 > **Vendored asset paths:** Template + doc paths below resolve via `dekspec resource template <name>` / `dekspec resource doc <name>` (wheel-bundled since v0.91.0; consumer-fs override wins when present). See [`_lib/vendored_assets.md`](../_lib/vendored_assets.md) for the full resolution rule.
@@ -367,23 +367,9 @@ Use this mode when:
 
 ## Write-Time CoW Guard (INT-082 phase 4)
 
-Before any edit to the Constitution singleton at `dekspec/constitution.md`, consult the CoW guard:
+See [`_lib/cow_write_guard.md`](../_lib/cow_write_guard.md) for the canonical contract.
 
-```bash
-dekspec library cow-stage dekspec/constitution.md [--incubation <slug>] [--at <repo>]
-```
-
-If a pre-ACCEPTED Intent (DRAFT/PROPOSED) claims the singleton's path via Components-affected globs, the verb copies the canonical into the incubation folder + stamps `replaces:`. Edit the staged copy; the canonical stays frozen.
-
-If the singleton is unclaimed, the verb errors unless `--incubation <slug>` is passed explicitly — the canonical-only path is then the normal edit flow.
-
-**Skill discipline.** Inside this skill body, before any canonical `Edit`/`Write` call on `dekspec/constitution.md`:
-
-1. Run `dekspec library cow-stage dekspec/constitution.md` once.
-2. On exit 0 (provisional path printed): redirect the edit there.
-3. On exit 1 (no claim + no `--incubation`): proceed with the canonical edit (direct-flow legal).
-
-**Audit pairing.** `T-COW-CANONICAL-EDITED` (P2 mechanical) fires on direct-edit bypasses of this guard.
+**Form:** singleton — guards `dekspec/constitution.md`.
 
 ## Common Pitfalls
 

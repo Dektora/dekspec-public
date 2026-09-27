@@ -2,7 +2,7 @@
 description: Dispatch a parallel coding session — invokes the /orchestrate-coding-session skill (renamed from /run-coding-session in INT-098). Orchestrates parallel sub-agents in isolated worktrees over an unblocked bead set.
 allowed-tools: Skill
 argument-hint: [<ib-path-or-id> | --package <sha-or-path> | --confirm-dispatch | --dry-run | --help] [optional engineer guidance]
-disable-model-invocation: false
+disable-model-invocation: true
 ---
 
 Invoke the `orchestrate-coding-session` skill to orchestrate a parallel
@@ -63,3 +63,13 @@ After the TESTFAIL handler re-runs the session via `/orchestrate-coding-session 
 - Retry red → loop back to **IMPLEMENTING** with the new failure appended to the TESTFAIL records log; sidecar updated.
 
 The retry loop is bounded by operator decision: the framework does not auto-retry indefinitely. Each TESTFAIL → retry round-trip is one handler dispatch.
+
+## Trigger policy
+
+`disable-model-invocation: true` — this wrapper is **slash-invocation only**.
+It matches the `orchestrate-coding-session` SKILL.md, which carries the same
+value as the dispatch-class default (highest blast radius: spawns parallel
+sub-agents and mutates worktrees). Do not set this `false` and do not delete
+the key: an absent key is model-invocable, which would let the model reach the
+guarded skill through this wrapper and make the skill's own policy decorative
+(ds-9ht3a). `T-SKILL-COMMAND-TRIGGER-CONSISTENT` fails the audit if it drifts.

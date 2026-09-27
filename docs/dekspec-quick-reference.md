@@ -75,7 +75,8 @@ IBs also use directory lifecycle: `queued/` --> `active/` --> `completed/`
 | `/write-evals` | Write probabilistic evals for model output |
 | `/orchestrate-coding-session` | Orchestrate parallel AI coding agents |
 | `/doctor` | AE-aware fidelity audit — canonical for new audits |
-| `/write-ggc` | Log domain corrections, add glossary terms, audit terminology health |
+| `/write-glossary` | Extract term candidates and add terms to the domain glossary |
+| `/write-corrections` | Log domain corrections, track recurrences, promote at threshold |
 | `/dekspec:brownfield-ingest` | Classify inherited markdown prose into DekSpec artifact slots |
 
 Every skill supports `--help` for full usage details, modes, and examples.
@@ -169,10 +170,10 @@ tree. The mechanics:
   preserve the canonical ID and overwrite. Cross-refs inside the bundle are
   rewritten as part of the same atomic step. (The former `dekspec repo
   promote-provisional` CLI verb was retired 2026-05-25 and removed in ds-ib9o.)
-- **Five skills carve out.** `/write-constitution`, `/write-sv`, `/write-ggc`,
-  `/write-evals`, `/write-tests` do **not** accept `--provisional` — the first
-  three are singletons; the last two operate on existing beads rather than
-  authoring new artifacts.
+- **Six skills carve out.** `/write-constitution`, `/write-sv`, `/write-glossary`,
+  `/write-corrections`, `/write-evals`, `/write-tests` do **not** accept
+  `--provisional` — the first four are singletons; the last two operate on
+  existing beads rather than authoring new artifacts.
 
 The advisory audit rule `LINK-PROVISIONAL-STALE` fires on incubation folders older
 than 30 days (mtime-based; engineers `touch` to reset). `T-COW-CANONICAL-EDITED`

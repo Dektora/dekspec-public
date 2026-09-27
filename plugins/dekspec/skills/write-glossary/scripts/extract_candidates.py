@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Deterministic glossary-term candidate extraction for /write-ggc.
+"""Deterministic glossary-term candidate extraction for /write-glossary.
 
-This is the no-auto-write extraction capture stage for the write-ggc skill
-(INT-166). It assembles glossary-term candidates from a supplied corpus and
-returns a per-candidate 3-way disposition. It NEVER writes
+This is the no-auto-write extraction capture stage for the write-glossary skill
+(INT-166, repartitioned by INT-191). It assembles glossary-term candidates from
+a supplied corpus and returns a per-candidate 3-way disposition. It NEVER writes
 `dekspec/domain-glossary.md` and NEVER calls `--add-term`; it only PROPOSES.
-The two existing writers (`--add-term`, `--log`, both driven by `ggc_ops.py`)
-remain the only glossary mutators -- this stage routes INTO them.
+The two glossary writers -- `/dekspec:write-glossary --add-term` (direct) and
+the 3-recurrence promotion that `/dekspec:write-corrections --log` hands back --
+remain the only glossary mutators; this stage routes INTO them.
 
 3-way disposition (per candidate):
 
@@ -18,8 +19,8 @@ remain the only glossary mutators -- this stage routes INTO them.
   ambiguous      A term used with conflicting / overloaded senses in the corpus.
                  It must NOT be promoted as a single canonical term; it earns
                  promotion only via the existing 3-recurrence `--log` pipeline.
-                 Routed to the `--log` path as a g&c correction seed.
-                 route="--log".
+                 Routed to the `/dekspec:write-corrections --log` path as a
+                 correction seed. route="--log".
 
   drop           Noise -- low-frequency, stopword-dominated, or already in the
                  glossary. Discarded. route=None.
@@ -34,7 +35,7 @@ test) controls exactly what is scanned; this module never walks the tree on its
 own and never reads source code.
 
 Deterministic: identical corpus + glossary input yields identical output.
-Stdlib-only. Importable + argparse CLI, matching `ggc_ops.py`.
+Stdlib-only. Importable + argparse CLI, matching `glossary_ops.py`.
 
 Exit codes: 0 = success; 1 = error.
 """
@@ -168,8 +169,8 @@ def _addterm_payload(candidate: str) -> dict[str, str]:
         "term": candidate,
         "code_convention": candidate.replace(" ", "_"),
         "note": (
-            "PROPOSED only -- run `/write-ggc --add-term` to confirm; "
-            "this stage never writes the glossary."
+            "PROPOSED only -- run `/dekspec:write-glossary --add-term` to "
+            "confirm; this stage never writes the glossary."
         ),
     }
 
@@ -180,8 +181,9 @@ def _log_seed(candidate: str) -> dict[str, str]:
         "term": candidate,
         "note": (
             f"'{candidate}' is used with conflicting senses; seed a "
-            "`/write-ggc --log` correction -- it earns promotion only via the "
-            "existing 3-recurrence pipeline, never directly."
+            "`/dekspec:write-corrections --log` correction -- it earns "
+            "promotion only via the existing 3-recurrence pipeline, never "
+            "directly."
         ),
     }
 

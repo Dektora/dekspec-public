@@ -1,0 +1,38 @@
+{
+  "$comment": [
+    "DekTools tool catalog — ADR-047.",
+    "",
+    "`dependency_tier` is a claim about the CODE, not a preference:",
+    "  dekspec-required  — imports the engine, reads the IR, or keys off the",
+    "                      audit/review model. Meaningless without DekSpec, so",
+    "                      the dependency guard MUST fire when core is absent.",
+    "  dekspec-enhanced  — zero hard coupling; delivers full primary value",
+    "                      standalone and enriches when DekSpec is detected.",
+    "                      The guard MUST STAY SILENT for these.",
+    "",
+    "The tier is granted on evidence and revoked the moment real coupling",
+    "lands. tests/test_dektools_dependency_guard.py audits every",
+    "dekspec-enhanced tool's imports so the claim cannot rot into a lie.",
+    "",
+    "Consumed by the dependency guard and (later) the a-la-carte selector."
+  ],
+  "schema_version": "1.0.0",
+  "tools": [
+    { "name": "prj-mgr", "dependency_tier": "dekspec-enhanced", "summary": "br-backed project boards; the issue-side pull surface." },
+    { "name": "audit-codebase", "dependency_tier": "dekspec-required", "summary": "Code-quality audit aligned to the DekSpec finding taxonomy." },
+    { "name": "analyze-module-depth", "dependency_tier": "dekspec-required", "summary": "Deep-module analysis over the spec graph." },
+    { "name": "orchestrate-module-deepening", "dependency_tier": "dekspec-required", "summary": "Drives repeated deepening passes." },
+    { "name": "brownfield-ingest", "dependency_tier": "dekspec-required", "summary": "Produces real IR artifacts from an existing codebase." },
+    { "name": "archeology", "dependency_tier": "dekspec-required", "summary": "Recovers intent from history into spec artifacts." },
+    { "name": "rotation-handoff", "dependency_tier": "dekspec-required", "summary": "Handoff notes keyed to the artifact lifecycle." },
+    { "name": "coding-session-forensics", "dependency_tier": "dekspec-required", "summary": "Read-only post-mortem of a coding session." },
+    { "name": "interview-me", "dependency_tier": "dekspec-required", "summary": "Decision-tree interview citing glossary + governing ADR/AE." },
+    { "name": "debug-testfail", "dependency_tier": "dekspec-required", "summary": "Debugs a TESTFAIL record on the Intent lifecycle." },
+    { "name": "diagnose-bug", "dependency_tier": "dekspec-required", "summary": "Structured diagnosis; writes nothing." },
+    { "name": "prototype", "dependency_tier": "dekspec-required", "summary": "Governed disposable exploration under the scratch discipline." },
+    { "name": "spike", "dependency_tier": "dekspec-required", "summary": "Governed pre-spec investigation producing knowledge." },
+    { "name": "setup-dektools", "dependency_tier": "dekspec-required", "summary": "A-la-carte selector; persists the enabled-set in the DekSpec repo config." },
+    { "name": "security-review", "dependency_tier": "dekspec-required", "summary": "Spec-aware security review emitting findings in the review-pr shape." },
+    { "name": "write-issue-beads", "dependency_tier": "dekspec-required", "summary": "Triages reports into typed issue beads." }
+  ]
+}

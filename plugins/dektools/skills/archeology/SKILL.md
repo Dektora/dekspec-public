@@ -10,6 +10,8 @@ argument-hint: [--help] [--teaching] [--scan PATH] [--propose-intent PATH] [--co
 related_skills: [brownfield-ingest, write-intent, write-ic, write-adr]
 ---
 
+> **Preflight (ADR-047).** This is a `dekspec-required` tool. From this skill's own directory run `python ../../scripts/dependency_guard.py archeology` before anything else — it exits non-zero with install instructions when the DekSpec engine is absent. (The path is relative to this file so it resolves identically in the monorepo, a packaged plugin install, and an emitted per-host tree.) If it fires, stop and surface its message; do not proceed.
+
 > **Shared `_lib` lives in the DekSpec core plugin** (ADR-047). Resolve it with `dekspec resource lib <name> --path-only`, then read that path — a relative `../_lib/` link does not cross the plugin boundary.
 Walk an engineer from an orphaned code surface back to a ratifiable Intent.
 
@@ -130,11 +132,20 @@ At runtime, render the manifest per `_lib/help_mode_template.md` and stop.
 
 ## Teaching Mode
 
-Teaching Mode walks an engineer new to brownfield recovery through the same
-workflow as the default mode, but slowly and with explanation at each step. It
-is **not** a re-run of a prior recovery and it is **not** a fast one-shot.
+See ``_lib/teaching_mode.md`` (resolve: `dekspec resource lib teaching_mode`) for the canonical
+Teaching Mode contract — a tutorial for an engineer meeting this surface for the first time,
+explicitly **not** `--review` and **not** a fast one-shot, walked one unit at a time and exited
+with a summary of what was covered.
 
-Run the canonical recovery flow below, and before each step pause to explain:
+**How this skill instantiates the ritual.** The substrate's walk unit is a required template
+section, because the substrate was written for the `write-*` authoring skills. This skill authors
+no artifact (see §Boundary), so its walk unit is a **step of the recovery flow**: run the flow
+below for real, pausing before each step to teach it. Ritual step 4 — name a failing check rather
+than silently accepting it — maps to the TODO markers `--propose-intent` leaves in the sizing
+sections: surface them, never fill them in on the engineer's behalf. Exit when the engineer can
+run the modes unaided, and stop there: ratification is `/dekspec:write-intent`'s to perform.
+
+Teaching payload, delivered before the matching step:
 
 1. **Before the gap report** — explain what a spec gap *is*: in any
    non-greenfield repo, code surfaces exist that no Intent / WS / IB claims —
@@ -155,9 +166,6 @@ Run the canonical recovery flow below, and before each step pause to explain:
    itself: it hands the reviewed draft to `/dekspec:write-intent --accept`, the
    standard authoring flow, so the retroactive Intent goes through the same
    review and audit gates as a greenfield one.
-
-After the walk-through, confirm the engineer can run the modes unaided, and
-stop.
 
 ## Scan Mode
 

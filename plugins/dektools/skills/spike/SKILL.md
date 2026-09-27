@@ -1,6 +1,6 @@
 ---
 name: spike
-description: Pre-Intent feasibility exploration — when the APPROACH is genuinely uncertain (algorithm choice, third-party integration, a performance characteristic), build a focused throwaway experiment that produces VERIFIED knowledge (not an opinion) and a durable spike record (hypothesis → experiment → VALIDATED / REFUTED / INCONCLUSIVE → recommendation) under `dekspec/spikes/<slug>/SPIKE.md`, which the subsequent Intent cites in its Motivation. Use before `/dekspec:write-intent --analyze` to de-risk an approach you cannot yet commit to. Distinct from `/dekspec:prototype` (which explores a design *shape*); spike answers a feasibility *question*.
+description: Pre-Intent feasibility exploration — when the APPROACH is genuinely uncertain (algorithm choice, third-party integration, a performance characteristic), build a focused throwaway experiment that produces VERIFIED knowledge (not an opinion) and a durable spike record (hypothesis → experiment → VALIDATED / REFUTED / INCONCLUSIVE → recommendation) under `dekspec/spikes/<slug>/SPIKE.md`, which the subsequent Intent cites in its Motivation. Use before `/dekspec:write-intent --analyze` to de-risk an approach you cannot yet commit to. Distinct from `/dekspec:prototype` — that explores a design *shape* and leaves nothing tracked; spike answers a falsifiable feasibility *question* and leaves a tracked record the next Intent cites.
 mode: lite
 model: claude-opus-4-7
 reasoning_effort: high
@@ -9,6 +9,8 @@ allowed-tools: Read Write Edit Bash
 argument-hint: [--help] [--wrap-up <slug>] [hypothesis or question]
 related_skills: [prototype, diagnose-bug, write-intent, write-adr]
 ---
+
+> **Preflight (ADR-047).** This is a `dekspec-required` tool. From this skill's own directory run `python ../../scripts/dependency_guard.py spike` before anything else — it exits non-zero with install instructions when the DekSpec engine is absent. (The path is relative to this file so it resolves identically in the monorepo, a packaged plugin install, and an emitted per-host tree.) If it fires, stop and surface its message; do not proceed.
 
 > **Shared `_lib` lives in the DekSpec core plugin** (ADR-047). Resolve it with `dekspec resource lib <name> --path-only`, then read that path — a relative `../_lib/` link does not cross the plugin boundary.
 Run a **feasibility spike**: a focused, time-boxed throwaway experiment that

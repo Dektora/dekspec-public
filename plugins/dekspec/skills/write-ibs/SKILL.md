@@ -28,8 +28,9 @@ Decompose a finalized Working Spec into Implementation Briefs.
 /dekspec:write-ibs dekspec/working-specs/WS-021-numeric-routing.md
 
 Decompose this finalized (ACCEPTED) Working Spec into Implementation Briefs.
-The spec spans a parser pass and an emitter pass — keep the shared IR types in a
-foundation IB the others depend on, and respect the ICs it references.
+The spec spans a parser pass and an emitter pass — cut them as vertical slices and
+pin the shared IR types verbatim into each slice's C&D (ADR-054), and respect the
+ICs it references.
 ```
 
 ## Mode Detection
@@ -550,7 +551,7 @@ After all IBs are drafted and individually audited:
 
 19. Run the **coupling checks from the Fidelity Audit** across the full IB set one final time — content coupling, common coupling, control coupling, transitive leakage, fan-out, stability of high-fan-in IBs. This is a single pass — cross-IB issues at this stage indicate a decomposition problem that per-IB iteration cannot fix.
 20. If cross-IB issues are found that were not caught during per-IB auditing (possible because some coupling issues only emerge when viewing the full set):
-    - Fix auto-fixable issues (e.g., a shared type that appeared in IB-3 but wasn't in the foundation IB)
+    - Fix auto-fixable issues (e.g., a shared type pinned in IB-3 but missing from a sibling slice's C&D)
     - Escalate structural issues to the engineer immediately — do not iterate
 21. Save all passing IBs. Report:
     ```
@@ -601,10 +602,16 @@ Coupling should be as loose as possible. Data coupling (passing simple data betw
 
 **Additional coupling principles:**
 
-- **Shared foundations extracted.** Types, models, constants, or utilities needed by multiple IBs go in a foundation IB that others depend on. Prevents parallel agents from inventing the same abstractions.
+- **Shared foundations route, they do not default to extraction (ADR-054).** Cut IBs as **vertical slices** — each independently grabbable, each carrying its own thin cut through the stack. When a type, model, or constant is needed by multiple slices, route it:
+  1. **Interface Contract (L2)** — when the shared surface is a genuine cross-component boundary. It is an IC, not an IB.
+  2. **Pin by contract** *(the default)* — put the shape **verbatim** into every consuming slice's `Constraints & Decisions`. Declare no dependency edge. The slices stay independently grabbable and still converge: measured at 288/288 identical type shapes across 168 parallel agents, versus 8.3% unpinned (`docs/evaluations/cd-pinning-prototype.md`).
+  3. **Foundation IB** — a bar-clearing **exception**, not the reflex: ≥2 real dependents, types only and no logic, reviewable as its own PR.
+  Do **not** absorb the shared type into whichever slice happens to need it first — that is a sequencing edge wearing a vertical disguise, and it should be declared as a dependency if you mean it.
+
+  **The pin must actually arrive.** Pinning only works if the verbatim shape reaches every consuming bead. A missing pin does not reliably fail loudly — in the control, a third of agents wrote defensive shims that let integration *pass* while leaving eleven mutually distinct definitions of one type in a single system. Verify the pin is present in each consuming slice's C&D before dispatch; integration tests will not catch its absence.
 - **Narrow dependency surface.** An IB exposes the minimum interface needed by dependent IBs — not the full implementation, just what the next IB consumes. (Interface Segregation: don't force a dependent IB to depend on interfaces it doesn't use.)
 - **No transitive leakage.** If IB-3 depends on IB-2, which depends on IB-1, then IB-3 should need nothing from IB-1's internals. IB-2 must fully encapsulate whatever it consumes from IB-1. If IB-3 needs to reach through IB-2 to use IB-1's types or functions directly, the boundary between IB-1 and IB-2 is wrong.
-- **Stability principle.** IBs with high fan-in (many other IBs depend on them) should be the simplest and most stable. Foundation IBs that define shared types should contain minimal logic. Conversely, IBs with high fan-out (depend on many other IBs) are inherently riskier and should be scrutinized for scope creep.
+- **Stability principle.** IBs with high fan-in (many other IBs depend on them) should be the simplest and most stable. Under ADR-054 high fan-in is itself a smell — a shape that many slices need is usually a pin or an IC, not a dependency. Where a foundation IB does clear the bar, it contains types only and no logic. Conversely, IBs with high fan-out (depend on many other IBs) are inherently riskier and should be scrutinized for scope creep.
 - **Fan-out limit.** An IB that depends on more than 3 other IBs is a red flag — it may be trying to orchestrate too much. Consider whether it can be split or whether some dependencies are artificial.
 
 ### Deep-Module Design Pass (Constitution Article 4 / ADR-036)
@@ -637,7 +644,8 @@ Run after drafting candidate IBs, before presenting the dependency graph to the 
 - [ ] No two IBs modify the same function without an explicit dependency between them (no content coupling)
 - [ ] All dependencies are through data interfaces — types, signatures, return values (data coupling)
 - [ ] No control coupling — no IB's output includes a flag or mode that changes another IB's behavior
-- [ ] Shared types/models/constants are in a foundation IB, not duplicated across IBs
+- [ ] Shared types/models/constants are **routed per ADR-054** — an IC when a real cross-component boundary, otherwise pinned verbatim into every consuming slice's C&D; a foundation IB only where it clears the bar (≥2 dependents, types only, own PR)
+- [ ] Every pinned shape is **present verbatim** in each consuming slice's C&D — the pin is the mechanism; an undelivered pin fails silently
 - [ ] Each dependency surface is narrow — dependent IB needs specific outputs, not the full implementation
 - [ ] No hidden common coupling (shared DB tables, config mutations, cache state) — all shared state is documented or extracted
 - [ ] No transitive leakage — IB-3 does not need IB-1's internals to use IB-2's output
@@ -673,8 +681,8 @@ Run after drafting candidate IBs, before presenting the dependency graph to the 
 | **Stamp coupling chain** | IB-1 produces a large structure, downstream IBs each use one field | Narrow the interface — IB-1 produces what each consumer actually needs |
 | **Control coupling** | IB-A's output includes a flag that changes IB-B's behavior path | IB-B should own its own decision; move the logic into IB-B's constraints |
 | **Transitive leakage** | IB-3 imports types/functions from IB-1 to use IB-2's output | IB-2's interface is incomplete — it should encapsulate what it consumes from IB-1 |
-| **God IB** | One IB that every other IB depends on, containing mixed concerns | Split the God IB into focused foundation IBs — types in one, utilities in another |
-| **Circular dependency** | IB-A depends on IB-B and IB-B depends on IB-A (directly or transitively) | Restructure — extract the shared concern into a foundation IB both depend on |
+| **God IB** | One IB that every other IB depends on, containing mixed concerns | Re-cut as vertical slices and pin the shared shapes (ADR-054). Do **not** split it into "types in one, utilities in another" — that is logical cohesion, which §Cohesion rejects two sections above. |
+| **Circular dependency** | IB-A depends on IB-B and IB-B depends on IB-A (directly or transitively) | Restructure — pin the shared shape into both slices so neither depends on the other (ADR-054), or promote it to an IC if it is a real boundary |
 | **Feature envy** | An IB spends more time working with another IB's data than its own | Responsibility is misplaced — move the envious logic to the IB that owns the data |
 | **Inappropriate intimacy** | Two IBs that reference each other's internal implementation details in their C&D sections | Decouple — define a clean interface between them; each IB should know only the other's public contract |
 | **Fan-out explosion** | An IB depends on 4+ other IBs | IB is likely orchestrating too much — split it or question whether all dependencies are real |
@@ -691,7 +699,7 @@ Below this bar, absorb the work into a related IB.
 
 ## IB Content Rules
 
-- **Log corrections.** When any mode (decomposition, audit, accept, review, revise, resync) corrects a domain misinterpretation — wrong term usage, confused concepts, contradicted architectural facts — invoke `/write-ggc --log` with the correction details before proceeding. This feeds the glossary promotion pipeline.
+- **Log corrections.** When any mode (decomposition, audit, accept, review, revise, resync) corrects a domain misinterpretation — wrong term usage, confused concepts, contradicted architectural facts — invoke `/write-corrections --log` with the correction details before proceeding. This feeds the glossary promotion pipeline.
 - Copy spec context **verbatim** — only the sections directly relevant to this IB's scope. Do not include spec sections that apply to other IBs. Do not summarize what you do include.
 - The coding agent has no access to the spec; everything it needs must be in the IB
 - State exact files to modify
@@ -780,9 +788,9 @@ For each IB, verify:
 - [ ] **Dependencies are data-only** — for each dependency in the graph, verify the dependent IB needs only a type, return value, or function signature from the upstream IB — not shared mutable state.
 - [ ] **No control coupling** — no IB's C&D section describes producing a flag or mode that changes another IB's behavior. Each IB owns its own behavioral decisions.
 - [ ] **No hidden common coupling** — check if any two IBs write to the same database table, config file, or cache without declaring a dependency. Grep IB descriptions and C&D sections for database/config/cache references.
-- [ ] **Shared types extracted** — if the same type, model, or constant appears in multiple IBs' C&D sections, verify it is defined in a foundation IB that others depend on.
+- [ ] **Shared types routed (ADR-054)** — if the same type, model, or constant appears in multiple IBs' C&D sections, verify it is *pinned verbatim and identically* in each, or promoted to an IC, or in a bar-clearing foundation IB. Divergent restatements of one shape are the failure this checks for.
 - [ ] **No transitive leakage** — for each IB with a dependency depth > 1, verify it does not reference types or functions from a grandparent IB. It should only know about its direct dependencies.
-- [ ] **No circular dependencies** — the dependency graph is acyclic. If a cycle is detected, extract the shared concern into a foundation IB.
+- [ ] **No circular dependencies** — the dependency graph is acyclic. If a cycle is detected, pin the shared shape into both slices rather than extracting a foundation IB.
 - [ ] **Fan-out within limits** — no IB depends on more than 3 others. If exceeded, investigate: is the IB orchestrating too much?
 - [ ] **Stability of high-fan-in IBs** — IBs with 3+ dependents contain only interface definitions and simple logic, not complex implementation.
 
@@ -912,29 +920,9 @@ Use this mode when:
 
 ## Write-Time CoW Guard (INT-082 phase 4)
 
-Before any edit to a canonical artifact (anything under `dekspec/<kind-dir>/`), consult the CoW guard:
+See [`_lib/cow_write_guard.md`](../_lib/cow_write_guard.md) for the canonical contract.
 
-```bash
-dekspec library cow-stage <path-to-canonical> [--incubation <slug>] [--at <repo>]
-```
-
-If the target path is claimed by a pre-ACCEPTED Intent (DRAFT/PROPOSED) via that Intent's `Components affected` globs, the verb:
-
-1. Copies the canonical to `dekspec/provisional/<incubation-slug>/<KIND>-provisional-<file-slug>.md`.
-2. Stamps `replaces: <CANONICAL-ID>` in the frontmatter so the eventual `promote-provisional` run does a REPLACE (preserving the canonical ID) instead of allocating a new one.
-3. Returns the new provisional path. Edit that file instead; the canonical stays frozen.
-
-If the path is not claimed by any pre-ACCEPTED Intent, the verb errors unless you pass an explicit `--incubation <slug>` (the canonical-only path is the normal edit flow).
-
-**Skill discipline.** Inside this skill body, before any canonical-file `Edit`/`Write` call:
-
-1. Compute the target path you intend to write.
-2. Run `dekspec library cow-stage <target-path>` once. Surface the verb's stdout to the engineer.
-3. If the verb exits 0 with a new provisional path printed, redirect the edit to that path.
-4. If the verb exits 1 (no claim + no `--incubation`), proceed with the canonical edit as normal — the canonical is unclaimed and the edit is direct-flow legal.
-
-**Audit pairing.** The `T-COW-CANONICAL-EDITED` rule (P2 mechanical) fires on every `git diff --name-only main` entry that is claimed AND lacks a provisional sibling with `replaces:` set — so a skill that skips this guard surfaces as advisory in the next `dekspec audit linkage` run, but never blocks.
-
+**Form:** kind-dir — canonical artifacts under `dekspec/<kind-dir>/`.
 
 ## Output
 

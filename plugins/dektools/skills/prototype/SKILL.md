@@ -1,14 +1,16 @@
 ---
 name: prototype
-description: Cheapest-shape, pre-spec throwaway-exploration loop for DekSpec — feel out a state model or a request/response shape BEFORE committing to an Intent or Working Spec. All throwaway code lands ONLY in the gitignored `dekspec/.scratch/prototypes/<run>/` ephemeral zone (INT-165 / ADR-040) and is never production code; the durable FINDINGS (decision reached, approaches rejected, risks surfaced, suggested next artifact) route into the governed authoring skills (/write-ws, /write-ic, /write-ae) rather than dead-ending. A no-production-leak discipline holds throughout: any production adoption passes through the normal Intent → WS → IB lifecycle. Use when you want to explore a design cheaply and disposably before specifying it, sketch an API shape, or sanity-check a state model first.
+description: Cheapest-shape, pre-spec throwaway-exploration loop for DekSpec — feel out a state model or a request/response shape BEFORE committing to an Intent or Working Spec. All throwaway code lands ONLY in the gitignored `dekspec/.scratch/prototypes/<run>/` ephemeral zone (INT-165 / ADR-040) and is never production code; the durable FINDINGS (decision reached, approaches rejected, risks surfaced, suggested next artifact) route into the governed authoring skills (/write-ws, /write-ic, /write-ae) rather than dead-ending. A no-production-leak discipline holds throughout: any production adoption passes through the normal Intent → WS → IB lifecycle. Not `/dekspec:spike` — that answers a falsifiable feasibility question and leaves a tracked SPIKE.md record; this one explores a design *shape* and leaves nothing tracked. Use when you want to explore a design cheaply and disposably before specifying it, sketch an API shape, or sanity-check a state model first.
 mode: lite
 model: claude-opus-4-7
 reasoning_effort: high
 disable-model-invocation: false
 allowed-tools: Read Write Edit Bash
 argument-hint: [--help] [--shape logic|api] [--at PATH]
-related_skills: [write-ws, write-ic, write-ae]
+related_skills: [spike, write-ws, write-ic, write-ae]
 ---
+
+> **Preflight (ADR-047).** This is a `dekspec-required` tool. From this skill's own directory run `python ../../scripts/dependency_guard.py prototype` before anything else — it exits non-zero with install instructions when the DekSpec engine is absent. (The path is relative to this file so it resolves identically in the monorepo, a packaged plugin install, and an emitted per-host tree.) If it fires, stop and surface its message; do not proceed.
 
 > **Shared `_lib` lives in the DekSpec core plugin** (ADR-047). Resolve it with `dekspec resource lib <name> --path-only`, then read that path — a relative `../_lib/` link does not cross the plugin boundary.
 Run the governed pre-spec throwaway-exploration loop. The **whole point of this
@@ -97,7 +99,7 @@ selects the throwaway shape within Prototype mode, not a standalone mode.
    - a cross-component boundary → `/dekspec:write-ic` (Interface Contract);
    - a system/component vision slice → `/dekspec:write-ae` (Architecture Element).
    Domain-term clarifications that surface during exploration route to
-   `/dekspec:write-ggc` rather than being defined inline.
+   `/dekspec:write-glossary` rather than being defined inline.
 
 **No production leak (the discipline):** any production adoption of a
 prototype's outcome must pass through the normal
@@ -157,5 +159,5 @@ At runtime, render the manifest per `_lib/help_mode_template.md` and stop.
 - `/dekspec:write-ic` — consumes a cross-component-boundary finding into an Interface Contract.
 - `/dekspec:write-ae` — consumes a system/component-vision finding into an Architecture Element.
 - `/dekspec:write-intent` — the lifecycle entry point any production adoption of a prototype's outcome must pass through (no direct promotion of scratch code).
-- `/dekspec:write-ggc` — domain-term clarifications surfaced during exploration route here.
+- `/dekspec:write-glossary` — domain-term clarifications surfaced during exploration route here.
 - AE-006 (Skills Library) — the AE this skill registers under; INT-165 / ADR-040 owns the `dekspec/.scratch/` ephemeral zone this skill's throwaway code is confined to.

@@ -7,8 +7,10 @@ reasoning_effort: high
 disable-model-invocation: false
 allowed-tools: Read Write Edit Bash
 argument-hint: [--help] [artifact-id or fuzzy description of the thing being authored]
-related_skills: [write-intent, write-mission, write-ae, write-adr, write-ggc]
+related_skills: [write-intent, write-mission, write-ae, write-adr, write-glossary]
 ---
+
+> **Preflight (ADR-047).** This is a `dekspec-required` tool. From this skill's own directory run `python ../../scripts/dependency_guard.py interview-me` before anything else — it exits non-zero with install instructions when the DekSpec engine is absent. (The path is relative to this file so it resolves identically in the monorepo, a packaged plugin install, and an emitted per-host tree.) If it fires, stop and surface its message; do not proceed.
 
 > **Shared `_lib` lives in the DekSpec core plugin** (ADR-047). Resolve it with `dekspec resource lib <name> --path-only`, then read that path — a relative `../_lib/` link does not cross the plugin boundary.
 Run a docs-anchored, one-question-at-a-time interview that sharpens a fuzzy or
@@ -56,14 +58,14 @@ Run a depth-first decision-tree interview. The discipline:
 2. **Recommend an answer per question.** Every question carries your recommended answer + a one-line rationale, so the engineer is reviewing a proposal rather than answering an open prompt.
 3. **Explore the repo before asking.** When the answer is discoverable from the codebase — an existing ADR decision, an AE contract, a glossary entry, a prior Intent, the actual code — read it and state the discovered answer instead of asking. Only ask when the repo is genuinely silent or contradictory.
 4. **Cite the glossary + governing decisions; flag conflicts.** Read `dekspec/domain-glossary.md` plus the governing ADRs (`dekspec/adrs/`) and AEs (`dekspec/architecture-elements/`) relevant to the artifact. Cite the specific term/ADR/AE the answer touches. If the engineer's asserted direction conflicts with a LOCKED decision or a defined term, surface the conflict explicitly and stop to resolve it before proceeding.
-5. **Sharpen fuzzy/overloaded terms.** When a term in the input is vague, overloaded, or undefined, pin its meaning before it enters the artifact. If the clarification is a genuine domain-term question (a new Title-Case term, a redefinition, a recurring misinterpretation), route it to `/dekspec:write-ggc` rather than inventing a definition inline.
+5. **Sharpen fuzzy/overloaded terms.** When a term in the input is vague, overloaded, or undefined, pin its meaning before it enters the artifact. If the clarification is a genuine domain-term question, route it rather than inventing a definition inline: a new Title-Case term or a redefinition goes to `/dekspec:write-glossary`, a recurring misinterpretation to `/dekspec:write-corrections`.
 6. **Stress-test asserted relationships with scenarios.** When the input asserts a relationship ("X depends on Y", "this replaces Z", "A and B are the same"), construct a concrete scenario that would break the assertion and walk it. If the scenario holds, the relationship is confirmed; if it breaks, the assertion is revised before it's committed.
 
 ### Output routing (DekSpec-native)
 
 - Resolved decisions are written to `dekspec/.scratch/interview-me/<artifact-id>.md` — the ephemeral hand-off zone landed by INT-165 (the `dekspec/.scratch/<skill>/` convention, gitignored, disposable). Use the artifact id as the filename stem (`INT-167.md`); for a not-yet-id'd fuzzy input, use a slug.
 - `interview-me` is **never a durable writer**: it does not edit the artifact itself. At interview end the host authoring skill reads the scratch log and folds the resolved decisions into the artifact being authored.
-- Domain-term clarifications route to `/dekspec:write-ggc` (`--add-term` / `--log`), not into any external glossary or notes file.
+- Domain-term clarifications route to `/dekspec:write-glossary` (`--add-term`) or `/dekspec:write-corrections` (`--log`), not into any external glossary or notes file.
 
 ### Closing step
 
@@ -106,6 +108,7 @@ At runtime, render the manifest per `_lib/help_mode_template.md` and stop.
 ## Related
 
 - `/dekspec:write-intent`, `/dekspec:write-mission`, `/dekspec:write-ae`, `/dekspec:write-adr` — the high-judgment authoring skills that compose this skill default-on.
-- `/dekspec:write-ggc` — domain-term clarifications route here.
+- `/dekspec:write-glossary` — new terms and redefinitions route here.
+- `/dekspec:write-corrections` — recurring domain misinterpretations route here.
 - `dekspec/domain-glossary.md` — the term corpus this interview cites.
 - AE-006 (Skills Library) — the AE this skill registers under.

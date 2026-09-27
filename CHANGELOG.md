@@ -4,6 +4,149 @@ All notable changes to DekSpec are documented here. Format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [v0.124.0] — 2026-09-27
+
+Completes the **ADR-047 DekTools extraction** and a **coherence pass** over the spec tree. The theme of the release is that several long-standing guards turned out not to be guarding: the dependency guard could not fire on a consumer install, a dispatch-class trigger policy was defeated by its own command wrappers, a command wrapper dispatched to a skill that no longer existed, and two kinds of drift had no audit rule watching them at all. Each is fixed with the rule that would have caught it.
+
+Two decisions are ratified and LOCKED — **ADR-053** (defer the codebase-audit rule engine; ratify the finding contract) and **ADR-054** (cut IBs as vertical slices; route shared foundations) — the second on the back of a measurement rather than an argument.
+
+**BREAKING:** `write-ggc` is split into `write-glossary` + `write-corrections`, and `dekspec/guidance-and-corrections.md` is renamed to `dekspec/terminology-corrections.md`. Both are migrated; see the entry below.
+
+### Added — **ADR-054**: cut IBs as vertical slices; route shared foundations (INT-192)
+
+`write-ibs` and `write-issue-beads` decomposed on **opposite axes** — one prescribed a shared foundation IB that others depend on, the other forbade horizontal decomposition outright and required every slice be independently grabbable. Same repo, same concept, contradictory rules.
+
+ADR-054 settles it with a three-branch routing rule: **Interface Contract** when the shared surface is a genuine cross-component boundary; otherwise **pin by contract** — the shape goes verbatim into every consuming slice's Constraints & Decisions with no dependency edge; **foundation IB** survives only as a bar-clearing exception (≥2 real dependents, types only, own PR). Absorbing the shared type into whichever slice needs it first is rejected outright: that is a sequencing edge wearing a vertical disguise.
+
+**The premise was measured before the rule was adopted.** `docs/evaluations/cd-pinning-prototype.md`: 168 independent agents, real parallelism. Pinned — 288/288 cross-slice pairs produced an identical type shape and integrated (100%). Unpinned control — 8.3% and 33.3%. Delta +91.7pp.
+
+The measurement also **relocated** the risk rather than removing it, which is why the rule carries a mandatory **pin-delivery check**: what was validated is that agents *honour* a pin, not that the pipeline *delivers* one. And a missing pin does not fail loudly — a third of control agents wrote defensive shims that let integration pass while leaving eleven mutually distinct definitions of one type in a single system. Integration tests are not a backstop.
+
+A governance finding worth recording: **nothing LOCKED governed the previous foundation-IB default.** It lived only in `write-ibs` prose, so this ADR supersedes nothing and needed no unlock cycle — correcting an earlier note that called it "the skill's LOCKED decomposition model."
+
+`write-ibs` is rewritten at eight sites. An independent defect is fixed with it: §Cohesion rejected logical cohesion (*"domain affinity is not functional unity"*) while the God-IB anti-pattern prescribed *"types in one, utilities in another"* — logical cohesion by that same definition.
+
+### Added — the ratified leading-word canon, applied and enforced (ll9k.7 / ll9k.8 / 7uqq1)
+
+`vertical slice` joins the glossary (63 terms), closing `ll9k.7`'s last open question.
+
+Applying it reshaped the work: most `red-first` uses turned out to be the **sanctioned gloss**, not the retired steering term. `write-tests` already carried the canonical pairing — *"under strong-TDD red-first timing"* — and `review-pr/lenses.md` uses `red-first` to name the literal commit ordering it checks. Blanket substitution would have lost timing specificity. The real gap was six files using the gloss with the steering term entirely absent; those now name it on first use.
+
+**`skill_lint` gains `C7-retired-term`** so the canon cannot rot back. `ll9k.7` had flagged that L10 can never enforce this — it scans only `dekspec/` IR artifacts and matches only Title-Case phrases, so a lowercase term in a `SKILL.md` is invisible to it. C7 scans `modes/`, `templates/`, `lenses.md` and `references/` as well as `SKILL.md`, because five of the eight files carrying canon terms are fragments. Naming a retired term *to say it is retired* is allowed — a reader migrating off the old name needs the old name.
+
+### Changed — **BREAKING:** `write-ggc` is split into `write-glossary` and `write-corrections` (INT-191)
+
+"GGC" was an initialism you had to expand before you knew what the skill did — and the expansion named three things when only two existed. The skill was 737 lines across six substantive modes writing two different durable artifacts.
+
+**"Guidance" named nothing.** `guidance-and-corrections.md` was a ten-line placeholder; there was no guidance mode, and `ggc_ops.py` carried no guidance-shaped function. A third `write-guidance` skill would have shipped with no operations. That finding reduced a requested three-way split to two.
+
+**Two successors, partitioned by artifact.** `/dekspec:write-glossary` owns Extract (no-auto-write invariant carried verbatim) and Add-Term. `/dekspec:write-corrections` owns Log and Review. The promotion hand-off is preserved as the seam the code already had: corrections owns the recurrence threshold and the decision to promote, the glossary owns composing the row.
+
+**`write-ggc` is removed, not aliased** — a retained alias preserves the ambiguous name the split exists to remove (ADR-050 precedent).
+
+**The artifact is renamed** `dekspec/guidance-and-corrections.md` → **`dekspec/terminology-corrections.md`**, pairing with `domain-glossary.md` in both shape and subject. `dekspec init` scaffolds the new name, and a `terminology_rename` migration carries existing consumers across.
+
+**Cross-artifact audit moved into the engine.** Audit steps 3/5/7/8 spanned both artifacts; step 4 already duplicated the engine's `T-GLOSSARY-*` rules. They are now rules in `linkage.py` — the corrections log read as a non-IR file via the `_read_skill_files()` pattern, with no 11th IR kind. The underlying cause was an asymmetry: the glossary is a graph artifact, the corrections log is not, so the engine governed one end of a two-ended pipeline and the skill hand-rolled the rest in prose.
+
+`tests/test_write_ggc_split.py` encodes the outcome: every substantive mode served by exactly one successor, none lost, none duplicated. The universal modes (`--help`/`--audit`/`--review`/`--teaching`) are asserted present on both instead of partitioned — they are the dispatcher contract, not part of the split — with `write-glossary` exempt from `--review` on documented grounds: Review Mode walked open *correction* entries and the glossary has no open-issue concept.
+
+**Migration for consumers:** `/dekspec:write-ggc --extract|--add-term` → `/dekspec:write-glossary`; `--log|--review` → `/dekspec:write-corrections`. Rename `dekspec/guidance-and-corrections.md` to `dekspec/terminology-corrections.md`, or let `dekspec migrate` do it.
+
+### Added — **ADR-053**: defer the codebase-audit rule engine, ratify the finding contract (ds-d5bx)
+
+Hand-promoted from `dekspec/provisional/audit-rule-engine/` and LOCKED. The decision is not merely "no": it ratifies the finding contract as the stable thing downstream may depend on (7 fields, `P0`–`P3` per ADR-013, three confidence bands, the ten families, scope labels documentation-only), keeps **judgment findings first-class and permanent** — the clause that stops a future engine quietly converting an APOSD architecture audit into a metrics report — and closes the `ds-85cb` reuse question with a recorded answer: reviewed, no alignment, no dependency in either direction.
+
+Two re-entry triggers are named, with an explicit anti-gaming guard: *"If a metric's justification is 'we need rules to register,' that is this trigger being gamed, not met."*
+
+`ds-d5bx` is closed as won't-build. The board and the artifact now agree, where before one said build and the other said don't.
+
+### Fixed — `/diagnose-bug`'s command wrapper dispatched to a skill that does not exist
+
+`plugins/dektools/commands/diagnose-bug.md` named the retired `diagnose` skill in three places, including the load-bearing dispatch instruction (*"Invoke the `diagnose` skill via the Skill tool"*). The skill has been `diagnose-bug` since the rename; invoking the command routed at nothing. A repo-wide scan of every command wrapper confirms this was the **only** dangling skill reference. A stale prose mention in `debug-testfail`'s SKILL.md was corrected with it.
+
+Found by re-verifying a provisional Intent's own `rename-propagated-no-dangling-refs` predicate — the Intent had been parked at IMPLEMENTING since 2026-07-06 for an unrelated environmental reason, and the propagation gap had been sitting behind it.
+
+### Added — two audit rules closing unaudited drift (ds-9ht3a, ds-n3prf)
+
+- **`T-SKILL-COMMAND-TRIGGER-CONSISTENT`** (P2, mechanical) — a command wrapper that stays model-invocable while the skill it dispatches declares `disable-model-invocation: true`. The dispatch class's whole point is that high-side-effect skills are not model-reachable, and `orchestrate-coding-session` + `deepen-until-dry` both defeated it through their own wrappers. `_read_skill_files()` never reads `plugins/*/commands/`, so nothing could see it. Both wrappers are fixed.
+- **`T-SKILL-DEFAULTS-DOC-SYNC`** (P3, advisory) — `_SKILL_CLASS_DEFAULTS` versus the authoritative `docs/dekspec-skill-flag-defaults.md`. Enforcement ran in one direction only: registering a skill in code but not the doc left `doctor` fully clean, which is exactly what happened to `security-review` and `setup-dektools` earlier in this release. The 3 stale `factory*` keys left behind by INT-099 are removed.
+
+### Changed — coherence pass: status drift cleared across the provisional tree
+
+`MSN-020` advanced ACTIVE → COMPLETING → COMPLETE after its Verification ran predicate-by-predicate. Two of its own predicates are recorded as **tautological as written** — they grep the audit JSON for words the engine emits only because `LINK-MSN-CMD-RESOLVE` quotes each predicate's `cmd` back into the finding, so they exit 0 whether or not the rules exist. The behavior each stands for was verified independently before advancing, and the defect is recorded in the Mission rather than left to read as evidence.
+
+Three provisional rename Intents parked at IMPLEMENTING since 2026-07-06 advanced to TESTPASS. Not to COMPLETE: `T-PROVISIONAL-NOT-LOCKED` (ADR-043) fires on any provisional artifact at `LOCKED` or `COMPLETE`, because provisional work must stay freely abortable. Their stale banners pointed at `dekspec repo promote-provisional`, a verb retired by ds-ib9o; the banners now state the real open question, which is the folders' bookkeeping disposition.
+
+The two DEPRECATED IC provisionals were evaluated for deletion and **retained** — `ADR-022` is LOCKED and names one of them in its `## Links`, so removing it would leave a canonical LOCKED artifact pointing at a missing file. The live thread is the HITL supersede-vs-keep call on ADR-022/ADR-023 (`ds-adr022-023-phantom-post-msn016-7ukm`), which owns that abort.
+
+### Added — the ratified leading-word canon (ds-prj-skill-corpus-hardening-ll9k.7, Q1 + Q2)
+
+Five rows into `dekspec/domain-glossary.md`: **strong-TDD** (canonical; `red-first` retired as a standalone steering term, preserved as the definitional gloss), **the bead is the sole authority during construction** (the ADR-049 phrasing pinned by `tests/test_coding_agent_authority.py`), plus **fresh-context**, **provisional-first** and **deep module**, which the measurement found need defining rather than substituting. Q3 (`vertical slice` in `write-ibs`) remains unsettled pending P-INT-194; corpus-wide application is `ll9k.8` + `7uqq1`, not this change.
+
+### Changed — the Write-Time CoW Guard is one shared reference, not 11 inline copies (ds-prj-skill-corpus-hardening-ll9k.3)
+
+`ll9k.2` filed this duplication as a **bug** rather than a chore, and the distinction is the point: the CoW guard is a *guard*, so a drifted copy means the protection behaves differently depending on which skill you entered through — and nothing detected the divergence. One copy had a real hole, since fixed: `write-ggc` guarded only `domain-glossary.md`, leaving its `--log` writes to `guidance-and-corrections.md` unprotected.
+
+`plugins/dekspec/skills/_lib/cow_write_guard.md` is now the single source of truth, modelled on `_lib/context_check.md` (the structure behind Help Mode's 38/38 pointer adoption). All 11 authoring skills cite it and carry only a short block naming their form and path — **~2,492 words of duplicated prose removed**.
+
+Deliberately **not** a flatten-to-one-text migration. `ll9k.2` ruled that the three short copies are one legitimate *singleton-form* variant rather than three forks, so the reference documents **two forms**: `kind-dir` (8 skills, path derived per invocation) and `singleton` (3 skills, fixed path named explicitly). A singleton skill writing more than one file must name every one — which is exactly the `write-ggc` defect, and `tests/test_cow_guard_pointer_adoption.py` carries a named regression test so the migration cannot quietly reintroduce it.
+
+The vendored tree under `tooling/dekspec/_vendored/skills/` is synced in the same change; source and vendored trees drift silently, and PR #136 shipped a rename that missed the vendored copy.
+
+### Added — `setup-dektools`, the à-la-carte selector (ds-dektools-setup-selector-a2h8)
+
+ADR-047 calls the re-runnable selector "a required deliverable, not optional polish". It sits on top of the engine half shipped above: it reads `tool-catalog.json`, shows the current selection with each tool's `dependency_tier`, persists changes via `dekspec config set dektools.enabled`, and re-runs `dekspec install` so the host tree matches. `scripts/selector.py` is stdlib-only and reaches the engine through the `dekspec` CLI on PATH rather than importing it — the engine is normally pipx-installed, so an import is not a production path. Subcommands `status` / `enable` / `disable` / `set` / `apply`; exit codes 0/1/2. The persisted set is written in catalog order rather than click order, so the same selection always produces the same config line and a re-run is a genuine no-op instead of a reordering diff. 30 tests.
+
+### Added — the `security-review` skill (ds-prj-dektools-jw8m.4)
+
+The last net-new tool ADR-047 names. It is an **integration wrapper, not a detector**: a ladder resolves the first available proven detector (explicit override → the SAST tools the repo's Security Profile declares → the configured CI security job → Claude Code's built-in `/security-review`, deliberately ranked below the host-agnostic options → generic detectors on PATH) and uses its output verbatim. Authoring patterns, heuristics, or a rule taxonomy is forbidden — every finding traces to a named detector's own rule id or it is dropped. The DekSpec layer on top is the deliverable: findings normalized into the `review-pr` shape, and deterministic spec-aware prioritisation derived from Security Profile sections and AE `implements_globs`/`subtype`, where the adjustment may move a detector's score but never create a finding.
+
+### Changed — Teaching Mode migrated to the shared `_lib` pointer (ds-dektools-teaching-mode-pointer-k8g0x)
+
+`analyze-module-depth`, `brownfield-ingest` and `archeology` now cite `_lib/teaching_mode.md` through the cross-plugin channel instead of inlining it. Retained prose was kept only where it is demonstrably skill-specific rather than generic scaffolding.
+
+### Added — two-plugin documentation (ds-dektools-docs-xprz)
+
+README, RELEASING and a new `plugins/dektools/README.md` cover both install paths, the per-tier guard behaviour (stated per tier — ADR-047 explicitly withdrew the blanket "DekTools requires DekSpec" rule), `setup-dektools` usage, and how the second plugin is mirrored and emitted.
+
+### Added — decision records for two deferred audit questions
+
+- **`ds-audit-codebase-afferent-coupling-temporal-decomp-frub`** → `docs/evaluations/audit-criteria-afferent-coupling-temporal-decomposition.md`. Afferent coupling (FOSA `Ca`): **REJECT** — high `Ca` is APOSD's success signature, not its risk signature. Temporal decomposition: **ADD** as `IH-TEMPORAL-DECOMPOSITION`, taxonomy-additive, no ADR needed. Recommendation only; the engineer ratifies.
+- **`ds-skill-consolidation-debug-diagnose-prototype-spi-1lh4`** → `docs/evaluations/skill-consolidation-debug-diagnose-prototype-spike.md`. **KEEP-SPLIT** for both `debug-testfail`/`diagnose-bug` and `prototype`/`spike`, with the bead's sanctioned remedy applied: a one-line disambiguation on each description plus `related_skills` cross-links.
+
+### Added — executable core self-sufficiency proof (ds-dektools-tests-niur)
+
+ADR-047 calls core self-sufficiency "the load-bearing property", but `test_core_self_sufficiency.py` only checked that core skill *prose* makes no hard claim on a toolkit tool. `tests/test_dektools_toolkit_absent.py` adds the executable proof: with `plugins/dektools/` genuinely absent, core still passes. Part (b) of the bead was already satisfied by the dependency-guard suite and was not duplicated.
+
+### Added — the DekTools à-la-carte enabled-set (ds-core-install-dektools-enabled-set-sz28b)
+
+**ADR-047** makes DekTools à-la-carte: "a tool catalog + a persisted per-installation enabled-set that gates which tools register/emit (on non-Claude hosts the same selection drives which per-host trees `dekspec install` emits)", with nothing on by default and removal non-destructive. This is the **core half** — the config key, its validation, and the filtered emit. The interactive `setup-dektools` selector that front-ends it is a separate DekTools-side deliverable, now unblocked.
+
+**`dektools.enabled`** is a new optional array key in `.dekspec/config.yaml`. Optional matters: ADR-006 keeps `additionalProperties: false` at every level, so a required key would invalidate every config written before this release. Names are validated against `plugins/dektools/tool-catalog.json` at write time and an unknown one is refused with the valid list — but only when the catalog is *resolvable*. A pip/pipx-installed engine carries no plugin tree (AE-008 / ADR-009), and refusing every name because the catalog is not checked out would make the key unusable exactly where DekSpec is normally installed.
+
+**`dekspec install --platform <host>` emits exactly the enabled subset**, across all six hosts, and **prunes catalogued tools that are no longer enabled** — so re-running after a selection change both adds and removes rather than leaving a disabled tool registered. Pruning is scoped to the precise paths an emit would have written for that tool (`skills/<name>/`, `commands/<name>.md`) and skips any name core itself just wrote, so a future core/DekTools name collision cannot delete the core copy. Unrelated files in the host tree are never touched. A new `--dektools-source` flag overrides the default `dektools` sibling of `--source`.
+
+**Core self-sufficiency is asserted, not assumed.** With nothing enabled — or with the DekTools source absent — the emitted file set is compared byte-for-byte against a core-only emit and must be identical.
+
+Two CLI gaps surfaced and were closed on the way:
+
+- **Array-valued config keys were unsettable from the command line.** `argparse` hands `set_key` a string, so any array key failed validation with `is not of type 'array'`. Comma-separated input is now split for the keys declared in `DEKSPEC_CONFIG_ARRAY_KEYS`; an empty string clears the list. This also makes the pre-existing `triage_labels.buckets` settable for the first time.
+- **`config get` printed Python's list repr** (`['prj-mgr', 'spike']`), which `config set` cannot accept back. List values now print comma-separated, so get/set genuinely round-trip.
+
+### Added — the DekTools→DekSpec dependency guard (ds-dektools-dependency-guard-sgzc)
+
+**ADR-047 §Dependency architecture** requires DekTools to fail *loudly* when the DekSpec engine is absent — "never a silent missing-`_lib` error" — and makes the guard **per-tool, keyed on the declared `dependency_tier`**: it must fire for `dekspec-required` tools and stay silent for `dekspec-enhanced` ones. As the ADR puts it, "a guard that cannot tell the two apart is not a correct implementation of this ADR."
+
+`plugins/dektools/tool-catalog.json` has declared those tiers since it landed, but nothing read it. It does now.
+
+**`plugins/dektools/scripts/dependency_guard.py`** resolves a tool's tier from the catalog and probes for the engine. The probe is `dekspec` on PATH — ADR-047 settles this as the portable signal, since plugin-dependency semantics vary by host and most hosts have none. Exit codes follow the house convention: `0` allowed, `1` guard fired, `2` usage. An **uncatalogued tool is guarded as `dekspec-required`** — that is the ADR's declared default, and it is the safe direction to be wrong in. The module is standard-library-only and imports nothing DekSpec owns, because it runs precisely when the engine is missing; an engine import would fail with the very error the guard replaces.
+
+**The 13 `dekspec-required` skills now invoke it.** Each carries a preflight line ahead of its shared-`_lib` pointer — deliberately ahead, because `dekspec resource lib` is exactly the call that fails when core is absent. `prj-mgr` carries no such line and is asserted to carry none: it holds the `dekspec-enhanced` tier and must never be guarded.
+
+**`plugins/dektools/hooks/hooks.json`** adds a `SessionStart` preflight (`hooks-handlers/session-start-guard.py`) that names which skills will refuse and which still work, then exits 0. ADR-047 allows a `plugin.json` dependency declaration "where the host supports it"; no targeted harness exposes one today, so the preflight is the mechanism everywhere. It is loud but never fatal — a nonzero `SessionStart` hook breaks the whole session, which is the wrong trade for an operator who installed DekTools only to read a project board.
+
+`tests/test_dektools_dependency_guard.py` (14 tests) asserts the discrimination property directly: the same engine-scrubbed environment, `audit-codebase` refusing and `prj-mgr` succeeding. The engine is scrubbed from `PATH` rather than assumed absent — `dekspec` is on `PATH` in this repo, so a guard keyed on plugin identity would otherwise pass for the wrong reason. Two catalog-integrity checks guard against rot: every shipped skill must hold a catalog entry, and `prj-mgr` must remain the only `dekspec-enhanced` tool, so widening that tier requires amending the ADR rather than editing a JSON file.
+
 ## [v0.123.0] — 2026-08-22
 
 ### Fixed — the release machinery could not ship a second plugin (ds-dektools-packaging-k7wz)

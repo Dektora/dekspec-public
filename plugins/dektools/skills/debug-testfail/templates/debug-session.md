@@ -67,4 +67,4 @@ direction has been confirmed to flip the repro green.
 - **Disproved theories:** <bulleted summary of `## Disproved` above>
 - **Recommended fix shape:** <one-paragraph — the *direction* of the fix>
 - **Regression-test seed:** <the deterministic repro that becomes the
-  red-first outcome test the Intent's next bead lands>
+  strong-TDD red-first outcome test the Intent's next bead lands>

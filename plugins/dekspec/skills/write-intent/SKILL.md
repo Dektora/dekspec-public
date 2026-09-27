@@ -147,29 +147,9 @@ At runtime when `--help` is the active flag, load [`modes/help.md`](modes/help.m
 
 ## Write-Time CoW Guard (INT-082 phase 4)
 
-Before any edit to a canonical artifact (anything under `dekspec/<kind-dir>/`), consult the CoW guard:
+See [`_lib/cow_write_guard.md`](../_lib/cow_write_guard.md) for the canonical contract.
 
-```bash
-dekspec library cow-stage <path-to-canonical> [--incubation <slug>] [--at <repo>]
-```
-
-If the target path is claimed by a pre-ACCEPTED Intent (DRAFT/PROPOSED) via that Intent's `Components affected` globs, the verb:
-
-1. Copies the canonical to `dekspec/provisional/<incubation-slug>/<KIND>-provisional-<file-slug>.md`.
-2. Stamps `replaces: <CANONICAL-ID>` in the frontmatter so the eventual `promote-provisional` run does a REPLACE (preserving the canonical ID) instead of allocating a new one.
-3. Returns the new provisional path. Edit that file instead; the canonical stays frozen.
-
-If the path is not claimed by any pre-ACCEPTED Intent, the verb errors unless you pass an explicit `--incubation <slug>` (the canonical-only path is the normal edit flow).
-
-**Skill discipline.** Inside this skill body, before any canonical-file `Edit`/`Write` call:
-
-1. Compute the target path you intend to write.
-2. Run `dekspec library cow-stage <target-path>` once. Surface the verb's stdout to the engineer.
-3. If the verb exits 0 with a new provisional path printed, redirect the edit to that path.
-4. If the verb exits 1 (no claim + no `--incubation`), proceed with the canonical edit as normal — the canonical is unclaimed and the edit is direct-flow legal.
-
-**Audit pairing.** The `T-COW-CANONICAL-EDITED` rule (P2 mechanical) fires on every `git diff --name-only main` entry that is claimed AND lacks a provisional sibling with `replaces:` set — so a skill that skips this guard surfaces as advisory in the next `dekspec audit linkage` run, but never blocks.
-
+**Form:** kind-dir — canonical artifacts under `dekspec/<kind-dir>/`.
 
 ## Rules
 
@@ -180,7 +160,7 @@ If the path is not claimed by any pre-ACCEPTED Intent, the verb errors unless yo
 - **No template placeholders in DRAFT.** Every template section that is required at this stage must be populated with real content. `<reproduction-test-path-from-IB-1>` is the one allowed verbatim placeholder, and only inside the bug-type Verification block; `--decompose` (Part B) resolves it.
 - **D19 / D20 are hard.** Measurable targets and decision rationale do not belong in an Intent. Move them to WS / ADR. The skill refuses to advance state until each finding is resolved.
 - **Linked Architecture Elements is mandatory (Decision D12).** Every Intent links to at least one existing AE. If the engineer cannot name one, that signals either the Intent is too small or there is missing AE work — surface and stop.
-- **Log corrections.** When this skill corrects a domain misinterpretation in the engineer's input — wrong term, confused concept, contradicted architectural fact — invoke `/write-ggc --log` with the correction details before proceeding. Feeds the glossary promotion pipeline.
+- **Log corrections.** When this skill corrects a domain misinterpretation in the engineer's input — wrong term, confused concept, contradicted architectural fact — invoke `/write-corrections --log` with the correction details before proceeding. Feeds the glossary promotion pipeline.
 - **Diff confinement is hard.** `--testpass` Step 2 is the gate that prevents Intents from quietly growing scope. An out-of-scope edit appends a TESTFAIL record (Status stays IMPLEMENTING — the TESTFAIL Status flip retired 2026-05-25) even when every Verification check passes. The remedy is either reverting the out-of-scope edit or re-running `--analyze` with an updated `Components affected:` (which re-validates the size cap). Never silently extend the glob list inside `--testpass`.
 - **Verification fast-fails on first failure.** `--testpass` Step 3 stops at the first non-zero check. Subsequent checks are not run because they may depend on invariants the failing check guards. The engineer fixes, then re-runs.
 - **Outcome verification shares one scoping altitude with the bead tests (INT-151).** When authoring an Intent's `outcome_verification` declaration (the single user-observable proof, per ADR-029), apply the same scoping altitude the `/write-tests` **scoping role-pass** applies to per-bead assertions: classify each pinned mechanism **REQUIRED / GIVEN / INCIDENTAL** and keep the outcome assertion as tight as the Intent's intent and no tighter. An `outcome_verification` test that pins an INCIDENTAL mechanism is over-specified — pin the user-observable behavior instead. This keeps the per-Intent `outcome_verification` and the per-bead assertions speaking one vocabulary, reinforcing `fence-durable` / `fence-golden-path` rather than introducing a second altitude language.
@@ -232,7 +212,7 @@ If the path is not claimed by any pre-ACCEPTED Intent, the verb errors unless yo
 - [ ] Any canonical-file write was preceded by a `dekspec library cow-stage` check, and edits to a claimed path were redirected to the provisional sibling.
 - [ ] The Status transition recorded matches the mode's contract (e.g. `--accept` PROPOSED → ACCEPTED; `--audit` mutated nothing; `--review` did not promote Status).
 - [ ] The required Amendment Log entry was appended for mutating modes, and `--audit` wrote nothing.
-- [ ] Any domain misinterpretation corrected during the run was logged via `/write-ggc --log` before proceeding.
+- [ ] Any domain misinterpretation corrected during the run was logged via `/write-corrections --log` before proceeding.
 - [ ] `dekspec relink` was run against the repo root as the final action of every substantive mode.
 
 ## Closing Step

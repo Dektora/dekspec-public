@@ -1,6 +1,6 @@
 ---
 name: debug-testfail
-description: Resumable post-spec debugging loop for DekSpec — runs Agans' debugging-9-rules protocol on a TESTFAIL symptom and persists investigation state (observation / theory / disproved audit trail) to `dekspec/debug/<slug>.md` so the hunt survives a context reset. `--diagnose` produces a structured Root Cause Report only and applies NO source fix (the only file written is the persisted state log). `continue <slug>` reloads the prior state file rather than restarting from the symptom. On resolution, writes a fix summary back to the Intent's `## TESTFAIL records` table. Use when a previously-locked Intent regresses, an outcome test starts failing, or a debugging session needs to span multiple agent contexts.
+description: Resumable post-spec debugging loop for DekSpec — runs Agans' debugging-9-rules protocol on a TESTFAIL symptom and persists investigation state (observation / theory / disproved audit trail) to `dekspec/debug/<slug>.md` so the hunt survives a context reset. `--diagnose` produces a structured Root Cause Report only and applies NO source fix (the only file written is the persisted state log). `continue <slug>` reloads the prior state file rather than restarting from the symptom. On resolution, writes a fix summary back to the Intent's `## TESTFAIL records` table. Not `/dekspec:diagnose-bug` — that is the pre-spec sibling that builds a repro before any bug Intent exists; this one is post-spec, runs on a TESTFAIL already recorded against an Intent, and leaves a tracked audit trail. Use when a previously-locked Intent regresses, an outcome test starts failing, or a debugging session needs to span multiple agent contexts.
 mode: lite
 model: claude-opus-4-7
 reasoning_effort: high
@@ -9,6 +9,8 @@ allowed-tools: Read Write Edit Bash
 argument-hint: [--help] [--diagnose] [continue SLUG]
 related_skills: [diagnose-bug, write-intent, write-tests]
 ---
+
+> **Preflight (ADR-047).** This is a `dekspec-required` tool. From this skill's own directory run `python ../../scripts/dependency_guard.py debug-testfail` before anything else — it exits non-zero with install instructions when the DekSpec engine is absent. (The path is relative to this file so it resolves identically in the monorepo, a packaged plugin install, and an emitted per-host tree.) If it fires, stop and surface its message; do not proceed.
 
 > **Shared `_lib` lives in the DekSpec core plugin** (ADR-047). Resolve it with `dekspec resource lib <name> --path-only`, then read that path — a relative `../_lib/` link does not cross the plugin boundary.
 Run the resumable post-spec debugging loop. The **whole point of this skill**
@@ -19,7 +21,7 @@ or `IMPLEMENTING` Intent, while keeping the entire investigation audit trail
 to another agent does not vaporize the hunt.
 
 This skill is the **post-spec** sibling of `/dekspec:diagnose-bug`. Where
-`diagnose` builds a deterministic PASS/FAIL repro signal *before* a bug
+`diagnose-bug` builds a deterministic PASS/FAIL repro signal *before* a bug
 Intent is captured (pre-spec), `/dekspec:debug-testfail` runs the full nine-rules
 protocol *after* a TESTFAIL has been recorded against an Intent — it lives
 inside the governed lifecycle, not before it.
@@ -120,5 +122,5 @@ storage: "dekspec/debug/<slug>.md (durable persisted state — observation, theo
   a TESTFAIL has been recorded against an Intent.
 - `/dekspec:write-intent` — owns the `## TESTFAIL records` table that the
   resolution writeback updates.
-- `/dekspec:write-tests` — the red-first outcome test the bug Intent's first
+- `/dekspec:write-tests` — the strong-TDD red-first outcome test the bug Intent's first
   bead lands once the Root Cause Report is in hand.

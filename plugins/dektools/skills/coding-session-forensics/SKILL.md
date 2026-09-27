@@ -10,6 +10,8 @@ argument-hint: [--help] [problem description]
 related_skills: [diagnose-bug, orchestrate-coding-session, land-intent]
 ---
 
+> **Preflight (ADR-047).** This is a `dekspec-required` tool. From this skill's own directory run `python ../../scripts/dependency_guard.py coding-session-forensics` before anything else — it exits non-zero with install instructions when the DekSpec engine is absent. (The path is relative to this file so it resolves identically in the monorepo, a packaged plugin install, and an emitted per-host tree.) If it fires, stop and surface its message; do not proceed.
+
 > **Shared `_lib` lives in the DekSpec core plugin** (ADR-047). Resolve it with `dekspec resource lib <name> --path-only`, then read that path — a relative `../_lib/` link does not cross the plugin boundary.
 Run a **read-only post-mortem** on a DekSpec construction session that went
 wrong. Construction (bead dispatch → worktree → red/green → merge → LOCK) fails

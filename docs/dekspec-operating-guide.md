@@ -130,7 +130,8 @@ Delegation is structural, not stylistic: the coding executor and the review pipe
 -  — record a system-level divergence (instruction-violation, spec-fidelity, capability-gap) as a numbered `DIV-NNN-*.md` note.
 - `/dekspec:archeology` — brownfield spec-gap recovery: scan an orphaned code surface, propose a retroactive Intent skeleton, and ratify it through `/write-intent --accept`. Replaces the retired `/do-code-archaeology` skill (2026-05-24).
 - `/dekspec:brownfield-ingest` — classify inherited markdown prose (Confluence exports, inherited PRDs, design wikis) into DekSpec artifact slots via `dekspec ingest`.
-- `/write-ggc` — log domain corrections, add glossary terms, audit terminology health.
+- `/write-glossary` — extract term candidates and add terms to the domain glossary.
+- `/write-corrections` — log domain corrections, track recurrences, promote at threshold.
 
 *The listener side of the async inbox/listener dispatch pattern (originally `/dekspec:dispatch-inbox-listener`, later `/dekspec:factory-listen`) was excised from this library in INT-099 — 2026-05-27 — when the factory surface moved to `Dektora/dekfactory` as an independent plugin. AE-009 still defines the inbox/outbox contract; the listener implementation now lives in the dekfactory plugin.*
 
@@ -169,7 +170,7 @@ Layer 4 — Construction  (code, tests, evals, reviews)
 | 3 | Implementation Brief (IB) | Everything a coding agent needs for one session. | `dekspec/impl-briefs/` |
 | 4 | Bead | Atomic work unit — one commit-cluster on the IB branch (ADR-025). | `.beads/beads.jsonl` |
 
-**Filename convention (per ADR-012).** L0 singletons — those that are unique per repository (System Vision, Domain Glossary, Guidance and Corrections, the planned Constitution) — use **slug-only filenames** like `system-vision.md`. Layer 1+ artifacts — those authored repeatedly under a counter (AE, ADR, WS, IC, IB, Intent, Mission) — use **`TYPE-NNN-slug.md` filenames** like `AE-001-dekspec.md`. The split reflects cardinality: singletons have no counter dimension, so none appears in the name; L1+ artifacts do, so the counter is load-bearing. Both `dekspec init` and the parser's kind detection honor this rule; the methodology doc §4 has the long-form discussion.
+**Filename convention (per ADR-012).** L0 singletons — those that are unique per repository (System Vision, Domain Glossary, Terminology Corrections, the planned Constitution) — use **slug-only filenames** like `system-vision.md`. Layer 1+ artifacts — those authored repeatedly under a counter (AE, ADR, WS, IC, IB, Intent, Mission) — use **`TYPE-NNN-slug.md` filenames** like `AE-001-dekspec.md`. The split reflects cardinality: singletons have no counter dimension, so none appears in the name; L1+ artifacts do, so the counter is load-bearing. Both `dekspec init` and the parser's kind detection honor this rule; the methodology doc §4 has the long-form discussion.
 
 ### Authority and Conflict Resolution
 
@@ -215,7 +216,7 @@ The Domain Glossary (`dekspec/domain-glossary.md`) is a singular Layer 1 artifac
 
 The glossary defines: canonical term definitions, common confusions to avoid ("NOT this"), and code naming conventions. It is organized by domain category (Embedding & Tensor, Quantization & Compression, Architecture & Pipeline, Graph & Storage, Scoring & Geometry, Position & Injection, Timeline & Topics).
 
-Reactive corrections that surface during spec writing land in `guidance-and-corrections.md` via `/write-ggc --log`. Each recurrence is tracked. At 3 recurrences, the entry is auto-promoted to a glossary row. All authoring skills invoke `/write-ggc --log` when they correct a domain misinterpretation.
+Reactive corrections that surface during spec writing land in `terminology-corrections.md` via `/write-corrections --log`. Each recurrence is tracked. At 3 recurrences, the entry is auto-promoted to a glossary row (composed by `/write-glossary`). All authoring skills invoke `/write-corrections --log` when they correct a domain misinterpretation.
 
 ### Artifact Lifecycle — Locking
 
@@ -1090,7 +1091,7 @@ dekspec/
   architecture-elements-index.md ← Architecture Elements index (replaces design-notes-index.md)
   system-vision.md               ← Layer 1: system vision (singular, top-level)
   domain-glossary.md             ← Layer 1: canonical domain terminology
-  guidance-and-corrections.md    ← corrections backlog (promoted to glossary over time)
+  terminology-corrections.md     ← corrections backlog (promoted to glossary over time)
   dekspec-operating-guide.md      ← this document
   dekspec-quick-reference.md     ← 5-10 minute onboarding summary
   project-context.md             ← all 13 role definitions and prompts
@@ -1213,7 +1214,7 @@ DekSpec follows two simple rules for filenames inside the `dekspec/` content tre
 
 1. **Artifact files use the label-NNN format with the LABEL UPPERCASE.** Everything else in the filename is lowercase + hyphenated. Examples: `ADR-022-configurable-scoring-formulas.md`, `AE-014-configurable-formula-engine.md`, `WS-016-scoring-formulas.md`, `IC-007-formula-engine-evaluation.md`, `IB-003-se-embedding-tokens.md`, `MSN-002-attachment-mime-coverage.md`, `MSN-001-se-container-build.md`, `CR-001-cascade-tier-rebalance.md`, `DIV-001-skips-wireups.md`. The artifact-label prefixes are: `ADR`, `AE`, `WS`, `IC`, `IB`, `INT`, `MSN`, `CR`, `DIV`.
 
-2. **All other files inside `dekspec/` are lowercase + hyphenated.** Index files, methodology docs, supporting docs, vendored templates, workspace notes — all lowercase. Examples: `adr-index.md`, `working-spec-index.md`, `architecture-elements-index.md`, `intent-index.md`, `mission-index.md`, `dekspec-operating-guide.md`, `dekspec-quick-reference.md`, `architecture-frameworks-reference.md`, `architecture.md`, `domain-glossary.md`, `system-vision.md`, `project-context.md`, `guidance-and-corrections.md`, `ecosystem-tools.md`, `closeout-audit-v2-2026-05-09.md`, `dn-to-ae-reference-map-2026-04-27.csv`.
+2. **All other files inside `dekspec/` are lowercase + hyphenated.** Index files, methodology docs, supporting docs, vendored templates, workspace notes — all lowercase. Examples: `adr-index.md`, `working-spec-index.md`, `architecture-elements-index.md`, `intent-index.md`, `mission-index.md`, `dekspec-operating-guide.md`, `dekspec-quick-reference.md`, `architecture-frameworks-reference.md`, `architecture.md`, `domain-glossary.md`, `system-vision.md`, `project-context.md`, `terminology-corrections.md`, `ecosystem-tools.md`, `closeout-audit-v2-2026-05-09.md`, `dn-to-ae-reference-map-2026-04-27.csv`.
 
 ### Allowed UPPERCASE exceptions (outside `dekspec/`)
 
@@ -1321,7 +1322,7 @@ Two equivalent entry points:
 - **CLI:** `dekspec library new-provisional <KIND> <slug>` — KIND ∈ {INT, MSN, ADR, AE, IC, WS, IB, SP}. Writes a skeleton at `dekspec/provisional/<slug>/<KIND>-provisional-<slug>.md` with the canonical template body, a `> **PROVISIONAL.**` banner, and a Status of `TODO` (Mission scaffolds use `TODO` per Mission template). On first artifact in the folder the verb creates a working-tree branch — `int/INT-...`, `mission/MSN-...`, or `feat/<slug>` for the others — unless `--no-branch` is passed.
 - **Skill:** `/dekspec:write-<kind> --provisional <slug>` — same destination, same banner. Runs the full authoring flow (expertise audits, coverage analysis, etc.) but skips passes that require linkage-walker visibility. `--lock` is rejected in provisional mode; `--review` and `--analyze` are permitted.
 
-Five skills carve out: `/write-constitution`, `/write-sv`, `/write-ggc` (singletons) and `/write-evals`, `/write-tests` (operate on existing beads). They do not accept `--provisional`.
+Six skills carve out: `/write-constitution`, `/write-sv`, `/write-glossary`, `/write-corrections` (singletons) and `/write-evals`, `/write-tests` (operate on existing beads). They do not accept `--provisional`.
 
 ### Step 2 — Copy-on-write (CoW) staging
 

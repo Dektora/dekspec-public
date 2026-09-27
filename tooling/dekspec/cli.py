@@ -3407,7 +3407,7 @@ _INIT_AUDIT_FILES = (
 # every consumer is expected to have these files; audits + skills + the operating
 # guide all assume they exist. Stubs are structurally parseable (so `dekspec
 # doctor` on a fresh init remains CLEAN) but contain no real content — consumers
-# author the real text via `/write-sv` and `/write-ggc`.
+# author the real text via `/write-sv` and `/write-glossary`.
 _INIT_SINGLETON_SYSTEM_VISION = """\
 <!--
   System Vision — placeholder authored by `dekspec init`.
@@ -3454,24 +3454,30 @@ _Not yet authored._
 _INIT_SINGLETON_GLOSSARY = """\
 <!--
   Domain Glossary — placeholder authored by `dekspec init`.
-  Author and maintain with `/write-ggc`. Empty `terms` array is valid;
+  Author and maintain with `/write-glossary`. Empty `terms` array is valid;
   populate as the corpus grows.
 -->
 
 # Domain Glossary
 
-_No terms yet. Add the first one with `/write-ggc`._
+_No terms yet. Add the first one with `/write-glossary`._
 """
 
-_INIT_SINGLETON_GUIDANCE = """\
+# Renamed from `_INIT_SINGLETON_GUIDANCE` / `guidance-and-corrections.md` by
+# INT-191: nothing ever implemented "Guidance" (no mode, no helper, a ten-line
+# placeholder), so the word came out of the artifact set and the file is now
+# corrections-only. `dekspec migrate-artifacts` carries existing consumers
+# across via the `terminology_rename` advisory in
+# `dekspec.migrations.terminology_corrections_rename`.
+_INIT_SINGLETON_CORRECTIONS = """\
 <!--
-  Guidance and Corrections — placeholder authored by `dekspec init`.
-  Append corrections + standing guidance with `/write-ggc`.
+  Terminology Corrections — placeholder authored by `dekspec init`.
+  Append corrections with `/write-corrections --log`.
   Not parsed by the IR pipeline today; it's a free-form companion to the
   Domain Glossary that consumers + agents read at session-load time.
 -->
 
-# Guidance and Corrections
+# Terminology Corrections
 
 _No corrections logged yet._
 """
@@ -3479,7 +3485,7 @@ _No corrections logged yet._
 _INIT_SINGLETONS = (
     ("system-vision.md", _INIT_SINGLETON_SYSTEM_VISION),
     ("domain-glossary.md", _INIT_SINGLETON_GLOSSARY),
-    ("guidance-and-corrections.md", _INIT_SINGLETON_GUIDANCE),
+    ("terminology-corrections.md", _INIT_SINGLETON_CORRECTIONS),
 )
 
 # Constitution L0 singleton — placeholder authored by `dekspec init`.
@@ -3771,7 +3777,7 @@ def cmd_init(args: argparse.Namespace) -> int:
         created.append(f"file {p.relative_to(repo_root)}")
 
     # L0/L1 singletons: system-vision, domain-glossary,
-    # guidance-and-corrections. Idempotent by design: never overwrites real
+    # terminology-corrections. Idempotent by design: never overwrites real
     # content unless --force is passed.
     # Per ds-init-does-not-seed-l0-l1-singletons-dgh.
     for filename, content in singletons:
@@ -3816,7 +3822,7 @@ def cmd_init(args: argparse.Namespace) -> int:
         for line in skipped:
             print(f"  . {line}")
     next_steps = ["\nNext steps:"] + _init_install_guidance(repo_root) + [
-        "  · Draft the L0 singletons: `/write-sv`, `/write-ggc`.",
+        "  · Draft the L0 singletons: `/write-sv`, `/write-glossary`.",
         "  · Author your first ADR / AE / WS via the matching skill (e.g., `/write-adr`).",
         "  · Run `dekspec aggregate agents-md` once you have LOCKED + ACCEPTED artifacts.",
     ]
@@ -4001,7 +4007,14 @@ def cmd_config_get(args: argparse.Namespace) -> int:
     except dekspec_config.DekspecConfigError as err:
         print(f"Error: {err}", file=sys.stderr)
         return 2
-    print("null" if value is None else value)
+    if value is None:
+        print("null")
+    elif isinstance(value, list):
+        # Comma-separated, matching what `config set` accepts — Python's list
+        # repr would not round-trip back through the setter.
+        print(",".join(str(v) for v in value))
+    else:
+        print(value)
     return 0
 
 
@@ -4009,8 +4022,16 @@ def cmd_config_set(args: argparse.Namespace) -> int:
     from . import dekspec_config
 
     repo_root = Path(args.at).resolve() if args.at else Path.cwd()
+    # argparse hands us a string, but some keys are array-typed in the schema.
+    # Without this they are unsettable from the command line — the write fails
+    # validation with "is not of type 'array'". Comma-separated is the input
+    # shape; an empty string means the empty list (how a selection is cleared).
+    key = dekspec_config.DEKSPEC_CONFIG_KEY_ALIASES.get(args.key, args.key)
+    value = args.value
+    if key in dekspec_config.DEKSPEC_CONFIG_ARRAY_KEYS and isinstance(value, str):
+        value = [part.strip() for part in value.split(",") if part.strip()]
     try:
-        path = dekspec_config.set_key(repo_root, args.key, args.value)
+        path = dekspec_config.set_key(repo_root, args.key, value)
     except dekspec_config.DekspecConfigError as err:
         print(f"Error: {err}", file=sys.stderr)
         return 2
@@ -6782,15 +6803,38 @@ def _add_install_subparser(sub) -> None:
             "override the skill/command/hook source."
         ),
     )
+    p.add_argument(
+        "--dektools-source",
+        default=None,
+        help=(
+            "DekTools plugin source dir (default: the `dektools` sibling of "
+            "--source). Which tools are emitted comes from the `dektools.enabled` "
+            "config key, not from this flag; nothing is emitted when it is unset."
+        ),
+    )
     p.set_defaults(func=cmd_install)
 
 
 def cmd_install(args: argparse.Namespace) -> int:
+    from . import dekspec_config
+
     source_dir = Path(args.source) if args.source else _default_skills_source()
     target_dir = Path(args.target)
+    # DekTools a-la-carte (ADR-047): the selection is persisted per-repo, so
+    # the operator sets it once and every later install honors it. Empty by
+    # default, which leaves the output identical to a core-only emit.
+    # getattr: `cmd_install` is also called directly with a hand-built
+    # Namespace, which predates this flag.
+    override = getattr(args, "dektools_source", None)
+    dektools_source = Path(override) if override else source_dir.parent / "dektools"
+    dektools_tools = dekspec_config.enabled_dektools_tools(target_dir)
     try:
         result = platform_install.emit(
-            args.platform, source_dir=source_dir, target_dir=target_dir
+            args.platform,
+            source_dir=source_dir,
+            target_dir=target_dir,
+            dektools_source=dektools_source,
+            dektools_tools=dektools_tools,
         )
     except HarnessUnsupported as e:
         print(f"Error: {e}", file=sys.stderr)

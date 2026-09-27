@@ -7,7 +7,7 @@ reasoning_effort: max
 disable-model-invocation: false
 allowed-tools: Read Write Edit Grep Glob Bash Agent
 argument-hint: [--provisional <slug>] [--help | --teaching | --audit | --review | --accept | --lock | --unlock | --deprecate] [description or path]
-related_skills: [write-ae, write-adr, write-constitution, write-mission, write-ggc]
+related_skills: [write-ae, write-adr, write-constitution, write-mission, write-corrections]
 ---
 
 > **Vendored asset paths:** Template + doc paths below resolve via `dekspec resource template <name>` / `dekspec resource doc <name>` (wheel-bundled since v0.91.0; consumer-fs override wins when present). See [`_lib/vendored_assets.md`](../_lib/vendored_assets.md) for the full resolution rule.
@@ -226,23 +226,9 @@ Use this mode when:
 
 ## Write-Time CoW Guard (INT-082 phase 4)
 
-Before any edit to the System Vision singleton at `dekspec/system-vision.md`, consult the CoW guard:
+See [`_lib/cow_write_guard.md`](../_lib/cow_write_guard.md) for the canonical contract.
 
-```bash
-dekspec library cow-stage dekspec/system-vision.md [--incubation <slug>] [--at <repo>]
-```
-
-If a pre-ACCEPTED Intent (DRAFT/PROPOSED) claims the singleton's path via Components-affected globs, the verb copies the canonical into the incubation folder + stamps `replaces:`. Edit the staged copy; the canonical stays frozen.
-
-If the singleton is unclaimed, the verb errors unless `--incubation <slug>` is passed explicitly — the canonical-only path is then the normal edit flow.
-
-**Skill discipline.** Inside this skill body, before any canonical `Edit`/`Write` call on `dekspec/system-vision.md`:
-
-1. Run `dekspec library cow-stage dekspec/system-vision.md` once.
-2. On exit 0 (provisional path printed): redirect the edit there.
-3. On exit 1 (no claim + no `--incubation`): proceed with the canonical edit (direct-flow legal).
-
-**Audit pairing.** `T-COW-CANONICAL-EDITED` (P2 mechanical) fires on direct-edit bypasses of this guard.
+**Form:** singleton — guards `dekspec/system-vision.md`.
 
 ## Rules
 
@@ -252,7 +238,7 @@ If the singleton is unclaimed, the verb errors unless `--incubation <slug>` is p
 - **Why This Exists is the load-bearing rationale.** A Vision without a Why-This-Exists body is structurally incomplete. Creation Mode refuses to proceed without it.
 - **LOCKED is the steady state.** Once a system's Vision is settled, it lives in LOCKED. Substantive change is an `--unlock` → edit → `--lock` cycle, not a routine edit.
 - **Editorial vs substantive.** Editorial = typo, clarification, link fix, formatting. Substantive = changing what the system IS, who it's FOR, why it EXISTS, what it considers success, or what it explicitly is NOT. Substantive edits in LOCKED status require `--unlock` first.
-- **Log corrections.** When this skill corrects a domain misinterpretation in the engineer's input, invoke `/write-ggc --log` with the correction details before proceeding.
+- **Log corrections.** When this skill corrects a domain misinterpretation in the engineer's input, invoke `/write-corrections --log` with the correction details before proceeding.
 
 ## Output
 

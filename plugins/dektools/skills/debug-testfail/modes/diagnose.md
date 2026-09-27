@@ -142,7 +142,7 @@ Report. It is the structured output `--diagnose` produces:
   actual code change lands via the Intent's normal coding-session flow,
   not in this mode>
 - Regression-test seed: <the deterministic repro from Rule 2, which
-  becomes the red-first outcome test the Intent's next bead lands>
+  becomes the strong-TDD red-first outcome test the Intent's next bead lands>
 ```
 
 The Root Cause Report is the deliverable. It does NOT contain a code

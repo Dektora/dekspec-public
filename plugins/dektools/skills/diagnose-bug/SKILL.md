@@ -1,14 +1,16 @@
 ---
 name: diagnose-bug
-description: Governed pre-spec debugging loop for DekSpec — when a bug is observed, build a fast, deterministic, agent-runnable PASS/FAIL repro signal FIRST (before any hypothesizing), then minimize → hypothesize → instrument → fix → regression-test. The working diagnosis log lands in the gitignored `dekspec/.scratch/diagnostics/` zone and never enters the committed tree; the durable repro promotes into a bug Intent's `### bug — Reproduction` section (via /write-intent (type: bug)) and seeds /write-tests as a red-first outcome test. Use when a bug needs reproducing-before-fixing, when asked to debug or diagnose a failure, or before capturing a bug Intent.
+description: Governed pre-spec debugging loop for DekSpec — when a bug is observed, build a fast, deterministic, agent-runnable PASS/FAIL repro signal FIRST (before any hypothesizing), then minimize → hypothesize → instrument → fix → regression-test. The working diagnosis log lands in the gitignored `dekspec/.scratch/diagnostics/` zone and never enters the committed tree; the durable repro promotes into a bug Intent's `### bug — Reproduction` section (via /write-intent (type: bug)) and seeds /write-tests as a strong-TDD red-first outcome test. Not `/dekspec:debug-testfail` — that is the post-spec sibling for a TESTFAIL already recorded against an Intent; this one runs pre-spec, before any Intent exists, and leaves nothing tracked. Use when a bug needs reproducing-before-fixing, when asked to debug or diagnose a failure, or before capturing a bug Intent.
 mode: lite
 model: claude-opus-4-7
 reasoning_effort: high
 disable-model-invocation: false
 allowed-tools: Read Write Edit Bash
 argument-hint: [--help] [--at PATH]
-related_skills: [write-intent, write-tests, write-ggc]
+related_skills: [debug-testfail, write-intent, write-tests, write-glossary]
 ---
+
+> **Preflight (ADR-047).** This is a `dekspec-required` tool. From this skill's own directory run `python ../../scripts/dependency_guard.py diagnose-bug` before anything else — it exits non-zero with install instructions when the DekSpec engine is absent. (The path is relative to this file so it resolves identically in the monorepo, a packaged plugin install, and an emitted per-host tree.) If it fires, stop and surface its message; do not proceed.
 
 > **Shared `_lib` lives in the DekSpec core plugin** (ADR-047). Resolve it with `dekspec resource lib <name> --path-only`, then read that path — a relative `../_lib/` link does not cross the plugin boundary.
 Run the governed pre-spec debugging loop. The **whole point of this skill** —
@@ -102,7 +104,7 @@ Only after PHASE 1 yields a red repro (or a waiver):
     red-first outcome test the bug Intent's first bead lands.
 
 Domain-term clarifications that surface during diagnosis route to
-`/dekspec:write-ggc` rather than being defined inline.
+`/dekspec:write-glossary` rather than being defined inline.
 
 ## Help Mode
 
@@ -137,5 +139,5 @@ At runtime, render the manifest per `_lib/help_mode_template.md` and stop.
 
 - `/dekspec:write-intent` — consumes the durable repro into a bug Intent's `### bug — Reproduction` (or `### bug — Non-Reproducible Waiver`) section.
 - `/dekspec:write-tests` — seeds the red-first outcome test from the proven-red repro.
-- `/dekspec:write-ggc` — domain-term clarifications surfaced during diagnosis route here.
+- `/dekspec:write-glossary` — domain-term clarifications surfaced during diagnosis route here.
 - AE-006 (Skills Library) — the AE this skill registers under; AE-003 (Fidelity Audit Engine) — owns the `T-BUG-REPRO-GATE` P3 advisory this loop's output satisfies.

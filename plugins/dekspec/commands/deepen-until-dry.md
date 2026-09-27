@@ -2,7 +2,7 @@
 description: AFK repeat-until-dry deepening loop driver — re-invokes the orchestrate-module-deepening skill with fresh context each pass, consuming its { completed, remaining, dry } signal until consecutive dry passes converge or a max-iterations safety bound trips. Invoke once and walk away.
 allowed-tools: Skill, Bash
 argument-hint: [--help] [--scope PATH] [--max-iterations N] [--dry-streak N]
-disable-model-invocation: false
+disable-model-invocation: true
 ---
 
 Drive an AFK (operator-walks-away) deepening loop over a repo or a scoped
@@ -106,3 +106,14 @@ On termination, report:
 
 The `report` string from `dekspec.deepen_loop.run_until_dry` is the canonical
 summary; relay it plus the per-pass detail to the operator.
+
+## Trigger policy
+
+`disable-model-invocation: true` — this wrapper is **slash-invocation only**.
+It drives the `orchestrate-module-deepening` skill, which carries the
+dispatch-class `disable-model-invocation: true`, and it drives it in an AFK
+loop with no human-in-the-loop prompts, so the blast radius is strictly larger
+than one pass. Do not set this `false` and do not delete the key: an absent key
+is model-invocable, which would let the model start an unattended deepening
+loop through this wrapper (ds-9ht3a). `T-SKILL-COMMAND-TRIGGER-CONSISTENT`
+fails the audit if it drifts.

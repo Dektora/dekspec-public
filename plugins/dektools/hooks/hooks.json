@@ -1,0 +1,15 @@
+{
+  "description": "DekTools dependency preflight (ADR-047). Probes for the DekSpec engine at session start and surfaces the install remediation when it is absent, so a dekspec-required tool never fails with a silent missing-_lib error. Never blocks the session.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks-handlers/session-start-guard.py"
+          }
+        ]
+      }
+    ]
+  }
+}

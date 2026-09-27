@@ -157,10 +157,10 @@ The manifest deliberately keeps the substantive-modes / inline-modes lists in th
 
 ## When NOT to use fan-out
 
-Some skills deliberately defer fan-out because their substantive work is interactive multi-turn with the engineer (and the back-and-forth signal is the value the skill provides). The canonical example is `write-ggc`:
+Some skills deliberately defer fan-out because their substantive work is interactive multi-turn with the engineer (and the back-and-forth signal is the value the skill provides). The canonical examples are the two terminology skills:
 
-- `--log` pauses on partial matches to ask the engineer whether two corrections are the same; Step 5 (Auto-Promote) mutates the glossary based on recurrence-count state the engineer must confirm.
-- `--add-term` waits for engineer response on synonym matches before deciding to add a separate entry or update an existing one.
+- `write-corrections --log` pauses on partial matches to ask the engineer whether two corrections are the same; its Auto-Promote step promotes into the glossary based on recurrence-count state the engineer must confirm.
+- `write-glossary --add-term` waits for engineer response on synonym matches before deciding to add a separate entry or update an existing one.
 
 For these skills, the `## Fan-Out Mode` section cites this substrate's "When NOT to use fan-out" rationale and explains the deferral inline. The manifest's `substantive_modes` list is `[]` and `inline_modes` lists every mode. The substrate's three-step skeleton is not applicable; the deferral paragraph is the entire section. **Trigger to revisit:** if a non-interactive batch mode is ever added (e.g., `--log --batch <file>` ingesting pre-disambiguated corrections), fan that mode out at that time per this substrate.
 

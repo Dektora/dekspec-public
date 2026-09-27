@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
-"""Deterministic Glossary/Guidance/Corrections (GGC) operations for /write-ggc.
+"""Deterministic corrections-log operations for /write-corrections.
 
-The write-ggc skill body spells out several mechanical steps as prose: slug
-generation, appending a dated recurrence line + recomputing the count,
-detecting the promotion threshold, moving a promoted entry's row into the
-glossary, and finding candidate synonym matches. This script does the
-deterministic half; the model still judges semantic matches.
+Split out of `write-ggc/scripts/ggc_ops.py` by INT-191, which partitioned that
+skill into `/write-glossary` (terms) and `/write-corrections` (the recurrence
+pipeline). This file carries the **correction-side** half: slug generation,
+appending a dated recurrence line + recomputing the count, detecting the
+promotion threshold, and flipping a promoted entry's status. The glossary-side
+half (`find-synonym`) went to `write-glossary/scripts/glossary_ops.py`.
+
+The seam between the two skills is `promote`, and it is deliberate. This
+script owns the threshold and the decision that an entry has earned promotion;
+it marks the entry promoted and returns its Correction text. **Composing and
+writing the glossary row is `/write-glossary`'s job** — nothing here touches
+`dekspec/domain-glossary.md`.
 
 Subcommands:
 
@@ -14,22 +21,18 @@ Subcommands:
 
   add-recurrence <slug> --source S --desc D [--date YYYY-MM-DD]
       Append a `- DATE — SOURCE — DESC` recurrence line under the entry's
-      `- **Recurrences:**` list in the g&c file, update its count, and report
-      the new count plus `promote_ready` (True when count >= 3).
+      `- **Recurrences:**` list in the corrections log, update its count, and
+      report the new count plus `promote_ready` (True when count >= 3).
 
   promote <slug>
-      Mark the g&c entry `- **Status:** promoted to glossary DATE`. (The
-      glossary ROW authoring is a judgment step the model performs — this
-      command only flips the g&c status surgically and reports the entry's
-      Correction text so the agent can compose the glossary row.)
+      Mark the entry `- **Status:** promoted to glossary DATE` and report its
+      Correction text so `/write-glossary` can compose the row from it. This
+      command does not read or write the glossary.
 
-  find-synonym <term>
-      Return candidate glossary rows + g&c slugs whose text overlaps the term.
-      Heuristic only — the agent decides whether a candidate is a true synonym.
-
-The g&c file (default `dekspec/guidance-and-corrections.md`) and the glossary
-(`dekspec/domain-glossary.md`) may not exist; commands degrade gracefully.
-Promotion threshold is 3 (a system constant per write-ggc/SKILL.md Rules).
+The corrections log defaults to `dekspec/terminology-corrections.md` (renamed
+from `guidance-and-corrections.md` by INT-191) and may not exist; commands
+degrade gracefully. Promotion threshold is 3 — a system constant per
+write-corrections/SKILL.md Rules, unchanged by the split.
 
 Stdlib-only. Importable + argparse CLI. Mutations are surgical line edits.
 
@@ -45,6 +48,7 @@ import re
 import sys
 from pathlib import Path
 
+CORRECTIONS_PATH = "dekspec/terminology-corrections.md"
 PROMOTION_THRESHOLD = 3
 _RECURRENCE_LINE = re.compile(r"^\s*-\s+\d{4}-\d{2}-\d{2}\s+—")
 
@@ -59,7 +63,7 @@ def slugify(text: str, max_words: int = 8) -> str:
 
 
 # --------------------------------------------------------------------------
-# g&c entry parsing
+# corrections-log entry parsing
 # --------------------------------------------------------------------------
 def _entry_span(text: str, slug: str) -> tuple[int, int] | None:
     """Return (start, end) char offsets of the `### slug` entry block."""
@@ -88,19 +92,19 @@ def _correction_text(block: str) -> str:
 # add-recurrence
 # --------------------------------------------------------------------------
 def add_recurrence(
-    gc_path: Path,
+    corrections_path: Path,
     slug: str,
     source: str,
     desc: str,
     date: str | None = None,
 ) -> dict[str, object]:
-    if not gc_path.is_file():
-        raise FileNotFoundError(f"g&c file not found: {gc_path}")
+    if not corrections_path.is_file():
+        raise FileNotFoundError(f"corrections log not found: {corrections_path}")
     date = date or datetime.date.today().isoformat()
-    text = gc_path.read_text(encoding="utf-8")
+    text = corrections_path.read_text(encoding="utf-8")
     span = _entry_span(text, slug)
     if span is None:
-        raise KeyError(f"no g&c entry with slug '{slug}'")
+        raise KeyError(f"no correction entry with slug '{slug}'")
     start, end = span
     block = text[start:end]
 
@@ -120,7 +124,7 @@ def add_recurrence(
         )
 
     new_text = text[:start] + block + text[end:]
-    gc_path.write_text(new_text, encoding="utf-8")
+    corrections_path.write_text(new_text, encoding="utf-8")
 
     count = _count_recurrences(block)
     return {
@@ -133,18 +137,18 @@ def add_recurrence(
 
 
 # --------------------------------------------------------------------------
-# promote
+# promote — the hand-off seam to /write-glossary
 # --------------------------------------------------------------------------
 def promote(
-    gc_path: Path, slug: str, date: str | None = None
+    corrections_path: Path, slug: str, date: str | None = None
 ) -> dict[str, object]:
-    if not gc_path.is_file():
-        raise FileNotFoundError(f"g&c file not found: {gc_path}")
+    if not corrections_path.is_file():
+        raise FileNotFoundError(f"corrections log not found: {corrections_path}")
     date = date or datetime.date.today().isoformat()
-    text = gc_path.read_text(encoding="utf-8")
+    text = corrections_path.read_text(encoding="utf-8")
     span = _entry_span(text, slug)
     if span is None:
-        raise KeyError(f"no g&c entry with slug '{slug}'")
+        raise KeyError(f"no correction entry with slug '{slug}'")
     start, end = span
     block = text[start:end]
     count = _count_recurrences(block)
@@ -157,7 +161,7 @@ def promote(
         block = block.rstrip("\n") + "\n" + status_line + "\n"
 
     new_text = text[:start] + block + text[end:]
-    gc_path.write_text(new_text, encoding="utf-8")
+    corrections_path.write_text(new_text, encoding="utf-8")
     return {
         "slug": slug,
         "count": count,
@@ -165,55 +169,9 @@ def promote(
         "status_set": status_line,
         "correction": _correction_text(block),
         "note": (
-            "g&c status flipped; compose the glossary row from the "
-            "Correction text above (judgment step)."
-        ),
-    }
-
-
-# --------------------------------------------------------------------------
-# find-synonym
-# --------------------------------------------------------------------------
-def find_synonym(
-    term: str, glossary_path: Path, gc_path: Path
-) -> dict[str, object]:
-    """Return glossary rows + g&c slugs whose text overlaps `term`."""
-    needles = {w for w in re.findall(r"[a-z0-9]+", term.lower()) if len(w) > 2}
-
-    glossary_hits: list[dict[str, str]] = []
-    if glossary_path.is_file():
-        for line in glossary_path.read_text(encoding="utf-8").splitlines():
-            s = line.strip()
-            if not s.startswith("|") or set(s) <= {"|", "-", ":", " "}:
-                continue
-            cells = [c.strip(" *") for c in s.strip("|").split("|")]
-            if not cells or cells[0].lower() in {"term", "constraint", "rule"}:
-                continue
-            row_words = set(re.findall(r"[a-z0-9]+", " ".join(cells).lower()))
-            if needles & row_words:
-                glossary_hits.append(
-                    {"term": cells[0], "row": s}
-                )
-
-    gc_hits: list[str] = []
-    if gc_path.is_file():
-        for m in re.finditer(
-            r"^###[ \t]+(.+?)[ \t]*$",
-            gc_path.read_text(encoding="utf-8"),
-            re.MULTILINE,
-        ):
-            slug = m.group(1).strip()
-            slug_words = set(re.findall(r"[a-z0-9]+", slug.lower()))
-            if needles & slug_words:
-                gc_hits.append(slug)
-
-    return {
-        "term": term,
-        "glossary_candidates": glossary_hits,
-        "gc_candidates": gc_hits,
-        "note": (
-            "Heuristic word-overlap match — the agent judges whether any "
-            "candidate is a true synonym."
+            "Corrections-log status flipped. Hand the Correction text above "
+            "to /dekspec:write-glossary --add-term — composing and writing "
+            "the glossary row is that skill's job, not this one's."
         ),
     }
 
@@ -223,18 +181,13 @@ def find_synonym(
 # --------------------------------------------------------------------------
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="ggc_ops.py",
-        description="Deterministic Glossary/Guidance/Corrections operations.",
+        prog="corrections_ops.py",
+        description="Deterministic corrections-log operations.",
     )
     parser.add_argument(
-        "--gc-file",
-        default="dekspec/guidance-and-corrections.md",
-        help="Path to the g&c file (default: dekspec/guidance-and-corrections.md).",
-    )
-    parser.add_argument(
-        "--glossary",
-        default="dekspec/domain-glossary.md",
-        help="Path to the glossary (default: dekspec/domain-glossary.md).",
+        "--corrections-file",
+        default=CORRECTIONS_PATH,
+        help=f"Path to the corrections log (default: {CORRECTIONS_PATH}).",
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
 
@@ -242,21 +195,16 @@ def main(argv: list[str] | None = None) -> int:
     p_slug.add_argument("text", help="Free text to slugify.")
 
     p_add = sub.add_parser(
-        "add-recurrence", help="Append a recurrence to a g&c entry."
+        "add-recurrence", help="Append a recurrence to a correction entry."
     )
-    p_add.add_argument("slug", help="The g&c entry slug.")
+    p_add.add_argument("slug", help="The correction entry slug.")
     p_add.add_argument("--source", required=True, help="Source artifact/context.")
     p_add.add_argument("--desc", required=True, help="Brief mistake description.")
     p_add.add_argument("--date", help="Override date (YYYY-MM-DD).")
 
-    p_prom = sub.add_parser("promote", help="Mark a g&c entry promoted.")
-    p_prom.add_argument("slug", help="The g&c entry slug.")
+    p_prom = sub.add_parser("promote", help="Mark a correction entry promoted.")
+    p_prom.add_argument("slug", help="The correction entry slug.")
     p_prom.add_argument("--date", help="Override date (YYYY-MM-DD).")
-
-    p_syn = sub.add_parser(
-        "find-synonym", help="Find candidate glossary/g&c synonym matches."
-    )
-    p_syn.add_argument("term", help="Term to search for.")
 
     args = parser.parse_args(argv)
 
@@ -266,7 +214,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.cmd == "add-recurrence":
             result = add_recurrence(
-                Path(args.gc_file),
+                Path(args.corrections_file),
                 args.slug,
                 args.source,
                 args.desc,
@@ -275,13 +223,7 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(result, indent=2))
             return 0
         if args.cmd == "promote":
-            result = promote(Path(args.gc_file), args.slug, args.date)
-            print(json.dumps(result, indent=2))
-            return 0
-        if args.cmd == "find-synonym":
-            result = find_synonym(
-                args.term, Path(args.glossary), Path(args.gc_file)
-            )
+            result = promote(Path(args.corrections_file), args.slug, args.date)
             print(json.dumps(result, indent=2))
             return 0
     except (FileNotFoundError, KeyError) as exc:

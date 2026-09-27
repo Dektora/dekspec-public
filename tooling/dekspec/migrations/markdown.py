@@ -238,6 +238,13 @@ _PREFIX_TO_TYPE: tuple[tuple[_re.Pattern[str], str], ...] = (
 )
 
 
+# The corrections singleton under both its current and its pre-INT-191 name.
+# The legacy spelling stays recognised on purpose: the migration that renames
+# it can only run if the walker yields the file it is renaming.
+TERMINOLOGY_CORRECTIONS_FILENAME = "terminology-corrections.md"
+LEGACY_GUIDANCE_CORRECTIONS_FILENAME = "guidance-and-corrections.md"
+
+
 def detect_artifact_type(filename: str) -> str | None:
     """Return the migration artifact_type for a markdown filename, or
     None if the file isn't a recognised dekspec artifact."""
@@ -247,6 +254,13 @@ def detect_artifact_type(filename: str) -> str | None:
         return "domain_glossary"
     if filename == "constitution.md":
         return "constitution"
+    if filename in (
+        TERMINOLOGY_CORRECTIONS_FILENAME,
+        LEGACY_GUIDANCE_CORRECTIONS_FILENAME,
+    ):
+        # Not an IR kind — a free-form companion to the Domain Glossary. It is
+        # recognised here only so markdown migrations can reach it.
+        return "terminology_corrections"
     for pattern, kind in _PREFIX_TO_TYPE:
         if pattern.match(filename):
             return kind
@@ -285,6 +299,8 @@ def iter_markdown_artifacts(repo_root: Path, dekspec_root: str = "dekspec") -> I
         ("system-vision.md", "system_vision"),
         ("domain-glossary.md", "domain_glossary"),
         ("constitution.md", "constitution"),
+        (TERMINOLOGY_CORRECTIONS_FILENAME, "terminology_corrections"),
+        (LEGACY_GUIDANCE_CORRECTIONS_FILENAME, "terminology_corrections"),
     ):
         path = base / name
         if path.is_file():
