@@ -9,7 +9,8 @@
 #
 # Non-invasive by design: this hook NEVER modifies files. The advisory
 # is a heads-up only; engineers run `dekspec regen-indexes` +
-# `dekspec aggregate agents-md` manually.
+# `dekspec aggregate agents-md` manually (it replaces only the
+# DekSpec-owned region of AGENTS.md; a legacy file needs `--migrate`).
 #
 # Escape hatches:
 #
@@ -44,16 +45,15 @@ else
     index_drift=1
 fi
 
-# AGENTS.md aggregator emits to stdout when --output is `-`. Compare
-# against the current AGENTS.md to detect drift.
+# AGENTS.md projection freshness (ADR-063): the read-only check recomputes
+# the DekSpec-owned region and exits 1 on stale, invalid or a required
+# projection that is absent; it never writes. Keep its verdict line.
 agents_drift=0
-if [ -f "AGENTS.md" ]; then
-    aggregated=$(dekspec aggregate agents-md --at . --output - 2>/dev/null || true)
-    if [ -n "$aggregated" ]; then
-        if ! diff -q <(printf '%s' "$aggregated") AGENTS.md >/dev/null 2>&1; then
-            agents_drift=1
-        fi
-    fi
+agents_verdict=""
+if agents_verdict=$(dekspec aggregate agents-md --check --at . 2>&1); then
+    agents_drift=0
+else
+    agents_drift=1
 fi
 
 if [ "$index_drift" = "1" ] || [ "$agents_drift" = "1" ]; then
@@ -63,7 +63,7 @@ if [ "$index_drift" = "1" ] || [ "$agents_drift" = "1" ]; then
         echo "  - Derived indexes are stale. Run: dekspec regen-indexes"
     fi
     if [ "$agents_drift" = "1" ]; then
-        echo "  - AGENTS.md is stale. Run: dekspec aggregate agents-md"
+        echo "  - ${agents_verdict}"
     fi
     echo "  (Set DEKSPEC_SKIP_POSTMERGE=1 to silence this advisory.)"
     echo ""

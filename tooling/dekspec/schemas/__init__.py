@@ -72,7 +72,7 @@ SCHEMA_FILENAMES: dict[str, str] = {
     "mission": "mission.schema.yaml",
     "domain_glossary": "domain-glossary.schema.yaml",
     "security_profile": "security-profile.schema.yaml",
-    "context_spec": "context-spec.schema.yaml",
+    "agent_role": "agent-role.schema.yaml",
     "system_vision": "system-vision.schema.yaml",
     "constitution": "constitution.schema.yaml",
     "registry": "registry.schema.yaml",
@@ -80,7 +80,9 @@ SCHEMA_FILENAMES: dict[str, str] = {
     "dekspec_config": "dekspec-config.schema.yaml",
 }
 
-# Latest published version per artifact type. Today every schema is at
+# Latest published version per artifact type. ADR-057 (2026-09-27) bumped
+# adr / ae / ws / ic / mission / sv / constitution / intent / ib for the
+# retired lifecycle statuses (IR migrations: migrations/lifecycle_decisions.py). Today every schema is at
 # 0.1.0. When a schema evolves, bump the corresponding entry here.
 LATEST_VERSIONS: dict[str, str] = {
     # adr, working_spec, interface_contract, implementation_brief, intent
@@ -96,20 +98,22 @@ LATEST_VERSIONS: dict[str, str] = {
     # retired — backlinks are derived from the union of forward links and
     # emitted by `dekspec relink`, not schema-validated input. Persisted
     # v0.1.0 AE IR JSON migrates forward via the IB-045 migration module.
-    "adr": "0.2.0",
-    "architecture_element": "0.2.0",
-    "working_spec": "0.2.0",
-    "interface_contract": "0.2.0",
-    "implementation_brief": "0.3.0",  # INT-102 IU-1 (ds-2zoj)
-    "intent": "0.3.0",  # INT-104 IU-1 (ds-xoah)
-    "mission": "0.2.0",
+    "adr": "0.3.0",
+    "architecture_element": "0.3.0",
+    "working_spec": "0.3.0",
+    "interface_contract": "0.3.0",
+    "implementation_brief": "0.4.0",  # ADR-055/056/057 — contract fields + decision-only status
+    "intent": "0.4.0",  # ADR-056/057
+    "mission": "0.3.0",
     "domain_glossary": "0.1.0",
     "security_profile": "0.1.0",
-    # context_spec (INT-139 / IB-124, MSN-019 daughter A) — the 11th IR kind:
-    # a role identity's input-scoping contract. First version.
-    "context_spec": "0.1.0",
-    "system_vision": "0.1.0",
-    "constitution": "0.1.0",
+    # agent_role (ADR-061 / IC-019) — the parsed form of a library-supplied
+    # Agent Role Specification (tooling/dekspec/roles/<role>.md). Not a
+    # project artifact kind. It replaces the retired context_spec IR kind
+    # (INT-139), which no library code reads any more.
+    "agent_role": "1.0.0",
+    "system_vision": "0.2.0",
+    "constitution": "0.2.0",
     # registry (INT-020) — the append-only ID-allocation ledger.
     "registry": "0.1.0",
     # team_profile (INT-021) — the `team` audit-profile config schema:

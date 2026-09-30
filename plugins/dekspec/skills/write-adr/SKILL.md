@@ -32,6 +32,8 @@ Drivers: isolation of schema-evolution blast radius, parallel authoring, clearer
 audit attribution. Note the maintenance cost of N parsers as the negative consequence.
 ```
 
+**Roles (ADR-061).** This skill plays DekSpec's Agent Role Specifications; the engineer never selects one. Authoring, revise and resync modes play the **`specifier`** role, audit modes the **`auditor`** role: run `dekspec resource role specifier` or `dekspec resource role auditor` at the start of the mode and follow it (a delegated `*-author` agent loads `specifier` itself). See [`_lib/mode_dispatcher.md`](../_lib/mode_dispatcher.md) §The role each universal mode plays and [`_lib/agent_roles.md`](../_lib/agent_roles.md).
+
 ## Mode Detection
 
 See [`_lib/mode_detection_template.md`](../_lib/mode_detection_template.md) for the canonical parse/routing contract. Default mode: **Creation Mode**.
@@ -55,7 +57,7 @@ See [`_lib/mode_detection_template.md`](../_lib/mode_detection_template.md) for 
 
 ## Interview Rigor (default-on)
 
-This skill **optionally composes the [`interview-me`](../../dektools/skills/interview-me/SKILL.md) tool** (INT-167 / D13), which ships in the **DekTools** plugin (ADR-047) — it does not re-author the interview prose, and there is no `--grill` flag. When the engineer's input is fuzzy or underspecified and the tool is available, invoke `/dekspec:interview-me <ADR-NNN | description>` so the engineer is interviewed one decision-tree question at a time, with a recommended answer per question, repo-exploration for discoverable answers, glossary + governing ADR/AE citation with conflict-flagging, fuzzy-term sharpening, and scenario-based stress-testing of asserted relationships (especially the chosen-option-vs-alternatives trade-off the ADR asserts).
+This skill **optionally composes the [`interview-me`](../../../dektools/tools/interview-me/SKILL.md) tool** (INT-167 / D13), which ships in the **DekTools** plugin (ADR-047) — it does not re-author the interview prose, and there is no `--grill` flag. When the engineer's input is fuzzy or underspecified and the tool is available, invoke `/interview-me <ADR-NNN | description>` so the engineer is interviewed one decision-tree question at a time, with a recommended answer per question, repo-exploration for discoverable answers, glossary + governing ADR/AE citation with conflict-flagging, fuzzy-term sharpening, and scenario-based stress-testing of asserted relationships (especially the chosen-option-vs-alternatives trade-off the ADR asserts).
 
 **Degrade gracefully when it is absent.** DekTools may not be installed, or `interview-me` may not be enabled in its à-la-carte selection. Core is self-sufficient by design (ADR-047), so this is a supported configuration, not an error: fall back to asking the engineer the same decisions inline, one at a time, and continue. Never block authoring on a toolkit tool, and never report its absence as a failure.
 
@@ -134,6 +136,8 @@ Skill-specific structural checks to surface as Open Issues: missing Validation, 
 
 ## Audit Mode
 
+_Plays the **`auditor`** role — run `dekspec resource role auditor` first and follow it: deterministic `dekspec validate` / `dekspec audit` output is primary evidence; report findings, change nothing._
+
 Read-only quality check on an existing ADR. **Always checks for supersession.**
 
 1. Read the ADR at the provided path
@@ -196,11 +200,7 @@ Arguments: the ADR path.
    
    Starting guided review...
    ```
-6.5. **Spec-Reviewer dispatch** (shared `reviewer_mode` path — see [`_lib/reviewer_mode.md`](../_lib/reviewer_mode.md)). This ADDS an adversarial Spec-Reviewer pass alongside the open-issue loop; it does NOT replace it. Perform the shared four-step dispatch:
-   a. Load the `spec-reviewer` ContextSpec: `from dekspec.constraint_compiler.parser import parse_context_spec; context_spec = parse_context_spec("dekspec/context-specs/role-spec-reviewer.md")` (`context_spec["role_identity"] == "spec-reviewer"`).
-   b. Take the `ReviewerADR` artifact this `--review` mode already holds (the ADR at the provided path; the caller owns this IO, the dispatcher is IO-free).
-   c. Dispatch through the shared surface: `from dekspec.spec_review.reviewer import Reviewer; findings = Reviewer().dispatch(context_spec, artifact)` (`-> list[Finding]`, per IC-016).
-   d. Present each returned `Finding` to the engineer at its severity (default `P2` — approval-blocking, not auto-merge) as additional review items alongside the open issues below. Do not reshape the records; they route into the AE-003 surface via the `SPEC-REVIEW` audit-rule family (`dekspec.spec_review.reviewer` → `spec_review_rules`).
+6.5. **Spec-reviewer dispatch** — run the shared spec-reviewer dispatch in [`_lib/agent_roles.md`](../_lib/agent_roles.md) §Spec-reviewer dispatch for this ADR: `dekspec resource role spec-reviewer`, one fresh-context sub-agent composed policy → role → procedure → assignment, and its findings presented at their severity (default P2) as additional review items alongside the open issues below. It ADDS an independent pass; it does NOT replace the open-issue loop. If it did not run, say so — never present your own review as the spec-reviewer's.
 7. For each unchecked issue, in order:
    a. Present the issue:
       ```
@@ -290,7 +290,7 @@ Promotes a PROPOSED ADR to ACCEPTED after every quality check passes. Passing th
 
 1. Read the ADR at the provided path.
 2. Verify current status is PROPOSED — run `python ../_lib/scripts/artifact_ops.py status-guard <ADR-path> --expect PROPOSED`. If it exits non-zero, surface stderr and STOP. Interpret the actual status for the engineer:
-   - TODO, DRAFT → "This ADR is still [status]. It must be revised to PROPOSED before it can be accepted."
+   - DRAFT → "This ADR is still DRAFT. It must be revised to PROPOSED before it can be accepted."
    - ACCEPTED → "This ADR is already ACCEPTED."
    - LOCKED → "This ADR is LOCKED. Unlock first with `--unlock` if changes are needed, or use `--supersede` to replace it with a new ADR."
 
@@ -359,7 +359,7 @@ Create a new ADR that supersedes an existing one. Use when an architectural deci
    - Set `Superseded by` to the new ADR's number
    - Add an Amendment Log entry: `| [today] | Superseded | Superseded by ADR-NNN | engineer |`
    - Update `dekspec/adr-index.md` for both ADRs
-6. Run a downstream impact check — grep for the old ADR's number across specs, contracts, IBs, and architecture elements. Report which artifacts reference the superseded ADR and may need updating.
+6. Run a downstream impact check — grep for the old ADR's number across specs, contracts, IBs, and architecture elements. Report which artifacts reference the superseded ADR and may need updating. An IB that references the old ADR as a binding obligation (`- **O-n** → ADR-NNN`) cannot generate its execution context until the reference is repointed to the successor (ADR-055) — list those IBs explicitly.
 
 **End of Supersede Mode.**
 
@@ -387,7 +387,7 @@ See [`_lib/lock_unlock.md`](../_lib/lock_unlock.md) §Unlock for the canonical 4
 - **status_after**: PROPOSED
 - **artifact_index_path**: `dekspec/adr-index.md`
 
-Downstream impact scan (run during Step 2 alongside the reason gate): grep all specs, interface contracts, and architecture elements for references to this ADR number; surface the impact list to the engineer before recording the reason. Cascade reminder to surface in Step 4: downstream specs / interface contracts / architecture elements may need review, affected IBs may need regeneration, and the ADR must be re-locked when the substantive change settles.
+Downstream impact scan (run during Step 2 alongside the reason gate): grep all specs, interface contracts, and architecture elements for references to this ADR number; surface the impact list to the engineer before recording the reason. Cascade reminder to surface in Step 4: downstream specs / interface contracts / architecture elements may need review; IBs that reference the ADR receive the new text at their next `dekspec ib context`, and evidence or verdicts bound to the old text go stale (ADR-057); the ADR must be re-locked when the substantive change settles.
 
 ## Amend Mode (editorial-at-LOCKED, ds-qxpq)
 

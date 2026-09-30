@@ -42,7 +42,7 @@ If `dekspec validate` returns non-zero (or the artifact fails an equivalent post
 A subagent fails to produce a clean artifact for one of three reasons:
 
 1. **The bundled context was missing material the subagent needed.** (Most common — e.g., a referenced AE wasn't included, a glossary term wasn't defined, a parent ADR was stale.)
-2. **The upstream artifact the bundle was derived from has a real gap.** (E.g., a WS with acceptance criteria too vague to derive evals from; a bead's Files section ambiguous enough that the test author can't write deterministic assertions.)
+2. **The upstream artifact the bundle was derived from has a real gap.** (E.g., a WS with acceptance criteria too vague to derive evals from; an IB acceptance condition ambiguous enough that the test author can't write deterministic assertions.)
 3. **The subagent itself misread the template / requirements.** (Rare with a fresh-context subagent + a well-bundled prompt — but possible.)
 
 In cases 1 and 2, **retrying with the same bundle will fail again** — the gap is in the input, not the run. Surfacing the gap to the engineer is the load-bearing behavior: it converts a silent failure into a signal about input material quality. The skill's value comes from *exposing* the gap, not from papering over it.

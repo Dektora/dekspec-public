@@ -43,7 +43,7 @@ properties:
     # `{blocking, non_blocking}` to canonical `{P0, P1, P2, P3}`.
     # Persisted v0.1.0 IR JSON migrates via
     # `tooling/dekspec/migrations/severity_unification.py`.
-    const: "0.2.0"
+    const: "0.3.0"  # ADR-057: TODO retired
 
   id:
     description: Canonical IC identifier derived from filename (e.g., IC-007).
@@ -57,7 +57,7 @@ properties:
 
   status:
     description: Lifecycle state. Compiler emits enforcement only for LOCKED artifacts (v0.1 PoC may relax via --treat-as-locked flag).
-    enum: [TODO, DRAFT, PROPOSED, ACCEPTED, LOCKED, DEPRECATED]
+    enum: [DRAFT, PROPOSED, ACCEPTED, LOCKED, DEPRECATED]
 
   version:
     description: Semver of the IC artifact itself (not this IR schema).
@@ -94,16 +94,16 @@ properties:
         format: date-time
 
   silent_failure_domains:
-    description: Which of the five Dektora silent-failure domains this IC's boundary touches.
+    description: >-
+      Silent-failure domains this boundary touches — an open vocabulary of
+      snake_case slugs (the template offers neutral examples; a consumer may name
+      its own). Relaxed from a closed five-value Dektora enum (ADR-056 domain-leak
+      removal); every previous value remains valid.
     type: array
     uniqueItems: true
     items:
-      enum:
-        - transformer_internals
-        - numerical_precision
-        - gpu_multi_process_isolation
-        - graph_consistency
-        - timeline_coherence
+      type: string
+      pattern: "^[a-z][a-z0-9_]*$"
 
   governing_adrs:
     description: "ADRs that constrain this contract. Forward-compat: opaque ID refs; full resolution lands when ADR IR ships in v0.2+."
@@ -324,7 +324,7 @@ properties:
           type: string
         source:
           type: string
-          description: e.g., "initial draft", "audit", "review", "cascade from ADR-022".
+          description: e.g., "initial draft", "audit", "review", "cascade from ADR-NNN".
         severity:
           # Canonical `P0..P3` ladder per ADR-013 (severity vocabulary
           # unification). Bumped from legacy `{blocking, non_blocking}`

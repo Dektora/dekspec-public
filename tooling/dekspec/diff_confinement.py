@@ -1,26 +1,12 @@
-"""Diff-confinement evaluation for ``/write-intent --testpass``.
+"""Path-glob matching shared by the scope checks.
 
-Given a list of ``Components affected:`` globs and a list of files changed
-on an Intent branch, decide which (if any) files fall outside the declared
-behavioral scope and should TESTFAIL the diff-confinement check.
-
-Beyond the engineer-declared globs, three path prefixes are *always*
-admitted because they are mutated as necessary side-effects of running the
-Intent lifecycle itself — never as behavioral scope:
-
-  * ``dekspec/**``   — spec graph (Intent file, IBs, indexes, AE backlinks).
-  * ``.beads/**``    — bead-tracker housekeeping (``br claim`` / ``br close``
-    emits jsonl writes).
-  * ``.dekspec/**``  — consumer-side cache + lifecycle DB.
-
-Expanding every Intent's ``Components affected:`` to declare those prefixes
-would blow the size cap and add ceremony, not safety. The admit-set is the
-canonical way to keep diff confinement honest without forcing every Intent
-to repeat the lifecycle paths.
-
-See ``plugins/dekspec/skills/write-intent/modes/testpass.md`` Step 2 for
-the prose contract these helpers implement. Both surfaces must stay in
-sync — when one changes, the other must too. (Fix lands as ds-p4tt.)
+Originally the Intent-level diff-confinement evaluator for
+``/write-intent --testpass`` (with an implicit admit-set of ``dekspec/**``,
+``.beads/**`` and ``.dekspec/**``). ADR-056/057 retired that path: scope is now
+the IB's, evaluated with protected-surface precedence and explicit lifecycle
+exemptions by :mod:`dekspec.execution.scope`. What remains here is the glob
+matcher that evaluation (and the plan, guard and audit code) shares, so every
+surface agrees on what a glob admits — including brace groups (ds-059n).
 """
 
 from __future__ import annotations
@@ -30,22 +16,7 @@ from collections.abc import Iterable
 
 from dekspec.glob_braces import expand_braces
 
-__all__ = [
-    "IMPLICIT_LIFECYCLE_GLOBS",
-    "check_diff_confinement",
-    "matches_any_glob",
-]
-
-
-# The three path prefixes that are mutated as lifecycle side-effects and
-# therefore always admitted by diff confinement, regardless of what the
-# Intent declares in ``Components affected:``. Keep in lockstep with the
-# admit-set documented in modes/testpass.md.
-IMPLICIT_LIFECYCLE_GLOBS: tuple[str, ...] = (
-    "dekspec/**",
-    ".beads/**",
-    ".dekspec/**",
-)
+__all__ = ["matches_any_glob"]
 
 
 def _glob_matches(path: str, glob: str) -> bool:
@@ -107,42 +78,3 @@ def matches_any_glob(path: str, globs: Iterable[str]) -> bool:
             if _glob_matches(path, expanded):
                 return True
     return False
-
-
-def check_diff_confinement(
-    components_affected: list[str],
-    changed_files: list[str],
-) -> tuple[bool, list[str]]:
-    """Evaluate diff confinement for an ``/write-intent --testpass`` run.
-
-    Parameters
-    ----------
-    components_affected:
-        The engineer-declared glob list from the Intent's
-        ``Components affected:`` field. Already resolved — any named
-        components have been swapped out for their glob expansions.
-    changed_files:
-        Repo-relative POSIX paths from
-        ``git diff --name-only $(git merge-base HEAD main) HEAD``.
-
-    Returns
-    -------
-    tuple[bool, list[str]]
-        ``(passed, out_of_scope)`` where:
-
-        * ``passed`` is True iff every file matches either a glob in
-          ``components_affected`` OR a glob in
-          :data:`IMPLICIT_LIFECYCLE_GLOBS`.
-        * ``out_of_scope`` is the list of paths that did not match either
-          set, in input order. Empty when ``passed`` is True.
-    """
-
-    out_of_scope: list[str] = []
-    for path in changed_files:
-        if matches_any_glob(path, components_affected):
-            continue
-        if matches_any_glob(path, IMPLICIT_LIFECYCLE_GLOBS):
-            continue
-        out_of_scope.append(path)
-
-    return (not out_of_scope, out_of_scope)

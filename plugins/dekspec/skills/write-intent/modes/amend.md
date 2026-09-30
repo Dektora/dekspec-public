@@ -3,7 +3,7 @@
 [← back to dispatcher](../SKILL.md)
 
 
-Reads `<Intent-path>`. Use when the Intent's scope, components, AEs, type-specific fields, or verification needs a substantive change after `--analyze` / `--accept` / `--decompose` has already run. `--amend` cascades: applies the change, re-runs the invariants, transitions Status back if a hard cap is now violated.
+Reads `<Intent-path>`. Use when the Intent's scope, components, AEs, type-specific fields, or verification needs a substantive change after `--analyze` / `--accept` / `--decompose` has already run. `--amend` cascades: applies the change, re-runs the invariants, and walks Status back to DRAFT so the change is re-analyzed.
 
 ### `--editorial` modifier (INT-088 IU-1, ds-uxpy)
 
@@ -14,7 +14,7 @@ Reads `<Intent-path>`. Use when the Intent's scope, components, AEs, type-specif
 - §Verification block
 - §Components affected
 - §Acceptance Criteria (when present)
-- §Implementation Units (the IU list under `## Layer impact analysis`)
+- §Implementation Units (the child-IB list under `## Layer impact analysis`)
 
 The refusal error names the offending field. The exact message format is:
 
@@ -39,13 +39,13 @@ The helper:
 3. If the touched-list is non-empty, exits non-zero with the refusal message above and writes nothing.
 4. If the touched-list is empty, appends a row of the form `| YYYY-MM-DD | editorial | <note> | <engineer> |` to `## Amendment Log`, bumps `Modified`, and exits 0.
 
-The Intent's `Status` field is **untouched** on the success path. The Intent stays in PROPOSED / ACCEPTED / IMPLEMENTING / wherever it already was.
+The Intent's `Status` field is **untouched** on the success path. The Intent stays in DRAFT / PROPOSED / ACCEPTED / wherever it already was.
 
 When `--editorial` is NOT passed, the rest of this mode body (Steps 1–6 below) runs as before — that codepath is the substantive-change cascade and applies to behavioral-field edits.
 
 ### Step 1: Validate
 
-1. File exists; Status is `DRAFT`, `PROPOSED`, `ACCEPTED`, `IMPLEMENTING`, or `OVERSIZED`. Refuse on TESTPASS, MERGED, COMPLETE, SUPERSEDED — amendments to passed/merged/completed Intents are not allowed at this scale. A `COMPLETE` Intent that needs a substantive change spawns a successor Intent and marks this one SUPERSEDED (ADR-046 — a shipped Intent terminates at `COMPLETE`, not `LOCKED`).
+1. File exists; Status is `DRAFT`, `PROPOSED`, or `ACCEPTED`. Refuse on COMPLETE and SUPERSEDED. A `COMPLETE` Intent that needs a substantive change spawns a successor Intent and marks this one SUPERSEDED (ADR-046 — a finished Intent terminates at `COMPLETE`, not `LOCKED`).
 
 ### Step 2: Capture the proposed change
 
@@ -67,7 +67,7 @@ Use the Edit tool to modify the Intent file in-place per the captured change.
 After the edit:
 
 1. **Schema validation** — `parse_intent(<path>)` must succeed. If it fails, revert the edit and abort with the schema error.
-2. **Size caps** — recompute the five hard caps. If any cap is now violated, transition Status to `OVERSIZED` and abort the Amend with a message naming the violated cap and the change that caused it. Engineer must split or re-scope.
+2. **Size caps** — recompute the five hard caps. If any cap is now violated, record the P2 "re-split before acceptance" open issue naming the cap and the change that caused it (an analysis finding, not a status — ADR-057), and route the engineer to the split flow in [`_lib/oversized_splitting.md`](../../_lib/oversized_splitting.md).
 3. **Linkage** — re-run L7a / L7b / T13–T16 / L9 as in `--audit` Step 2. CRITICAL findings here abort with a revert-or-fix prompt.
 4. **Drift** — re-run D19 / D20 against the new prose. CRITICAL findings abort with a revert prompt.
 5. **Mission linkage (L8)** — if `mission:` changed, re-verify the Intent's Autonomy ≤ the new Mission's Autonomy ceiling.
@@ -78,15 +78,14 @@ The amendment may invalidate prior state:
 
 - If the Intent was PROPOSED and the amended Linked AEs or Components shifted, you should drop it back to DRAFT and re-run `--analyze`. Default behavior: revert Status to DRAFT and tell the engineer to re-run `--analyze`. Mention this is intentional — the Coverage report and Size assessment cached at PROPOSED no longer match.
 - If the Intent was ACCEPTED and the amendment touched anything `--accept` validated (linkage, components, verification, drift), revert Status to DRAFT and tell the engineer to re-run `--analyze` then `--accept`. The acceptance is no longer current.
-- If the Intent was IMPLEMENTING and the amendment touched `Components affected` such that the existing diff is now out-of-scope vs the new globs, surface the conflict — engineer must either revert the diff or revise globs further.
-- If the Intent was OVERSIZED, an amendment is the typical remedy; transition to DRAFT after the change and re-run `--analyze`. (The pre-2026-05-25 enum had a `TESTFAIL` Status here too — retired per E3 audit.)
+- If the amendment narrowed `Components affected` below the Scope of an existing child IB, surface each affected IB — its Scope must be amended too (`/write-ibs --revise`, which re-authorizes an accepted IB through `dekspec ib amend` or a fresh `ib accept`).
 
 ### Step 6: Log and exit
 
 1. Update Modified date.
 2. Append an Amendment Log entry: `| <date> | Substantive | Amended <field> via /write-intent --amend: <one-line summary of change>. Status transition: <old> → <new>. | <engineer-or-agent> |`
 3. Save.
-4. Surface the next-step message naming the recommended next mode (typically `--analyze` after Status cascade back to DRAFT; `--testpass` if the amendment was applied at IMPLEMENTING and Status holds).
+4. Surface the next-step message naming the recommended next mode (typically `--analyze` after the Status cascade back to DRAFT).
 
 > Editorial branch reminder: the Step-6 row above uses `Substantive` in the Type column. The `--editorial` modifier (see the section at the top of this file) instead writes `Type=editorial` and does NOT cascade Status. The schema enum at `tooling/dekspec/schemas/intent.schema.yaml::amendment_log.items.properties.type.enum` is `[editorial, unlock, substantive]`; both rows are valid.
 

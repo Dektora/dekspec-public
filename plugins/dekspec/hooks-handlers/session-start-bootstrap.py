@@ -124,6 +124,10 @@ def _resume_from_handoff(cwd: Path) -> None:
     next_action = str(record.get("next_safest_action") or "").strip()
     if not objective and not next_action:
         return
+    freshness = getattr(engine, "handoff_freshness", None)
+    stale = freshness(cwd, record) if freshness else ["identity unknown"]
+    if stale:
+        print("[dekspec] prior handoff needs revalidation: " + "; ".join(stale), file=sys.stderr)
     print("[dekspec] resuming from prior session handoff:", file=sys.stderr)
     if objective:
         print(f"  objective: {objective}", file=sys.stderr)

@@ -48,11 +48,11 @@ A thin slash command that wraps a `dekspec` CLI verb. No skill exists for these.
 - `/doctor-fidelity` (T/D/L fidelity body) — inlined into `/doctor` Stage 2. Retired v0.98.0.
 - `/validate` — renamed to `/validate-artifact` for clarity vs the broader `/doctor` graph audit. Renamed v0.98.0.
 - `/upgrade` — removed once the ADR-032 deprecation window elapsed (ADR-034 killed the in-CLI acquisition model). Acquire out-of-band (`pipx`/pip-from-git + `claude plugin update`) and reconcile via `dekspec sync`.
-- `/run-coding-session` — renamed to `/orchestrate-coding-session` in INT-098; the stray `run-coding-session.md` file (which had no command frontmatter and only carried INT-123's IB-lifecycle wiring docs) was deleted and its wiring relocated into `orchestrate-coding-session.md`. Retired ds-jhbw.
+- `/run-coding-session` — renamed to `/orchestrate-coding-session` in INT-098; the stray `run-coding-session.md` file (which had no command frontmatter and only carried INT-123's IB-lifecycle wiring docs) was deleted (ds-jhbw). That wiring, in its ADR-057 form (counted attempts, then a recorded blocker), now lives in `skills/orchestrate-coding-session/SKILL.md`. The skill is its own slash entry (`/dekspec:orchestrate-coding-session`) and has no command file (IB-144).
 
 ### Pattern B — Skill-only authoring
 
-Heavy, stateful expertise for authoring an artifact (an AE, ADR, IC, WS, IB, Intent, Mission, SP, SV, Constitution, GGC entry, eval suite, test suite, bead set). No slash command wrapper. The model invokes the skill by description-match when the operator describes intent in natural language (`"write an ADR for X"` → `write-adr` skill).
+Heavy, stateful expertise for authoring an artifact (an AE, ADR, IC, WS, IB, Intent, Mission, SP, SV, Constitution, GGC entry, eval suite, test suite). No slash command wrapper. The model invokes the skill by description-match when the operator describes intent in natural language (`"write an ADR for X"` → `write-adr` skill).
 
 - **Use when**: the capability is multi-mode authoring with field-by-field elicitation, role passes, audits, and promotion ceremonies — too much body for a command file, and operators tend to invoke by intent rather than slash.
 - **Frontmatter**: `name`, `description`, `mode: lite|full`, `model`, `reasoning_effort: max|high`, `disable-model-invocation`, `allowed-tools` (typically `Read Write Edit Grep Glob Bash Agent`). See [`docs/dekspec-skill-flag-defaults.md`](../../docs/dekspec-skill-flag-defaults.md) for class defaults.
@@ -61,22 +61,18 @@ Heavy, stateful expertise for authoring an artifact (an AE, ADR, IC, WS, IB, Int
 **Pattern-B members today:**
 - Authoring (lite): `write-adr`, `write-ae`, `write-constitution`, `write-corrections`, `write-evals`, `write-glossary`, `write-intent`, `write-sp`, `write-sv`, `write-tests`
 - Authoring (deep, mode=full): `write-ibs`, `write-ic`, `write-mission`, `write-ws`
-- Utility authoring: `write-code-beads`
 
 ### Pattern C — Command + skill pair (typeable + heavy logic)
 
 Heavy logic lives in a skill; a thin command wraps it for typeable invocation. The command's `allowed-tools` is `Skill`; its body is a 2-step stub that forwards `$ARGUMENTS` to the skill via the Skill tool.
 
-- **Use when**: the skill has enough body to warrant skill-only ergonomics, AND operators routinely want a typeable handle (onboarding, dispatch, recovery, lifecycle walkers).
-- **Cost**: 2 files (`commands/<name>.md` + `skills/<name>/SKILL.md`).
+- **Use when**: the skill has enough body to warrant skill-only ergonomics, AND operators routinely want a typeable handle (onboarding, recovery, lifecycle walkers), AND the skill is model-invocable (effective `disable-model-invocation: false`).
+- **Never for a user-only skill.** A skill whose effective trigger policy is `disable-model-invocation: true` (its declared value, else its class default, which is `true` for the dispatch class: `implement`, `orchestrate-coding-session`) is its own slash entry, `/<plugin>:<skill>` (for example `/dekspec:implement`), and never gets a Pattern-C wrapper. Claude Code lists plugin skills as user slash commands and refuses a Skill-tool call to such a skill. A wrapper that dispatches it (same name, or a body naming it as ``the `X` skill``) therefore locks the user out, whatever the wrapper itself declares (ds-9tvmm). The rule is stated in [`docs/dekspec-skill-flag-defaults.md`](../../docs/dekspec-skill-flag-defaults.md), and `T-SKILL-COMMAND-TRIGGER-CONSISTENT` (P2) fails on any such wrapper. The recovery is to remove the wrapper.
+- **Cost**: 2 files (`commands/<name>.md` + `skills/<name>/SKILL.md`). A user-only skill ships as the skill alone: 1 file (`skills/<name>/SKILL.md`).
 
 **Pattern-C members today:**
 | Command | Skill | Purpose |
 |---|---|---|
-| `/archeology` | `archeology` | brownfield spec-gap recovery |
-| `/brownfield-ingest` | `brownfield-ingest` | classify inherited markdown into artifact slots |
-| `/orchestrate-coding-session` | `orchestrate-coding-session` | dispatch parallel coding session over a bead set |
-| `/orchestrate-intent` | `orchestrate-intent` | guided Intent lifecycle walker |
 | `/using-dekspec` | `using-dekspec` | onboarding entry point (init + spec-mode + catalog) |
 
 ### Pattern C exceptions — hybrid commands
@@ -98,7 +94,7 @@ The dozen `write-*` skills (Pattern B) are deliberately not wrapped in slash com
 - Each `write-*` skill has 5–10 modes (`--audit`, `--review`, `--accept`, `--lock`, `--unlock`, `--revise`, `--teaching`, `--resync`, `--dry-run`, `--amend`, `--analyze`). Typing the right flag is harder than describing intent.
 - A command wrapper adds a maintenance surface (2 files instead of 1) without ergonomic gain.
 
-`write-code-beads` historically had a command wrapper from the INT-098 rename alias (`/create-beads` → `/write-code-beads`). The wrapper was dropped in B1 (2026-05-27) to restore the convention. The skill remains discoverable; bare `/write-code-beads` (or `"create beads from IB-NNN"`) still resolves to it.
+`write-code-beads` (formerly `/create-beads`) retired under ADR-056: accepted IBs are executed directly, with no code-bead tier.
 
 ---
 
@@ -108,15 +104,15 @@ Decision tree:
 
 1. **Does the CLI already do it?** → Pattern A. One command file.
 2. **Is it artifact authoring (one of the `write-*` family)?** → Pattern B. One skill dir.
-3. **Is it operator-driven orchestration, recovery, or onboarding that benefits from a typeable handle?** → Pattern C. Command + skill pair.
-4. **Does it need both CLI execution AND in-loop reasoning?** → Pattern C exception (hybrid). One command file with `allowed-tools` widened, body runs Bash + invokes Skill (or inlines the reasoning body).
+3. **Is it operator-driven orchestration, recovery, or onboarding that benefits from a typeable handle?** → If the skill's effective trigger policy is `disable-model-invocation: true` (the dispatch-class default), the skill alone: it is its own slash entry (`/<plugin>:<skill>`) and never gets a Pattern-C wrapper ([`docs/dekspec-skill-flag-defaults.md`](../../docs/dekspec-skill-flag-defaults.md); `T-SKILL-COMMAND-TRIGGER-CONSISTENT`). Otherwise Pattern C: command + skill pair.
+4. **Does it need both CLI execution AND in-loop reasoning?** → Pattern C exception (hybrid). One command file with `allowed-tools` widened, body runs Bash + invokes Skill (or inlines the reasoning body). The invoked skill must be model-invocable; a `disable-model-invocation: true` skill is never dispatched from a command (step 3).
 
-Avoid: skill-only orchestration (no typeable handle) — operators don't discover it. Avoid: command-only orchestration that duplicates a skill body (drift risk; ergonomics asymmetric). Avoid: skill that exists solely to be invoked by a command (just inline into the command body unless it's >100 lines OR shared by ≥2 commands).
+Avoid: skill-only orchestration of a model-invocable skill with no typeable handle — operators don't discover it. A skill whose effective trigger policy is `disable-model-invocation: true` is exempt: it is already typeable as its own slash entry (`/<plugin>:<skill>`), and a Pattern-C wrapper for it is forbidden ([`docs/dekspec-skill-flag-defaults.md`](../../docs/dekspec-skill-flag-defaults.md); `T-SKILL-COMMAND-TRIGGER-CONSISTENT`). Avoid: command-only orchestration that duplicates a skill body (drift risk; ergonomics asymmetric). Avoid: skill that exists solely to be invoked by a command (just inline into the command body unless it's >100 lines OR shared by ≥2 commands).
 
 ---
 
 ## Cross-references
 
-- [`docs/dekspec-skill-flag-defaults.md`](../../docs/dekspec-skill-flag-defaults.md) — canonical frontmatter defaults per skill class (authoring / dispatch / recovery / audit / utility).
+- [`docs/dekspec-skill-flag-defaults.md`](../../docs/dekspec-skill-flag-defaults.md) — canonical frontmatter defaults per skill class (authoring / dispatch / recovery / audit / utility), and the rule that a `disable-model-invocation: true` skill is its own slash entry with no command wrapper.
 - [`plugins/dekspec/skills/_lib/help_mode_template.md`](skills/_lib/help_mode_template.md) — canonical Help Mode rendering contract.
 - [`dekspec/architecture-elements/AE-006-skills-library.md`](../../dekspec/architecture-elements/AE-006-skills-library.md) — system-level architectural spec for the Skills Library.

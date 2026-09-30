@@ -6,7 +6,7 @@ model: claude-opus-4-7
 reasoning_effort: max
 disable-model-invocation: false
 allowed-tools: Read Write Edit Grep Glob Bash Agent
-argument-hint: [--provisional <slug>] [--help | --teaching | --audit | --review | --accept | --approve | --lock | --unlock | --revise] [description or path to architecture element]
+argument-hint: [--provisional <slug>] [--help | --teaching | --audit | --review | --accept | --approve | --revise] [description or path to architecture element]
 related_skills: [write-sv, write-adr, write-ws, write-ic, write-intent]
 ---
 
@@ -18,7 +18,7 @@ related_skills: [write-sv, write-adr, write-ws, write-ic, write-intent]
 >
 > For the AE subtype enum, framework reference (arc42 chapter mapping, C4 view types), and routing keyword tables, see `dekspec/architecture-frameworks-reference.md`.
 
-Write, lock, or unlock an Architecture Element.
+Write, revise, or accept an Architecture Element. An AE is a living reference: it rests at `ACCEPTED` and never locks (ADR-046); an IB that changes the architecture it describes names it in `**Spec impact:**` and must update it (ADR-056).
 
 > **⛔ CONTEXT CHECK** — see [`_lib/context_check.md`](../_lib/context_check.md)
 >
@@ -38,14 +38,14 @@ produces, its boundary against the injection orchestrator, and the ADRs that
 govern it. Keep numerics out — route any SLO targets to a WS.
 ```
 
+**Roles (ADR-061).** This skill plays DekSpec's Agent Role Specifications; the engineer never selects one. Authoring, revise and resync modes play the **`specifier`** role, audit modes the **`auditor`** role: run `dekspec resource role specifier` or `dekspec resource role auditor` at the start of the mode and follow it (a delegated `*-author` agent loads `specifier` itself). See [`_lib/mode_dispatcher.md`](../_lib/mode_dispatcher.md) §The role each universal mode plays and [`_lib/agent_roles.md`](../_lib/agent_roles.md).
+
 ## Mode Detection
 
 See [`_lib/mode_detection_template.md`](../_lib/mode_detection_template.md) for the canonical parse/routing contract. Default mode: **Creation Mode**.
 
 - **Help mode** — `--help` flag. Skip to **Help Mode**.
 - **Teaching mode** — `--teaching` flag. Skip to **Teaching Mode**.
-- **Lock mode** — `--lock` flag. Skip to **Lock Mode**.
-- **Unlock mode** — `--unlock` flag. Skip to **Unlock Mode**.
 - **Accept mode** — `--accept` flag. Skip to **Accept Mode**.
 - **Audit mode** — `--audit` flag. Skip to **Audit Mode**.
 - **Review mode** — `--review` flag. Skip to **Review Mode**.
@@ -55,11 +55,11 @@ See [`_lib/mode_detection_template.md`](../_lib/mode_detection_template.md) for 
 
 **Routing (per [`_lib/mode_detection_template.md`](../_lib/mode_detection_template.md)):**
 - Substantive-work (fan-out via Agent tool): (no flag), `--accept`, `--revise`
-- Inline (parent context): `--help`, `--teaching`, `--review`, `--audit`, `--lock`, `--unlock`
+- Inline (parent context): `--help`, `--teaching`, `--review`, `--audit`, `--approve`
 
 ## Interview Rigor (default-on)
 
-This skill **optionally composes the [`interview-me`](../../dektools/skills/interview-me/SKILL.md) tool** (INT-167 / D13), which ships in the **DekTools** plugin (ADR-047) — it does not re-author the interview prose, and there is no `--grill` flag. When the engineer's input is fuzzy or underspecified and the tool is available, invoke `/dekspec:interview-me <AE-NNN | description>` so the engineer is interviewed one decision-tree question at a time, with a recommended answer per question, repo-exploration for discoverable answers, glossary + governing ADR/AE citation with conflict-flagging, fuzzy-term sharpening, and scenario-based stress-testing of asserted relationships.
+This skill **optionally composes the [`interview-me`](../../../dektools/tools/interview-me/SKILL.md) tool** (INT-167 / D13), which ships in the **DekTools** plugin (ADR-047) — it does not re-author the interview prose, and there is no `--grill` flag. When the engineer's input is fuzzy or underspecified and the tool is available, invoke `/interview-me <AE-NNN | description>` so the engineer is interviewed one decision-tree question at a time, with a recommended answer per question, repo-exploration for discoverable answers, glossary + governing ADR/AE citation with conflict-flagging, fuzzy-term sharpening, and scenario-based stress-testing of asserted relationships.
 
 **Degrade gracefully when it is absent.** DekTools may not be installed, or `interview-me` may not be enabled in its à-la-carte selection. Core is self-sufficient by design (ADR-047), so this is a supported configuration, not an error: fall back to asking the engineer the same decisions inline, one at a time, and continue. Never block authoring on a toolkit tool, and never report its absence as a failure.
 
@@ -77,7 +77,7 @@ See [`_lib/fan_out.md`](../_lib/fan_out.md) for the canonical ds-di2 orchestrato
 
 - **subagent_type**: `dekspec:ae-author`
 - **substantive_modes**: [Creation (default), `--accept`, `--revise`]
-- **inline_modes**: [`--help`, `--teaching`, `--review`, `--audit`, `--lock`, `--unlock`]
+- **inline_modes**: [`--help`, `--teaching`, `--review`, `--audit`, `--approve`]
 - **bundle_list** (Step 1 context):
   1. Template path — `dekspec/templates/architecture-element-template.md`.
   2. Methodology references — `docs/dekspec-methodology.md` §4 Layer 1 (Architecture Elements); `dekspec/dekspec-operating-guide.md` §AE authoring (if present); `dekspec/architecture-frameworks-reference.md` (C4 + arc42 subtype mapping, routing keyword tables).
@@ -87,7 +87,7 @@ See [`_lib/fan_out.md`](../_lib/fan_out.md) for the canonical ds-di2 orchestrato
   6. Engineer guidance — `$ARGUMENTS` verbatim, including structured cues (subtype hint, classification hint).
   7. Constraints — full T / D / L1 / DS rule set from §Audit Mode (T1–T12, D1–D18, L1-ADR, L1-ADR-STALE, L1-AE, L1-GLOSSARY, L1-VISION, L1-WS-EXISTS, L1-ADR-SCOPE, DS1–DS3) **plus** the §Rules block (Extraction Default-Home Table, writing-time heuristics, anti-patterns, subtype enum, classifier/router rules).
 - **expected_output_path**: `dekspec/architecture-elements/AE-NNN-<slug>.md` (Creation) or the input path (`--accept` / `--revise`; subagent edits in place).
-- **validation**: `dekspec validate <output-path>` + mode-specific post-checks (Creation: index row added, Status PROPOSED, D1–D18+L1 Verification clean; `--accept`: PROPOSED→ACCEPTED + index updated + blocking checks all green; `--revise`: full T/D/L1/DS re-run + §Revise Mode Step 6a cascade grep + Open Issues logged + reset to PROPOSED if previously ACCEPTED/LOCKED). Validation/surface contract: see [`_lib/validate_and_surface.md`](../_lib/validate_and_surface.md) — on non-zero exit, surface verbatim and stop, do not silently retry.
+- **validation**: `dekspec validate <output-path>` + mode-specific post-checks (Creation: index row added, Status PROPOSED, D1–D18+L1 Verification clean; `--accept`: PROPOSED→ACCEPTED + index updated + blocking checks all green; `--revise`: full T/D/L1/DS re-run + §Revise Mode Step 6a cascade grep + Open Issues logged + reset to PROPOSED if previously ACCEPTED). Validation/surface contract: see [`_lib/validate_and_surface.md`](../_lib/validate_and_surface.md) — on non-zero exit, surface verbatim and stop, do not silently retry.
 
 **End of Fan-Out Mode.**
 
@@ -97,15 +97,13 @@ See [`_lib/help_mode_template.md`](../_lib/help_mode_template.md) for the canoni
 
 ```yaml
 skill_name: "/write-ae"
-one_line:   "Create, audit, review, revise, accept, lock, or unlock Architecture Elements (replaced legacy /write-design-note; legacy removed 2026-05-09)"
+one_line:   "Create, audit, review, revise, or accept Architecture Elements (replaced legacy /write-design-note; legacy removed 2026-05-09)"
 modes:
   - { flag: "", args: "<description>", description: "Create a new Architecture Element from the engineer's description. First runs the classifier/router gate (§AE Classifier/Router) — refuses and redirects if the input is ADR/WS/IC/IB-shaped. Then prompts for the mandatory subtype. Runs Step 4a Verification (D1–D14 + T10/T11/T12 + L1) on the draft before Save; refuses to advance to PROPOSED if any check fails without explicit engineer override." }
   - { flag: "--audit", args: "<AE-path>", description: "Read-only quality check: template (T1–T12), drift (D1–D16 + D17/D18), cross-artifact consistency (L1-ADR, L1-ADR-STALE, L1-AE, L1-GLOSSARY, L1-VISION, L1-WS-EXISTS, L1-ADR-SCOPE), downstream impact (DS1–DS3 advisory)." }
   - { flag: "--review", args: "<AE-path>", description: "Walk through open issues interactively. Present each issue with context and a recommendation. Engineer resolves, defers, or dismisses each." }
   - { flag: "--revise", args: "<AE-path> <notes>", description: "Incorporate engineer review notes into the AE. Notes can be inline text or a path to a notes file. Re-runs T+D+L1+DS after applying changes." }
   - { flag: "--accept", args: "<AE-path>", description: "Promote a PROPOSED AE to ACCEPTED (PROPOSED → ACCEPTED). Runs full T+D+L1 final audit; refuses if any T / D / L1-ADR / L1-ADR-STALE / L1-VISION / L1-WS-EXISTS / L1-ADR-SCOPE check fails. L1-GLOSSARY is advisory at Accept (§9 row 1). DS-series is advisory at Accept (§9 row 2)." }
-  - { flag: "--lock", args: "<AE-path>", description: "Lock an ACCEPTED AE (ACCEPTED → LOCKED). Runs full pre-lock audit. Rejects if any T / D / L1 check fails, INCLUDING L1-GLOSSARY (blocking at Lock per §9 row 1) AND DS-series (blocking at Lock per §9 row 2)." }
-  - { flag: "--unlock", args: "<AE-path>", description: "Unlock a LOCKED AE (LOCKED → PROPOSED). Runs downstream impact assessment. Requires a reason." }
   - { flag: "--teaching", args: "", description: "Interactive tutorial walking a new author through writing an Architecture Element section-by-section. Distinct from --review (audits existing) and from no-flag creation (assumes the author already knows AEs)." }
   - { flag: "--help", args: "", description: "Show this help message." }
 examples:
@@ -114,8 +112,6 @@ examples:
   - "/write-ae --review dekspec/architecture-elements/AE-005-mind-map.md"
   - "/write-ae --revise AE-005-mind-map.md \"clarify relationship to shadow graph, add exclusion for real-time updates\""
   - "/write-ae --accept dekspec/architecture-elements/AE-005-mind-map.md"
-  - "/write-ae --lock dekspec/architecture-elements/AE-005-mind-map.md"
-  - "/write-ae --unlock dekspec/architecture-elements/AE-005-mind-map.md"
   - "/write-ae --help"
 ```
 
@@ -202,6 +198,8 @@ If the engineer's input clearly maps to one subtype, propose it explicitly and a
 
 ## Audit Mode
 
+_Plays the **`auditor`** role — run `dekspec resource role auditor` first and follow it: deterministic `dekspec validate` / `dekspec audit` output is primary evidence; report findings, change nothing._
+
 Read-only quality check on an existing architecture element. Applies the refined T / D / L1 / DS checklist from `dekspec/audits/dn-audit-process-proposal-2026-04-24.md` §3.
 
 **Schema-vs-linkage division of labor (ds-52p, D-14).** The audit splits into two layers: structural shape (T10 subtype, T13/T15/T16 schema-typed fields) is enforced by `jsonschema` validation *at parse time* — invalid IR shapes never reach the audit. Graph-relational rules (T11/T12 content-presence, D17/D18 prose drift, L1/L6 cross-artifact linkage) run in `linkage.py` against the parsed IR set. When this skill reports a T10 failure, that's actually a schema-validation error surfaced at parse time; when it reports a T11/T12/D17/D18 failure, that's a `linkage.py` rule emitting against the IR graph. Both layers are part of the audit's contract; the split affects only where the check lives in code.
@@ -215,7 +213,7 @@ Path to the architecture element.
 1. Read the architecture element at the provided path.
 2. Read the domain glossary (`dekspec/domain-glossary.md`) for L1-GLOSSARY check.
 3. Read the system vision (`dekspec/system-vision.md`) for L1-VISION check.
-4. For each ADR referenced in the AE body, read the ADR once and cache in-context. For each AE referenced, note it (read only if not already in context). For each WS referenced, verify the file exists at `dekspec/working-specs/WS-NNN-*.md` and is not `TODO` (unless Open Issues explicitly flags it as pending).
+4. For each ADR referenced in the AE body, read the ADR once and cache in-context. For each AE referenced, note it (read only if not already in context). For each WS referenced, verify the file exists at `dekspec/working-specs/WS-NNN-*.md` and is past `DRAFT` (unless Open Issues explicitly flags it as pending).
 5. Run the three-series checklist:
 
 **T-series (T1–T9) — Template / Style.** Each item reports pass/fail and cites the offending line range when failed.
@@ -260,7 +258,7 @@ Path to the architecture element.
 - [ ] **D15 — Single-authoritative-reference overreach** (added 2026-04-24 from DN-convergence lessons). Flag DN-body phrases claiming contract authority: `single authoritative reference`, `the full contract`, `exhaustive specification`, `the complete definition of`, `the behavioral contract for`, `single source of truth for`, `authoritative specification`, `complete specification`. DNs are authoritative for *vision and principles*; Working Specs are authoritative for *behavior*; Interface Contracts are authoritative for *boundaries*. A DN claiming "authoritative contract" status is almost certainly overstepping. *Precedent:* AE-020 §What This Is opening — "This architecture element is the single authoritative reference for the full dtype contract across all three boundaries" — rewritten during Phase 4.5 with dtype mechanics extracted to IC-014.
 
 - [ ] **D16 — Open Issues classification (spec-coverage-gap vs code-gap)** (added 2026-04-24 from DN-convergence lessons). Each Open Issue is classified by its text shape:
-    - **Spec-coverage-gap (acceptable in AE Open Issues):** starts with `WS-NNN is TODO`, `IC-NNN is TODO`, `ADR for <X> is pending`, `<spec> has not been written yet`, `needs a formal spec`. These are design-level questions about spec completeness.
+    - **Spec-coverage-gap (acceptable in AE Open Issues):** starts with `WS-NNN is DRAFT`, `IC-NNN is DRAFT`, `ADR for <X> is pending`, `<spec> has not been written yet`, `needs a formal spec`. These are design-level questions about spec completeness.
     - **Code-gap (must migrate to divergence ledger or `br`):** contains `code does X but spec says Y`, `currently in code at <path>:<line>`, `violates ADR-NNN at`, `silent fallback at`, `implementation drifts from`, specific HTTP status mismatches. These are code-review observations, not design-level questions.
     - **Severity classification:** spec-coverage gaps are PASS; code-gap items are FAIL (D16 hit). Grandfathered exemptions: pre-2026-04-24 entries (§9 row 5). When a code-gap is flagged, recommend migration to `dekspec/divergences/DIV-NNN-*.md` (oracle-vs-built) or a new `br` issue (spec-vs-code bug).
 
@@ -274,12 +272,12 @@ Path to the architecture element.
 - [ ] **L1-ADR** — For each ADR referenced by number, read the ADR and verify either (a) full consistency, or (b) explicit acknowledgment of the deviation **in the AE body (`Key Concepts` or `What We Are Not Building`)** — Amendment Log acknowledgment does not satisfy this check (Q5 resolution, §3.3). Silent contradictions are a fail.
 - [ ] **L1-ADR-STALE** (Q7 resolution) — For each ADR referenced in the AE body, read the ADR's `Status` field. If the referenced ADR is `SUPERSEDED` or `DEPRECATED`, raise a MINOR flag. When SUPERSEDED, the check also reports the replacement ADR from the `*Superseded by:*` field so the fix is one-step. The skill also runs a subject-phrase heuristic: match cited ADR slug against subject keywords in the same sentence (e.g., "tier-percentage formula" near "ADR-042" → flag candidate mis-citation).
 - [ ] **L1-AE** — For each other AE referenced by number, verify the referenced DN exists, is not DEPRECATED, and its claims in the referenced area match.
-- [ ] **L1-GLOSSARY** — Every domain term used in the AE body matches the domain glossary. The AE must not redefine a term, use a deprecated alias, or coin a new term without a glossary entry (composite-term auto-promotion per Q4 policy: if a term appears in ≥2 DNs, flag as "promote via `/write-glossary --add-term`" rather than as an AE defect). **Deprecated-alias sweep:** grep the AE body against the glossary's deprecated-alias list directly (e.g. `API Server` → `Cortex Service`, `chat model server` → `Cooccurrence Service`, `embedding model server` → `Semantic Embedding Service`). A hit on any deprecated alias is a fail regardless of whether the alias is also in current prose. **Advisory at Accept, blocking at Lock (§9 row 1).**
+- [ ] **L1-GLOSSARY** — Every domain term used in the AE body matches the domain glossary. The AE must not redefine a term, use a deprecated alias, or coin a new term without a glossary entry (composite-term auto-promotion per Q4 policy: if a term appears in ≥2 DNs, flag as "promote via `/write-glossary --add-term`" rather than as an AE defect). **Deprecated-alias sweep:** grep the AE body against the glossary's deprecated-alias list directly (e.g. `API Server` → `Cortex Service`, `chat model server` → `Cooccurrence Service`, `embedding model server` → `Semantic Embedding Service`). A hit on any deprecated alias is a fail regardless of whether the alias is also in current prose. **Advisory (§9 row 1).**
 - [ ] **L1-VISION** — If the DN's scope touches top-level system claims, verify no contradiction with `dekspec/system-vision.md`.
-- [ ] **L1-WS-EXISTS** — For each WS referenced by number, verify the file exists and is not `TODO` (unless Open Issues flags it as pending). Section-name mismatches are ADVISORY. **TODO-stub detection:** if the linked WS exists and is not formally `TODO` but its body is under 50 lines (effectively a stub — content hasn't been written), flag as an ADVISORY "linked WS is a stub — the citation may not point to meaningful content." Precedent: WS-025 Injection Pipeline Orchestration was ~30 lines of pointer-only content despite not being TODO status.
+- [ ] **L1-WS-EXISTS** — For each WS referenced by number, verify the file exists and is past `DRAFT` (unless Open Issues flags it as pending). Section-name mismatches are ADVISORY. **Stub detection:** if the linked WS is past `DRAFT` but its body is under 50 lines (effectively a stub — content hasn't been written), flag as an ADVISORY "linked WS is a stub — the citation may not point to meaningful content." Precedent: WS-025 Injection Pipeline Orchestration was ~30 lines of pointer-only content.
 - [ ] **L1-ADR-SCOPE** — Scope-discipline check: the AE references between 2 and 8 **direct-body** ADRs. **Direct-body** is defined as: unique ADRs cited anywhere in the AE *minus* the set of ADRs listed under an explicit **Indirect governing ADRs:** sub-bullet of §Relationship to Other Components. Indirect-listed ADRs are fully exempt from the count regardless of where else they appear; the structural check below is what flags dual-citation. Fewer than 2 direct-body ADRs = too narrow. More than 8 direct-body ADRs = too broad — split the AE. **Duplicate-citation count:** report each ADR's citation count separately. Repeated citations (e.g. ADR-005 cited 4×) count once for the scope bound but signal potential consolidation. **Indirect-ADR compliance (structural check):** verify each ADR under **Indirect governing ADRs:** carries a one-line rationale explaining why it is indirect (governing a peer concern rather than this AE's direct scope). An ADR must not appear in both the body and the indirect sub-bullet; dual-citation is a MINOR structural fail — the body citation should be removed, leaving only the indirect listing.
 
-**DS-series (DS1–DS3) — Downstream Impact (advisory at Audit / Accept; blocking at Lock per §9 row 2).**
+**DS-series (DS1–DS3) — Downstream Impact (advisory, §9 row 2).**
 
 - [ ] **DS1** — Grep all WSs, ICs, and IBs for references to this AE. If any cite a AE section that no longer exists after a revision, flag as a cascade failure.
 - [ ] **DS2** — Grep all downstream artifacts for the DN's distinctive terminology. If a downstream artifact uses the term in a way that contradicts the DN's definition, flag.
@@ -305,7 +303,7 @@ Layer-1 consistency (L1):
   L1-ADR: [pass / specific fail with ADR and deviation]
   L1-ADR-STALE: [pass / list of SUPERSEDED citations + replacements]
   L1-AE: [pass / specific fail]
-  L1-GLOSSARY: [pass / specific term violations — note advisory at Accept, blocking at Lock]
+  L1-GLOSSARY: [pass / specific term violations — advisory]
   L1-VISION: [pass / specific fail]
   L1-WS-EXISTS: [pass / specific fail]
   L1-ADR-SCOPE: [N direct-body ADRs — within range / too narrow (<2) / too broad (>8)]
@@ -347,11 +345,7 @@ Arguments: the architecture element path.
    
    Starting guided review...
    ```
-6.5. **Spec-Reviewer dispatch** (shared `reviewer_mode` path — see [`_lib/reviewer_mode.md`](../_lib/reviewer_mode.md)). This ADDS an adversarial Spec-Reviewer pass alongside the open-issue loop; it does NOT replace it. Perform the shared four-step dispatch:
-   a. Load the `spec-reviewer` ContextSpec: `from dekspec.constraint_compiler.parser import parse_context_spec; context_spec = parse_context_spec("dekspec/context-specs/role-spec-reviewer.md")` (`context_spec["role_identity"] == "spec-reviewer"`).
-   b. Take the `ReviewerAE` artifact this `--review` mode already holds (the architecture element at the provided path; the caller owns this IO, the dispatcher is IO-free).
-   c. Dispatch through the shared surface: `from dekspec.spec_review.reviewer import Reviewer; findings = Reviewer().dispatch(context_spec, artifact)` (`-> list[Finding]`, per IC-016).
-   d. Present each returned `Finding` to the engineer at its severity (default `P2` — approval-blocking, not auto-merge) as additional review items alongside the open issues below. Do not reshape the records; they route into the AE-003 surface via the `SPEC-REVIEW` audit-rule family (`dekspec.spec_review.reviewer` → `spec_review_rules`).
+6.5. **Spec-reviewer dispatch** — run the shared spec-reviewer dispatch in [`_lib/agent_roles.md`](../_lib/agent_roles.md) §Spec-reviewer dispatch for this Architecture Element: `dekspec resource role spec-reviewer`, one fresh-context sub-agent composed policy → role → procedure → assignment, and its findings presented at their severity (default P2) as additional review items alongside the open issues below. It ADDS an independent pass; it does NOT replace the open-issue loop. If it did not run, say so — never present your own review as the spec-reviewer's.
 7. For each unchecked issue, in order:
    a. Present the issue:
       ```
@@ -429,13 +423,13 @@ Arguments after the path are the engineer's notes — inline text or a path to a
 6. **Re-run the full T / D / L1 / DS checklist from Audit Mode.** Report any new findings.
 6a. **Cascade grep (added 2026-04-24 from DN-convergence lessons).** If any revision EXTRACTED content (moved a subsection from this AE to a WS / IC / WS-019 / AE-034 / divergence ledger), grep the corpus for live citations to the moved section and update them in the same commit:
 
-   - **Search scope (include):** `dekspec/working-specs/*.md`, `dekspec/interface-contracts/*.md`, `dekspec/impl-briefs/**/*.md`, `dekspec/architecture-elements/*.md`, `dekspec/divergences/DIV-NNN-*.md`, `dekspec/convergence-loop-v2.md`, `dekspec/convergence-loop.md`, `dekspec/domain-glossary.md`, `dekspec/working-spec-index.md`, `dekspec/interface-contract-index.md`, `dekspec/architecture-elements-index.md`, `.beads/issues.jsonl`.
+   - **Search scope (include):** `dekspec/working-specs/*.md`, `dekspec/interface-contracts/*.md`, `dekspec/impl-briefs/**/*.md`, `dekspec/architecture-elements/*.md`, `dekspec/divergences/DIV-NNN-*.md`, `dekspec/convergence-loop-v2.md`, `dekspec/convergence-loop.md`, `dekspec/domain-glossary.md`, `dekspec/working-spec-index.md`, `dekspec/interface-contract-index.md`, `dekspec/architecture-elements-index.md`.
    - **Search scope (EXCLUDE):** `dekspec/audits/**`, `dekspec/archaeology/**`, `dekspec/research/**`, `dekspec/source-of-truth/**`, `dekspec/todos/**`. These are historical records of past work — cascading changes into them corrupts the audit trail. Audit and archaeology docs are NEVER cascade targets.
    - **Grep patterns:** `AE-NNN §<extracted-subsection-name>`, `AE-NNN's §<extracted-subsection-name>`, AE-NNN prefix plus the exact old subsection heading. For each hit outside the excluded scope, update the pointer to the new home (`WS-NNN §<new-subsection>` / `IC-NNN §<new-subsection>` / appropriate ledger entry). *(Legacy DN-NNN cascades have been folded into the AE-NNN namespace per the DN→AE migration of 2026-04-27; if a stale DN-NNN ref slips through, look it up in `dekspec/dn-to-ae-reference-map-2026-04-27.csv` and rewrite to the corresponding AE-NNN.)*
    - **Report:** list each updated reference in the revision output. If no live citations exist (all hits are in excluded scope), record "no live cross-references required cascade."
 
 7. If the revision introduces ambiguity, contradictions, or concerns that cannot be fully resolved during this revision, log them as new entries in the `## Open Issues` section with **Source:** `review` and appropriate severity. Inform the engineer: "New open issues were logged. Run `--review` to walk through them."
-8. If status was ACCEPTED or LOCKED, reset to PROPOSED (revision invalidates prior acceptance).
+8. If status was ACCEPTED, reset to PROPOSED (revision invalidates prior acceptance; re-accept once it settles).
 
 **End of Revise Mode.**
 
@@ -449,9 +443,8 @@ Promotes a PROPOSED Architecture Element to ACCEPTED after every quality check p
 
 1. Read the architecture element at the provided path
 2. Verify current status is PROPOSED. If not, STOP:
-   - TODO, DRAFT → "This architecture element is still [status]. It must be revised to PROPOSED before it can be accepted."
+   - DRAFT → "This architecture element is still DRAFT. It must be revised to PROPOSED before it can be accepted."
    - ACCEPTED → "This architecture element is already ACCEPTED."
-   - LOCKED → "This architecture element is LOCKED. Unlock first with `--unlock` if changes are needed."
 
 ### Step 2: Final Audit
 
@@ -464,10 +457,10 @@ All other checks (T1–T9, D1–D16, L1-ADR, L1-ADR-STALE, L1-AE, L1-VISION, L1-
 **Stale-ref sweep (added 2026-04-24 from DN-convergence lessons).** Additionally, for each Open Issue that references a WS, IC, or ADR by ID:
 
 - Read the referenced artifact's current Status.
-- If the Open Issue was opened when the referenced artifact was `TODO` / `DRAFT` but the artifact has since advanced to `PROPOSED` / `ACCEPTED` / `LOCKED`, flag as "stale-ref — close or restate."
+- If the Open Issue was opened when the referenced artifact was `DRAFT` but the artifact has since advanced to `PROPOSED` / `ACCEPTED` / `LOCKED`, flag as "stale-ref — close or restate."
 - Flag at blocking severity at Accept — a AE cannot advance to ACCEPTED with stale cross-references in its Open Issues. The engineer's paths are: (a) close the Open Issue with a resolution pointer to the now-advanced artifact, (b) restate the Open Issue against the current state if a new concern remains, or (c) delete if no longer relevant.
 
-Many pre-convergence DNs carried Open Issues of the form "WS-NNN is TODO" that became stale the moment WS-NNN advanced; this sweep catches those automatically.
+Many pre-convergence DNs carried Open Issues of the form "WS-NNN is not written yet" that became stale the moment WS-NNN advanced; this sweep catches those automatically.
 
 ### Step 3: Report
 
@@ -490,34 +483,14 @@ Only executed if Step 3 reported zero blocking failures.
 1. Flip Status PROPOSED → ACCEPTED and bump Modified — run `python ../_lib/scripts/artifact_ops.py transition <AE-path> --from PROPOSED --to ACCEPTED` (no `--note`: no Amendment Log entry on accept). Surface stderr on non-zero exit and STOP.
 2. Update `dekspec/architecture-elements-index.md` — run `python ../_lib/scripts/artifact_ops.py update-index dekspec/architecture-elements-index.md --id AE-NNN --status ACCEPTED` (surface stderr on non-zero exit).
 
-No Amendment Log entry is written — the log is reserved for changes made after LOCKED status, or when unlocking back to PROPOSED.
+No Amendment Log entry is written on accept.
 
 **End of Accept Mode.**
 
-## Lock Mode (ACCEPTED → LOCKED)
 
-See [`_lib/lock_unlock.md`](../_lib/lock_unlock.md) §Lock for the canonical 4-step contract. Parameters:
+## No Lock Mode
 
-- **artifact_kind_singular**: architecture element
-- **pre_lock_audit_ref**: §Audit Mode of this skill, extended with the AE-specific blocking rules below
-- **status_before**: ACCEPTED
-- **status_after**: LOCKED
-- **artifact_index_path**: `dekspec/architecture-elements-index.md`
-
-AE-specific blocking rules added to the substrate's audit run (per §9 audit resolutions):
-- **L1-GLOSSARY is BLOCKING at Lock** (§9 row 1).
-- **DS-series is BLOCKING at Lock** (§9 row 2) — an AE may not LOCK while any DS1 or DS2 finding is open (a downstream WS in stale contradiction with the AE must be reconciled first).
-
-## Unlock Mode (LOCKED → PROPOSED)
-
-See [`_lib/lock_unlock.md`](../_lib/lock_unlock.md) §Unlock for the canonical 4-step contract. Parameters:
-
-- **artifact_kind_singular**: architecture element
-- **status_before**: LOCKED
-- **status_after**: PROPOSED
-- **artifact_index_path**: `dekspec/architecture-elements-index.md`
-
-Downstream impact scan (run during Step 2 alongside the reason gate): grep specs for references to this architecture element; surface the impact list to the engineer before recording the reason. Cascade reminder to surface in Step 4: downstream artifacts may need review, affected IBs may need regeneration, and the AE must be re-locked when the substantive change settles.
+An Architecture Element is a living reference: it rests at `ACCEPTED` and never locks (ADR-046). A substantive change is a `--revise` (ACCEPTED → PROPOSED, then `--accept` again) with the Step 6a cascade grep. The former `--lock` / `--unlock` modes — and the Lock-time blocking of L1-GLOSSARY and the DS-series — are retired; both stay reported by `--audit` and `--accept`, and DS findings should be reconciled in the same change that revises the AE.
 
 ## Input
 
@@ -583,7 +556,7 @@ Use this mode when:
    The CLI scaffolds the folder + skeleton + (by default) a git branch named per kind. Surface its stderr on non-zero exit and STOP.
 3. Read the scaffolded file at `dekspec/provisional/<slug>/AE-provisional-<title-slug>.md` (the CLI prints the path).
 4. **Populate the skeleton with this skill's authoring discipline** — every section the canonical-mode flow would fill in goes here (Motivation, Linked AEs, Components affected, Verification, etc.). The PROVISIONAL banner at the top stays.
-5. **Reject `--lock`** in combination with `--provisional`. LOCKED state requires linkage-walker visibility that provisional artifacts deliberately lack. The hand-promote workflow (see `docs/dekspec-operating-guide.md` §Provisional Promotion) is the canonical path to LOCKED.
+5. **Reject `--accept`** in combination with `--provisional`. A provisional AE is hand-promoted to its canonical PROPOSED file via the hand-promote workflow (see `docs/dekspec-operating-guide.md` §Provisional Promotion), then accepted with `--accept` in the normal flow.
 6. **`--analyze` and `--review`** remain available in provisional mode — they operate on the provisional file's content without requiring canonical-graph visibility.
 7. Closing step: surface to the engineer the path of the provisional file, the branch (if created), and the next-step hand-promote workflow (see `docs/dekspec-operating-guide.md` §Provisional Promotion).
 
@@ -706,7 +679,7 @@ Run the shared deterministic helper:
 python ../_lib/scripts/artifact_ops.py approve <AE-path> --target-status <STATUS>
 ```
 
-`<STATUS>` is the transition the signature authorizes (e.g. `ACCEPTED` or `LOCKED`). The script resolves the reviewer email from `git config user.email` (override with `--engineer <email>`) and appends a row of the form `| YYYY-MM-DD | review-approval | Reviewed and approved for <STATUS>. | <email> |`, then bumps `Modified`. The `T-APPROVAL-GATE` audit rule counts these rows under the `team` profile; once enough signatures are present the AE may walk the gated transition. Under the default `v1` profile the rule is silent. Inline mode — no fan-out.
+`<STATUS>` is the transition the signature authorizes (e.g. `ACCEPTED`). The script resolves the reviewer email from `git config user.email` (override with `--engineer <email>`) and appends a row of the form `| YYYY-MM-DD | review-approval | Reviewed and approved for <STATUS>. | <email> |`, then bumps `Modified`. The `T-APPROVAL-GATE` audit rule counts these rows under the `team` profile; once enough signatures are present the AE may walk the gated transition. Under the default `v1` profile the rule is silent. Inline mode — no fan-out.
 
 ## Common Pitfalls
 
@@ -731,7 +704,7 @@ python ../_lib/scripts/artifact_ops.py approve <AE-path> --target-status <STATUS
 
 ## Closing Step
 
-**Mandatory closing step for every substantive mode of this skill** (the modes that write or revise an Architecture Element — Creation, `--accept`, `--revise`, `--lock`, `--unlock`). After the artifact file is saved and any index update is done, run:
+**Mandatory closing step for every substantive mode of this skill** (the modes that write or revise an Architecture Element — Creation, `--accept`, `--revise`). After the artifact file is saved and any index update is done, run:
 
 ```
 dekspec relink

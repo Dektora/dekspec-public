@@ -27,7 +27,7 @@ Every skill that cites this substrate MUST honor the same two-branch behavior, r
 
 The "first vs. prior" decision is made by the model from the visible transcript; there is no machine signal to consult. Be lenient: if there is *any* prior content beyond the system prompt and the current user message, treat it as "prior history exists."
 
-The y/n trailer wording follows this template, with `{artifact-kind}` substituted per skill (e.g., `Constitution`, `Intent`, `bead decomposition`, `eval`, `SP`, `test derivation`):
+The y/n trailer wording follows this template, with `{artifact-kind}` substituted per skill (e.g., `Constitution`, `Intent`, `IB`, `eval`, `SP`, `test derivation`):
 
 > "This session has prior context that may affect **{artifact-kind} quality**. Recommend `/clear` or a new session. Continue anyway? (y/n)"
 
@@ -50,8 +50,8 @@ Where:
 - `{degradation_reason}` — a one- to two-sentence skill-specific paragraph naming *why this artifact is sensitive to prior-context contamination*. This is the **load-bearing** part. Examples:
   - ADR: "This skill requires precise architectural reasoning. Prior conversation context can degrade quality by introducing bias and competing patterns."
   - Security Profile: "A Security Profile is a load-bearing declaration of what the project permits at the security layer. Prior conversation context can degrade rigor by anchoring on partial sketches before the engineer has settled the `bounded_context` or the `allowed_dataflows` shape."
-  - Create-beads: "This skill decomposes an IB into self-contained bead work units. Prior conversation context can leak assumptions into bead constraints that aren't in the IB."
-- `{artifact-kind}` — the noun phrase that names what the skill produces (`ADR`, `Constitution`, `Intent`, `bead decomposition`, `eval`, `SP`, `test derivation`, etc.). Used inside the y/n trailer.
+  - IB: "An IB references its binding obligations at their canonical homes. Prior conversation context can leak assumptions into the contract that no approved source states."
+- `{artifact-kind}` — the noun phrase that names what the skill produces (`ADR`, `Constitution`, `Intent`, `IB`, `eval`, `SP`, `test derivation`, etc.). Used inside the y/n trailer.
 
 Three lines of canonical preamble + one skill-specific paragraph replaces seven lines of duplicated scaffolding.
 
@@ -61,7 +61,7 @@ When refactoring an existing skill to this substrate, or adding a new skill that
 
 - [ ] Replace the legacy `> **⛔ CONTEXT CHECK**` block (typically lines 12–18) with the recommended template above.
 - [ ] Preserve the existing skill-specific risk paragraph **verbatim or lightly trimmed to one or two sentences** — do not homogenize across skills. The per-skill framing is the load-bearing part.
-- [ ] Substitute the correct `{artifact-kind}` noun in the y/n trailer (match what the skill emits — e.g., the skill that writes Constitutions uses `Constitution`; the skill that decomposes IBs into beads uses `bead decomposition`).
+- [ ] Substitute the correct `{artifact-kind}` noun in the y/n trailer (match what the skill emits — e.g., the skill that writes Constitutions uses `Constitution`; the skill that writes IBs uses `IB`).
 - [ ] Keep the substrate citation link relative-and-correct: `[\`_lib/context_check.md\`](../_lib/context_check.md)`.
 - [ ] Leave the `**Mode dispatcher pattern:** see ...` citation immediately below (if present) untouched — the two substrates compose.
 

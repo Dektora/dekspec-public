@@ -164,26 +164,26 @@ from dekspec.api import SpecGraph, agents_md
 
 g = SpecGraph.load("/path/to/repo", dekspec_root="dekspec")
 
-# Per-artifact fragments
+# Per-artifact fragments (AEs rest at ACCEPTED; they never lock — ADR-046)
 fragments = []
 for ae in sorted(g.aes(), key=lambda x: x["id"]):
-    if ae.get("status") in {"LOCKED", "ACCEPTED"}:
+    if ae.get("status") == "ACCEPTED":
         fragments.append(agents_md.emit_ae(ae))
 
-# Or use the dispatcher to route by id prefix automatically
+# Or use the dispatcher to route by id prefix automatically. The governing
+# core is AE / ADR / IC / WS; work items (IB, INT, MSN) have emitters too but
+# are left out of AGENTS.md by default (ADR-056) — an agent gets its IB's
+# obligations from `dekspec ib context IB-NNN` instead.
 for ir in g.all():
     aid = ir.get("id", "")
-    if aid.startswith("AE-") or aid.startswith("ADR-") or aid.startswith("WS-"):
-        try:
-            fragments.append(agents_md.emit(ir))
-        except ValueError:
-            pass  # IC doesn't have an agents-md emitter
+    if aid.startswith(("AE-", "ADR-", "IC-", "WS-")):
+        fragments.append(agents_md.emit(ir))
 
 agents_md_text = "# AGENTS.md\n\n" + "\n".join(fragments)
 print(agents_md_text[:500])
 ```
 
-For the canonical aggregator output (with header comments, section dividers, and the SpecGraph-level summary line), use the CLI: `dekspec aggregate agents-md`.
+For the canonical aggregator output (with header comments, section dividers, the Constitution / Security Profile / Vision / Glossary preambles and the SpecGraph-level summary line), use the CLI: `dekspec aggregate agents-md` — it writes only the DekSpec-owned region of the instruction file (between `<!-- dekspec:agents-md begin -->` and `<!-- dekspec:agents-md end -->`) and keeps the rest, or prints the region with `--output -`; `--check` reports whether the committed region is current. Its default `--include` is the governing core — `CONSTITUTION,SECURITY_PROFILE,VISION,GLOSSARY,AE,ADR,IC,WS`.
 
 ---
 
@@ -740,17 +740,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # the delivery gate compares the head with its base
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
       - name: Install dekspec
-        run: pip install git+https://github.com/Dektora/dekspec.git@v0.124.0
+        run: pip install git+https://github.com/Dektora/dekspec.git@v0.126.0
       - name: Vendor dekspec skills + templates
         run: bash scripts/install-dekspec.sh
       - name: Run dekspec doctor
         run: dekspec doctor --json | tee dekspec-doctor.json
       - name: Run audit linkage (critical-only)
         run: dekspec audit linkage --min-severity P1 --json | tee dekspec-audit.json
+      - name: Delivery gate (every IB in the PR satisfied at this head)
+        if: github.event_name == 'pull_request'
+        run: dekspec delivery check --rerun --base main --json | tee dekspec-delivery.json
       - name: Upload audit results
         if: always()
         uses: actions/upload-artifact@v4
@@ -759,11 +764,15 @@ jobs:
           path: |
             dekspec-doctor.json
             dekspec-audit.json
+            dekspec-delivery.json
 ```
+
+The delivery step is the independent half of ADR-058's landing gate. `--rerun` re-derives the content fingerprint and re-executes every included IB's acceptance conditions at the pull-request head instead of trusting the recorded evidence, and writes nothing; the IBs are discovered from the diff against the base (pass `--ib IB-NNN` to name them). It needs the base branch in the checkout (hence `fetch-depth: 0`) and the committed execution records, and it fails when the branch is behind its base, when any IB's acceptance fails at this head, or when an IB lacks a current passing review verdict. Protect `.dekspec/execution/` with code ownership so baseline changes cannot merge unreviewed (ADR-057).
 
 Exit codes:
 - doctor: 0 = clean, 1 = warnings (CI passes), 2 = critical (CI fails).
 - audit linkage: 0 = no critical findings, 1 = any critical present.
+- delivery check: 0 = ready to land, 1 = not ready, 2 = usage error.
 
 ### Scheduled daily audit
 

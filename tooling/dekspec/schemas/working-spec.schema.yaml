@@ -51,7 +51,7 @@ properties:
     # `{blocking_pre_ib, blocking_pre_code, non_blocking}` to canonical
     # `{P0, P1, P2, P3}`. Persisted v0.1.0 IR JSON migrates via
     # `tooling/dekspec/migrations/severity_unification.py`.
-    const: "0.2.0"
+    const: "0.3.0"  # ADR-057: TODO retired
 
   id:
     description: Canonical WS identifier derived from filename (e.g., WS-016).
@@ -64,7 +64,7 @@ properties:
     minLength: 1
 
   status:
-    enum: [TODO, DRAFT, PROPOSED, ACCEPTED, DEPRECATED]
+    enum: [DRAFT, PROPOSED, ACCEPTED, DEPRECATED]
 
   audit_profile:
     description: >-
@@ -105,16 +105,16 @@ properties:
         format: date-time
 
   silent_failure_domains:
-    description: 'Which of the five Dektora silent-failure domains this WS lives in. Same enum as IC IR.'
+    description: >-
+      Silent-failure domains this boundary touches — an open vocabulary of
+      snake_case slugs (the template offers neutral examples; a consumer may name
+      its own). Relaxed from a closed five-value Dektora enum (ADR-056 domain-leak
+      removal); every previous value remains valid.
     type: array
     uniqueItems: true
     items:
-      enum:
-        - transformer_internals
-        - numerical_precision
-        - gpu_multi_process_isolation
-        - graph_consistency
-        - timeline_coherence
+      type: string
+      pattern: "^[a-z][a-z0-9_]*$"
 
   expertise_audit:
     description: 'Rows from the §Expertise Audit Record table — which expert roles were triggered.'
@@ -297,7 +297,7 @@ properties:
           type: string
 
   governing_formulas:
-    description: 'Configurable formula table per ADR-022. Optional section.'
+    description: 'Configurable formula table (per the consuming project''s scoring-formula decision, where it has one). Optional section.'
     type: array
     items:
       type: object

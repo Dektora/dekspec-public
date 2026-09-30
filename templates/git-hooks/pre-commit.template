@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # DekSpec pre-commit hook — enforcement gate per MSN-002 / INT-010 + MSN-009 / INT-053.
 #
-# Refuses commits unless `dekspec session start <bead-id>` has opened a
+# Refuses commits unless `dekspec session start <IB-NNN|INT-NNN>` has opened a
 # session bound to the work. With an active session, a second off-spec
-# drift stage classifies the staged files against the claimed Intent's
-# `Components affected` scope and blocks commits that touch files outside
-# it. Escape hatches:
+# drift stage classifies the staged content against the bound work — an IB's
+# Scope and Protected Surfaces (a protected `path::symbol` blocks only edits
+# to that symbol), or an Intent's `Components affected` — and blocks commits
+# that fall outside it. Escape hatches:
 #
 #   DEKSPEC_BYPASS_SESSION=1 git commit ...   # skip the session gate; logged
 #   DEKSPEC_VIBECODING=1 git commit ...       # downgrade the off-spec BLOCK
@@ -13,8 +14,8 @@
 #   git commit --no-verify                    # standard git escape; logged
 #
 # Off-spec drift stage: runs only after the active-session check passes. It
-# calls `dekspec session vibecoding-check` and blocks a commit touching
-# files outside the claimed Intent's `Components affected` globs. The
+# calls `dekspec session vibecoding-check` and blocks a commit whose staged
+# content falls outside the bound IB's or Intent's scope. The
 # off-spec commit is recorded into session state either way (block or
 # warn) for the end-of-session `dekspec session report`. If the
 # `vibecoding-check` verb is unavailable (consumer on a pre-INT-052
@@ -63,7 +64,7 @@ if [ "$STATUS_EXIT" != "0" ] || ! printf '%s' "$STATUS_JSON" | grep -q '"active"
     printf 'dekspec: pre-commit BLOCKED — no active session.\n' >&2
     printf '\n' >&2
     printf '  Open a session naming the work:\n' >&2
-    printf '      dekspec session start <bead-id-or-INT-NNN>\n' >&2
+    printf '      dekspec session start <IB-NNN|INT-NNN>\n' >&2
     printf '\n' >&2
     printf '  Or bypass (logged for audit):\n' >&2
     printf '      DEKSPEC_BYPASS_SESSION=1 git commit ...\n' >&2
@@ -100,11 +101,11 @@ fi
 
 printf 'dekspec: pre-commit BLOCKED — off-spec drift.\n' >&2
 printf '\n' >&2
-printf '  Staged files fall outside the claimed Intent'\''s `Components affected`:\n' >&2
+printf '  Staged changes fall outside the bound work (an IB'\''s Scope or Protected Surfaces, or an Intent'\''s `Components affected`):\n' >&2
 printf '      %s\n' "$VIBE_JSON" >&2
 printf '\n' >&2
 printf '  Two ways forward:\n' >&2
-printf '      1. Expand the claimed Intent'\''s `Components affected` so the work is captured.\n' >&2
+printf '      1. Amend the bound IB (Scope / Protected Surfaces) or the Intent'\''s `Components affected`.\n' >&2
 printf '      2. DEKSPEC_VIBECODING=1 git commit ...   # proceed as recorded vibecoding\n' >&2
 printf '      git commit --no-verify                   # standard git escape\n' >&2
 exit 1

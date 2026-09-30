@@ -1,27 +1,27 @@
 ---
 name: land-intent
-description: Review-and-land phase-executor for an Intent (INT-NNN). Drives every IB-aggregate PR the Intent produced through the two-tier review pipeline to a landed state — fires the REVIEW_PR trigger, lets the REVIEW_PR_FAIL grep-loop run to a terminal verdict, and on GO presents the squash-merge for explicit operator confirmation. Never auto-merges (ADR-026 RECOMMEND-only). The review-side sibling of /orchestrate-coding-session.
+description: Land a delivery (one branch / worktree / pull request per ADR-058 — a single IB, an Intent's IBs, or a Mission cluster). Sequences `dekspec delivery verify` → /dekspec:review-pr (one verdict per IB) → `dekspec ib complete` per IB → `dekspec delivery check` at the exact head → operator-confirmed merge (ADR-026: never auto-merges) → post-merge `dekspec intent verify` + `dekspec intent complete` for a parent Intent whose IBs are all complete. The landing-side sibling of /orchestrate-coding-session.
 mode: lite
 model: claude-opus-4-7
 reasoning_effort: high
 disable-model-invocation: false
 allowed-tools: Read Write Edit Bash
-argument-hint: [--help] <INT-NNN | path/ID of Intent>
-related_skills: [review-pr, orchestrate-coding-session, orchestrate-intent, spec-intent]
+argument-hint: [--help] <INT-NNN | IB-NNN | branch | PR-#>
+related_skills: [review-pr, orchestrate-coding-session, implement, spec-intent, pr-branch, use-worktrees]
 ---
 
 > **Vendored asset paths (INT-097):** Paths below like `dekspec/...` reference the consumer-vendored layout. Pip-only installs resolve via `dekspec resource ...`. See [`_lib/vendored_assets.md`](../_lib/vendored_assets.md).
 
-Review-and-land phase-executor for an Intent. The review-side counterpart to `/orchestrate-coding-session <intent>`: where that skill executes *all* of an Intent's beads, `land-intent` drives *all* of the Intent's IB-aggregate PRs through the review pipeline to a landed state, in dependency order, from one launch — reusing the existing trigger + `review-pr` + `REVIEW_PR_FAIL` machinery unchanged. It is a thin orchestrator: its only net-new behavior is the per-Intent PR enumeration/ordering and the operator-confirmed merge gate.
+Land a delivery. A delivery is what one branch, worktree and pull request carries (ADR-048, ADR-058); acceptance stays per IB, and verification and review cover the final integrated head. This skill is a thin sequencer over engine verbs and `review-pr` — the gates are the engine's, not prose.
 
 ## Starter Prompt
 
 ```prompt
 /dekspec:land-intent INT-129
 
-Drive every open PR for INT-129 through review to a landed state. For each PR:
-fire the review trigger, run the fix-loop to a terminal verdict, and on GO show
-me the squash-merge to confirm. Stop and ask if any PR comes back NO-GO.
+Land INT-129's delivery: verify it at the head, review every IB, complete
+them, run the landing gate, and show me the merge to confirm. Stop and hand
+back if any IB fails review or the gate does not pass.
 ```
 
 ## Mode Detection
@@ -29,7 +29,7 @@ me the squash-merge to confirm. Stop and ask if any PR comes back NO-GO.
 See [`_lib/mode_detection_template.md`](../_lib/mode_detection_template.md). Default mode: **Land Mode**.
 
 - **Help mode** — `--help` flag. See **Help Mode**.
-- **Land mode** — default (an `INT-NNN` / path positional). Proceed to **Land Mode**.
+- **Land mode** — default (an `INT-NNN`, `IB-NNN`, branch or PR positional). Proceed to **Land Mode**.
 
 ## Help Mode
 
@@ -37,59 +37,60 @@ See [`_lib/help_mode_template.md`](../_lib/help_mode_template.md) for the canoni
 
 ```yaml
 skill_name: "/dekspec:land-intent"
-one_line:   "Drive all of an Intent's IB-aggregate PRs through review to operator-confirmed merge."
+one_line:   "Verify, review, complete and land one delivery; merge only on operator confirmation."
 modes:
-  - { flag: "", args: "<INT-NNN>", description: "Land mode — enumerate the Intent's PRs, review-and-land each in dependency order." }
+  - { flag: "", args: "<INT-NNN | IB-NNN | branch | PR-#>", description: "Land mode — delivery verify → review-pr → ib complete → delivery check → operator-confirmed merge → Intent completion." }
   - { flag: "--help", args: "", description: "Show this help message." }
 examples:
   - "/dekspec:land-intent INT-129"
+  - "/dekspec:land-intent int/INT-129-land-intent"
   - "/dekspec:land-intent --help"
 ```
 
 ## Land Mode
 
-### Phase 1 — Enumerate & order the Intent's PRs
+> This is the **manual** landing path: the operator confirms every merge. `/dekspec:implement` performs the same verify → review → complete → check sequence and integrates on its own when the engineer asked for that work to be implemented (ADR-059).
 
-Identify the target Intent `INT-NNN`. Build the ordered set of its open IB-aggregate PRs using only existing surfaces (no new tooling):
+Work on the delivery branch (its worktree, if it has one). For an Intent, the delivery is the branch carrying its IBs — normally `int/<slug>` (`/dekspec:use-worktrees`). Every IB in it must use the `delegated` authority policy; a `legacy` IB cannot complete until adopted (ADR-055).
 
-1. Resolve the Intent's beads/IBs and their PRs via the `Resolves IB-NNN` PR-body convention (ADR-025) + bead `external_ref` linkage — `gh pr list` for the open set, `git` for branch state.
-2. Order the PRs by dependency using the `br` blocked-by topology — the same `br`-driven dependency walk `/orchestrate-coding-session` Phase 1 performs.
-
-### Phase 2 — Review-and-land each PR (in order)
-
-For each PR, in dependency order:
-
-1. **Trigger review** — `dekspec review trigger review-pr <PR-#>` (INT-124). This enters the `REVIEW_PR` state and auto-invokes `/dekspec:review-pr` (INT-107).
-2. **Let the fix-loop run** — a NO-GO routes through the `REVIEW_PR_FAIL` action-handler (INT-115), which seeds `/code-review --comment`, fixes real findings, and re-fires `review-pr` until a terminal verdict. Do not hand-drive it.
-3. **Act on the terminal verdict** at the **Merge Gate** below.
+1. **Verify at the head.** `dekspec delivery verify` — re-runs every included IB's acceptance and the integration command against this head and records the evidence. Commit the execution records it writes (`.dekspec/execution/`). A failure here is fixed before review; the builder fixes inside counted attempts (`dekspec ib attempt <IB> start`, then `dekspec ib attempt <IB> end --outcome passed` or `failed`).
+2. **Review each IB.** `/dekspec:review-pr <branch-or-PR>` records one verdict per IB (`dekspec ib review`), from a reviewer who is not a builder of that IB.
+3. **Act on the verdicts.**
+   - Any **FAIL** → the delivery holds (ADR-058). Run the fix loop in [`_lib/grep_loop_review_workflow.md`](../_lib/grep_loop_review_workflow.md): fix → `dekspec delivery verify` → re-review. The engine's attempt limits bound it; a BLOCKED IB (exit 3) stops the run until an operator records `dekspec ib unblock --decision …`.
+   - Any **INSUFFICIENT_EVIDENCE** (no verdict recorded) → stop and hand back.
+   - All **PASS** → continue.
+4. **Complete each IB.** `dekspec ib complete <IB>` for every IB, on the delivery branch (add `--base <base>` when the delivery is not based on `main` — a stacked or release-branch PR — and pass the same `--base` to `delivery verify` and `delivery check`). It refuses unless evidence and verdict are current, integrity and scope pass, and no blocker is open — do not work around a refusal; fix what it names. Commit the IB status changes and execution records.
+5. **Landing gate.** `dekspec delivery check` must pass at the exact head you will merge: the branch is current with its base and every IB is satisfied there. If the base has moved, update the branch, then re-run steps 1–5 (a rebase changes the head content; evidence goes stale). If you rewrite commits (`/dekspec:pr-branch`), run the check again on the rewritten head. CI runs `dekspec delivery check --rerun` independently.
+6. **Merge gate.** See **Merge Gate** below.
+7. **Complete the parent Intent (post-merge).** On the base branch after the merge, for a parent Intent whose child IBs (`**Parent:** INT-NNN`) are now all COMPLETE: `dekspec intent verify INT-NNN` (runs its Verification commands and records outcome evidence), if it has manual verification entries, an independent attestation in the **`verifier`** role ([`_lib/agent_roles.md`](../_lib/agent_roles.md) — `dekspec resource role verifier`, by someone who built none of its IBs) recorded as `dekspec intent review INT-NNN --reviewer <name> --actor <name> --verdict pass --policy-revision <N>` (or `--verdict fail`), then `dekspec intent complete INT-NNN`. If child IBs remain in other deliveries, report that and leave the Intent ACCEPTED.
 
 ### Merge Gate
 
-**MERGE GATE — never merge a PR without explicit operator confirmation.** This skill is RECOMMEND-only at landing per **ADR-026**; unattended merge-on-GO is the AUTO graduation tier, gated on the INT-117 calibration corpus, and is out of scope here.
+**MERGE GATE — never merge without explicit operator confirmation (ADR-026).** Recording verdicts and completing IBs never merges anything.
 
-- **GO** → present the squash-merge to the operator (`gh pr merge <PR-#> --squash --delete-branch`) and **wait for an explicit confirmation keystroke**. The skill **does not merge** until the operator confirms. After a confirmed merge, advance to the next PR.
-- **NO-GO / INSUFFICIENT_EVIDENCE** → **stop on this PR** and hand control back to the human with the pipeline state intact; do **not** silently advance to the next PR.
+- Gate passed → present the merge (e.g. `gh pr merge <PR-#> --squash --delete-branch`, or the repo's equivalent) and **wait for the operator's explicit confirmation**. This skill does not merge until the operator confirms. A squash merge keeps the content, so the evidence fingerprint is unchanged.
+- Gate not passed, a FAIL verdict, or INSUFFICIENT_EVIDENCE → **stop and hand back** with the gate output; do not merge and do not skip to the next delivery.
 
-### Phase 3 — Roll-up
+### Roll-up
 
-When every PR is landed (or the operator halts), report a per-PR outcome roll-up for the Intent (landed / stopped-NO-GO / pending), and name the next action.
+Report per IB: verdict, completion, and the `dekspec delivery check` result; then the merge outcome, the Intent's state, and the next action (e.g. `/dekspec:use-worktrees --cleanup` after the merge).
 
 ## Common Pitfalls
 
-- Don't merge on a GO verdict automatically — always present the merge and wait for the operator's confirmation keystroke (ADR-026); this skill never merges on its own.
-- Don't reimplement the review or fix-loop — `land-intent` only sequences `dekspec review trigger` + `review-pr` + the `REVIEW_PR_FAIL` handler, which already exist; adding a parallel loop drifts from the canonical pipeline.
-- Don't advance past a NO-GO PR — stop and hand back; silently moving to the next PR buries an unresolved failure.
-- Don't ignore dependency order — landing a dependent PR before its prerequisite breaks the branch graph; order by the `br` blocked-by topology.
+- Don't merge on your own — present the merge and wait for the operator (ADR-026).
+- Don't hand-edit a status to COMPLETE — only `dekspec ib complete` and `dekspec intent complete` write it (the audit catches a COMPLETE IB without a completion record).
+- Don't trust evidence across a commit — any content change after `dekspec delivery verify` stales it; re-verify, and re-review when a reviewed surface changed.
+- Don't advance past a FAIL or a blocked IB — a review failure on one IB holds the whole delivery.
 
 ## Verification Checklist
 
-- [ ] Every open IB-aggregate PR for the Intent was enumerated (gh/git/br), none missed.
-- [ ] PRs were processed in `br` dependency order.
-- [ ] Each PR was driven via `dekspec review trigger review-pr` → `review-pr` → terminal verdict (no hand-rolled review).
-- [ ] No PR was merged without an explicit operator confirmation keystroke (ADR-026).
-- [ ] Every NO-GO / INSUFFICIENT_EVIDENCE PR stopped the run and was handed back, not skipped.
-- [ ] A per-Intent outcome roll-up was reported at the end.
+- [ ] `dekspec delivery verify` passed at the final head and its records are committed.
+- [ ] Every IB has a `pass` verdict from a non-builder, recorded at that head (or carried forward across unreviewed surfaces only).
+- [ ] `dekspec ib complete` succeeded for every IB in the delivery.
+- [ ] `dekspec delivery check` passed at the exact head that was merged.
+- [ ] The merge happened only after explicit operator confirmation.
+- [ ] A parent Intent with all child IBs COMPLETE was verified and completed with `dekspec intent complete`.
 
 ## Closing Step
 
-After the run, `dekspec relink` against the repo root to restitch any backlinks touched by merges.
+After the run, `dekspec relink` against the repo root to restitch any backlinks touched by the merge.

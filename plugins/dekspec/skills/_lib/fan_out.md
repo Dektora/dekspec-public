@@ -43,7 +43,7 @@ The fan-out is the **default** path for the modes the skill's manifest names und
 
 2. **Indirect quality test of bundled materials.** If the subagent cannot produce a clean artifact from the bundle, that is a real signal that the bundle is incomplete — the orchestrator should expand the bundle (or surface the gap to the engineer) rather than retry the subagent with looser validation. The fan-out exercises the bundle as a test of its own completeness.
 
-3. **Natural parallelism.** N artifacts can be drafted by N parallel subagents (e.g., `write-tests --all` fans out one subagent per bead in the batch; `write-ibs` can decompose a Working Spec into multiple IBs in parallel). The orchestrator collects the per-subagent reports and emits a batch summary.
+3. **Natural parallelism.** N artifacts can be drafted by N parallel subagents (e.g., `write-tests --all` fans out one subagent per IB in the batch; `write-ibs` can decompose a Working Spec into multiple IBs in parallel). The orchestrator collects the per-subagent reports and emits a batch summary.
 
 4. **Per-artifact model / effort selection.** Each subagent dispatch can pick the model tier appropriate to the artifact (e.g., heavy Opus for a load-bearing AE, lighter Sonnet for a mechanical IB). The orchestrator carries no such constraint — it is small and mechanical regardless of the artifact's complexity.
 
@@ -69,7 +69,7 @@ Dispatch is **host-neutral**: it goes through the harness seam, not directly at 
 Realize each subagent dispatch (on Claude, via the `Agent` tool) with three required parameters:
 
 - **`subagent_type`** — the value from the skill's manifest. Use the artifact-specific `dekspec:<kind>-author` type if one exists; fall back to `general-purpose` if no dedicated type is registered yet (write-constitution, write-evals, write-sp, write-sv, write-tests currently use `general-purpose`).
-- **`description`** — a short label naming the mode + target (e.g., `"author AE-NNN"`, `"accept <path>"`, `"revise <path>"`, `"decompose WS-NNN into IBs"`, `"write tests for BEAD-NNN"`).
+- **`description`** — a short label naming the mode + target (e.g., `"author AE-NNN"`, `"accept <path>"`, `"revise <path>"`, `"decompose WS-NNN into IBs"`, `"write tests for IB-NNN"`).
 - **`prompt`** — a **self-contained** prompt that includes every bundle item from Step 1 plus the mode-specific contract (the body of the matching mode section below — e.g., §Creation Mode steps, §Accept Mode steps, §Revise Mode steps). The subagent must not need any context from the parent session beyond what this prompt contains.
 
 The canonical prompt template (the orchestrator composes the real prompt at runtime by substituting bundled values):
@@ -110,7 +110,7 @@ produce a clean artifact, return:
 rather than guessing — do NOT invent facts.
 ```
 
-For batch fan-outs (e.g., `write-tests --all` dispatches one subagent per bead; `write-ibs` may dispatch one subagent per IB in the decomposition): the orchestrator passes the whole task set through the seam (`run_fanout(tasks, parallel=True, ...)`), which dispatches in parallel and returns index-aligned per-subagent results; the orchestrator collects the per-subagent reports and emits a batch summary.
+For batch fan-outs (e.g., `write-tests --all` dispatches one subagent per IB; `write-ibs` may dispatch one subagent per IB in the decomposition): the orchestrator passes the whole task set through the seam (`run_fanout(tasks, parallel=True, ...)`), which dispatches in parallel and returns index-aligned per-subagent results; the orchestrator collects the per-subagent reports and emits a batch summary.
 
 ### Step 3: Validate + surface cleanly (orchestrator, parent session)
 
@@ -118,9 +118,9 @@ On subagent return:
 
 1. **Parse / capture the subagent's output.** If the subagent returned `INSUFFICIENT_INPUT:`, surface the named gap to the engineer verbatim and halt — this is the indirect quality signal from Rationale #2. Do NOT silently retry; ask the engineer what additional context to bundle.
 
-2. **Run the bundled validation command** from the manifest (`dekspec validate <output-path>`, `pytest --collect-only <output-path>`, `/write-evals --audit <BEAD-NNN>`, or the skill-specific equivalent). Non-zero exit → surface the validation error verbatim alongside the subagent's own findings; do **not** silently retry with looser validation. The pattern's value is that a subagent that can't produce a clean artifact exposes a gap in the bundled context.
+2. **Run the bundled validation command** from the manifest (`dekspec validate <output-path>`, `pytest --collect-only <output-path>`, `/write-evals --audit <IB-NNN>`, or the skill-specific equivalent). Non-zero exit → surface the validation error verbatim alongside the subagent's own findings; do **not** silently retry with looser validation. The pattern's value is that a subagent that can't produce a clean artifact exposes a gap in the bundled context.
 
-3. **Run mode-specific post-checks.** Confirm the file exists at the expected output path; confirm the status walk happened (PROPOSED for Creation, ACCEPTED for Accept, reset to PROPOSED for Revise on previously-LOCKED artifacts, etc.); confirm Amendment Log entries were appended where required; confirm the index was updated; confirm any cascade reminders are surfaced to the engineer.
+3. **Run mode-specific post-checks.** Confirm the file exists at the expected output path; confirm the status walk happened (PROPOSED for Creation, ACCEPTED for Accept, reset to PROPOSED for Revise on previously-LOCKED decision/contract artifacts, etc.); confirm Amendment Log entries were appended where required; confirm the index was updated; confirm any cascade reminders are surfaced to the engineer.
 
 4. **Report to the engineer.** Name the file written/edited, the Status transition (if any), the Amendment Log entry (if any), and the next recommended mode.
 
@@ -148,7 +148,7 @@ See [`_lib/fan_out.md`](../_lib/fan_out.md) for the canonical ds-di2 orchestrato
   3. <skill-specific bundle item 3 — e.g., related ADRs with supersession applied>
   4. ...
 - **expected_output_path**: <e.g., `dekspec/working-specs/WS-NNN-<slug>.md` for Creation; the input path for Accept / Revise>
-- **validation**: <e.g., `dekspec validate <path>` + the §Audit Mode checklist; or `pytest --collect-only <path>`; or `/write-evals --audit <BEAD-NNN>`>
+- **validation**: <e.g., `dekspec validate <path>` + the §Audit Mode checklist; or `pytest --collect-only <path>`; or `/write-evals --audit <IB-NNN>`>
 
 **End of Fan-Out Mode.**
 ```

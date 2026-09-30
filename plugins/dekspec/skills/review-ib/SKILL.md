@@ -1,11 +1,12 @@
 ---
 name: review-ib
-description: Pre-implementation review of an IB's spec packet + bead decomposition via the shared math-olympiad orchestration. Use when an Implementation Brief enters the REVIEW_IB state (post-ACCEPTED, pre-IMPLEMENTING) and the operator wants a non-sycophantic verdict before code lands.
+description: Pre-authorization review of an Implementation Brief's contract and acceptance floor via the shared math-olympiad orchestration. Use after /write-tests and before `dekspec ib accept` — evidence for the authorization decision, not a status, and required for an IB with `pytest:` conditions or declared assets, whose acceptance tests it oracle-reviews (ADR-062). Checks that content is classified correctly (binding vs acceptance vs hypothesis), obligations are referenced and resolve, acceptance is observable and complete, each new assertion's expectation basis is independent and the floor genuinely red, scope and protected surfaces cohere, and spec impact and slice routing are declared. Findings go to the IB's Open Issues; a passing floor review is recorded as a `Floor reviewed:` Amendment Log row.
 model: claude-opus-4-7
 reasoning_effort: max
 disable-model-invocation: false
 mode: lite
-allowed-tools: Read Grep Glob Bash Agent
+# override-reason: Edit writes surfaced findings into the reviewed IB's Open Issues and a passing floor review into its Amendment Log — the review's only outputs now that REVIEW_IB is not a status (ADR-057, ADR-062)
+allowed-tools: Read Grep Glob Bash Agent Edit
 argument-hint: [--help] <IB-ID>
 ---
 
@@ -15,113 +16,99 @@ See [`_lib/help_mode_template.md`](../_lib/help_mode_template.md) for the canoni
 
 ```yaml
 skill_name: "/dekspec:review-ib"
-one_line: "Pre-implementation review of an IB's spec packet via the math-olympiad orchestration."
+one_line: "Pre-authorization review of an IB contract and its acceptance floor via the math-olympiad orchestration; findings land in the IB's Open Issues, a passing floor review in its Amendment Log."
 modes:
-  - { flag: "", args: "<IB-ID>", description: "Review the IB at REVIEW_IB state; emit GO / NO-GO / INSUFFICIENT_EVIDENCE verdict." }
+  - { flag: "", args: "<IB-ID>", description: "Review the IB contract and oracle-review its acceptance tests before `dekspec ib accept`; emit GO / NO-GO / INSUFFICIENT_EVIDENCE, record surfaced findings as Open Issues and a passing floor review as a `Floor reviewed:` row." }
   - { flag: "--help", args: "", description: "Show this manifest." }
 examples:
   - "/dekspec:review-ib IB-067"
 ```
 
+## Mode Detection
+
+- `--help` → render **Help Mode** and stop.
+- an `<IB-ID>` (or IB path) → run the review below.
+
 # /dekspec:review-ib <IB-ID>
 
-> Pre-implementation review of an Implementation Brief. Loads `plugins/dekspec/skills/_lib/review-orchestration.md` (INT-105, LOCKED) with the REVIEW_IB lens pack (`plugins/dekspec/skills/review-ib/lenses.md`) and emits a structured GO / NO-GO / INSUFFICIENT_EVIDENCE verdict. Per **ADR-026** (LOCKED 2026-05-29).
+> Pre-authorization review of an Implementation Brief's **contract** and its **acceptance floor**. Loads [`_lib/review-orchestration.md`](../_lib/review-orchestration.md) with the REVIEW_IB lens pack ([`lenses.md`](lenses.md)) and emits GO / NO-GO / INSUFFICIENT_EVIDENCE per **ADR-026**. The IB is the executable work contract (ADR-056), so this review asks: is it a contract an agent can execute and a reviewer can later judge — and are its acceptance tests evidence, each expected result resting on a basis independent of the implementation (ADR-062)?
 
-This skill is the pre-impl half of the two-tier review pipeline. Its sibling — `/dekspec:review-pr` (INT-107) — is the post-impl half. Both consume the same shared orchestration shell; they differ only in lens pack + input bundle + output target.
+This review plays the **`spec-reviewer`** role ([`_lib/agent_roles.md`](../_lib/agent_roles.md)): the shell loads it once with `dekspec resource role spec-reviewer` and composes it into every lens specialist. Findings inform the authorization decision; the review never accepts the IB. **Independence (ADR-062):** the oracle review is never performed by the test author or a builder — run this review in a context that did not write the acceptance tests (a fresh session), and never let the author's reasoning reach a specialist.
 
-## When this skill fires
+Sibling: `/dekspec:review-pr` reviews the delivered implementation against the same contract after execution.
 
-REVIEW_IB auto-fires on IB state-entry to `REVIEW_IB` — i.e. when `/write-ibs --accept` lands an IB in the `REVIEW_IB` lifecycle state per the IB IR status enum (INT-102, LOCKED). Today the action-handler framework (INT-108) dispatches this skill on that transition. Operators may also invoke it manually with an explicit IB-ID at any IB lifecycle state ≥ ACCEPTED.
+## When to run
 
-The verdict is **RECOMMEND-only at landing**: the orchestrator emits the verdict + writes the sidecar review file, but the IB state machine does not auto-advance. The operator reads the sidecar and triggers the advance manually. MIXED / AUTO modes (INT-118) auto-advance once a calibration corpus accumulates (INT-117) and per-lens silver/gold thresholds are operator-committed in `.dekspec/review-thresholds.yaml`.
+After the IB is written and its acceptance tests exist (`/dekspec:write-tests`, genuinely red on `dekspec ib floor`), and **before `dekspec ib accept`** — the one order is: write the IB (`dekspec ib lint`, `dekspec ib propose`) → `/dekspec:write-tests` → `/dekspec:review-ib` → `dekspec ib accept` (ADR-062). It runs on a PROPOSED IB, or on a DRAFT. For an IB with `pytest:` conditions or declared acceptance assets the review is **mandatory**: its `acceptance-oracle` lens is the oracle review of the floor, and `/implement` readiness refuses the IB until a `Floor reviewed:` row names its baseline digest. For any other IB it is recommended evidence. Either way there is no review status (ADR-057 retired REVIEW_IB / REVIEW_IB_FAIL). A pre-start change to the acceptance tests (or to the contract, which moves the floor digest) repeats the review before `dekspec ib baseline`. A `legacy` IB is reviewed as part of adoption (`/write-ibs --adopt`), against its rewritten delegated form, before `dekspec ib adopt`.
 
-## Invocation
-
-```
-/dekspec:review-ib <IB-ID>
-```
-
-`<IB-ID>` is the canonical Implementation Brief identifier (e.g. `IB-042`). The skill resolves the IB file path from the project's `dekspec/impl-briefs/` tree.
-
-Optional flags:
-
-- `--mode <RECOMMEND|MIXED|AUTO>` — override the per-repo `.dekspec/config.yaml` `review.mode` field for this invocation. Default: whatever the config declares (default `RECOMMEND`).
-- `--sidecar-dir <path>` — override the sidecar output directory. Default: `dekspec/reviews/`.
-- `--lens-pack <path>` — override the REVIEW_IB lens pack for this invocation (rare; used during lens development).
+This review never records `dekspec ib review` — that verdict is the post-implementation one the completion gate reads.
 
 ## Input bundle
 
-The orchestration shell bundles the following inputs and projects per-lens slices via each lens's `input_slice` selector (see `plugins/dekspec/skills/_lib/review_lens_registry.md`). The bundle MUST include:
+The shell collects these once and projects each lens's `input_slice`:
 
 | Slot | Source |
 |---|---|
-| `ib.body` | The full Implementation Brief markdown body. |
-| `ib.files_to_modify` | The IB's declared file globs. |
-| `ib.done_when` | The IB's acceptance criteria. |
-| `ib.test_plan` | The IB's test plan list. |
-| `parent_ws.path` | Path to the governing Working Spec. |
-| `parent_ws.acceptance` | The WS's acceptance criteria, for fidelity-check lenses. |
-| `parent_intent.path` | Path to the parent Intent. |
-| `parent_intent.components_affected` | The Intent's component globs, for scope-creep lens. |
-| `sibling_ibs` | The other in-flight IBs under the same parent Intent (each with its `files_to_modify` + `depends_on`), for the sibling-ib-coherence lens. |
-| `source_ae_paths` | Paths to source Architecture Elements. |
-| `glossary` | `dekspec/domain-glossary.md` for glossary-discipline lens. |
-| `bead_decomposition` | Bead manifest from `/write-code-beads --audit`. |
-| `audit_doctor` | Cached `dekspec doctor --json --at .` snapshot. |
-| `parent_intent.outcome_verification` | The parent Intent's `outcome_verification` declaration, for the outcome-tdd-discipline lens. |
-| `workspace.outcome_test_run` | Result of running the declared outcome test in the working tree (expected genuinely RED at pre-implementation), for the outcome-tdd-discipline lens. |
-| `workspace.production_tree_absence` | Evidence that the production/implementation files the outcome test targets are still absent from the working tree (test-first proof at pre-implementation). |
-| `ib.environment_prerequisites` | The IB's `## Environment Prerequisites` table (typed prerequisite/probe/required rows), for the environment-prerequisites lens. |
-
-The orchestration shell pulls these once and caches; each lens sees only its declared slice.
-
-## Output: sidecar review file
-
-REVIEW_IB writes a human-readable sidecar at `dekspec/reviews/<IB-ID>-review-<UTC-timestamp>.md` mirroring the gsd-eval-review EVAL-REVIEW.md pattern. The sidecar carries:
-
-- The verdict (GO / NO-GO / INSUFFICIENT_EVIDENCE).
-- The vetoing lens(es) if NO-GO.
-- The surfaced findings (≥80 confidence) grouped by lens.
-- The abstaining lenses if INSUFFICIENT_EVIDENCE.
-- The audit-doctor snapshot SHA for flywheel correlation.
-- The run timestamp.
-
-In parallel the structured verdict is persisted to the SQLite flywheel at `$XDG_DATA_HOME/dekspec/<repo>/reviews.db` (INT-109 ships the schema; this skill calls `dekspec.review.db.write_verdict(verdict)`).
+| `ib.body` | the IB markdown |
+| `ib.header` | Status, Authority policy, Parent, Depends on, Spec impact |
+| `ib.outcome` / `ib.rationale` | `## Outcome`, `## Rationale` |
+| `ib.scope` | `## Scope` globs and `### Out of scope` |
+| `ib.obligations` | `## Obligations` references and local obligations |
+| `ib.protected_surfaces` | `## Protected Surfaces` |
+| `ib.acceptance` | the `## Acceptance` YAML block and declared acceptance assets |
+| `ib.hypothesis` | `## Implementation Hypothesis` |
+| `ib.environment_prerequisites` | `## Environment Prerequisites` |
+| `ib.lint` | `dekspec ib lint <IB> --json` |
+| `ib.context` | `dekspec ib context <IB> --json` — each obligation's canonical text, source status and hash, plus unresolved-reference problems |
+| `parent.*` | when `Parent` is set: the parent's path; for an Intent, its `Components affected` and `outcome_verification` |
+| `sibling_ibs` | IBs sharing this IB's Parent or delivery: scope, protected surfaces, local obligations, `Depends on` |
+| `source_ae_paths` | AEs the obligations or parent name |
+| `glossary` | `dekspec/domain-glossary.md` |
+| `audit_doctor` | cached `dekspec doctor --json --at .` snapshot |
+| `acceptance.test_sources` | the full source of every test file the `pytest:` conditions name and of every declared acceptance asset (fixtures, golden data) — the `Basis:` lines are read in place |
+| `acceptance.surface_skeleton` | the behavior-free entry points committed with the tests for surfaces that do not exist yet (the write-tests hand-off names them; otherwise the in-Scope modules the tests import or invoke), as source |
+| `workspace.acceptance_test_run` | the floor report — `dekspec ib floor <IB>` (and `--json`): per condition and node, new or preserved, failure kind, failure line, declared basis (inherited marked), and the floor digest |
+| `workspace.production_tree_absence` | whether the behavior those tests target is still absent (a behavior-free surface skeleton is expected) |
 
 ## Lens pack
 
-The 16 REVIEW_IB lenses live in `plugins/dekspec/skills/review-ib/lenses.md`. The pack covers:
+The 17 lenses in [`lenses.md`](lenses.md):
 
-- **Spec discipline** — scope-creep, sibling-ib-coherence, acceptance-falsifiability, test-plan-coverage, source-spec-fidelity, interface-depth, ambiguity-audit, constraint-completeness.
-- **Operational discipline** — dependency-readiness, rollout-risk-plan, glossary-discipline.
-- **Bead discipline** — bead-coverage, bead-granularity, bead-dependency-graph, bead-to-ib-fidelity.
-- **Strong-TDD timing** — outcome-tdd-discipline (workspace red-test + production-tree-absence evidence at pre-implementation; the commit-ordering half lives at REVIEW_PR's outcome-tdd-history per DSF-014).
-- **Environment readiness** — environment-prerequisites (infra-dependent IBs declare live services as typed, probeable prerequisites; the coding preflight runs the probes, per P-INT-185).
+- **Contract classification and sources (ADR-055, ADR-056)** — content-classification, obligation-references, spec-impact, slice-and-pin-routing.
+- **Acceptance (ADR-057, ADR-062)** — acceptance-falsifiability, acceptance-coverage, outcome-tdd-discipline, acceptance-oracle.
+- **Boundaries** — scope-and-protected-surfaces, sibling-ib-coherence, dependency-readiness.
+- **Design and wording** — interface-depth, constraint-completeness, rollout-risk-plan, ambiguity-audit, glossary-discipline.
+- **Environment** — environment-prerequisites.
 
-Each lens conforms to the schema in `plugins/dekspec/skills/_lib/review_lens_registry.md` (4 required fields: `question`, `input_slice`, `attack_patterns`, `severity_rubric`).
+## Verdict and findings
 
-## Verdict semantics
+Asymmetric voting per ADR-026: one lens at ≥80 confidence NO-GO's the verdict.
 
-The orchestration shell aggregates per-lens findings under ADR-026's asymmetric-voting contract: **any single lens at the surface threshold (≥80 confidence) NO-GO's the verdict regardless of other lenses' scores**. There is no weighted-average path that overrides a confident veto. This is what makes the verdict non-sycophantic.
+- **GO** — every lens <80, no abstentions. Recommend `dekspec ib accept`.
+- **NO-GO** — a lens vetoed. Do not accept until the contract is fixed and re-reviewed.
+- **INSUFFICIENT_EVIDENCE** — no veto, at least one abstention; name what is missing and let the engineer decide.
 
-- **GO** — every lens at <80 confidence on its question, no abstentions.
-- **NO-GO** — at least one lens at ≥80 confidence (per the shared `review_confidence_rubric.md` 0-100 ladder; bands `important` 76-90 or `critical` 91-100). Sidecar names the vetoing lens(es) + findings.
-- **INSUFFICIENT_EVIDENCE** — no lens reaches ≥80 AND at least one lens explicitly abstained via the rubric's abstention band. The verdict is "we don't know"; operator decides.
+Write every surfaced finding into the IB's `## Open Issues` as `- [ ] <finding> — **Source:** review-ib <date> (<lens>) — **Severity:** P1|P2` (`critical` → `P1`, `important` → `P2`).
+
+**The floor review (ADR-062).** For an IB with `pytest:` conditions or declared assets, when the verdict is GO and `dekspec ib floor <IB>` reports the floor OK, the shell writes — on behalf of its independent reviewer, as it writes Open Issues, never in the test author's context — one row into the IB's `## Amendment Log`:
+
+`| <date> | Review | Floor reviewed: PASS — digest <64 hex> — <n> new nodes genuine red with a basis, <m> preserved passing (review-ib acceptance-oracle) | <reviewer identity> |`
+
+The digest is the floor digest the report states; `<n>` and `<m>` are its new and preserved node counts. Nothing is written for a failing outcome. The authorizer takes the baseline (`dekspec ib accept`, or `dekspec ib baseline` before the run starts) only while `dekspec ib floor` still reports that digest.
+
+Nothing else is written; no status changes. The verdict is **RECOMMEND-only** (ADR-026): the engineer makes the authorization decision.
+
+A contract fix on an IB that is already ACCEPTED but not started needs `dekspec ib baseline <IB> --reason …`; after `dekspec ib start`, only `dekspec ib amend` changes the contract.
 
 ## Failure modes
 
-- **Lens-pack load failure** — if any lens in `lenses.md` violates the schema (missing field, empty `attack_patterns`, etc.) the orchestration shell raises at load time before any specialist runs. Fix the lens pack, re-invoke.
-- **Audit-doctor unavailable** — if `dekspec doctor --json --at .` fails, the skill aborts before fan-out. Several lenses depend on the audit-doctor cache (per `review_lens_registry.md` audit-doctor reuse contract); a review without it cannot satisfy those lens contracts.
-- **All lenses abstain** — verdict is INSUFFICIENT_EVIDENCE; sidecar records the unanimous abstention.
+- **Malformed lens pack** — a lens missing a required field stops the review before fan-out.
+- **`dekspec doctor --json --at .` fails** — abort before fan-out; several lenses read the cache.
+- **All lenses abstain** — INSUFFICIENT_EVIDENCE; record the abstention in the report.
+- **`dekspec ib floor <IB>` fails or the acceptance tests are missing** — the floor cannot be judged: `outcome-tdd-discipline` and `acceptance-oracle` report it (missing acceptance tests are a finding, since they are mandatory before authorization); no floor-review row is written.
 
 ## Cross-references
 
-- ADR-026 (load-bearing decision).
-- ADR-036 (deep-modules principle — source of the `interface-depth` lens; Constitution Article 4 cites it).
-- AE-006 (Skills Library — this skill's host AE).
-- INT-105 (LOCKED — the shared orchestration shell this skill consumes).
-- INT-107 (sibling — `/dekspec:review-pr`, post-impl half of the two-tier pipeline).
-- INT-108 (action-handler framework — dispatches this skill on IB state-entry to `REVIEW_IB`).
-- INT-109 (flywheel persistence — the SQLite schema this skill writes verdicts into).
-- INT-120 (outcome-test discipline lens — adds a dedicated TDD lens to this pack via Slice C peel-off).
-- Design substrate: `~/.claude/projects/-home-dfxop-projects-dekspec/memory/reference_review_pipeline_design.md` §"Lens design (per-stage)" REVIEW_IB table.
+- ADR-026 (review shape), ADR-054 (slice and pin routing, revised by ADR-056), ADR-055 (authority categories), ADR-056 (IB as work contract, one home per fact), ADR-057 (acceptance contract, decision-only lifecycle), ADR-062 (expectation basis, genuine red, the floor review before the baseline).
+- ADR-036 + Constitution Article 4 (source of `interface-depth`).
+- `/dekspec:review-pr` — the post-implementation sibling.

@@ -134,7 +134,9 @@ def audit_linkage(
     findings.extend(_t_artifact_completeness(graph))
     findings.extend(_d_artifact_drift(graph))
     findings.extend(_l7_intent_linkage(graph))
-    findings.extend(_t_bead_failure_class_valid(graph))
+    # ADR-056: code beads retired — T-BEAD-FAILURE-CLASS-VALID and
+    # LINK-INT-BEADS-BEFORE-ACCEPT removed; execution-contract rules instead.
+    findings.extend(_t_ib_execution_contract(graph))
     findings.extend(_l8_mission_intent_bidirectional(graph))
     findings.extend(_l8_mission_intent_serialized(graph))
     findings.extend(
@@ -163,10 +165,9 @@ def audit_linkage(
     findings.extend(prose_shape.prose_shape_rules(graph, active_profile))
     # SPEC-REVIEW reviewer-dispatch family (INT-141 / IB-126) — advisory P2.
     findings.extend(spec_review_rules.spec_review_rules(graph, active_profile))
-    # ContextSpec role-identity uniqueness (INT-139 / ds-uqnx) — the reviewer
-    # dispatcher resolves a role to exactly one ContextSpec; a duplicated
-    # role_identity makes that resolution ambiguous.
-    findings.extend(_l_context_spec_role_unique(graph))
+    # Retired Context Specifications left in the tree (ADR-061) — advisory P3:
+    # DekSpec no longer reads them, so a leftover file is reported, not trusted.
+    findings.extend(_l_legacy_context_specs(graph))
     findings.extend(_t_glossary_self_consistency(graph))
     # Terminology pipeline (INT-191) — the cross-artifact half of what
     # `write-ggc`'s Audit Mode did in prose. The corrections log is read as
@@ -216,9 +217,10 @@ def audit_linkage(
     findings.extend(_t_skill_frontmatter_normal(graph))
     findings.extend(_t_skill_help_mode_present(graph))
     findings.extend(_t_skill_arg_hint_complete(graph))
-    # ds-9ht3a / ds-n3prf — the two halves the family was missing: a skill's
-    # trigger policy is only real if its command wrapper honors it, and the
-    # code table is only authoritative if it matches the doc that says so.
+    # ds-9tvmm / ds-n3prf — the two halves the family was missing: a
+    # user-only skill is its own slash entry, so no command wrapper may
+    # dispatch it, and the code table is only authoritative if it matches
+    # the doc that says so.
     findings.extend(_t_skill_command_trigger_consistent(graph))
     findings.extend(_t_skill_defaults_doc_sync(graph))
     # L-PROVISIONAL-* — provisional incubation visibility
@@ -242,9 +244,6 @@ def audit_linkage(
     # T-COW-CANONICAL-EDITED — direct-edit-bypass detection
     # (second audit rule from INT-082).
     findings.extend(_t_cow_canonical_edited(graph))
-    # LINK-INT-BEADS-BEFORE-ACCEPT — Path A accept-gate bead traceability
-    # (INT-105 / ds-xu6g).
-    findings.extend(_l16_int_beads_before_accept(graph))
     # T-VERIFICATION-OUTCOME — outcome-test discipline at Intent level
     # (INT-119 / ADR-029). Walks graph.intents() advisory P2.
     findings.extend(_t_verification_outcome(graph))
@@ -403,8 +402,9 @@ def _lx_duplicate_ids(graph: SpecGraph) -> list[Finding]:
 
 # Kind-directories the SpecGraph loader recognizes (see
 # constraint_compiler/graph.py `loaders`). A markdown file anywhere under one
-# of these is a recognized artifact by directory (ContextSpecs are dir-keyed:
-# their filename is `role-*.md`, not `CS-*`).
+# of these is a recognized artifact by directory. `context-specs` stays
+# recognized although nothing loads it any more (ADR-061): a leftover retired
+# Context Specification is reported once, by LINK-LEGACY-CONTEXT-SPEC.
 _RECOGNIZED_KIND_DIRS = frozenset(
     {
         "adrs",
@@ -483,39 +483,42 @@ def _t_status_bearing_nonkind(graph: SpecGraph) -> list[Finding]:
     return out
 
 
-def _l_context_spec_role_unique(graph: SpecGraph) -> list[Finding]:
-    """LINK-CS-ROLE-UNIQUE: each role_identity is claimed by at most one ContextSpec.
+def _l_legacy_context_specs(graph: SpecGraph) -> list[Finding]:
+    """LINK-LEGACY-CONTEXT-SPEC: a retired Context Specification is still in the tree.
 
-    ContextSpec (INT-139) defines the context-window scope of a lifecycle role.
-    The reviewer dispatcher (spec_review) resolves a role_identity to exactly
-    one ContextSpec instance; two ContextSpecs sharing a role_identity make that
-    resolution ambiguous (which scope wins?). This is the graph-level invariant
-    that makes ContextSpec a first-class, audited IR rather than a parse-only
-    artifact the SpecGraph never sees (ds-uqnx wire decision).
+    ADR-061 replaced the six Context Specifications with library-supplied Agent
+    Role Specifications (`dekspec.roles`). DekSpec reads no `context-specs/`
+    file any more, so one left in a project is neither used nor trusted as
+    policy. The finding states the file's disposition itself — an unmodified
+    library copy is safe to delete, custom content needs review — so it does not
+    depend on which version span a `dekspec migrate` run covers.
     """
+    from ..migrations.agent_role_specifications import disposition
+
+    dekspec_dir = getattr(graph, "dekspec_dir", None)
+    folder = dekspec_dir / "context-specs" if dekspec_dir is not None else None
+    if folder is None or not folder.is_dir():
+        return []
     out: list[Finding] = []
-    seen: dict[str, str] = {}
-    for cs in graph.context_specs():
-        role = cs.get("role_identity")
-        if not role:
-            continue  # schema validation already guards a missing role_identity
-        if role in seen:
-            out.append(
-                Finding(
-                    severity=P2,
-                    rule="LINK-CS-ROLE-UNIQUE",
-                    artifact_id=cs["id"],
-                    message=(
-                        f"ContextSpec role_identity '{role}' is also claimed by "
-                        f"{seen[role]}. The reviewer dispatcher resolves a role to "
-                        "exactly one ContextSpec; collapse the duplicate so the "
-                        "role-to-scope mapping is unambiguous."
-                    ),
-                    fix_kind="semantic",
-                )
+    for path in sorted(folder.rglob("*.md")):
+        if not path.is_file():  # a directory named *.md, a broken symlink
+            continue
+        try:
+            data = path.read_bytes()
+        except OSError:
+            continue
+        _change, description, action = disposition(path.relative_to(dekspec_dir.parent), data)
+        match = re.search(rb"\bCS-\d{3,}\b", data)
+        out.append(
+            Finding(
+                severity=P3,
+                rule="LINK-LEGACY-CONTEXT-SPEC",
+                artifact_id=match.group(0).decode() if match else path.name,
+                message=f"{path.relative_to(dekspec_dir).as_posix()}: {description} Next step: {action}.",
+                fix_kind="semantic",
+                file_path=str(path),
             )
-        else:
-            seen[role] = cs["id"]
+        )
     return out
 
 
@@ -739,8 +742,22 @@ def _l5_ib_ws_links(graph: SpecGraph) -> list[Finding]:
         # (Mission-less single-IB pattern — IB decomposes directly from an
         # Intent with no intervening WS; e.g., IB-038 ← INT-023).
         intent_satisfies = bool(int_id) and graph.has(int_id)
+        # ADR-056: a delegated IB is a self-sufficient work contract — no
+        # Mission / Intent / WS is required. Its optional `Parent` must resolve.
+        delegated = ib.get("authority_policy") == "delegated"
+        parent_id = (ib.get("parent") or {}).get("id")
+        if parent_id and not graph.has(parent_id):
+            out.append(
+                Finding(
+                    severity=P1,
+                    rule="LINK-IB-PARENT-EXISTS",
+                    artifact_id=ib_id,
+                    message=f"IB names parent {parent_id}, which does not exist in the registry.",
+                    fix_kind="semantic",
+                )
+            )
 
-        if not ws_id and not intent_satisfies:
+        if not ws_id and not intent_satisfies and not delegated:
             out.append(
                 Finding(
                     severity=P2,
@@ -833,6 +850,93 @@ def _l5_ib_ws_links(graph: SpecGraph) -> list[Finding]:
                     )
                 )
 
+    return out
+
+
+def _t_ib_execution_contract(graph: SpecGraph) -> list[Finding]:
+    """Execution-contract rules for IBs (ADR-055 / ADR-056 / ADR-057).
+
+      - T-IB-AUTHORITY-IMPLICIT (P3): the IB carries no explicit
+        `**Authority policy:**` line; it is read as `legacy`. `dekspec migrate`
+        stamps it so the policy is durable and reviewable.
+      - T-IB-CONTRACT-INCOMPLETE (P2): a delegated IB at PROPOSED or later is not
+        an executable contract (no Outcome, no Scope, no valid Acceptance, or a
+        malformed contract section).
+      - T-IB-OBLIGATION-UNRESOLVED (P1/P2): a delegated IB at ACCEPTED or COMPLETE
+        references an obligation whose home is missing (P1) or superseded /
+        deprecated / unapproved (P2) — its generated context would be stale.
+      - T-IB-COMPLETE-WITHOUT-EVIDENCE (P1): a delegated IB is COMPLETE but its
+        execution record has no intact completion record — the status was set
+        by hand, not by `dekspec ib complete`.
+    """
+    from dekspec.execution.contract import AcceptanceCondition, IBContract
+    from dekspec.execution.record import ExecutionRecord
+    from dekspec.execution.references import resolve_obligations
+
+    out: list[Finding] = []
+    for ib in graph.ibs():
+        ib_id = ib["id"]
+        warnings = ib.get("parse_warnings") or []
+        if any(w.get("field") == "/authority_policy" and "No `**Authority policy:**`" in w.get("reason", "")
+               for w in warnings):
+            out.append(Finding(
+                severity=P3, rule="T-IB-AUTHORITY-IMPLICIT", artifact_id=ib_id,
+                message="IB has no `**Authority policy:**` line and is read as `legacy` (ADR-055). "
+                        "Run `dekspec migrate` to stamp it explicitly.",
+                fix_kind="mechanical",
+            ))
+        if ib.get("authority_policy") != "delegated" or ib.get("status") in ("DRAFT", "SUPERSEDED", "DEPRECATED"):
+            continue
+        problems = []
+        if not ib.get("outcome"):
+            problems.append("no Outcome")
+        if not ib.get("scope"):
+            problems.append("no Scope globs")
+        if not ib.get("acceptance"):
+            problems.append("no valid Acceptance conditions")
+        problems += [f"{w.get('field')}: {w.get('reason')}" for w in warnings if w.get("severity") == "warning"]
+        if problems:
+            out.append(Finding(
+                severity=P2, rule="T-IB-CONTRACT-INCOMPLETE", artifact_id=ib_id,
+                message="Delegated IB is not an executable contract: " + "; ".join(problems)
+                        + ". Fix it before authorization (`dekspec ib lint`).",
+                fix_kind="semantic",
+            ))
+        src = (ib.get("source") or {}).get("path")
+        repo_root = getattr(graph, "repo_root", None)
+        if not src or repo_root is None or getattr(graph, "dekspec_dir", None) is None:
+            continue
+        src_path = Path(src)
+        spec_root = graph.dekspec_dir.name
+        if ib.get("status") in ("ACCEPTED", "COMPLETE") and ib.get("obligations"):
+            view = IBContract(
+                ib_id=ib_id, path=src_path, rel_path=src, name=ib.get("name", ""), status=ib["status"],
+                authority_policy="delegated", parent=None, depends_on=(), spec_impact=(), scope=(),
+                out_of_scope=(), obligations=tuple(ib.get("obligations", [])), protected=(),
+                acceptance=tuple(AcceptanceCondition.from_ir(a) for a in ib.get("acceptance", [])),
+                declared_assets=(), hypothesis=(), prerequisites=(), parse_warnings=(), ir=ib,
+            )
+            for ob in resolve_obligations(repo_root, view, spec_root=spec_root):
+                if ob.problem:
+                    missing = "does not exist" in ob.problem
+                    out.append(Finding(
+                        severity=P1 if missing else P2, rule="T-IB-OBLIGATION-UNRESOLVED", artifact_id=ib_id,
+                        message=f"Obligation {ob.id}: {ob.problem}. Point the reference at the obligation's "
+                                "current home (an IB references obligations; it never copies them).",
+                        fix_kind="semantic",
+                    ))
+        if ib.get("status") == "COMPLETE":
+            from dekspec.execution.state import fold
+
+            rec = ExecutionRecord(repo_root, ib_id)
+            ok = rec.exists() and not rec.verify_chain() and bool(fold(rec.events(strict=False)).completions)
+            if not ok:
+                out.append(Finding(
+                    severity=P1, rule="T-IB-COMPLETE-WITHOUT-EVIDENCE", artifact_id=ib_id,
+                    message="IB is COMPLETE but its execution record has no intact completion record — "
+                            "completion must come from `dekspec ib complete` (ADR-057), not a status edit.",
+                    fix_kind="semantic",
+                ))
     return out
 
 
@@ -1026,7 +1130,8 @@ def _t_artifact_completeness(graph: SpecGraph) -> list[Finding]:
         - T31-ADR-VALIDATION (minor): §Validation content present (raw_prose
           for grandfathered ADRs is OK).
 
-      IB rules:
+      IB rules (legacy authority policy only — a delegated IB's Outcome and
+      Acceptance are checked by T-IB-CONTRACT-INCOMPLETE):
         - T40-IB-GOAL (important): §Goal content present.
         - T41-IB-DONE-WHEN (important): at least one Done When criterion.
 
@@ -1178,6 +1283,10 @@ def _t_artifact_completeness(graph: SpecGraph) -> list[Finding]:
     for ib in graph.ibs():
         ib_id = ib["id"]
         if ib.get("status") == "DEPRECATED":
+            continue
+        if ib.get("authority_policy") == "delegated":
+            # The delegated form states its result as Outcome and its criteria
+            # as Acceptance; T-IB-CONTRACT-INCOMPLETE checks those (ADR-056).
             continue
         if not (ib.get("goal") or "").strip():
             out.append(
@@ -1392,12 +1501,10 @@ _INT_RECOMMENDED_RISK_TIERS = {
     "external-api-surface",
 }
 
-# Phase 1.B / ds-27ld: recommended open-enum vocabulary for bead-body
-# `failure_class:` lines. Same lint-on-boundary pattern as risk_tier above;
-# T-BEAD-FAILURE-CLASS-VALID emits a P3 advisory when a bead's failure_class
-# falls outside this set. The bead-body convention is parser-extracted (no
-# beads-rust schema change) via fidelity_audit.bead_body.parse_bead_failure_class.
-_BEAD_RECOMMENDED_FAILURE_CLASSES = {
+# Recommended open-enum vocabulary for attempt failure classes. Originally the
+# bead-body `failure_class:` convention (Phase 1.B / ds-27ld); since ADR-056 it
+# classifies `attempt.ended` events in IB execution records.
+RECOMMENDED_FAILURE_CLASSES = {
     "wrong-spec",
     "correlated-AI-miss",
     "production-only-failure",
@@ -1485,7 +1592,10 @@ def _l7_intent_linkage(graph: SpecGraph) -> list[Finding]:
                     fix_kind="semantic",
                 )
             )
-        elif repo_root is not None:
+        elif repo_root is not None and (intent.get("status") or "").upper() != "COMPLETE":
+            # ADR-046: a COMPLETE Intent is a historical record — a glob naming a
+            # since-moved path is correct history, not live drift, so terminal
+            # Intents are not resolved.
             # Per ADR-019, L7b severity tracks the Intent lifecycle, but every
             # non-terminal Intent is now checked (ds-to7s): a `components_affected`
             # glob that matches 0 paths is surfaced at EVERY non-terminal status,
@@ -1562,64 +1672,6 @@ def _l7_intent_linkage(graph: SpecGraph) -> list[Finding]:
                     fix_kind="semantic",
                 )
             )
-    return out
-
-
-# --------------------------------------------------------------------------- #
-# T-BEAD-FAILURE-CLASS-VALID — bead-body failure_class lint (Phase 1.B / ds-27ld)
-# --------------------------------------------------------------------------- #
-
-
-def _t_bead_failure_class_valid(graph: SpecGraph) -> list[Finding]:
-    """Walk `.beads/issues.jsonl` and emit a P3 advisory per bead whose
-    `failure_class:` body line falls outside the recommended vocabulary.
-
-    Beads are body-only convention — no beads-rust schema change. The
-    canonical extractor is `fidelity_audit.bead_body.parse_bead_failure_class`,
-    which JSON-walks the JSONL and regex-extracts the line from each bead's
-    description.
-
-    Open-enum + lint-on-boundary (Fowler): unknown values surface as P3
-    advisories without blocking. Recommended values + absent fields produce
-    zero findings.
-
-    Skipped silently when:
-      - graph.repo_root is None (in-memory test fixtures)
-      - `.beads/issues.jsonl` is absent (consumer repos without bead tracker)
-    """
-    if graph.repo_root is None:
-        return []
-    jsonl_path = Path(graph.repo_root) / ".beads" / "issues.jsonl"
-    if not jsonl_path.exists():
-        return []
-
-    # Lazy import to avoid linking the audit module to bead_body at import
-    # time (keeps the dep arrow narrow + lets bead_body grow independently).
-    from .bead_body import parse_bead_failure_class
-
-    out: list[Finding] = []
-    for record in parse_bead_failure_class(jsonl_path):
-        if record.failure_class is None:
-            continue
-        if record.failure_class in _BEAD_RECOMMENDED_FAILURE_CLASSES:
-            continue
-        out.append(
-            Finding(
-                severity=P3,
-                rule="T-BEAD-FAILURE-CLASS-VALID",
-                artifact_id=record.bead_id,
-                message=(
-                    f"Bead failure_class `{record.failure_class}` is outside "
-                    f"the recommended open-enum vocabulary. Recommended: "
-                    f"{sorted(_BEAD_RECOMMENDED_FAILURE_CLASSES)}. The field "
-                    f"is open-enum — this is an advisory; if the value is "
-                    f"intentional, expand the vocabulary in "
-                    f"tooling/dekspec/fidelity_audit/linkage.py "
-                    f"(_BEAD_RECOMMENDED_FAILURE_CLASSES)."
-                ),
-                fix_kind="semantic",
-            )
-        )
     return out
 
 
@@ -1833,16 +1885,9 @@ def _l8_mission_intent_bidirectional(graph: SpecGraph) -> list[Finding]:
 # Intent is retired, and an OVERSIZED Intent decomposed into the child Intents
 # that actually populate the queue. `TODO` + `TESTFAIL` retired 2026-05-25
 # (E3 audit) and are no longer in the Intent enum.
-_L8_ACTIVE_INTENT_STATUSES = frozenset(
-    {
-        "DRAFT",
-        "PROPOSED",
-        "ACCEPTED",
-        "IMPLEMENTING",
-        "TESTPASS",
-        "MERGED",
-    }
-)
+# ADR-057 retired the activity statuses; the non-terminal set is now
+# DRAFT / PROPOSED / ACCEPTED.
+_L8_ACTIVE_INTENT_STATUSES = frozenset({"DRAFT", "PROPOSED", "ACCEPTED"})
 
 
 def _l8_mission_intent_serialized(graph: SpecGraph) -> list[Finding]:
@@ -2029,7 +2074,7 @@ def _l9_verification_resolves(graph: SpecGraph) -> list[Finding]:
                             f"Mission.mission_verification[{v.get('name', '?')}].cmd "
                             f"`{cmd}` does not resolve to an executable script or "
                             f"known tool. Per audit-v2 L9, the cmd must run at "
-                            f"--complete to gate the COMPLETING → COMPLETE transition."
+                            f"--complete to gate the ACTIVE → COMPLETE transition."
                         ),
                         fix_kind="semantic",
                     )
@@ -2340,7 +2385,7 @@ def _l11_mission_stale(
     `days_threshold` since its last `modified` date is flagged as stale.
     Either the Mission is making progress (and should record activity in
     its Amendment Log + Modified date) or it should advance to
-    COMPLETING / KILLED.
+    COMPLETE (via `/write-mission --complete`) or KILLED.
 
     `days_threshold` defaults to 90 (the v1 audit profile value).
     Future profiles may tighten this via the LINK-MSN-STALE.days_threshold
@@ -2369,7 +2414,7 @@ def _l11_mission_stale(
                         f"Mission has been ACTIVE for {age_days} days since last "
                         f"modification ({modified_str}); the {days_threshold}-day "
                         f"stale threshold is exceeded. Either record progress (and bump "
-                        f"`Modified:`) or advance the Mission to COMPLETING / KILLED."
+                        f"`Modified:`) or complete (`/write-mission --complete`) or kill the Mission."
                     ),
                     fix_kind="semantic",
                 )
@@ -2387,15 +2432,7 @@ def _l11_mission_stale(
 # represent the "Clarify Before Plan" failure mode and should not survive.
 # `TESTFAIL` retired from the Intent enum 2026-05-25 (E3 audit); it never
 # appeared in the WS enum but is removed from this set for consistency.
-_L12_GATE_STATUSES = frozenset(
-    {
-        "ACCEPTED",
-        "IMPLEMENTING",
-        "TESTPASS",
-        "MERGED",
-        "LOCKED",
-    }
-)
+_L12_GATE_STATUSES = frozenset({"ACCEPTED", "LOCKED"})
 
 
 def _l12_ws_blocking_pre_ib_clean(graph: SpecGraph) -> list[Finding]:
@@ -2762,7 +2799,7 @@ def _d15_prose_drift_wsicib(graph: SpecGraph) -> list[Finding]:
     # IB: D-15c — rationale prose without ADR cite
     for ib in graph.ibs():
         ib_id = ib["id"]
-        if ib.get("status") in {"DEPRECATED", "COMPLETED", "TODO"}:
+        if ib.get("status") in {"DEPRECATED", "SUPERSEDED", "COMPLETE"}:
             continue
         prose_chunks_ib: list[tuple[str, str]] = []
         if ib.get("goal"):
@@ -4196,9 +4233,9 @@ _APPROVAL_GATE_DIRS: list[tuple[str, str, bool]] = [
 # row" is one whose `change` text contains `<FROM> <arrow|to> <TO>` for two of
 # these tokens. Order longest-first is irrelevant — all are fixed-width words.
 _APPROVAL_GATE_STATUSES = (
-    # `TODO` is kept here because it remains a valid status on
-    # non-Intent artifacts (AE, WS, IB, Mission); `TESTFAIL` retired
-    # 2026-05-25 (E3 audit) and is no longer recognised on any kind.
+    # Historical Amendment Log rows name statuses since retired (ADR-057:
+    # TODO, OVERSIZED, IMPLEMENTING, TESTPASS, MERGED); they stay recognised
+    # so old approval rows still read as approvals.
     "TODO",
     "DRAFT",
     "OVERSIZED",
@@ -4703,40 +4740,26 @@ def _propose_si01_date_fixes(graph: SpecGraph) -> list[Fix]:
 # section implements that model: the band ladder, the two `T-STATUS-*`
 # checks, and the bounded `--fix` auto-transition.
 #
-# Maturity-band ladder (ADR-020 §Decision):
-#   band 0  TODO                                  — captured
-#   band 1  DRAFT / OVERSIZED                     — drafting
-#   band 2  PROPOSED                              — proposed
-#   band 3  ACCEPTED / Mission ACTIVE             — accepted / underway
-#   band 4  IMPLEMENTING / TESTPASS / MERGED /
-#           Mission COMPLETING                    — building
-#   band 5  LOCKED / COMPLETE (Intent+Mission)    — done (ADR-046)
+# Maturity-band ladder (ADR-020 §Decision, revised by ADR-057 — decision
+# states only; the activity bands 0 "captured" and 4 "building" are empty):
+#   band 1  DRAFT                                 — drafting
+#   band 2  PROPOSED (incl. Mission PROPOSED)     — authorization requested
+#   band 3  ACCEPTED / Mission ACTIVE             — authorized
+#   band 5  LOCKED / COMPLETE (IB+Intent+Mission) — done / in force
 #
 # `DEPRECATED` / `SUPERSEDED` (and Mission `KILLED`) are an off-ramp,
 # excluded from every status-coherence check.
 
-# Status token -> maturity band. Mission lifecycle tokens (ACTIVE /
-# COMPLETING / COMPLETE) are placed on the same ladder so child-Intent ->
-# Mission edges are comparable: ACTIVE (>=1 child COMPLETE, ADR-046) sits at band 3,
-# the Mission analogue of ACCEPTED; COMPLETING at band 4; COMPLETE at
-# band 5.
+# Status token -> maturity band. Mission ACTIVE sits at band 3 (the Mission
+# analogue of ACCEPTED); COMPLETE is the terminal of every work item (IB,
+# Intent, Mission — ADR-046 / ADR-057).
 _MATURITY_BAND: dict[str, int] = {
-    # `TODO` band 0 is kept because non-Intent kinds (AE/WS/IB/MSN) still
-    # carry it. The Intent enum lost `TODO` + `TESTFAIL` 2026-05-25 (E3
-    # audit); `TESTFAIL` no longer appears here because nothing else
-    # used it.
-    "TODO": 0,
     "DRAFT": 1,
-    "OVERSIZED": 1,
     "PROPOSED": 2,
     "ACCEPTED": 3,
     "ACTIVE": 3,  # Mission-only — the Mission analogue of ACCEPTED
-    "IMPLEMENTING": 4,
-    "TESTPASS": 4,
-    "MERGED": 4,
-    "COMPLETING": 4,  # Mission-only
     "LOCKED": 5,
-    "COMPLETE": 5,  # Intent terminal (ADR-046) + Mission terminal
+    "COMPLETE": 5,
 }
 
 # The off-ramp — excluded from every T-STATUS check on either edge end.
@@ -4899,8 +4922,8 @@ def _t_status_inversion(graph: SpecGraph) -> list[Finding]:
 
     for consumer_id, provider_id, edge_kind in _status_dependency_edges(graph):
         # ds-6s7k: a child Intent -> Mission edge never inverts. Missions have
-        # no ACCEPTED status (TODO -> ACTIVE -> COMPLETING -> COMPLETE) and a
-        # Mission stays TODO until a child Intent LOCKs — so an ACCEPTED/LOCKED
+        # no ACCEPTED status (PROPOSED -> ACTIVE -> COMPLETE) and a
+        # Mission stays PROPOSED until it is activated — so an ACCEPTED/LOCKED
         # child under a TODO Mission is the *normal* progression, not a settled
         # consumer depending on an unsettled provider. The genuine "Mission
         # lags behind its done children" case is caught by T-STATUS-LAG's
@@ -5124,7 +5147,7 @@ def _t_status_lag(graph: SpecGraph) -> list[Finding]:
                         f"queue is terminal ({done_ids}) — the Mission's "
                         f"decomposition is complete while its status lags. Advisory "
                         f"only: run `/write-mission --complete` to advance "
-                        f"ACTIVE → COMPLETING → COMPLETE (the Mission Verification "
+                        f"ACTIVE → COMPLETE (the Mission Verification "
                         f"predicate must pass; this is not a bare metadata move)."
                     ),
                     fix_kind="semantic",
@@ -5337,10 +5360,8 @@ def _reconcile_index_row(index_path: Path, artifact_id: str, new_status: str) ->
     id_re = re.compile(rf"(?<![A-Za-z0-9-]){re.escape(artifact_id)}(?![0-9])")
     new_up = new_status.upper()
     # Recognized status tokens in an index Status cell — kept in sync with
-    # artifact_ops.update_index (INT-070 IU-1 added OVERSIZED). `TODO` is
-    # retained because it remains a valid status on non-Intent artifacts
-    # (AE/WS/IB/MSN); `TESTFAIL` was retired 2026-05-25 (E3 audit) and is
-    # no longer recognised on any kind.
+    # artifact_ops.update_index. Retired tokens (ADR-057) stay recognised so an
+    # index row still carrying one can be corrected.
     known = {
         "TODO",
         "DRAFT",
@@ -5643,12 +5664,11 @@ def _get_ib_folders_mapping(graph: SpecGraph) -> dict[str, list[int]]:
         except Exception:
             pass
     return {
-        "queued": [0, 1, 2],  # TODO, DRAFT, OVERSIZED, PROPOSED
-        "active": [3, 4],  # ACCEPTED, IMPLEMENTING, TESTPASS, MERGED
-        # ADR-046: IB rests at ACCEPTED (band 3) as its terminal — it never
-        # reaches band 5. A consumed/done IB in `completed/` is ACCEPTED, so
-        # band 3 is allowed here (folder marks done since status can't). Band 5
-        # kept for legacy/pre-migration LOCKED IBs and cross-kind tolerance.
+        "queued": [1, 2],  # DRAFT, PROPOSED
+        "active": [3],  # ACCEPTED — authorized, not yet complete
+        # A delegated IB completes at COMPLETE (band 5, ADR-057). A legacy IB
+        # rests at ACCEPTED (ADR-046) and marks "done" by folder, so band 3 is
+        # also allowed in `completed/`.
         "completed": [3, 5],
     }
 
@@ -5894,7 +5914,8 @@ _SKILL_CLASS_DEFAULTS: dict[str, dict[str, str]] = {
     "write-mission":      {"mode": "full", "reasoning_effort": "max",  "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Grep Glob Bash Agent"},
     # dispatch (high-risk; disable-model-invocation: true)
     "orchestrate-coding-session":     {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "true",  "allowed-tools": "Read Bash Agent"},
-    "orchestrate-module-deepening":   {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "true",  "allowed-tools": "Read Bash Agent"},
+    "implement":                      {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "true",  "allowed-tools": "Read Bash Agent"},
+    "deepen":   {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "true",  "allowed-tools": "Read Bash Agent"},
     # The `factory`, `factory-dispatch-intent` and `factory-listen` keys were
     # removed 2026-09-27 (ds-n3prf): their skills were excised in INT-099 when
     # the factory surface moved to Dektora/dekfactory, and the doc's
@@ -5902,10 +5923,9 @@ _SKILL_CLASS_DEFAULTS: dict[str, dict[str, str]] = {
     # the keys for four months because nothing audited this direction;
     # T-SKILL-DEFAULTS-DOC-SYNC now does.
     # recovery
-    "archeology":              {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Grep Glob Bash"},
-    "brownfield-ingest":       {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Grep Glob Bash"},
+    "recover-specs":              {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Grep Glob Bash"},
+    "ingest-docs":       {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Grep Glob Bash"},
     # architecture (read-mostly source-architecture analysis; spawn Explore/Design-It-Twice sub-agents, propose-only)
-    "analyze-module-depth": {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Grep Glob Bash Agent"},
     "audit-codebase": {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Grep Glob Bash Agent"},
     "security-review":  {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Grep Glob Bash Agent"},
     # audit class row retired v0.98.0 (doctor-fidelity inlined into /doctor Stage 2)
@@ -5913,28 +5933,24 @@ _SKILL_CLASS_DEFAULTS: dict[str, dict[str, str]] = {
     "review-ib":          {"mode": "lite", "reasoning_effort": "max",  "disable-model-invocation": "false", "allowed-tools": "Read Grep Glob Bash Agent"},
     "review-pr":          {"mode": "lite", "reasoning_effort": "max",  "disable-model-invocation": "false", "allowed-tools": "Read Grep Glob Bash Agent"},
     # utility
-    "write-code-beads":        {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
-    "write-issue-beads":       {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
-    "orchestrate-intent": {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
+    "project-board": {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Bash Grep Glob"},
     "spec-intent":        {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
     "land-intent":        {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
     "using-dekspec":      {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
     "setup-dekspec":      {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
     "setup-dektools":     {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
     "interview-me":       {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
-    "diagnose-bug":           {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
-    "debug-testfail":     {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
+    "debug":           {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
     "prototype":          {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
     "write-evals":        {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
     "write-tests":        {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
-    "rotation-handoff":   {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
+    "handoff":   {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
     # utility (DX/recovery skills ported 2026-06; per-skill tool sets — pr-branch
     # is pure-git, coding-session-forensics is read-only + writes one report, spike runs throwaway
     # experiments. Registered with their actual minimal tool sets.)
     "pr-branch":          {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Bash"},
     "use-worktrees":      {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Bash"},
-    "prj-mgr":            {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Bash Grep Glob"},
-    "coding-session-forensics":          {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Bash Write"},
+    "diagnose-session":          {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Bash Write"},
     "spike":              {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
     "write-goal-loop-contract":          {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
 }
@@ -5980,6 +5996,8 @@ def _read_skill_files(graph: SpecGraph) -> list[Path]:
             md = p / "SKILL.md"
             if md.is_file():
                 out.append(md)
+    corpus = graph.repo_root / "plugins/dektools/tools"
+    out.extend(corpus.glob("*/SKILL.md"))
     return sorted(out)
 
 
@@ -6129,6 +6147,13 @@ def _t_skill_help_mode_present(graph: SpecGraph) -> list[Finding]:
         except OSError:
             continue
 
+        values, _ = _parse_skill_frontmatter(md)
+        if values.get("interaction") == "natural-language":
+            if not re.search(r"^## Help$", body, re.MULTILINE):
+                findings.append(Finding(severity="P2", rule="T-SKILL-HELP-MODE-PRESENT",
+                                        artifact_id=f"skill:{skill}", message="Natural-language skill needs a Help section.",
+                                        fix_kind="mechanical", file_path=rel))
+            continue
         if not re.search(r"^##\s+Help Mode\b", body, re.MULTILINE):
             findings.append(
                 Finding(
@@ -6199,6 +6224,8 @@ def _t_skill_arg_hint_complete(graph: SpecGraph) -> list[Finding]:
             # T-SKILL-FRONTMATTER-NORMAL already flagged the missing
             # field; don't double-fire.
             continue
+        if values.get("interaction") == "natural-language" and "--" not in hint:
+            continue
         if "--help" not in hint:
             findings.append(
                 Finding(
@@ -6226,22 +6253,24 @@ _SKILL_FLAG_DEFAULTS_DOC = "docs/dekspec-skill-flag-defaults.md"
 
 
 def _read_command_files(graph: SpecGraph) -> list[Path]:
-    """Return every shipped plugin's `commands/<command>.md` wrapper.
+    """Return every shipped plugin's command wrapper under `commands/`.
 
     Empty if no plugin source is present. Command wrappers are the
     *slash-command* surface; `_read_skill_files` returns the *skill*
-    surface. A skill's trigger policy is only real if both agree, which
-    is what T-SKILL-COMMAND-TRIGGER-CONSISTENT checks.
+    surface. Subdirectories are included: a nested command file is still
+    a slash command named by its stem. A skill that declares
+    `disable-model-invocation: true` must have no wrapper at all, which is
+    what T-SKILL-COMMAND-TRIGGER-CONSISTENT checks.
     """
     out: list[Path] = []
     for plugin in _SKILL_PLUGIN_NAMES:
         cmd_dir = graph.repo_root / "plugins" / plugin / "commands"
         if not cmd_dir.is_dir():
             continue
-        for p in sorted(cmd_dir.iterdir()):
-            if not p.is_file() or p.suffix != ".md":
+        for p in sorted(cmd_dir.rglob("*.md")):
+            if not p.is_file():
                 continue
-            if p.name.startswith(("_", ".")):
+            if any(part.startswith(("_", ".")) for part in p.relative_to(cmd_dir).parts):
                 continue
             out.append(p)
     return sorted(out)
@@ -6292,22 +6321,30 @@ def _command_skill_targets(stem: str, text: str, candidates: set[str]) -> set[st
 
 
 def _t_skill_command_trigger_consistent(graph: SpecGraph) -> list[Finding]:
-    """T-SKILL-COMMAND-TRIGGER-CONSISTENT (P2 mechanical) — a command
-    wrapper may not be model-invocable when the skill it dispatches
-    declares `disable-model-invocation: true`.
+    """T-SKILL-COMMAND-TRIGGER-CONSISTENT (P2 mechanical) — no command
+    wrapper may dispatch a skill whose effective trigger policy is
+    `disable-model-invocation: true`. Such a skill is its own user slash
+    entry (`/<plugin>:<skill>`).
 
-    `disable-model-invocation: true` on a SKILL.md stops the model
-    reaching that skill directly. It does nothing about the skill's
-    slash-command wrapper: a wrapper that omits the key, or sets it
-    `false`, stays exposed to the model, and invoking the wrapper runs
-    the wrapper's body — which invokes the skill. The policy is then
-    decorative. That is exactly how the dispatch class's guard was
-    defeated for both of its skills (ds-9ht3a, verified 2026-09-27).
+    A wrapper dispatches a skill when it shares the skill's name or its
+    body names it as ``the `X` skill`` (`_command_skill_targets`). On
+    Claude Code a same-name wrapper takes the skill's slash name, and its
+    body asks the model to start the skill through the Skill tool, which
+    the host refuses for a user-only skill: "Ask the user to run
+    /dekspec:implement themselves". The user is locked out of the skill
+    (ds-9tvmm, verified on Claude Code 2.1.283 for both dispatch skills).
+
+    No `disable-model-invocation` value on the wrapper helps. Whatever it
+    declares, the Skill-tool call its body asks for is refused; `false` or
+    an absent key (the harness default) additionally offers the wrapper to
+    the model, which is what the earlier wrapper-parity rule (ds-9ht3a)
+    tried to close by requiring `true`. So every dispatching wrapper is
+    reported, whatever it declares, and the recovery is always to remove
+    the wrapper.
 
     P2 mechanical, matching the rest of the T-SKILL-* enforcement rules:
     the shipped surface really does behave wrongly, and the fix is one
-    frontmatter value. Removing the key does NOT fix it — absent means
-    model-invocable — so the fix is always to set the wrapper `true`.
+    file deletion.
     """
     skill_files = _read_skill_files(graph)
     if not skill_files:
@@ -6316,6 +6353,12 @@ def _t_skill_command_trigger_consistent(graph: SpecGraph) -> list[Finding]:
     guarded = {name for name, value in policy.items() if value == "true"}
     if not guarded:
         return []
+    plugins_root = graph.repo_root / "plugins"
+    skill_plugin = {
+        md.parent.name: md.relative_to(plugins_root).parts[0]
+        for md in skill_files
+        if md.is_relative_to(plugins_root)
+    }
 
     findings: list[Finding] = []
     for cmd in _read_command_files(graph):
@@ -6326,25 +6369,26 @@ def _t_skill_command_trigger_consistent(graph: SpecGraph) -> list[Finding]:
             continue
         values, _overrides = _parse_skill_frontmatter(cmd)
         declared = values.get("disable-model-invocation")
-        # Absent is the harness default: model-invocable.
-        cmd_policy = (declared or "false").strip().strip("`\"'").lower()
-        if cmd_policy == "true":
-            continue
         for skill in sorted(_command_skill_targets(cmd.stem, text, guarded)):
+            slash = f"/{skill_plugin.get(skill, 'dekspec')}:{skill}"
             findings.append(
                 Finding(
                     severity="P2",
                     rule="T-SKILL-COMMAND-TRIGGER-CONSISTENT",
                     artifact_id=f"command:{cmd.stem}",
                     message=(
-                        f"Command wrapper declares "
-                        f"`disable-model-invocation: {declared or '(absent)'}` "
-                        f"but dispatches skill `{skill}`, which declares "
-                        f"`disable-model-invocation: true`. The model can "
-                        f"reach the guarded skill through the wrapper, so "
-                        f"the skill's policy is not enforced. Set "
-                        f"`disable-model-invocation: true` on the wrapper "
-                        f"(omitting the key leaves it model-invocable). See "
+                        f"Command wrapper `{rel}` (declares "
+                        f"`disable-model-invocation: {declared or '(absent)'}`) "
+                        f"dispatches skill `{skill}`, whose effective trigger "
+                        f"policy is `disable-model-invocation: true`. A "
+                        f"user-only skill is its own slash entry "
+                        f"(`{slash}`); a wrapper that dispatches it asks the "
+                        f"model to start it through the Skill tool, which "
+                        f"the host refuses, so the user cannot start the "
+                        f"skill (ds-9tvmm). No "
+                        f"`disable-model-invocation` value on the wrapper "
+                        f"fixes this. Remove the wrapper: the skill is its "
+                        f"own slash entry. See "
                         f"docs/dekspec-skill-flag-defaults.md."
                     ),
                     fix_kind="mechanical",
@@ -6918,112 +6962,11 @@ def _t_cow_canonical_edited(graph: SpecGraph) -> list[Finding]:
     return findings
 
 
-# --------------------------------------------------------------------------- #
-# LINK-INT-BEADS-BEFORE-ACCEPT (P2): Path A accept-gate — an Intent at status
-# >= ACCEPTED with beads_before_accept=true must have at least one bead in the
-# tracker.  (INT-105 / ds-xu6g)
-# --------------------------------------------------------------------------- #
-
-# Intent statuses at or beyond ACCEPTED — matching the same gate set used by
-# L12 and elsewhere. An Intent at these statuses has walked past the accept
-# gate, so the bead-traceability invariant applies.
-_L16_GATE_STATUSES = frozenset(
-    {
-        "ACCEPTED",
-        "IMPLEMENTING",
-        "TESTPASS",
-        "MERGED",
-        "LOCKED",
-    }
-)
-
-
-def _l16_int_beads_before_accept(graph: SpecGraph) -> list[Finding]:
-    """LINK-INT-BEADS-BEFORE-ACCEPT (P2): an Intent that opts into
-    Path A (``beads_before_accept: true``) and has reached ACCEPTED or
-    higher must have at least one bead in ``.beads/issues.jsonl`` whose
-    ``external_ref`` begins with the Intent's file path.
-
-    Exemptions (silent — no finding emitted):
-      - ``beads_before_accept`` is ``false`` (grandfathered / pre-Path-A).
-      - ``beads_before_accept`` is absent / ``None`` (not yet stamped).
-      - Intent status is below the gate set (DRAFT / PROPOSED / SUPERSEDED).
-      - ``graph.repo_root`` is ``None`` (in-memory test fixtures).
-      - ``.beads/issues.jsonl`` does not exist (consumer repos without the
-        bead tracker).
-
-    Tracks ds-xu6g (IU-2 of INT-105).
-    """
-    if graph.repo_root is None:
-        return []
-    jsonl_path = Path(graph.repo_root) / ".beads" / "issues.jsonl"
-
-    # Build a set of Intent file-path prefixes that have at least one bead.
-    # A bead's ``external_ref`` looks like
-    # ``dekspec/intents/INT-NNN-slug.md:IU-N`` — the prefix before the colon
-    # (or the whole string when no colon is present) is the Intent's
-    # repo-relative file path.
-    bead_intent_paths: set[str] = set()
-    if jsonl_path.exists():
-        import json as _json
-        with open(jsonl_path) as fh:
-            for line in fh:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    rec = _json.loads(line)
-                except _json.JSONDecodeError:
-                    continue
-                ext_ref = rec.get("external_ref") or ""
-                if "intents/" in ext_ref:
-                    # Normalise: strip IU suffix (``...md:IU-3`` → ``...md``)
-                    prefix = ext_ref.split(":")[0] if ":" in ext_ref else ext_ref
-                    bead_intent_paths.add(prefix)
-
-    out: list[Finding] = []
-    for intent in graph.intents():
-        # Only opt-in Intents (beads_before_accept explicitly true).
-        if intent.get("beads_before_accept") is not True:
-            continue
-        status = (intent.get("status") or "").upper()
-        if status not in _L16_GATE_STATUSES:
-            continue
-        # Derive the repo-relative path of this Intent's source file.
-        source_path = (intent.get("source") or {}).get("path", "")
-        if not source_path:
-            continue
-        import os as _os_l16
-        rel_path = _os_l16.path.relpath(source_path, graph.repo_root)
-        if rel_path not in bead_intent_paths:
-            out.append(
-                Finding(
-                    severity="P2",
-                    rule="LINK-INT-BEADS-BEFORE-ACCEPT",
-                    artifact_id=intent["id"],
-                    message=(
-                        f"Intent {intent['id']} (status={status}) has "
-                        f"`beads_before_accept: true` but zero beads in "
-                        f"`.beads/issues.jsonl` reference it "
-                        f"(expected `external_ref` starting with "
-                        f"`{rel_path}`). Path A methodology requires at "
-                        f"least one bead to be filed before the Intent "
-                        f"walks past ACCEPTED. Fix: file beads via "
-                        f"`/write-code-beads`, or set `beads_before_accept: "
-                        f"false` if this Intent is grandfathered."
-                    ),
-                    fix_kind="semantic",
-                )
-            )
-    return out
-
-
 # ---------------------------------------------------------------------------
 # T-VERIFICATION-OUTCOME (INT-119 / ADR-029) — Outcome-test discipline.
 # ---------------------------------------------------------------------------
-_T_VERIFICATION_OUTCOME_GATE_STATUSES = frozenset(
-    {"ACCEPTED", "IMPLEMENTING", "TESTPASS", "MERGED", "LOCKED"}
-)
+# ADR-057: ACCEPTED is the only authorized-but-not-complete Intent state.
+_T_VERIFICATION_OUTCOME_GATE_STATUSES = frozenset({"ACCEPTED"})
 
 
 def _t_verification_outcome(graph: SpecGraph) -> list[Finding]:
@@ -7195,7 +7138,7 @@ _T_MISSION_CANONICAL_WINDOW_DAYS = 7
 def _t_mission_canonical_without_child(graph) -> list[Finding]:
     """T-MISSION-CANONICAL-WITHOUT-CHILD (P3 advisory) — fires when a
     Mission file under canonical `dekspec/missions/` has been at status
-    TODO for ≥7 days with zero child Intents declaring it via their
+    PROPOSED (ADR-057 renamed the old TODO frame state) for ≥7 days with zero child Intents declaring it via their
     `Mission:` field. Recommends moving to `dekspec/provisional/<slug>/`
     or killing if the work is YAGNI.
 
@@ -7228,9 +7171,9 @@ def _t_mission_canonical_without_child(graph) -> list[Finding]:
                 or "")
         if "dekspec/provisional/" in str(path):
             continue
-        # Non-TODO status → skip.
+        # Only an un-activated Mission (PROPOSED) is a candidate.
         status = str(mission.get("status") or "").upper()
-        if status != "TODO":
+        if status != "PROPOSED":
             continue
         # Under the 7-day window → skip.
         created_raw = mission.get("created")
@@ -7421,7 +7364,7 @@ def _t_bug_missing_repro_gate(graph) -> list[Finding]:
                 f"Bug Intent {intent.get('id')} is at status {status} but "
                 "carries neither a populated `### bug — Reproduction` section "
                 "nor a `### bug — Non-Reproducible Waiver` section. Run "
-                "`/diagnose-bug` to build a deterministic repro before the fix "
+                "`/debug` to build a deterministic repro before the fix "
                 "lands, or record a Non-Reproducible Waiver explaining why one "
                 "could not be constructed."
             ),

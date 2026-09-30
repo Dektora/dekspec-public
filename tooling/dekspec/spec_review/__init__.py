@@ -1,11 +1,10 @@
-"""spec_review — role-keyed spec-review dispatcher package (IC-016 / INT-140).
+"""spec_review — retired placeholder review dispatcher (IC-016, superseded by IC-019 / ADR-061).
 
-Brand-new top-level sibling under ``tooling/dekspec/`` (ADR-011 Option B);
-independent of the LOCKED MSN-017 ``tooling/dekspec/review/`` package. Both
-import paths ``from dekspec.spec_review.reviewer import Reviewer`` AND
-``from dekspec.spec_review import Reviewer`` resolve via this re-export.
+Kept importable so existing callers get an actionable error instead of an
+ImportError. It never returns findings: an in-process stub result must not be
+mistaken for an independent review.
 """
 
-from .reviewer import Reviewer, UnknownReviewerRoleError
+from .reviewer import Reviewer, ReviewerRetiredError, UnknownReviewerRoleError
 
-__all__ = ["Reviewer", "UnknownReviewerRoleError"]
+__all__ = ["Reviewer", "ReviewerRetiredError", "UnknownReviewerRoleError"]

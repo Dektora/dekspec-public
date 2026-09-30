@@ -2,7 +2,7 @@
 
 **Status:** AUTHORITATIVE (per ds-int-007-multimode-skills-znn / INT-008-multi-mode-skills-dispatcher).
 **Audience:** DekSpec skill authors. Every authoring skill at `skills/write-*/SKILL.md` cites this file and inlines the canonical mode-dispatch prose below.
-**Lineage:** Pattern derived from the `write-evals` 8-mode shape (creation + --audit / --review / --resync / --revise / --accept / --dry-run / --help) per Papalini ch. 12 §12.6 *Multi-Mode Agents*. Parameterized for per-artifact lifecycle differences (e.g., L2 artifacts add --lock/--unlock; ADRs add --supersede; Intents add --decompose/--testpass; Missions add --activate/--complete/--kill).
+**Lineage:** Pattern derived from the `write-evals` 8-mode shape (creation + --audit / --review / --resync / --revise / --accept / --dry-run / --help) per Papalini ch. 12 §12.6 *Multi-Mode Agents*. Parameterized for per-artifact lifecycle differences (e.g., decision/contract kinds add --lock/--unlock; ADRs add --supersede; Intents add --analyze/--decompose; Missions add --activate/--complete/--kill).
 
 ---
 
@@ -28,16 +28,25 @@ Every authoring skill ships with **at minimum** these four modes:
 | `--teaching` | **Teaching** *(per ds-int-007 / INT-008)* — interactive tutorial walking a new author through this artifact kind. Explains each section's purpose, shows an exemplar, and prompts the engineer for the content section-by-section. Distinct from `--review` (which audits existing content) and from no-flag creation (which assumes the author already knows the artifact). | No (writes new file) | No |
 | `--help` | Display the canonical USAGE / MODES / EXAMPLES block (see *Help Mode template* below) and stop. | Yes | No |
 
+### The role each universal mode plays (ADR-061)
+
+Modes play DekSpec's Agent Role Specifications ([`agent_roles.md`](agent_roles.md)). The skill fixes the role; the engineer never selects one.
+
+- **Creation, `--revise`, `--resync`, `--teaching`** — the **`specifier`** role. When the authoring is delegated to a `*-author` agent, that agent loads `dekspec resource role specifier` itself. Authoring never accepts or locks.
+- **`--audit`** — the **`auditor`** role. Load `dekspec resource role auditor` at the start of Audit Mode and follow it: deterministic `dekspec validate` / `dekspec audit` output first, judgment second, report only.
+- **`--review`** — the skill's walkthrough. The six specification skills (`write-intent`, `write-ws`, `write-ic`, `write-ae`, `write-adr`, `write-ibs`) add the independent **`spec-reviewer`** dispatch (`agent_roles.md` §Spec-reviewer dispatch).
+- **`--accept`, `--lock`, `--unlock`** — the engineer's decisions. An agent (a `*-author` agent included) may carry out the transition the engineer ordered, through the skill's gate; no role decides one.
+
 ## Lifecycle-bound modes (skills MAY support, depending on artifact)
 
 | Flag | Purpose | Where it applies | Read-only? | Gates? |
 |------|---------|------------------|-----------|--------|
-| `--accept` | Promote PROPOSED → ACCEPTED. Requires clean audit (no critical/important findings). | All L0/L1/L2/L3 lifecycle artifacts. Intents call it after `--testpass`. | No | Yes (refuses if audit dirty) |
-| `--lock` | Promote ACCEPTED → LOCKED (or MERGED → LOCKED for Intents). | L0/L1/L2 lifecycle artifacts + Intents. | No | Yes (refuses if not in source status) |
-| `--unlock` | Move LOCKED → PROPOSED for substantive edits. Logs the unlock in Amendment Log. | L0/L1/L2 lifecycle artifacts. | No | Yes (refuses if not LOCKED) |
+| `--accept` | Promote PROPOSED → ACCEPTED. Requires clean audit (no critical/important findings). For an IB this is authorization to execute (`dekspec ib accept` takes the acceptance baseline). | All lifecycle artifacts. | No | Yes (refuses if audit dirty) |
+| `--lock` | Promote ACCEPTED → LOCKED. | Decision and contract kinds only: System Vision, Constitution, ADR, IC, SP. AE and WS rest at ACCEPTED; IB and Intent terminate at COMPLETE (ADR-046, ADR-057). `/write-intent --lock` is a retained compatibility alias that completes the Intent. | No | Yes (refuses if not in source status) |
+| `--unlock` | Move LOCKED → PROPOSED for substantive edits. Logs the unlock in Amendment Log. | Same kinds as `--lock`. | No | Yes (refuses if not LOCKED) |
 | `--revise` | Edit an existing artifact while preserving status. For LOCKED artifacts, requires prior `--unlock`. | Most authoring skills. | No | Soft (warns if status changes are needed) |
 | `--resync` | Re-derive an artifact after its source upstream changed (e.g., IB resynced after WS update). Compares current to updated source; proposes deltas. | Skills whose artifact is derived from an upstream (write-ibs, write-evals, write-constitution, occasionally write-ws). | No (edits) | No |
-| `--dry-run` | Preview what creation/revision would do without writing. Useful for scope validation. | Bead-bound skills (write-ibs, write-evals, write-tests). | **Yes** | No |
+| `--dry-run` | Preview what creation/revision would do without writing. Useful for scope validation. | Construction-facing skills (write-ibs, write-evals, write-tests). | **Yes** | No |
 | `--deprecate` | Mark an artifact DEPRECATED (terminal status). Adds Deprecation Note. | All lifecycle artifacts. | No | Soft (no-op if already DEPRECATED) |
 
 ## Artifact-specific modes (used by exactly one or two skills)
@@ -46,13 +55,12 @@ Every authoring skill ships with **at minimum** these four modes:
 |------|----------|---------|
 | `--supersede` | write-adr, write-mission | Mark this artifact superseded by a newer one of the same kind. Records `superseded_by` linkage. |
 | `--analyze` | write-intent | Read-only top-down coverage check + bottom-up archaeology + decomposition recommendation. |
-| `--decompose` | write-intent | Split an OVERSIZED Intent into child Intents under a Mission. |
-| `--testpass` | write-intent | Promote IMPLEMENTING → TESTPASS after the verification predicate evaluates true. |
+| `--decompose` | write-intent | Produce the Intent's child IBs (each with `**Parent:** INT-NNN`). |
 | `--sync` | write-intent | Re-derive Intent fields after upstream AE/ADR changes. (Distinct from `--resync` in derived-from-IB skills.) |
-| `--amend` | write-intent | Add an Amendment Log entry without changing status (post-LOCK editorial edits). |
-| `--approve` | write-ibs | Alias for `--accept` that also runs `--dry-run` first. (Legacy; consider unifying under `--accept` in a future commit.) |
-| `--activate` | write-mission | Promote TODO → ACTIVE Mission. Requires at least one child Intent LOCKED (L8). |
-| `--complete` | write-mission | Promote COMPLETING → COMPLETE. Requires every child Intent LOCKED + Mission Verification predicate true. |
+| `--amend` | write-intent | Structured mid-flight change with Status cascade; `--amend --editorial` appends an editorial Amendment Log row without changing status. |
+| `--approve` | write-ibs | Retained alias for `--accept`. |
+| `--activate` | write-mission | Promote PROPOSED → ACTIVE Mission (authorize the programme). |
+| `--complete` | write-mission | Run the Mission Verification and promote ACTIVE → COMPLETE when it passes. |
 | `--kill` | write-mission | Terminal KILLED. Records kill reason + executed rollback steps. |
 | `--log` | write-corrections | Append a correction entry to `terminology-corrections.md`. |
 | `--add-term` | write-glossary | Add a term to `domain-glossary.md` — directly, or composed from a correction handed over at the promotion threshold. |
@@ -111,7 +119,8 @@ MODES:
                                 tutorial for new authors>
 
   --<lifecycle-flag> <target>  <Lifecycle mode descriptions (--accept,
-                                --lock, --unlock, --revise, etc.)>
+                                --revise, and --lock/--unlock where the
+                                kind locks)>
 
   --<artifact-specific>        <Artifact-specific mode descriptions
                                 (--decompose, --supersede, etc.)>

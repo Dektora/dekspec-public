@@ -82,6 +82,8 @@ include = ["dekspec*"]
 [tool.setuptools.package-data]
 "dekspec" = ["py.typed"]
 "dekspec.schemas" = ["*.yaml"]
+# ADR-061: the six canonical Agent Role Specifications live here and nowhere else.
+"dekspec.roles" = ["*.md"]
 "dekspec.fidelity_audit.profiles" = ["*.yaml"]
 # Wheel-bundled vendored content (templates + cherry-picked docs +
 # the `_lib` shared scripts the engine imports at runtime).
@@ -94,7 +96,7 @@ include = ["dekspec*"]
 # ADR-045 / INT-179: ship the FULL plugin tree (skills incl. _lib, commands,
 # hooks) so `dekspec install --platform` works off a pipx engine on non-Claude
 # hosts — not just the runtime `skills/_lib` helpers.
-"dekspec._vendored" = ["templates/**/*", "docs/**/*", "skills/**/*", "commands/**/*", "hooks/**/*"]
+"dekspec._vendored" = ["templates/**/*", "docs/**/*", "skills/**/*", "commands/**/*", "hooks/**/*", "dektools/**/*", "dektools/.claude-plugin/*.json"]
 
 [tool.setuptools.dynamic]
 version = { attr = "dekspec.__version__" }

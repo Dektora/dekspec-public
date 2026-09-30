@@ -56,6 +56,8 @@ The recurrence semantics rely on iterative back-and-forth that fresh-context sub
 
 **End of Fan-Out Mode.**
 
+**Roles (ADR-061).** This skill plays DekSpec's Agent Role Specifications; the engineer never selects one. Authoring, revise and resync modes play the **`specifier`** role, audit modes the **`auditor`** role: run `dekspec resource role specifier` or `dekspec resource role auditor` at the start of the mode and follow it (a delegated `*-author` agent loads `specifier` itself). See [`_lib/mode_dispatcher.md`](../_lib/mode_dispatcher.md) §The role each universal mode plays and [`_lib/agent_roles.md`](../_lib/agent_roles.md).
+
 ## Mode Detection
 
 Parse `$ARGUMENTS` for flags. If a flag is present, strip it and enter the corresponding mode.
@@ -299,6 +301,8 @@ e. Based on response:
 **End of Review Mode.**
 
 ## Audit Mode
+
+_Plays the **`auditor`** role — run `dekspec resource role auditor` first and follow it: deterministic `dekspec validate` / `dekspec audit` output is primary evidence; report findings, change nothing._
 
 Structural health check on `dekspec/terminology-corrections.md`. Read-only.
 

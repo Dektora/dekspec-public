@@ -12,35 +12,32 @@ Canonical sections (extracted by parser, schema-validated, available to emitters
 Author scratch pad (rendered for /write-intent's --analyze / --decompose
 walkthroughs, NOT loaded into the IR):
   Coverage report · Size assessment · Layer impact analysis ·
-  TESTFAIL records · Post-implementation sync
+  Post-implementation sync
 
 Scratch-pad sections support the Intent lifecycle modes (--analyze surfaces
-coverage + size; --testpass appends to TESTFAIL records on failure but
-Status stays IMPLEMENTING — the TESTFAIL Status flip retired 2026-05-25;
---sync walks Post-implementation sync at MERGED). They are prompt-time
-scaffolding for the implementing engineer and do not affect audit findings,
-contract-test generation, or AGENTS.md output. If you need a scratch-pad
-section to drive enforcement, file a bead to extend the Intent schema
-(audit divergence D-11).
+coverage + size; --decompose lists the child IBs; --sync walks
+Post-implementation sync at COMPLETE). They do not affect audit findings,
+contract-test generation, or AGENTS.md output.
+
+An Intent records decisions, not activity (ADR-057). Execution history —
+IB progress, attempts, failures, evidence, verdicts — lives in execution
+records under `.dekspec/execution/`, never in this file. The former
+`TESTFAIL records` section and bead rows are retired.
 -->
 
 ## Status
 
 DRAFT
 
-*Valid statuses:* `DRAFT` → `OVERSIZED` → `SUPERSEDED` (terminal off-ramp) | `DRAFT` → `PROPOSED` → `ACCEPTED` → `IMPLEMENTING` → `TESTPASS` → `MERGED` → `COMPLETE`
+*Valid statuses:* `DRAFT` → `PROPOSED` → `ACCEPTED` → `COMPLETE` | any non-terminal → `SUPERSEDED`
 
-- **DRAFT** — being written; type, motivation, and rough scope present; coverage / size / verification not yet populated
-- **OVERSIZED** — `--analyze` measured at least one hard cap exceeded (≤3 IUs / ≤3 components / ≤1 new L1 / ≤3 new+revised L2 / ≤2 coverage gaps). Cannot promote to PROPOSED without splitting or re-scoping
-- **PROPOSED** — `--analyze` clean; coverage report complete; Verification predicate populated; size within caps; engineer has not yet accepted
-- **ACCEPTED** — engineer approved; ready for `--decompose`
-- **IMPLEMENTING** — beads (or IB → beads) in flight; coding sessions running on `int/INT-NNN-slug`. On `--testpass` failure (any Verification check exits non-zero, or diff-confinement finds out-of-scope edits) the failure is recorded in TESTFAIL records but Status remains IMPLEMENTING — fix and re-run
-- **TESTPASS** — all Verification checks green; diff confinement clean
-- **MERGED** — branch merged to main
-- **COMPLETE** — the Intent is finished (post-merge); it is the executed historical record (ADR-046: Intents terminate at `COMPLETE`, not `LOCKED`); appended to the Mission Intent queue if a Mission was specified
-- **SUPERSEDED** — terminal; replaced by a successor Intent (recorded in `Superseded-By`)
+- **DRAFT** — being written, or sent back by `--amend`; an over-cap `--analyze` result is a P2 open issue ("re-split before acceptance") and the Intent stays here
+- **PROPOSED** — `--analyze` clean; coverage report complete; Verification predicate populated; size within caps; a decision is requested
+- **ACCEPTED** — engineer approved the outcome; `--decompose` authors the child IBs (each `**Parent:** INT-NNN`), which execute and complete on their own evidence
+- **COMPLETE** — written only by `dekspec intent complete`: every child IB is COMPLETE and the Verification below has current passing evidence (ADR-057). A historical record, not a frozen decision (ADR-046)
+- **SUPERSEDED** — terminal; replaced by a successor Intent or Mission (recorded in `Superseded-By`)
 
-*Note: `TODO` and `TESTFAIL` were retired 2026-05-25 (E3 audit — neither appeared in 99-Intent history; the `TESTFAIL ↔ TESTPASS` round-trip never fired). The TESTFAIL records section below is retained as a captured-failure log on the IMPLEMENTING → TESTPASS path; it no longer corresponds to a Status flip.*
+*Retired by ADR-057: `OVERSIZED` (now an analysis finding), `IMPLEMENTING`, `TESTPASS`, `MERGED` (activity — it lives in IB execution records and git), `TODO`. `dekspec migrate` maps legacy files.*
 
 ## Intent type
 
@@ -55,11 +52,11 @@ DRAFT
 *Required.* What level of autonomy is permitted on this Intent. If the Intent's `Mission:` is populated, this value MUST NOT exceed the Mission's `Autonomy ceiling:`.
 
 - `manual` — every step gated by engineer approval
-- `low` — engineer approves at PROPOSED → ACCEPTED, then again at TESTPASS → MERGED
+- `low` — engineer approves at PROPOSED → ACCEPTED, then again at the operator-confirmed merge of each delivery (ADR-026)
 - `medium` — engineer approves at PROPOSED → ACCEPTED only; rest runs autonomously
 - `high` — full autonomous execution from PROPOSED through COMPLETE (requires `dekfactory` orchestration brain; out of scope for this repo per `docs/architecture.md` §What does NOT live here)
 
-**Recommended default by Intent type (INT-094).** `medium` for `bug` / `refactor` / `documentation` (categories where CI green is sufficient proof of correctness); `manual` for `feature` / `nfr` / `adr-driven` / `environment` (categories warranting explicit operator sign-off — UX judgment, NFR targets, architectural ratification, blast radius beyond the test surface). Engineers override per Intent. The per-type default exists to honor downstream auto-merge surfaces (e.g. DekFactory INT-063, which auto-merges MRs at `auto-medium`+ once CI is green) without forfeiting that surface for well-bounded code-mod Intents.
+**Recommended default: `medium` for every Intent type (ADR-059).** Acceptance is the approval. Once the Intent is ACCEPTED and `dekspec implement ready` holds, `/implement` builds, tests, independently reviews, repairs and integrates the accepted work without routine prompts, behind evidence gates that do not depend on the Intent's type. It never changes the acceptance contract, and it never deploys or runs production operations. Set `manual` or `low` only as an explicit restriction, and name the human decision it reserves in the Amendment Log (for example, a product owner must see the change before it merges). A Mission's `Autonomy ceiling` caps the value. Existing Intents keep their recorded value; change a restriction only by amending that Intent. *(This replaces INT-094's per-type default, which set `manual` for `feature` / `nfr` / `adr-driven` / `environment`.)*
 
 ## Risk Tier
 
@@ -142,11 +139,11 @@ The risk tier is **complementary** to Autonomy and Intent type: type classifies 
 
 ### `bug` — Reproduction
 
-[A deterministic, agent-runnable PASS/FAIL repro signal — ideally the one `/diagnose-bug` built in PHASE 1 (a single shell command whose exit code *is* the signal). Required for `type: bug` *unless* a `### bug — Non-Reproducible Waiver` is supplied instead. The first bead produced at `--decompose` is the failing test that proves this Reproduction — and it is the Intent's ADR-029 Outcome Verification test (red-first); the Verification predicate's `bug-reproduction-fixed` check runs that test. The `T-BUG-REPRO-GATE` audit rule fires a P3 advisory on a `≥ACCEPTED` bug Intent that has neither this section nor the waiver below.]
+[A deterministic, agent-runnable PASS/FAIL repro signal — ideally the one `/debug` (an optional DekTools tool) built while diagnosing (a single shell command whose exit code *is* the signal). Required for `type: bug` *unless* a `### bug — Non-Reproducible Waiver` is supplied instead. One child IB's acceptance names the failing test that proves this Reproduction — the Intent's ADR-029 Outcome Verification test (red-first); the Verification predicate's `bug-reproduction-fixed` check runs that test. The `T-BUG-REPRO-GATE` audit rule fires a P3 advisory on a `≥ACCEPTED` bug Intent that has neither this section nor the waiver below.]
 
 ### `bug` — Non-Reproducible Waiver
 
-[Supply *this section instead of* Reproduction only when `/diagnose-bug` could not construct a deterministic repro (e.g. a Heisenbug, an environment-bound failure on a since-deleted runner, a data-dependent crash with no reproducible input). State plainly *why* no repro could be built and what evidence the fix rests on instead. A populated waiver satisfies the `T-BUG-REPRO-GATE` audit rule exactly as a populated Reproduction does — it is the explicit escape hatch, not a silent omission.]
+[Supply *this section instead of* Reproduction only when `/debug` (or your own diagnosis) could not construct a deterministic repro (e.g. a Heisenbug, an environment-bound failure on a since-deleted runner, a data-dependent crash with no reproducible input). State plainly *why* no repro could be built and what evidence the fix rests on instead. A populated waiver satisfies the `T-BUG-REPRO-GATE` audit rule exactly as a populated Reproduction does — it is the explicit escape hatch, not a silent omission.]
 
 ### `nfr` — Metric and Target
 
@@ -181,7 +178,7 @@ The risk tier is **complementary** to Autonomy and Intent type: type classifies 
 
 ## Components affected
 
-[File-glob list of paths this Intent's diff is confined to. Required (audit-v2 T15). Drives diff-confinement at `--testpass` (Decision #14); any edit landing outside this list logs a TESTFAIL record (Status stays IMPLEMENTING — the TESTFAIL Status flip retired 2026-05-25) even if all other Verification checks pass. Each glob must resolve to existing paths in the repo (audit-v2 L7).]
+[File-glob list of paths this Intent's changes are confined to. Required (audit-v2 T15). Every child IB's Scope lies inside this list; widening it is an `--amend`. Per-IB scope and protected surfaces are checked by `dekspec ib verify`. Each glob must resolve to existing paths in the repo (audit-v2 L7).]
 
 **Grammar (ds-352d): one backticked glob per bullet.** Write each path as its own bullet with the glob in backticks — `` - `src/**` ``. Grouped, labeled, or bare-path bullets (`- Backend: src/**, pyproject.toml`) are **not** recognized and now fail `dekspec validate` up front. A trailing prose description after the glob is fine (`` - `src/**` — the service layer ``).
 
@@ -197,47 +194,48 @@ The risk tier is **complementary** to Autonomy and Intent type: type classifies 
 
 | Gap                                                                                      | Source                          | Resolution                                                                                | Status                     |
 | ---------------------------------------------------------------------------------------- | ------------------------------- | ----------------------------------------------------------------------------------------- | -------------------------- |
-| [missing prerequisite, missing script, missing test coverage on touched component, etc.] | [analyze step that surfaced it] | [resolve in this Intent / split out as prerequisite Intent / mark TBD with tracking bead] | [open / closed / deferred] |
+| [missing prerequisite, missing script, missing test coverage on touched component, etc.] | [analyze step that surfaced it] | [resolve in this Intent / split out as prerequisite Intent / mark TBD with tracking issue] | [open / closed / deferred] |
 
 
 ## Size assessment
 
-*Populated by `--analyze`. Each hard cap from Decision #5 with measured value and verdict. Any cap exceeded transitions the Intent to OVERSIZED — promotion to PROPOSED is blocked until the Intent is split or re-scoped. No engineer-side override.*
+*Populated by `--analyze`. Each hard cap from Decision #5 with measured value and verdict. Any cap exceeded is recorded as a `P2` open issue ("re-split before acceptance"); the Intent stays DRAFT until it is split or re-scoped (ADR-028 PEEL-OFF / CONVERT-TO-MISSION). No engineer-side override.*
 
 
-| Cap                                       | Limit | Measured | Verdict            |
-| ----------------------------------------- | ----- | -------- | ------------------ |
-| Implementation Units (IBs / direct beads) | ≤ 3   | [N]      | [PASS / OVERSIZED] |
-| Components affected                       | ≤ 3   | [N]      | [PASS / OVERSIZED] |
-| New L1 artifacts (AEs)                    | ≤ 1   | [N]      | [PASS / OVERSIZED] |
-| New + revised L2 artifacts (WSes + ICs)   | ≤ 3   | [N]      | [PASS / OVERSIZED] |
-| Coverage gaps                             | ≤ 2   | [N]      | [PASS / OVERSIZED] |
+| Cap                                     | Limit | Measured | Verdict           |
+| --------------------------------------- | ----- | -------- | ----------------- |
+| Implementation Briefs                   | ≤ 3   | [N]      | [PASS / OVER-CAP] |
+| Components affected                     | ≤ 3   | [N]      | [PASS / OVER-CAP] |
+| New L1 artifacts (AEs)                  | ≤ 1   | [N]      | [PASS / OVER-CAP] |
+| New + revised L2 artifacts (WSes + ICs) | ≤ 3   | [N]      | [PASS / OVER-CAP] |
+| Coverage gaps                           | ≤ 2   | [N]      | [PASS / OVER-CAP] |
 
 
 ## Layer impact analysis
 
-*Populated by `--analyze`. What changes at each layer of the spec graph. Empty rows allowed; explicit "none" preferred over omission.*
+*Populated by `--analyze` (candidate IBs) and `--decompose` (the child IBs actually authored). What changes at each layer of the spec graph. Empty rows allowed; explicit "none" preferred over omission. The authoritative parent relation is each IB's `**Parent:**` field — the L3 row is a readable list, not a tracker; progress lives in the IBs' execution records.*
 
 
-| Layer                         | Artifact                                                   | Action                |
-| ----------------------------- | ---------------------------------------------------------- | --------------------- |
-| L1 (Architecture & Decisions) | [AE-NNN, ADR-NNN, Domain Glossary, Guidance & Corrections] | [revise / new / none] |
-| L2 (Specification)            | [WS-NNN, IC-NNN]                                           | [revise / new / none] |
-| L3 (Implementation)           | [IB-NNN]                                                   | [new / none]          |
-| L4 (Construction)             | [beads]                                                    | [new / none]          |
+| Layer                         | Artifact                                                    | Action                |
+| ----------------------------- | ----------------------------------------------------------- | --------------------- |
+| L1 (Architecture & Decisions) | [AE-NNN, ADR-NNN, Domain Glossary, Terminology corrections] | [revise / new / none] |
+| L2 (Specification)            | [WS-NNN, IC-NNN]                                            | [revise / new / none] |
+| L3 (Implementation Briefs)    | [IB-NNN — title (Parent: this Intent)]                      | [new / none]          |
 
 
 ## Verification
 
-*The TESTPASS predicate. List of named cmd checks that define "this Intent is done." Required (audit-v2 T14): at least one named cmd check must be present. `--analyze` populates from the type-default predicate (CLAUDE.md §Verification predicate library); engineers may override per Intent — overrides are logged. Every cmd check must resolve to an executable script or recognized tool (audit-v2 L9).*
+*The outcome predicate: named cmd checks that define "this Intent is done", executed by `dekspec intent verify` against current content (evidence goes to the Intent's execution record). Required (audit-v2 T14): at least one named cmd check must be present. `--analyze` populates from the type-default predicate (CLAUDE.md §Verification predicate library); engineers may override per Intent — overrides are logged. Every cmd check must resolve to an executable script or recognized tool (audit-v2 L9).*
 
 ```yaml
 # Verification predicate for this Intent.
 # Each entry: { name: <human-readable check>, cmd: <executable command> }
-# All checks must pass for `--testpass` to succeed.
+# `dekspec intent verify` runs every entry; all must pass (with current
+# evidence) before `dekspec intent complete` records COMPLETE.
 # Optional per check: `manual: true` + `manual_rationale: <why>` — the cmd is
-# NOT executed by --testpass; a MANUAL-TESTPASS row is recorded instead. Use
-# only for predicates needing infrastructure the local box lacks (ds-cjqi).
+# NOT executed; the entry is satisfied by an independent
+# `dekspec intent review` verdict. Use only for predicates needing
+# infrastructure the local box lacks (ds-cjqi).
 verification:
   - name: full-suite-green
     cmd: pytest -q
@@ -249,7 +247,7 @@ verification:
 
 ## Outcome Verification
 
-*Per ADR-029 (LOCKED 2026-05-29): every Intent ≥ ACCEPTED ships a single, simple, user-observable outcome test landed under strong-TDD timing (test red first → implementation makes it green → no other test files modified to make it pass). State the question, the input, and the expected assertion in one paragraph. Audited by `T-VERIFICATION-OUTCOME` (P2 advisory, INT-119) and consumed as a REVIEW_IB lens input (INT-120). Pre-existing Intents authored before INT-112 Slice A landed (2026-05-30) are auto-grandfathered (`outcome_verification_grandfathered: true`). Leave this section's body blank only if the Intent is genuinely grandfathered.*
+*Per ADR-029 (LOCKED 2026-05-29): every Intent ≥ ACCEPTED ships a single, simple, user-observable outcome test landed under strong-TDD timing (test red first → implementation makes it green → no other test files modified to make it pass). State the question, the input, and the expected assertion in one paragraph. Audited by `T-VERIFICATION-OUTCOME` (P2 advisory, INT-119); the outcome test is a Verification entry, so `dekspec intent verify` executes it as completion evidence (ADR-057). Pre-existing Intents authored before INT-112 Slice A landed (2026-05-30) are auto-grandfathered (`outcome_verification_grandfathered: true`). Leave this section's body blank only if the Intent is genuinely grandfathered.*
 
 <!-- Example shape:
 "On input X, the algorithm produces placement Y. Tested by `tests/test_outcome_<slug>.py::test_<assertion>`; landed first in commit <SHA-red>, made green by commit <SHA-green>."
@@ -257,7 +255,7 @@ verification:
 
 ## Open Issues
 
-*Coverage gaps and ambiguities surfaced during drafting, `--analyze`, or review. Resolve via `/write-intent --review` (Phase 2 flag). `P1` issues prevent promotion to PROPOSED and ACCEPTED. `P2`/`P3` issues are tracked but do not gate promotion.*
+*Coverage gaps and ambiguities surfaced during drafting, `--analyze`, or review. Resolve via `/write-intent --review`. `P1` issues prevent promotion to PROPOSED and ACCEPTED; the `P2` over-cap finding ("re-split before acceptance") blocks ACCEPTED. Other `P2`/`P3` issues are tracked but do not gate promotion.*
 
 - [ ] [Issue description] — **Source:** [initial draft / analyze / review / cascade from artifact] — **Severity:** [`P0` / `P1` / `P2` / `P3`]
 
@@ -265,23 +263,12 @@ verification:
 
 *Scope: design-level only.* Code-gap observations belong in `dekspec/divergences/` or `br`, not here.
 
-## TESTFAIL records
-
-*Captured-failure log on the IMPLEMENTING → TESTPASS path. Populated by `--testpass` when any Verification check fails or diff-confinement detects out-of-scope edits. Each failure is recorded with what failed, when, and how it was resolved. Status stays IMPLEMENTING through the fail/fix loop (the TESTFAIL Status flip retired 2026-05-25 — E3 audit); subsequent `--testpass` runs append new records here rather than overwriting prior ones.*
-
-
-| Date       | Failed check                       | Detail                                                                              | Resolution                                                      |
-| ---------- | ---------------------------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| YYYY-MM-DD | [check name or "diff-confinement"] | [what was wrong — failing test name / unexpected file edited / metric below target] | [what fixed it — bead ID / commit reference / scope correction] |
-
-
 ## Post-implementation sync
 
-*Checklist of minor catch-up items surfaced post-merge. Run via `/write-intent --sync` (Phase 3 flag). Limited to non-substantive cleanups; substantive changes require `--amend`.*
+*Checklist of minor catch-up items surfaced after completion. Run via `/write-intent --sync`. Limited to non-substantive cleanups; substantive changes require `--amend`.*
 
 - [ ] [WS docstring or example needs updating to reflect landed behavior]
 - [ ] [Operating-guide cross-reference points at obsolete artifact]
-- [ ] [Test-promotion candidates from this Intent's IBs]
 
 ## Amendment Log
 
@@ -292,6 +279,6 @@ verification:
 
 | Date       | Type                             | Change                                            | Author          |
 | ---------- | -------------------------------- | ------------------------------------------------- | --------------- |
-| YYYY-MM-DD | Editorial / Unlock / Substantive | <one-sentence summary + delta / commit reference> | [name or agent] |
+| YYYY-MM-DD | Editorial / Substantive | <one-sentence summary + delta / commit reference> | [name or agent] |
 
 

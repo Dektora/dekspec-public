@@ -31,6 +31,7 @@ rules:
   - LINK-IC-AE-MISSING
   - LINK-IC-AE-EXISTS
   - LINK-IB-SPEC-MISSING
+  - LINK-IB-PARENT-EXISTS
   - LINK-IB-WS-EXISTS
   - LINK-IB-INTENT-EXISTS
   - LINK-IB-AE-MISSING
@@ -58,7 +59,6 @@ rules:
   # ds-tpmd — artifact-index <-> file Status/Version coherence (advisory)
   - LINK-INDEX-FILE-COHERENCE
   # INT-105 / ds-xu6g — Path A accept-gate bead traceability (advisory)
-  - LINK-INT-BEADS-BEFORE-ACCEPT
   # INT-119 / ADR-029 — Outcome-test + strong-TDD discipline (P2 advisory).
   - T-VERIFICATION-OUTCOME
   # INT-125 / ds-zhhk — Constitution §Class Lanes audit family.
@@ -146,7 +146,12 @@ rules:
   - T-AE-BOUNDARIES-MISSING
   - T14-INT-VERIFICATION
   - T-INT-RISK-TIER-VALID
-  - T-BEAD-FAILURE-CLASS-VALID
+  # ADR-055/056/057 — IB execution-contract rules (T-BEAD-FAILURE-CLASS-VALID
+  # and LINK-INT-BEADS-BEFORE-ACCEPT retired with code beads).
+  - T-IB-AUTHORITY-IMPLICIT
+  - T-IB-CONTRACT-INCOMPLETE
+  - T-IB-OBLIGATION-UNRESOLVED
+  - T-IB-COMPLETE-WITHOUT-EVIDENCE
   - T17-MSN-VERIFICATION
   - T17-MSN-OUTCOME
   - T17-MSN-ROLLBACK
@@ -176,16 +181,15 @@ rules:
   - T-PROSE-IB-GOAL
   - T-PROSE-IB-DONE-WHEN
   - T-PROSE-AE-RESPONSIBILITY
-  # INT-141 / IB-126 — SPEC-REVIEW reviewer-dispatch family; P2 advisory.
-  # Routes the spec-reviewer review path (role-spec-reviewer.md §Escalation
-  # Triggers) into the audit surface via spec_review_rules.spec_review_rules.
-  # Single family code; all findings emit at P2 (no per-rule graduation).
-  # team.yaml inherits v1, so this flows through it.
+  # INT-141 / IB-126 — SPEC-REVIEW family; P2 advisory. Deterministic: a WS or
+  # IC that derives from an Architecture Element absent from the graph (the
+  # spec-reviewer role's missing-derivation-source escalation, detected without
+  # an agent). Since ADR-061 it loads no role definition and calls no
+  # dispatcher. team.yaml inherits v1, so this flows through it.
   - SPEC-REVIEW
-  # INT-139 / ds-uqnx — ContextSpec role-identity uniqueness (P2). The reviewer
-  # dispatcher resolves a role to exactly one ContextSpec; a duplicated
-  # role_identity is ambiguous. Makes ContextSpec a graph-audited IR.
-  - LINK-CS-ROLE-UNIQUE
+  # ADR-061 — a retired Context Specification left in the tree (P3 advisory).
+  # Replaces LINK-CS-ROLE-UNIQUE: nothing resolves roles from project files now.
+  - LINK-LEGACY-CONTEXT-SPEC
   # ds-52p D-16 — singleton self-consistency
   - T-GLOSSARY-DUPLICATE
   - T-GLOSSARY-MISSING-DEFINITION

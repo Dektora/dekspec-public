@@ -40,11 +40,15 @@ PARSER_VERSION = DEKSPEC_VERSION
 # separately from the global IR_SCHEMA_VERSION so the eight other
 # artifact types (AE, glossary, vision, constitution) can stay pinned at
 # 0.1.0 until their own schemas evolve.
-_IC_IR_SCHEMA_VERSION = "0.2.0"
-_WS_IR_SCHEMA_VERSION = "0.2.0"
-_ADR_IR_SCHEMA_VERSION = "0.2.0"
-_IB_IR_SCHEMA_VERSION = "0.3.0"
-_INTENT_IR_SCHEMA_VERSION = "0.3.0"  # INT-104 IU-1 (ds-xoah)
+# 0.2.0 → 0.3.0 (IC / WS / ADR / AE), 0.1.0 → 0.2.0 (SV / Constitution),
+# Mission 0.2.0 → 0.3.0, Intent 0.3.0 → 0.4.0: ADR-057 retired statuses.
+_IC_IR_SCHEMA_VERSION = "0.3.0"
+_WS_IR_SCHEMA_VERSION = "0.3.0"
+_ADR_IR_SCHEMA_VERSION = "0.3.0"
+_IB_IR_SCHEMA_VERSION = "0.4.0"
+_INTENT_IR_SCHEMA_VERSION = "0.4.0"  # ADR-056/057: decision-only statuses, beads_before_accept retired
+_SV_IR_SCHEMA_VERSION = "0.2.0"
+_CONSTITUTION_IR_SCHEMA_VERSION = "0.2.0"
 
 # AE IR schema version. Bumped 0.1.0 → 0.2.0 at IB-044 (INT-034 / ADR-015):
 # the stored `related_*s` backlink projections under `linked_artifacts` are
@@ -52,7 +56,7 @@ _INTENT_IR_SCHEMA_VERSION = "0.3.0"  # INT-104 IU-1 (ds-xoah)
 # `dekspec relink`, not schema-validated input. Tracked separately from the
 # global IR_SCHEMA_VERSION so glossary / vision / constitution stay at 0.1.0.
 # The matching persisted-IR migration lands in IB-045.
-_AE_IR_SCHEMA_VERSION = "0.2.0"
+_AE_IR_SCHEMA_VERSION = "0.3.0"
 
 
 class ParseError(Exception):
@@ -240,12 +244,20 @@ _OPEN_ISSUE_BULLET_WITH_STATE = re.compile(
     re.MULTILINE | re.IGNORECASE,
 )
 
+# Known silent-failure domain labels → slugs. The vocabulary is OPEN: a
+# consumer may name its own domains in its templates; an unknown checked label
+# is slugified (lowercase, non-alphanumerics → `_`). The first five are the
+# historical Dektora set, kept so existing artifacts keep their slugs.
 _DOMAIN_SLUGS = {
     "transformer internals": "transformer_internals",
     "numerical precision": "numerical_precision",
     "gpu multi-process isolation": "gpu_multi_process_isolation",
     "graph consistency": "graph_consistency",
     "timeline coherence": "timeline_coherence",
+    "concurrency and process isolation": "concurrency_and_process_isolation",
+    "data consistency across stores": "data_consistency_across_stores",
+    "time and ordering": "time_and_ordering",
+    "resource limits": "resource_limits",
 }
 
 _PATTERN_SLUGS = {
@@ -262,7 +274,12 @@ _PATTERN_SLUGS = {
 _PROVIDER_KEYWORDS = ("provider", "supplier", "host", "callee", "writer", "server")
 _CONSUMER_KEYWORDS = ("consumer", "caller", "client", "reader", "subscriber")
 
-_VALID_STATUSES = {"TODO", "DRAFT", "PROPOSED", "ACCEPTED", "LOCKED", "DEPRECATED"}
+_VALID_STATUSES = {"DRAFT", "PROPOSED", "ACCEPTED", "LOCKED", "DEPRECATED"}
+# ADR-057: `TODO` ("placeholder") duplicated DRAFT and retired from every kind.
+_RETIRED_TODO = (
+    "Status `TODO` was retired by ADR-057 (it duplicated DRAFT). Run `dekspec migrate` "
+    "(TODO → DRAFT; the change is recorded in the artifact's Amendment Log)."
+)
 
 
 @dataclass
@@ -468,8 +485,10 @@ def _extract_status(ctx: _ParseContext) -> str:
         token = s.split()[0].strip("`*_").upper()
         if token in _VALID_STATUSES:
             return token
+        if token == "TODO":
+            raise ICParseError(_RETIRED_TODO)
     raise ICParseError(
-        "Could not extract a valid Status (TODO|DRAFT|PROPOSED|ACCEPTED|LOCKED|DEPRECATED)"
+        "Could not extract a valid Status (DRAFT|PROPOSED|ACCEPTED|LOCKED|DEPRECATED)"
     )
 
 
@@ -496,7 +515,9 @@ def _extract_domains(body: str) -> list[str]:
             continue
         # Strip trailing parens with details: "Numerical precision (...)"
         clean = re.split(r"\s*\(", label, maxsplit=1)[0].strip().lower()
-        slug = _DOMAIN_SLUGS.get(clean)
+        slug = _DOMAIN_SLUGS.get(clean) or re.sub(r"[^a-z0-9]+", "_", clean).strip("_")
+        if slug and not slug[0].isalpha():
+            slug = f"d_{slug}"
         if slug and slug not in out:
             out.append(slug)
     return out
@@ -954,7 +975,7 @@ _AE_H1_TITLE = re.compile(r"^#\s+(?:(?:P-)?AE-\d{3,}|Architecture Element):\s*(.
 _FORMER_DN = re.compile(r"\b(DN-\d{3,})\b")
 
 # ADR-046: AE/WS are living references that rest at ACCEPTED — LOCKED removed.
-_AE_VALID_STATUSES = {"TODO", "DRAFT", "PROPOSED", "ACCEPTED", "DEPRECATED"}
+_AE_VALID_STATUSES = {"DRAFT", "PROPOSED", "ACCEPTED", "DEPRECATED"}
 _AE_VALID_CLASSIFICATIONS = {"Core", "Supporting", "Generic"}
 
 _AE_SUBTYPE_SLUGS = {
@@ -1135,8 +1156,10 @@ def _extract_ae_status(ctx: _ParseContext) -> str:
         token = s.split()[0].strip("`*_").upper()
         if token in _AE_VALID_STATUSES:
             return token
+        if token == "TODO":
+            raise AEParseError(_RETIRED_TODO)
     raise AEParseError(
-        "Could not extract a valid Status (TODO|DRAFT|PROPOSED|ACCEPTED|DEPRECATED)"
+        "Could not extract a valid Status (DRAFT|PROPOSED|ACCEPTED|DEPRECATED)"
     )
 
 
@@ -2100,7 +2123,7 @@ def _validate_ws(ir: dict[str, Any]) -> None:
 _ADR_FILENAME = re.compile(r"^(ADR-\d{3,})-.+\.md$")
 _ADR_H1_TITLE = re.compile(r"^#\s+(?:P-)?ADR-\d{3,}:\s*(.+?)\s*$", re.MULTILINE)
 _ADR_VALID_STATUSES = {
-    "TODO", "DRAFT", "PROPOSED", "ACCEPTED", "LOCKED", "DEPRECATED", "SUPERSEDED",
+    "DRAFT", "PROPOSED", "ACCEPTED", "LOCKED", "DEPRECATED", "SUPERSEDED",
 }
 _SUPERSEDES_LINE = re.compile(r"\*Supersedes:\*\s*(.+?)(?=\n|$)", re.MULTILINE)
 _SUPERSEDED_BY_LINE = re.compile(r"\*Superseded by:\*\s*(.+?)(?=\n|$)", re.MULTILINE)
@@ -2256,8 +2279,10 @@ def _extract_adr_status(ctx: _ParseContext) -> str:
         token = s.split()[0].strip("`*_").upper()
         if token in _ADR_VALID_STATUSES:
             return token
+        if token == "TODO":
+            raise ADRParseError(_RETIRED_TODO)
     raise ADRParseError(
-        "Could not extract a valid Status (TODO|DRAFT|PROPOSED|ACCEPTED|LOCKED|DEPRECATED|SUPERSEDED)"
+        "Could not extract a valid Status (DRAFT|PROPOSED|ACCEPTED|LOCKED|DEPRECATED|SUPERSEDED)"
     )
 
 
@@ -2419,12 +2444,31 @@ def _validate_adr(ir: dict[str, Any]) -> None:
 
 _IB_FILENAME = re.compile(r"^(IB-\d{3,})-.+\.md$")
 _IB_VALID_STATUSES = {
-    # ADR-046: IB is a consumed-once spec that rests at ACCEPTED — LOCKED removed.
-    "TODO", "DRAFT", "PROPOSED", "ACCEPTED",
-    "QUEUED", "ACTIVE", "COMPLETED",
-    # MSN-017 two-tier review pipeline (INT-102 IU-1, ds-2zoj):
-    "REVIEW_IB", "REVIEW_IB_FAIL", "REVIEW_PR", "REVIEW_PR_FAIL", "TESTFAIL",
+    # ADR-057: an IB's governed status records decisions only — authorization
+    # (PROPOSED → ACCEPTED) and evidence-backed completion (COMPLETE), plus the
+    # two retirements. Activity (queued / active / under review / tests
+    # failing) is execution evidence in `.dekspec/execution/<IB>/`, not status.
+    "DRAFT", "PROPOSED", "ACCEPTED", "COMPLETE", "SUPERSEDED", "DEPRECATED",
 }
+# Statuses retired by ADR-057. The parser refuses them with a pointer to the
+# markdown migration (`dekspec migrate`), which maps each one explicitly and
+# records the prior value in the IB's execution record — never silently.
+_IB_RETIRED_STATUSES = {
+    "TODO": "DRAFT",
+    "QUEUED": "ACCEPTED",
+    "ACTIVE": "ACCEPTED",
+    "COMPLETED": "COMPLETE",
+    "REVIEW_IB": "ACCEPTED",
+    "REVIEW_IB_FAIL": "ACCEPTED",
+    "REVIEW_PR": "ACCEPTED",
+    "REVIEW_PR_FAIL": "ACCEPTED",
+    "TESTFAIL": "ACCEPTED",
+    "LOCKED": "ACCEPTED",
+}
+#: ADR-055 authority policies. `legacy` keeps the ADR-049-era restrictive
+#: meaning (Files to Modify is an allowlist, escalate on any unlisted file);
+#: `delegated` is the binding / acceptance / hypothesis model.
+IB_AUTHORITY_POLICIES = ("legacy", "delegated")
 _IB_H1_TITLE = re.compile(r"^#\s+(.+?)\s*$", re.MULTILINE)
 _IB_META_LINE = re.compile(r"^\*\*([^*]+?):\*\*\s*(.+?)\s*$", re.MULTILINE)
 _IB_AE_ID_REF = re.compile(r"\b(AE-\d{3,})\b")
@@ -2469,10 +2513,12 @@ def parse_ib(path: str | Path) -> dict[str, Any]:
     spec = _extract_ib_spec(meta)
     if spec:
         ir["spec"] = spec
-    else:
+    elif "Spec" in meta and "Authority policy" not in meta:
+        # Legacy header with a malformed Spec line. A delegated IB needs no
+        # parent Working Spec at all (ADR-056), so its absence is not noted.
         ctx.warnings.append(_Warn(
             field="/spec",
-            reason="No `**Spec:** path/to/WS-NNN-*.md` line at top of file",
+            reason="`**Spec:**` line does not name a WS-NNN (use `none` when there is no parent spec)",
             severity="warning",
         ))
 
@@ -2492,13 +2538,21 @@ def parse_ib(path: str | Path) -> dict[str, Any]:
     if prod_gate:
         ir["production_gate"] = prod_gate
 
-    # INT-102 IU-1 (ds-2zoj): MSN-017 two-tier review pipeline.
-    # `**Review grandfathered:** true|false` meta-line is optional;
-    # absent → false. Anything other than a recognized truthy token
-    # also resolves to false (the strict default), so a malformed
-    # value silently degrades rather than failing the parse.
-    rg_raw = (meta.get("Review grandfathered") or "").strip().lower()
-    ir["review_grandfathered"] = rg_raw in {"true", "yes", "1"}
+    # ADR-055: the authority policy is explicit and durable. An IB with no
+    # `**Authority policy:**` line keeps the restrictive legacy meaning (it was
+    # authored under ADR-049) — never silently reinterpreted as delegated.
+    ir["authority_policy"] = _extract_ib_authority_policy(meta, ctx)
+
+    parent = _extract_ib_parent(meta)
+    if parent:
+        ir["parent"] = parent
+
+    # ADR-056 §4: the governing specifications this change must update.
+    impact_raw = (meta.get("Spec impact") or "").strip()
+    if impact_raw and not impact_raw.lower().startswith("none"):
+        impact = list(dict.fromkeys(_IB_SPEC_IMPACT_REF.findall(impact_raw)))
+        if impact:
+            ir["spec_impact"] = impact
 
     goal = ctx.sections.get("Goal", "").strip()
     if goal:
@@ -2549,6 +2603,8 @@ def parse_ib(path: str | Path) -> dict[str, Any]:
     issues = _extract_open_issues(ctx.sections.get("Open Issues", ""))
     if issues:
         ir["open_issues"] = issues
+
+    _extract_ib_contract_sections(ir, ctx)
 
     if ctx.warnings:
         ir["parse_warnings"] = [w.to_dict() for w in ctx.warnings]
@@ -2601,10 +2657,16 @@ def _extract_ib_status(meta: dict[str, str], ctx: _ParseContext) -> str:
         token = raw.split()[0].strip("`*_").upper()
         if token in _IB_VALID_STATUSES:
             return token
+        if token in _IB_RETIRED_STATUSES:
+            raise IBParseError(
+                f"IB status {token!r} was retired by ADR-057 (lifecycle states record "
+                f"decisions, not activity). Run `dekspec migrate` — it maps {token} → "
+                f"{_IB_RETIRED_STATUSES[token]} and records the prior status in the IB's "
+                f"execution record."
+            )
     raise IBParseError(
         "Could not extract a valid Status from `**Status:** ...` "
-        "(TODO|DRAFT|PROPOSED|ACCEPTED|QUEUED|ACTIVE|COMPLETED|"
-        "REVIEW_IB|REVIEW_IB_FAIL|REVIEW_PR|REVIEW_PR_FAIL|TESTFAIL)"
+        "(DRAFT|PROPOSED|ACCEPTED|COMPLETE|SUPERSEDED|DEPRECATED)"
     )
 
 
@@ -2724,6 +2786,261 @@ def _extract_ib_domain_constraints(body: str) -> list[dict[str, str]]:
     return out
 
 
+_IB_PARENT_REF = re.compile(r"\b((?:INT|WS|MSN)-\d{3,})\b")
+_IB_SPEC_IMPACT_REF = re.compile(r"\b((?:ADR|IC|WS|AE|SP)-\d{3,}|CONSTITUTION|SYSTEM-VISION)\b")
+_IB_OBLIGATION_REF = re.compile(
+    r"^[-*]\s+\*\*(?P<id>O-\d+)\*\*\s*(?:→|->)\s*"
+    r"(?P<ref>(?:ADR|IC|WS|AE|SP|INT|MSN|IB)-\d{3,}|CONSTITUTION|SYSTEM-VISION)"
+    r"(?:\s*§\s*(?P<section>[^—\n]+?))?"
+    r"(?:\s+—\s+(?P<note>.+?))?\s*$",
+    re.MULTILINE,
+)
+_IB_OBLIGATION_LOCAL = re.compile(
+    r"^[-*]\s+\*\*(?P<id>O-\d+)\*\*\s*\(local\):\s*(?P<text>.+?)\s*$", re.MULTILINE
+)
+_IB_OBLIGATION_ANY = re.compile(r"^[-*]\s+\*\*O-\d+\*\*", re.MULTILINE)
+_IB_SCOPE_GLOB = re.compile(r"^[-*]\s+`(?P<glob>[^`]+)`\s*(?:—\s*(?P<note>.+?))?\s*$", re.MULTILINE)
+_IB_H3_SPLIT = re.compile(r"^###\s+(.+?)\s*$", re.MULTILINE)
+_IB_YAML_FENCE = re.compile(r"```ya?ml[^\n]*\n(?P<body>.*?)```", re.DOTALL)
+_IB_BACKTICK_PATH = re.compile(r"`([^`]+)`")
+_IB_AC_ID = re.compile(r"^AC-\d+$")
+_IB_VERIFY_KINDS = ("pytest", "command", "review")
+
+
+def _extract_ib_authority_policy(meta: dict[str, str], ctx: _ParseContext) -> str:
+    raw = (meta.get("Authority policy") or "").strip()
+    if not raw:
+        ctx.warnings.append(_Warn(
+            field="/authority_policy",
+            reason=(
+                "No `**Authority policy:**` line — treated as `legacy` (ADR-049-era "
+                "restrictive meaning). `dekspec migrate` stamps it explicitly."
+            ),
+            severity="info",
+        ))
+        return "legacy"
+    token = raw.split()[0].strip("`*_").lower()
+    if token in IB_AUTHORITY_POLICIES:
+        return token
+    ctx.warnings.append(_Warn(
+        field="/authority_policy",
+        reason=f"Unknown authority policy {raw!r}; treated as `legacy` (the restrictive meaning).",
+        severity="warning",
+    ))
+    return "legacy"
+
+
+def _extract_ib_parent(meta: dict[str, str]) -> dict[str, str] | None:
+    raw = (meta.get("Parent") or "").strip()
+    if not raw or raw.lower().startswith("none"):
+        return None
+    m = _IB_PARENT_REF.search(raw)
+    if not m:
+        return None
+    return {"id": m.group(1)}
+
+
+def _ib_subsections(body: str) -> tuple[str, dict[str, str]]:
+    """Split an H2 body into (lead text, {h3 heading lower: body})."""
+    parts = _IB_H3_SPLIT.split(body)
+    lead = parts[0]
+    subs: dict[str, str] = {}
+    for i in range(1, len(parts) - 1, 2):
+        subs[parts[i].strip().lower()] = parts[i + 1]
+    return lead, subs
+
+
+def _extract_ib_acceptance(body: str, ctx: _ParseContext) -> tuple[list[dict[str, Any]], list[str]]:
+    import yaml  # local import: only IBs with an Acceptance section need it
+
+    fence = _IB_YAML_FENCE.search(body)
+    if not fence:
+        ctx.warnings.append(_Warn(
+            field="/acceptance",
+            reason="§Acceptance has no ```yaml block of acceptance conditions",
+            severity="warning",
+        ))
+        return [], []
+    try:
+        data = yaml.safe_load(fence.group("body")) or []
+    except yaml.YAMLError as exc:
+        ctx.warnings.append(_Warn(
+            field="/acceptance", reason=f"acceptance YAML does not parse: {exc}", severity="warning",
+        ))
+        return [], []
+    if not isinstance(data, list):
+        ctx.warnings.append(_Warn(
+            field="/acceptance", reason="acceptance YAML must be a list of conditions", severity="warning",
+        ))
+        return [], []
+    conditions: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for idx, item in enumerate(data):
+        where = f"/acceptance/{idx}"
+        if not isinstance(item, dict):
+            ctx.warnings.append(_Warn(field=where, reason="condition is not a mapping", severity="warning"))
+            continue
+        ac_id = str(item.get("id") or "").strip()
+        condition = str(item.get("condition") or "").strip()
+        verify = item.get("verify")
+        if not _IB_AC_ID.match(ac_id):
+            ctx.warnings.append(_Warn(field=where, reason=f"id {ac_id!r} is not AC-<n>", severity="warning"))
+            continue
+        if ac_id in seen:
+            ctx.warnings.append(_Warn(field=where, reason=f"duplicate acceptance id {ac_id}", severity="warning"))
+            continue
+        if not condition or condition.startswith("["):
+            ctx.warnings.append(_Warn(field=where, reason=f"{ac_id} has no condition", severity="warning"))
+            continue
+        if not isinstance(verify, dict) or len([k for k in _IB_VERIFY_KINDS if k in verify]) != 1:
+            ctx.warnings.append(_Warn(
+                field=where,
+                reason=f"{ac_id} verify must name exactly one of pytest / command / review",
+                severity="warning",
+            ))
+            continue
+        entry: dict[str, Any] = {"id": ac_id, "condition": condition}
+        if "pytest" in verify:
+            nodes = verify["pytest"]
+            if isinstance(nodes, str):
+                nodes = [nodes]
+            nodes = [str(n).strip() for n in (nodes or []) if str(n).strip()]
+            if not nodes:
+                ctx.warnings.append(_Warn(field=where, reason=f"{ac_id} lists no pytest nodes", severity="warning"))
+                continue
+            entry["verify"] = {"pytest": nodes}
+        elif "command" in verify:
+            cmd = str(verify["command"] or "").strip()
+            if not cmd or cmd.startswith("["):
+                ctx.warnings.append(_Warn(field=where, reason=f"{ac_id} has an empty command", severity="warning"))
+                continue
+            entry["verify"] = {"command": cmd}
+        else:
+            what = str(verify["review"] or "").strip()
+            if not what:
+                ctx.warnings.append(_Warn(field=where, reason=f"{ac_id} review names nothing to judge", severity="warning"))
+                continue
+            entry["verify"] = {"review": what}
+        timeout = item.get("timeout")
+        if isinstance(timeout, int) and timeout > 0:
+            entry["timeout"] = timeout
+        seen.add(ac_id)
+        conditions.append(entry)
+
+    assets: list[str] = []
+    tail = body[fence.end():]
+    for line in tail.splitlines():
+        if line.lstrip().startswith(("-", "*")):
+            assets.extend(p.strip() for p in _IB_BACKTICK_PATH.findall(line) if p.strip())
+    return conditions, sorted(dict.fromkeys(assets))
+
+
+def _extract_ib_contract_sections(ir: dict[str, Any], ctx: _ParseContext) -> None:
+    """ADR-055/056 contract sections. Present on delegated IBs; a legacy IB
+    simply lacks them (its Files to Modify / Do Not Touch / Done When remain)."""
+    sections = ctx.sections
+
+    outcome = sections.get("Outcome", "").strip()
+    if outcome and not outcome.startswith("["):
+        ir["outcome"] = outcome
+    rationale = sections.get("Rationale", "").strip()
+    if rationale and not rationale.startswith("["):
+        ir["rationale"] = rationale
+
+    if "Scope" in sections:
+        lead, subs = _ib_subsections(sections["Scope"])
+        scope = []
+        for m in _IB_SCOPE_GLOB.finditer(lead):
+            glob = m.group("glob").strip()
+            if glob.startswith("path/or/glob"):
+                continue
+            row = {"glob": glob}
+            note = (m.group("note") or "").strip()
+            if note and not note.startswith("["):
+                row["note"] = note
+            scope.append(row)
+        if scope:
+            ir["scope"] = scope
+        oos = [b for b in _extract_bullets(subs.get("out of scope", "")) if not b.startswith("[")]
+        if oos and "out_of_scope" not in ir:
+            ir["out_of_scope"] = oos
+
+    if "Obligations" in sections:
+        body = sections["Obligations"]
+        obligations: list[dict[str, Any]] = []
+        seen_ids: set[str] = set()
+        for m in _IB_OBLIGATION_REF.finditer(body):
+            if m.group("ref") == "ADR-NNN" or m.group("id") in seen_ids:
+                continue
+            row: dict[str, Any] = {"id": m.group("id"), "ref": m.group("ref")}
+            if m.group("section"):
+                row["section"] = m.group("section").strip()
+            note = (m.group("note") or "").strip()
+            if note and not note.startswith("["):
+                row["note"] = note
+            obligations.append(row)
+            seen_ids.add(m.group("id"))
+        for m in _IB_OBLIGATION_LOCAL.finditer(body):
+            text = m.group("text").strip()
+            if m.group("id") in seen_ids or text.startswith("["):
+                continue
+            obligations.append({"id": m.group("id"), "local": True, "text": text})
+            seen_ids.add(m.group("id"))
+        declared = len(_IB_OBLIGATION_ANY.findall(body))
+        placeholders = len(re.findall(r"\*\*O-\d+\*\*.*(?:ADR-NNN|IC-NNN|\[an obligation)", body))
+        if declared - placeholders > len(obligations):
+            ctx.warnings.append(_Warn(
+                field="/obligations",
+                reason="an §Obligations bullet is neither `**O-n** → REF[ §Section][ — note]` nor `**O-n** (local): text`",
+                severity="warning",
+            ))
+        if obligations:
+            ir["obligations"] = sorted(obligations, key=lambda o: int(o["id"].split("-")[1]))
+
+    if "Protected Surfaces" in sections:
+        rows = _extract_table(sections["Protected Surfaces"], ["surface", "reason"])
+        surfaces = []
+        for r in rows:
+            surface = (r.get("surface") or "").strip().strip("`")
+            if not surface or surface.startswith("path/to/"):
+                continue
+            row = {"surface": surface}
+            if r.get("reason") and not r["reason"].startswith("["):
+                row["reason"] = r["reason"].strip()
+            surfaces.append(row)
+        if surfaces:
+            ir["protected_surfaces"] = surfaces
+
+    if "Acceptance" in sections:
+        conditions, assets = _extract_ib_acceptance(sections["Acceptance"], ctx)
+        conditions = [c for c in conditions if not c["condition"].startswith("[")]
+        if conditions:
+            ir["acceptance"] = conditions
+        if assets:
+            ir["acceptance_assets"] = assets
+
+    hyp = [
+        b for b in _extract_bullets(sections.get("Implementation Hypothesis", ""))
+        if not re.search(r"\[[^\]]*\]\s*$", b) and "path/to/" not in b
+    ]
+    if hyp:
+        ir["implementation_hypothesis"] = hyp
+
+    prereqs = []
+    for r in _extract_table(sections.get("Environment Prerequisites", ""), ["prerequisite", "probe", "required"]):
+        name = (r.get("prerequisite") or "").strip()
+        probe = (r.get("probe") or "").strip().strip("`")
+        if not name or not probe or name.startswith("[") or probe.startswith("["):
+            continue
+        prereqs.append({
+            "prerequisite": name,
+            "probe": probe,
+            "required": (r.get("required") or "yes").strip().lower() not in {"no", "false", "optional"},
+        })
+    if prereqs:
+        ir["environment_prerequisites"] = prereqs
+
+
 def _load_ib_schema() -> dict[str, Any]:
     from ..schemas import load_schema as _load
     return _load("implementation_brief")
@@ -2753,14 +3070,19 @@ _INT_VALID_STATUSES = {
     # transition them to DRAFT or IMPLEMENTING respectively before parse.
     # ADR-046: COMPLETE is the Intent (work-item) terminal; LOCKED was retired
     # for Intents once the tree migrated (slice 4).
-    "DRAFT", "OVERSIZED", "PROPOSED", "ACCEPTED", "IMPLEMENTING",
-    "TESTPASS", "MERGED", "COMPLETE", "SUPERSEDED",
+    # ADR-057: decisions only. OVERSIZED is an analysis finding; IMPLEMENTING /
+    # TESTPASS / MERGED mirrored activity that now lives in the IBs' execution
+    # records. An Intent completes when its IBs complete on evidence.
+    "DRAFT", "PROPOSED", "ACCEPTED", "COMPLETE", "SUPERSEDED",
 }
 # Retired Intent statuses — extraction matches these so the parser can
 # emit a targeted error message instead of "could not extract a valid
 # status." Pre-retirement files surface a clear migration path. `LOCKED`
 # joined 2026-07-15 (ADR-046: Intents complete, not lock).
-_INT_RETIRED_STATUSES = {"TODO", "TESTFAIL", "LOCKED"}
+_INT_RETIRED_STATUSES = {
+    "TODO": "DRAFT", "TESTFAIL": "ACCEPTED", "LOCKED": "COMPLETE", "OVERSIZED": "DRAFT",
+    "IMPLEMENTING": "ACCEPTED", "TESTPASS": "ACCEPTED", "MERGED": "ACCEPTED",
+}
 _INT_VALID_TYPES = {
     "feature", "bug", "nfr", "adr-driven", "refactor", "documentation", "environment",
 }
@@ -2824,9 +3146,8 @@ def parse_intent(path: str | Path) -> dict[str, Any]:
     if risk_tier:
         ir["risk_tier"] = risk_tier
 
-    beads_before_accept = _extract_intent_beads_before_accept(ctx)
-    if beads_before_accept is not None:
-        ir["beads_before_accept"] = beads_before_accept
+    # ADR-056: `beads_before_accept` retired with code beads. A leftover
+    # `**Beads before accept:**` line is ignored (`dekspec migrate` removes it).
 
     branch = ctx.sections.get("Branch", "").strip().strip("`").strip()
     if branch:
@@ -2956,23 +3277,11 @@ def _extract_intent_status(ctx: _ParseContext) -> str:
         if token in _INT_VALID_STATUSES:
             return token
         if token in _INT_RETIRED_STATUSES:
-            if token == "LOCKED":
-                raise IntentParseError(
-                    "Intent Status `LOCKED` was retired for Intents (ADR-046) "
-                    "— Intents terminate at `COMPLETE` (a finished Intent is a "
-                    "historical record, not a frozen decision). Transition "
-                    "this Intent to `COMPLETE`. The lifecycle is now DRAFT -> "
-                    "PROPOSED -> ACCEPTED -> IMPLEMENTING -> TESTPASS -> "
-                    "MERGED -> COMPLETE."
-                )
-            replacement = "DRAFT" if token == "TODO" else "IMPLEMENTING"
             raise IntentParseError(
-                f"Intent Status `{token}` was retired 2026-05-25 (E3 audit — "
-                f"0 in/out-degree across 99-Intent history). Transition this "
-                f"Intent to `{replacement}` (the closest live status on the "
-                f"new lifecycle: DRAFT -> PROPOSED -> ACCEPTED -> IMPLEMENTING "
-                f"-> TESTPASS -> MERGED -> COMPLETE). See CHANGELOG entry for "
-                f"the retirement migration note."
+                f"Intent Status `{token}` is retired (ADR-046 / ADR-057: an Intent's status records "
+                f"decisions — DRAFT -> PROPOSED -> ACCEPTED -> COMPLETE, or SUPERSEDED). Run "
+                f"`dekspec migrate` — it maps {token} -> {_INT_RETIRED_STATUSES[token]} and records "
+                f"the change in the Intent's Amendment Log."
             )
     raise IntentParseError("Could not extract a valid Intent Status.")
 
@@ -3017,27 +3326,6 @@ def _extract_intent_risk_tier(ctx: _ParseContext) -> str | None:
         token = s.split()[0].strip("`*_-")
         if token:
             return token
-    return None
-
-
-def _extract_intent_beads_before_accept(ctx: _ParseContext) -> bool | None:
-    """Extract the optional `beads_before_accept` boolean from the Intent body.
-
-    Looks for a `**Beads before accept:**` meta-line anywhere in the full
-    document text.  Returns True/False when found, None when absent.  Absent
-    → the schema default (true) applies at validation time.
-    (INT-104 IU-1 / ds-xoah)
-    """
-    for line in ctx.text.splitlines():
-        s = line.strip()
-        low = s.lower()
-        if low.startswith("**beads before accept:**"):
-            val = s.split(":", 1)[1].strip().strip("*").strip().lower()
-            if val in ("false", "no"):
-                return False
-            if val in ("true", "yes", ""):
-                return True
-            return True  # unrecognized → default true
     return None
 
 
@@ -3230,10 +3518,13 @@ def _validate_intent(ir: dict[str, Any]) -> None:
 # rollback_plan + kill_criteria moved from prose to structured cmd-check
 # predicates. Tracked separately from the global IR_SCHEMA_VERSION so
 # other artifact types can stay pinned to 0.1.0.
-_MISSION_IR_SCHEMA_VERSION = "0.2.0"
+_MISSION_IR_SCHEMA_VERSION = "0.3.0"
 
 _MSN_FILENAME = re.compile(r"^(MSN-\d{3,})-.+\.md$")
-_MSN_VALID_STATUSES = {"TODO", "ACTIVE", "COMPLETING", "COMPLETE", "KILLED", "SUPERSEDED"}
+_MSN_VALID_STATUSES = {"PROPOSED", "ACTIVE", "COMPLETE", "KILLED", "SUPERSEDED"}
+# ADR-057: TODO → PROPOSED (the cross-kind "decision requested" state);
+# COMPLETING mirrored the verification activity and retired.
+_MSN_RETIRED_STATUSES = {"TODO": "PROPOSED", "COMPLETING": "ACTIVE"}
 _MSN_VALID_AUTONOMY = {"manual", "low", "medium", "high"}
 _MSN_H1_TITLE = re.compile(r"^#\s+Mission\s+(?:P-)?MSN-\d{3,}:\s*(.+?)\s*$", re.MULTILINE)
 _MSN_BOLD_META = re.compile(r"^\*\*([^*]+?):\*\*\s*(.+?)\s*$", re.MULTILINE)
@@ -3427,9 +3718,14 @@ def _extract_msn_status(meta: dict[str, str]) -> str:
         token = raw.split()[0].strip("`*_-").upper()
         if token in _MSN_VALID_STATUSES:
             return token
+        if token in _MSN_RETIRED_STATUSES:
+            raise MissionParseError(
+                f"Mission Status `{token}` was retired by ADR-057. Run `dekspec migrate` "
+                f"({token} -> {_MSN_RETIRED_STATUSES[token]}; recorded in the Mission's Amendment Log)."
+            )
     raise MissionParseError(
         "Could not extract a valid Mission Status from `**Status:** ...` "
-        "(TODO|ACTIVE|COMPLETING|COMPLETE|KILLED|SUPERSEDED)"
+        "(PROPOSED|ACTIVE|COMPLETE|KILLED|SUPERSEDED)"
     )
 
 
@@ -3808,7 +4104,7 @@ def parse_vision(path: str | Path) -> dict[str, Any]:
     sections = _split_sections(text)
 
     ir: dict[str, Any] = {
-        "ir_schema_version": IR_SCHEMA_VERSION,
+        "ir_schema_version": _SV_IR_SCHEMA_VERSION,
         "id": "SYSTEM-VISION",
         "name": _extract_vision_name(text),
         "source": {
@@ -3826,9 +4122,11 @@ def parse_vision(path: str | Path) -> dict[str, Any]:
         if not s or s.startswith("*"):
             continue
         token = s.split()[0].strip("`*_-").upper()
-        if token in {"TODO", "DRAFT", "PROPOSED", "ACCEPTED", "LOCKED", "DEPRECATED"}:
+        if token in {"DRAFT", "PROPOSED", "ACCEPTED", "LOCKED", "DEPRECATED"}:
             ir["status"] = token
             break
+        if token == "TODO":
+            raise VisionParseError(_RETIRED_TODO)
 
     _maybe_set(ir, "created", _extract_first_date(sections.get("Created", "")))
     _maybe_set(ir, "modified", _extract_first_date(sections.get("Modified", "")))
@@ -4050,7 +4348,7 @@ def parse_constitution(path: str | Path) -> dict[str, Any]:
 
     sections = _split_sections(text)
     ir: dict[str, Any] = {
-        "ir_schema_version": IR_SCHEMA_VERSION,
+        "ir_schema_version": _CONSTITUTION_IR_SCHEMA_VERSION,
         "id": "CONSTITUTION",
         "name": name,
         "source": {
@@ -4068,9 +4366,11 @@ def parse_constitution(path: str | Path) -> dict[str, Any]:
         if not s or s.startswith("*"):
             continue
         token = s.split()[0].strip("`*_-").upper()
-        if token in {"TODO", "DRAFT", "PROPOSED", "ACCEPTED", "LOCKED", "DEPRECATED"}:
+        if token in {"DRAFT", "PROPOSED", "ACCEPTED", "LOCKED", "DEPRECATED"}:
             ir["status"] = token
             break
+        if token == "TODO":
+            raise ConstitutionParseError(_RETIRED_TODO)
 
     _maybe_set(ir, "created", _extract_first_date(sections.get("Created", "")))
     _maybe_set(ir, "modified", _extract_first_date(sections.get("Modified", "")))
@@ -4499,168 +4799,25 @@ def _validate_security_profile(ir: dict[str, Any]) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# ContextSpec IR (IB-124 / INT-139, MSN-019 daughter A)
-#
-# The 11th DekSpec IR kind — generalizes the dekfactory Phase 0 prototype
-# reviewer_context_spec.schema.json into a first-class, parser-validated,
-# ID-addressable IR. Additive per ADR-011 Option B: zero edits to any existing
-# parse_* function or shared helper; no references to WS or Security-Profile
-# internals. The one shape divergence from parse_security_profile: `id` is
-# sourced from the `## ID` body section (the canonical filename is role-keyed,
-# `role-<role>.md`, not ID-keyed), not from the filename.
+# Retired: the ContextSpec IR kind (INT-139) — replaced by Agent Role
+# Specifications (ADR-061). The six role definitions are library-supplied
+# package data read by `dekspec.roles`; there is no project artifact kind and
+# no parser for the old input-scoping format. The names stay importable so a
+# caller gets migration instructions instead of an ImportError.
 # --------------------------------------------------------------------------- #
 
-_CS_IR_SCHEMA_VERSION = "0.1.0"
-_CS_ID_RE = re.compile(r"\bCS-\d{3,}\b")
-_CS_H1_TITLE = re.compile(r"^#\s+(.+?)\s*$", re.MULTILINE)
+CONTEXT_SPEC_RETIRED = (
+    "Context Specifications (CS-001…CS-006, `context-specs/role-*.md`) are retired (ADR-061). "
+    "DekSpec now supplies the six Agent Role Specifications itself: read one with "
+    "`dekspec resource role <role|CS-NNN>` or `dekspec.roles.load_role()`. A project needs no copy; "
+    "`dekspec migrate` reports any legacy file for review and never adopts it as policy."
+)
 
 
 class CSParseError(Exception):
-    """Raised when a ContextSpec markdown fails parsing or schema validation."""
+    """Raised for any attempt to parse a retired Context Specification."""
 
 
 def parse_context_spec(path: str | Path) -> dict[str, Any]:
-    """Parse a ContextSpec markdown file into a validated IR.
-
-    Walks H2 sections of the markdown; extracts id from the `## ID` body
-    section (NOT the filename — the canonical filename is role-keyed,
-    `role-<role>.md`); title from H1; status / role_identity from per-field H2
-    sections; the four input-scoping fields (artifact_path_scope,
-    schema_fragment_scope, glossary_subset_scope, escalation_triggers) via
-    per-field `_extract_cs_*` helpers; attaches provenance; validates the
-    assembled dict against `context-spec.schema.yaml`.
-
-    Raises CSParseError on schema-validation failure (wraps the underlying
-    jsonschema.ValidationError messages); re-raises OSError /
-    UnicodeDecodeError from the file read unchanged.
-    """
-    src = Path(path).resolve()
-    text = src.read_text(encoding="utf-8")
-    sections = _split_sections(text)
-
-    ir: dict[str, Any] = {
-        "ir_schema_version": _CS_IR_SCHEMA_VERSION,
-        "id": _extract_cs_id(sections),
-        "title": _extract_cs_title(text),
-        "status": _extract_cs_status(sections),
-        "role_identity": _extract_cs_role_identity(sections),
-        "artifact_path_scope": _extract_cs_scope(
-            sections.get("Artifact Path Scope", "")
-        ),
-        "schema_fragment_scope": _extract_cs_scope(
-            sections.get("Schema Fragment Scope", "")
-        ),
-        "glossary_subset_scope": _extract_cs_scope(
-            sections.get("Glossary Subset Scope", "")
-        ),
-        "escalation_triggers": _extract_cs_escalation_triggers(
-            sections.get("Escalation Triggers", "")
-        ),
-        "source": {
-            "path": str(src),
-            "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
-            "parser_version": PARSER_VERSION,
-            "parsed_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        },
-    }
-
-    _maybe_set(ir, "created", _extract_first_date(sections.get("Created", "")))
-    _maybe_set(ir, "modified", _extract_first_date(sections.get("Modified", "")))
-
-    _validate_context_spec(ir)
-    return ir
-
-
-def _extract_cs_id(sections: dict[str, str]) -> str:
-    body = sections.get("ID", "")
-    m = _CS_ID_RE.search(body)
-    if not m:
-        raise CSParseError(
-            "Could not extract a ContextSpec id — expected a '## ID' section "
-            "with a token matching CS-NNN (id lives in the body, not the "
-            "role-keyed filename)."
-        )
-    return m.group(0)
-
-
-def _extract_cs_title(text: str) -> str:
-    m = _CS_H1_TITLE.search(text)
-    if not m:
-        raise CSParseError(
-            "Missing or malformed H1 — expected '# <title>'."
-        )
-    return m.group(1).strip()
-
-
-def _extract_cs_status(sections: dict[str, str]) -> str:
-    body = sections.get("Status", "")
-    for line in body.splitlines():
-        s = line.strip()
-        if not s or s.startswith("*"):
-            continue
-        # First non-decoration token — passed through verbatim (no casefold)
-        # so the schema enum rejects mixed-case typos like `proposed` cleanly.
-        token = s.split()[0].strip("`*_-")
-        if token:
-            return token
-    raise CSParseError(
-        "Could not extract a Status value — expected '## Status' section with "
-        "a token from {PROPOSED, ACCEPTED, LOCKED, SUPERSEDED}."
-    )
-
-
-def _extract_cs_role_identity(sections: dict[str, str]) -> str:
-    body = sections.get("Role Identity", "")
-    for line in body.splitlines():
-        s = line.strip()
-        if not s or s.startswith("*"):
-            continue
-        token = s.split()[0].strip("`*_-")
-        if token:
-            return token
-    raise CSParseError(
-        "Could not extract a Role Identity value — expected '## Role Identity' "
-        "section with one of {specifier, spec-reviewer, implementer, "
-        "code-reviewer, verifier, auditor}."
-    )
-
-
-def _extract_cs_scope(body: str) -> list[str]:
-    """Extract a bullet-list input-scoping field (strips surrounding backticks
-    from each item; empty list when the section is absent or empty)."""
-    return [item.strip("`").strip() for item in _extract_bullets(body) if item.strip()]
-
-
-def _extract_cs_escalation_triggers(body: str) -> list[dict[str, str]]:
-    """Parse the `## Escalation Triggers` bullets into closed (condition,
-    action) rows. Each bullet is `condition: <c> | action: <a>`."""
-    rows: list[dict[str, str]] = []
-    for bullet in _extract_bullets(body):
-        parts = [p.strip() for p in bullet.split("|")]
-        fields: dict[str, str] = {}
-        for part in parts:
-            if ":" not in part:
-                continue
-            key, _, value = part.partition(":")
-            key = key.strip().lower()
-            if key in ("condition", "action"):
-                fields[key] = value.strip()
-        if "condition" in fields and "action" in fields:
-            rows.append({"condition": fields["condition"], "action": fields["action"]})
-    return rows
-
-
-def _validate_context_spec(ir: dict[str, Any]) -> None:
-    from ..schemas import load_schema as _load
-
-    schema = _load("context_spec")
-    validator = Draft202012Validator(schema)
-    errors = sorted(validator.iter_errors(ir), key=lambda e: list(e.absolute_path))
-    if errors:
-        msgs = []
-        for e in errors:
-            ptr = "/" + "/".join(str(p) for p in e.absolute_path)
-            msgs.append(f"  {ptr}: {e.message}")
-        raise CSParseError(
-            "Parsed ContextSpec IR failed schema validation:\n" + "\n".join(msgs)
-        )
+    """Retired (ADR-061): always raises ``CSParseError`` with migration instructions."""
+    raise CSParseError(f"{path}: {CONTEXT_SPEC_RETIRED}")

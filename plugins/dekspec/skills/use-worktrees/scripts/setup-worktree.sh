@@ -1,18 +1,20 @@
 #!/usr/bin/env bash
 # setup-worktree.sh — the mechanical core of the /use-worktrees skill (INT-190).
 #
-# Creates/enters a delivery-scoped git worktree per ADR-048 (worktree scope
-# tracks delivery granularity), writes the statusline `active_worktree` hint,
+# Creates/enters a delivery-scoped git worktree per ADR-048 / ADR-058 (one
+# worktree = one branch = one PR = one delivery unit: an IB, an Intent's IBs,
+# or a Mission cluster), writes the statusline `active_worktree` hint,
 # and cleans up on land. The SKILL.md is the guided front-end; this script is
 # the deterministic, testable heart.
 #
 # Scope naming (ADR-048):
+#   ib       -> branch ib/<slug>       worktree <worktrees-root>/<repo>-ib-<slug>   (a single-IB delivery)
 #   intent   -> branch int/<slug>      worktree <worktrees-root>/<repo>-int-<slug>
-#   mission  -> branch msn-<slug>      worktree <worktrees-root>/<repo>-msn-<slug>
+#   mission  -> branch msn/<slug>      worktree <worktrees-root>/<repo>-msn-<slug>
 #
 # Usage:
-#   setup-worktree.sh --scope intent|mission --slug <slug> [--worktrees-root DIR] [--hint-root DIR]
-#   setup-worktree.sh --cleanup --scope intent|mission --slug <slug> [--worktrees-root DIR] [--hint-root DIR]
+#   setup-worktree.sh --scope ib|intent|mission --slug <slug> [--worktrees-root DIR] [--hint-root DIR]
+#   setup-worktree.sh --cleanup --scope ib|intent|mission --slug <slug> [--worktrees-root DIR] [--hint-root DIR]
 #
 # Env/flag overrides (mainly for tests):
 #   --worktrees-root  where worktrees are created (default: parent of the repo)
@@ -39,9 +41,10 @@ done
 
 [ -n "$SCOPE" ] && [ -n "$SLUG" ] || { echo "setup-worktree.sh: --scope and --slug are required" >&2; exit 2; }
 case "$SCOPE" in
+  ib) PREFIX="ib" ;;
   intent) PREFIX="int" ;;
   mission) PREFIX="msn" ;;
-  *) echo "setup-worktree.sh: --scope must be 'intent' or 'mission' (ADR-048)" >&2; exit 2 ;;
+  *) echo "setup-worktree.sh: --scope must be 'ib', 'intent' or 'mission' (ADR-048 / ADR-058)" >&2; exit 2 ;;
 esac
 
 # Detect primary checkout vs worktree; resolve the primary checkout path.
@@ -99,7 +102,9 @@ Bootstrap the fresh worktree before working (gitignored state is NOT copied):
   #      THIS worktree's code with:  PYTHONPATH=tooling python3 -m dekspec.cli ...
   # 3. Rebuild vendored content if you touched templates/docs/plugins:
   #      the _vendored tree is a build output (setup.py VendoringBuildPy).
-  # 4. .beads: the SQLite DB re-derives from the tracked .beads/issues.jsonl —
-  #      run 'br' once in the worktree to hydrate it; never hand-copy the DB.
+  # 4. br tracker workspaces (.beads*/): each SQLite DB re-derives from its
+  #      tracked issues.jsonl — run 'br' once per workspace to hydrate it;
+  #      never hand-copy a DB. (Code beads are retired, ADR-056: IB execution
+  #      records under .dekspec/execution/ are plain tracked files.)
   # 5. Delete this worktree on land:  setup-worktree.sh --cleanup --scope ${SCOPE} --slug ${SLUG}
 EOF

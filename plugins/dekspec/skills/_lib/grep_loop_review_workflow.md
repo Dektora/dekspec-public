@@ -1,6 +1,6 @@
 # Grep-Loop Review-Fix Workflow (dekspec-owned)
 
-> **Provenance.** Adapted from the `grep-loop-review-workflow` skill by David Ondrej / Michael Shimeles (interview notes), **MIT-licensed**. This is dekspec's own vendored copy — bundled in the plugin so consumers who `claude plugin install dekspec@dekspec` get it, and free to modify for the dekspec review pipeline. The generic discipline below is the MIT source; the **dekspec bindings** section wires it to the REVIEW_PR pipeline.
+> **Provenance.** Adapted from the `grep-loop-review-workflow` skill by David Ondrej / Michael Shimeles (interview notes), **MIT-licensed**. This is dekspec's own vendored copy — bundled in the plugin so consumers who `claude plugin install dekspec@dekspec` get it, and free to modify for the dekspec review pipeline. The generic discipline below is the MIT source; the **dekspec bindings** section wires it to the delivery review (`/dekspec:review-pr` → fix → re-verify → re-review).
 
 ## Overview
 
@@ -44,14 +44,15 @@ Before starting the loop, ask: *is this PR too large for a reliable review loop?
 
 ---
 
-## dekspec bindings (REVIEW_PR pipeline)
+## dekspec bindings (delivery review, ADR-057 / ADR-058)
 
-When this loop runs inside the dekspec two-tier review pipeline (the `REVIEW_PR_FAIL` handler driving an IB-aggregate PR; INT-107 / INT-108), bind the generic discipline above to these dekspec specifics:
+When `/dekspec:review-pr` records a `fail` verdict for an IB in a delivery (one branch / worktree / pull request), bind the generic discipline above to these specifics:
 
-- **Seed the PR with located findings first.** Run `/code-review <effort> --comment <PR-#>` so findings post as **inline PR comments** (line-anchored feedback, not just the prose verdict). The REVIEW_PR **sidecar** (`context.sidecar_review_path`) supplies the lens verdict + surfaced (≥80) findings; `/code-review --comment` supplies the line-level diff findings — the fixer addresses both. Pick `<effort>` from the pre-flight PR-size signal (`/dekspec:review-pr`'s "PR too large?" check): `medium` default, `high`/`max` for a dense diff.
-- **Land follow-up commits on `context.ib_branch`** (rule 4's "land" target) — the IB branch already carries the implementation; addressing review means **adding commits on top**, not replacing.
-- **Re-fire `/dekspec:review-pr <PR-#>`** after the fix round (rule 6's "review again").
-- **RECOMMEND-only at landing (ADR-026).** The handler **stages** the fix plan + follow-up commits and the operator drives the commits + re-fire; the loop never auto-merges. The same discipline is what an AUTO-mode dispatch would follow once thresholds are committed.
+- **Seed with located findings.** Run `/code-review <effort> --comment <PR-#>` so line-anchored findings sit beside the review's vetoing lenses (the `fail` verdict's notes). Pick `<effort>` from `/dekspec:review-pr`'s size pre-flight: `medium` by default, `high`/`max` for a dense diff.
+- **The builder fixes, inside a counted attempt.** Open `dekspec ib attempt <IB> start`, land the fix as follow-up commits on the delivery branch (add commits, don't replace them), and close with `dekspec ib attempt <IB> end --outcome passed` (or `failed`). A fix that needs a change outside Scope, to a protected surface, or to an acceptance condition is an escalation (ADR-055), not a fix: record it with `dekspec ib block <IB> --reason scope-expansion` (or `contract-conflict`, `acceptance-invalid`) and a `--detail`, and stop.
+- **Re-verify, then re-review.** Every fix commit changes the head content, so prior evidence is stale: run `dekspec delivery verify`, then re-run `/dekspec:review-pr` for a fresh verdict (rule 6's "review again"). Verdicts on untouched IBs carry forward only if the fix touched none of their reviewed surfaces.
+- **Bounded by the engine.** The loop's stop condition is the engine's attempt accounting (`execution:` limits in `.dekspec/config.yaml`): exhausted attempts, a stall or no progress leave the IB BLOCKED (exit 3) and completion refused until an operator records `dekspec ib unblock --decision …`. Do not reset or work around the count.
+- **Never merges (ADR-026).** The loop ends at a `pass` verdict or a human decision; landing stays with `/dekspec:land-intent`'s operator-confirmed merge.
 
 ## Verification checklist
 
@@ -60,4 +61,4 @@ When this loop runs inside the dekspec two-tier review pipeline (the `REVIEW_PR_
 - [ ] Agent fixed only relevant findings (false positives recorded + skipped).
 - [ ] Tests / typechecks passed or blockers were stated.
 - [ ] Final summary lists resolved + deliberately-skipped review items.
-- [ ] (dekspec) follow-up commits landed on `context.ib_branch`; landing stayed RECOMMEND-only.
+- [ ] (dekspec) each fix round ran inside a counted attempt, was re-verified with `dekspec delivery verify` and re-reviewed; nothing merged without the operator.

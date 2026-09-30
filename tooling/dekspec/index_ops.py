@@ -214,10 +214,9 @@ def _replace_archive_table(content: str, new_rows: list[str]) -> str:
 # Statuses that belong in the Active queue (top table). LOCKED +
 # SUPERSEDED + DEPRECATED land in the Archive table below.
 # `TODO` + `TESTFAIL` were retired from the Intent enum 2026-05-25 (E3 audit).
-_ACTIVE_QUEUE_STATUSES = frozenset(
-    {"DRAFT", "PROPOSED", "ACCEPTED", "IMPLEMENTING",
-     "TESTPASS", "MERGED", "OVERSIZED"}
-)
+# ADR-057: the activity states (IMPLEMENTING / TESTPASS / MERGED / OVERSIZED)
+# retired — an Intent is queued until it is COMPLETE or retired.
+_ACTIVE_QUEUE_STATUSES = frozenset({"DRAFT", "PROPOSED", "ACCEPTED"})
 # ADR-046: COMPLETE is the Intent terminal (work done) — it archives like LOCKED.
 _ARCHIVE_STATUSES = frozenset({"COMPLETE", "LOCKED", "SUPERSEDED", "DEPRECATED"})
 
@@ -318,7 +317,7 @@ def regen_intent_index(
 # Mission index
 # --------------------------------------------------------------------------- #
 
-_MSN_ACTIVE_STATUSES = frozenset({"TODO", "ACTIVE", "COMPLETING"})
+_MSN_ACTIVE_STATUSES = frozenset({"PROPOSED", "ACTIVE"})  # ADR-057: TODO→PROPOSED, COMPLETING retired
 _MSN_ARCHIVE_STATUSES = frozenset({"COMPLETE", "KILLED", "SUPERSEDED"})
 
 _MSN_HEADER = (

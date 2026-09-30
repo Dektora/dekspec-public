@@ -29,7 +29,7 @@ required:
 
 properties:
   ir_schema_version:
-    const: "0.2.0"
+    const: "0.3.0"  # ADR-057: TODO → PROPOSED, COMPLETING retired
 
   id:
     type: string
@@ -40,7 +40,7 @@ properties:
     minLength: 1
 
   status:
-    enum: [TODO, ACTIVE, COMPLETING, COMPLETE, KILLED, SUPERSEDED]
+    enum: [PROPOSED, ACTIVE, COMPLETE, KILLED, SUPERSEDED]
 
   audit_profile:
     description: >-

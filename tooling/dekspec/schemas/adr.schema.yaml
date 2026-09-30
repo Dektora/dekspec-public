@@ -47,7 +47,7 @@ properties:
     # `{blocking, non_blocking}` to canonical `{P0, P1, P2, P3}`.
     # Persisted v0.1.0 IR JSON migrates via
     # `tooling/dekspec/migrations/severity_unification.py`.
-    const: "0.2.0"
+    const: "0.3.0"  # ADR-057: TODO retired
 
   id:
     description: Canonical ADR identifier derived from filename (e.g., ADR-022).
@@ -61,7 +61,7 @@ properties:
 
   status:
     description: 'ADR-specific status set including SUPERSEDED (terminal). When SUPERSEDED, supersession.superseded_by must be populated.'
-    enum: [TODO, DRAFT, PROPOSED, ACCEPTED, LOCKED, DEPRECATED, SUPERSEDED]
+    enum: [DRAFT, PROPOSED, ACCEPTED, LOCKED, DEPRECATED, SUPERSEDED]
 
   source:
     type: object

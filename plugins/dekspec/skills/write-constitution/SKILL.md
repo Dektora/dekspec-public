@@ -30,6 +30,8 @@ Write or maintain the project's Constitution — the third L0 singleton (after S
 Bootstrap our Constitution. Article 1 points at dekspec/system-vision.md; tech stack is Python 3.12 + pytest; cite ADR-002 (git-URL distribution) under Architecture Principles and ADR-004 (audit-vs-compiler separation) + AE-008 (plugin packaging) under Boundaries. Seed Status=DRAFT.
 ```
 
+**Roles (ADR-061).** This skill plays DekSpec's Agent Role Specifications; the engineer never selects one. Authoring, revise and resync modes play the **`specifier`** role, audit modes the **`auditor`** role: run `dekspec resource role specifier` or `dekspec resource role auditor` at the start of the mode and follow it (a delegated `*-author` agent loads `specifier` itself). See [`_lib/mode_dispatcher.md`](../_lib/mode_dispatcher.md) §The role each universal mode plays and [`_lib/agent_roles.md`](../_lib/agent_roles.md).
+
 ## Mode Detection
 
 See [`_lib/mode_detection_template.md`](../_lib/mode_detection_template.md) for the canonical parse/routing contract. Default mode: **Creation Mode**.
@@ -120,6 +122,8 @@ Skill-specific structural checks to surface as Open Issues: T-CONSTITUTION (miss
 **Skill-unique field shape:** Article 1 is a typed pointer (`{summary, see_also}` pointing to `dekspec/system-vision.md`), not free prose. The remaining Articles are prose + structured fields. Validate Article 1's pointer shape during step 3 before accepting the engineer's input.
 
 ## Audit Mode
+
+_Plays the **`auditor`** role — run `dekspec resource role auditor` first and follow it: deterministic `dekspec validate` / `dekspec audit` output is primary evidence; report findings, change nothing._
 
 **Invocation:** `/write-constitution --audit [path]`
 
@@ -412,7 +416,7 @@ The `## Class Lanes` section is writeable through this skill — engineers popul
 
 ### Schema per row
 
-Each row binds `(intent_type, risk_tier)` to a `lane` (enum: `dark` | `canary` | `gated`) plus the budget caps, attempt limits, promotion/demotion thresholds, and the calibration-binding fields `effective_model_snapshot` + `effective_corpus_volume`. See `tooling/dekspec/schemas/constitution.schema.yaml::properties.class_lanes` for the load-bearing schema.
+Each row binds `(intent_type, risk_tier)` to a `lane` (enum: `dark` | `canary` | `gated`) plus the budget caps, attempt limits, promotion/demotion thresholds, and the calibration-binding fields `effective_model_snapshot` + `effective_corpus_volume`. See `tooling/dekspec/schemas/constitution.schema.yaml::properties.class_lanes` for the load-bearing schema. The per-row attempt limits (`max_attempts_per_attempt`, `max_attempts_per_bead`) are validated but consumed by nothing — a legacy tolerance: execution bounds (attempts, stall and no-progress windows) are execution policy in `.dekspec/config.yaml` `execution:` (ADR-057).
 
 ### `--revise` path for class promotion / demotion
 

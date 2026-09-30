@@ -83,7 +83,7 @@ def skills_roots(repo_root: str | Path) -> list[Path]:
     base = Path(repo_root) / "plugins"
     return [
         d
-        for d in (base / name / "skills" for name in SKILL_PLUGIN_NAMES)
+        for d in [*(base / name / "skills" for name in SKILL_PLUGIN_NAMES), base / "dektools" / "tools"]
         if d.is_dir()
     ]
 
@@ -170,11 +170,14 @@ def load_catalog(repo_root: str | Path) -> list[SkillEntry]:
 
 
 def discover_skills(repo_root: str | Path) -> list[SkillEntry]:
-    """Return the default-discovery skill list — every catalogued skill.
+    """Return core/bootstrap plus the configured optional toolkit selection.
 
-    DekSpec runs one lane at full rigor (ADR-050); discovery is unconditional.
+    load_catalog enumerates the full distribution for validation and discovery help.
     """
-    return load_catalog(repo_root)
+    from .dekspec_config import enabled_dektools_tools
+    enabled = set(enabled_dektools_tools(repo_root))
+    return [entry for entry in load_catalog(repo_root)
+            if entry.path.parent.parent.name != "tools" or entry.name in enabled]
 
 
 def resolve_skill(repo_root: str | Path, name: str) -> Optional[SkillEntry]:

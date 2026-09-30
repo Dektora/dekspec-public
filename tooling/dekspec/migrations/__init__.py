@@ -332,6 +332,7 @@ from . import mission as _mission_migrations  # noqa: E402, F401  (registration 
 from . import mission_markdown as _mission_markdown_migrations  # noqa: E402, F401
 from . import severity_unification as _severity_unification_migrations  # noqa: E402, F401
 from . import retire_stored_backlinks as _retire_stored_backlinks_migrations  # noqa: E402, F401
-from . import ib_review_statuses as _ib_review_statuses_migrations  # noqa: E402, F401
-from . import intent_beads_before_accept as _intent_bba_migrations  # noqa: E402, F401
 from . import terminology_corrections_rename as _terminology_corrections_rename  # noqa: E402, F401
+from . import disciplined_delegation as _disciplined_delegation  # noqa: E402, F401
+from . import lifecycle_decisions as _lifecycle_decisions  # noqa: E402, F401
+from . import agent_role_specifications as _agent_role_specifications  # noqa: E402, F401

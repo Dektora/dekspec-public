@@ -261,8 +261,12 @@ def detect_artifact_type(filename: str) -> str | None:
         # Not an IR kind — a free-form companion to the Domain Glossary. It is
         # recognised here only so markdown migrations can reach it.
         return "terminology_corrections"
+    # Provisional artifacts (ADR-043 `P-<KIND>-NNN`) migrate like canonical ones.
+    # Pre-ADR-043 provisional files are named `<KIND>-provisional-<slug>.md`.
+    bare = filename[2:] if filename.startswith("P-") else filename
+    bare = _re.sub(r"^([A-Z]+)-provisional-", r"\1-000-", bare)
     for pattern, kind in _PREFIX_TO_TYPE:
-        if pattern.match(filename):
+        if pattern.match(bare):
             return kind
     return None
 
@@ -315,6 +319,14 @@ def iter_markdown_artifacts(repo_root: Path, dekspec_root: str = "dekspec") -> I
             if artifact_type is None:
                 continue
             yield path, artifact_type
+    # Retired Context Specifications (ADR-061) are directory-keyed: every
+    # markdown file under `context-specs/` is reached so the migration can
+    # report it (agent_role_specifications.py). It is never parsed as an IR.
+    legacy = base / "context-specs"
+    if legacy.is_dir():
+        for path in sorted(legacy.rglob("*.md")):
+            if path.is_file():  # not a directory named *.md, not a broken symlink
+                yield path, "context_spec"
 
 
 # --------------------------------------------------------------------------- #

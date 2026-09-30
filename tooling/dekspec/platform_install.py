@@ -55,6 +55,7 @@ pi           ``<target>/.pi/...``. Pi (pi.dev) minimal terminal harness.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 from collections.abc import Iterable
@@ -76,6 +77,34 @@ class EmitResult:
 
     platform: str
     written: list[Path] = field(default_factory=list)
+    #: Retired core files removed on re-install (unmodified shipped copies).
+    removed: list[Path] = field(default_factory=list)
+    #: Retired core files kept because they differ from every shipped version.
+    preserved: list[Path] = field(default_factory=list)
+
+
+#: Core files a release retired, relative to a host's root (the directory
+#: holding its ``skills/`` and ``commands/``) → the content digest (see
+#: ``dekspec.roles.legacy.content_digest``) of every version the library
+#: shipped. A re-install removes an unmodified copy and keeps a modified one
+#: (reported), exactly like the vendoring prune.
+RETIRED_HOST_FILES: dict[str, frozenset[str]] = {
+    # ADR-061: the placeholder spec-review dispatch contract.
+    "skills/_lib/reviewer_mode.md": frozenset({
+        "11a9f68d27532f350b276e8d53ca3bbca86f687a0e9704b4bbe6bce7941d4b63",
+    }),
+    # IB-144 (ds-9tvmm): the Skill-tool wrappers of the two user-only dispatch
+    # skills. Each skill is its own slash entry; a wrapper left behind by an
+    # earlier install would keep dispatching it through the Skill tool.
+    "commands/implement.md": frozenset({
+        "2a056b78f433d3c497f96745d7019fd2f08c6ee546a98664b091a07f0a669a07",
+    }),
+    "commands/orchestrate-coding-session.md": frozenset({
+        "82f1c0f37d159704b4cf6fb5d3fa823c8052f6b242916357111bd8ed3631126b",
+        "efb4b4dbf089786a8abd4d917f2a09677ab3fe5aa950eb78863b7a59c073201d",
+        "f4c1fa7e5053feac3102697b8f612847f2cfbfb9280ebe29aaee9235970d22f7",
+    }),
+}
 
 
 def emit(
@@ -85,6 +114,7 @@ def emit(
     target_dir: Path,
     dektools_source: Path | None = None,
     dektools_tools: Iterable[str] = (),
+    dektools_only: bool = False,
 ) -> EmitResult:
     """Emit the per-host tree for ``platform`` from ``source_dir`` into
     ``target_dir``.
@@ -93,8 +123,12 @@ def emit(
     selection (ADR-047): exactly the named tools are emitted alongside core,
     and catalogued tools that are *not* named are pruned, so re-running after
     a selection change both adds and removes. Omitting them — or passing an
-    empty selection — leaves the output byte-identical to a core-only emit,
-    which is ADR-047's core self-sufficiency property.
+    empty selection with a toolkit distribution — emits setup only. With no
+    toolkit distribution, core output is unchanged.
+
+    ``dektools_only`` is for a host whose plugin system already delivers core
+    and setup (ADR-060): only the selected tools and their support files are
+    emitted, so nothing shadows the installed plugins.
 
     Returns an :class:`EmitResult` listing the written paths. Raises
     :class:`HarnessUnsupported` (``primitive="install"``) for an unknown
@@ -108,9 +142,12 @@ def emit(
     source_dir = Path(source_dir)
     target_dir = Path(target_dir)
     result = EmitResult(platform=platform)
-    layout(source_dir, target_dir, result)
+    if not dektools_only:
+        layout(source_dir, target_dir, result)
+        _prune_retired_core(result)
     _apply_dektools_selection(
-        platform, dektools_source, dektools_tools, target_dir, result
+        platform, dektools_source, dektools_tools, target_dir, result,
+        include_setup=not dektools_only,
     )
     return result
 
@@ -128,8 +165,8 @@ def _catalogued_tools(dektools_source: Path) -> set[str]:
     path = dektools_source / "tool-catalog.json"
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return set()
+    except (OSError, ValueError) as exc:
+        raise HarnessUnsupported("install", None, f"invalid toolkit catalog: {exc}") from exc
     return {t["name"] for t in payload.get("tools", []) if "name" in t}
 
 
@@ -139,6 +176,7 @@ def _apply_dektools_selection(
     tools: Iterable[str],
     target_dir: Path,
     result: EmitResult,
+    include_setup: bool = True,
 ) -> None:
     """Emit the selected DekTools tools and prune the deselected ones."""
     if dektools_source is None:
@@ -151,72 +189,139 @@ def _apply_dektools_selection(
 
     host_root = target_dir / _HOST_ROOTS[platform]
     catalogued = _catalogued_tools(dektools_source)
-    selected = [t for t in dict.fromkeys(tools) if t in catalogued]
+    requested = set(tools)
+    unknown = requested - catalogued
+    if unknown:
+        raise HarnessUnsupported("install", platform, f"unknown DekTools tools: {sorted(unknown)}")
+    # Setup is never a selectable tool: always emitted on a full tree, never
+    # on a host whose plugin already delivers it — even if an older selection
+    # names it explicitly.
+    requested.discard("setup-dektools")
+    always = {"setup-dektools"} if include_setup else set()
+    selected = sorted((requested | always) & catalogued)
+    # Pre-manifest installations cannot be safely claimed by directory name.
+    # Refuse stale registrations with a concrete recovery path instead of
+    # deleting unknown content or claiming the disabled tool disappeared.
+    catalog_data = json.loads((dektools_source / "tool-catalog.json").read_text())
+    legacy_names = set(catalog_data.get("renamed_tools", {}))
+    manifest = host_root / ".dektools-install.json"
 
-    # Names core just wrote. Core and DekTools ship disjoint skill names
-    # today; if that ever stops being true, pruning must not delete the core
-    # copy just because the name appears in the DekTools catalog.
-    core_written = {
-        p.relative_to(host_root).parts[1]
-        for p in result.written
-        if p.is_relative_to(host_root)
-        and len(p.relative_to(host_root).parts) > 1
-        and p.relative_to(host_root).parts[0] == "skills"
-    }
+    def contained(path: Path) -> None:
+        # Do not follow even in-tree symlinks: another generated path is not
+        # evidence of ownership of its referent.
+        if not path.resolve().is_relative_to(target_dir.resolve()):
+            raise HarnessUnsupported("install", platform, f"unsafe toolkit path: {path}")
+        for part in (path, *path.parents):
+            if part == target_dir:
+                break
+            if part.is_symlink():
+                raise HarnessUnsupported("install", platform, f"symlink toolkit path: {path}")
 
-    for name in sorted(catalogued - set(selected) - core_written):
-        _prune_tool(host_root, name)
-
-    # The ADR-047 preflight (ds-4985i). Every dekspec-required SKILL.md tells
-    # the agent to run the guard at `../../scripts/dependency_guard.py`,
-    # resolved from the skill's own directory. That one relative path holds in
-    # all three layouts — monorepo, packaged plugin, and this emitted tree —
-    # but only if the guard and its catalog are mirrored here at the same
-    # offsets they occupy in the plugin root. Without this the instruction
-    # points at nothing and the guard cannot fire on any consumer install.
-    if selected:
-        _copy_file(
-            dektools_source / "scripts" / "dependency_guard.py",
-            host_root / "scripts" / "dependency_guard.py",
-            target_dir,
-            result,
-        )
-        _copy_file(
-            dektools_source / "tool-catalog.json",
-            host_root / "tool-catalog.json",
-            target_dir,
-            result,
-        )
-    else:
-        # No tools selected means no DekTools surface at all.
-        shutil.rmtree(host_root / "scripts", ignore_errors=True)
-        (host_root / "tool-catalog.json").unlink(missing_ok=True)
-
+    contained(manifest)
+    try:
+        previous = json.loads(manifest.read_text()) if manifest.exists() else {}
+        owned = previous.get("files", {})
+        if not isinstance(owned, dict):
+            raise ValueError("files must be a mapping")
+    except (OSError, ValueError) as exc:
+        raise HarnessUnsupported("install", platform, f"invalid toolkit manifest: {exc}") from exc
+    desired: dict[str, Path] = {}
     for name in selected:
-        src = dektools_source / "skills" / name
-        if src.is_dir():
-            _copy_tree(src, host_root / "skills" / name, target_dir, result)
-        command = dektools_source / "commands" / f"{name}.md"
-        if command.is_file():
-            _copy_file(
-                command, host_root / "commands" / f"{name}.md", target_dir, result
-            )
+        src = dektools_source / ("skills" if name == "setup-dektools" else "tools") / name
+        # Old-source fixtures/distributions can still be emitted during upgrade.
+        if not src.is_dir():
+            src = dektools_source / "skills" / name
+        if not (src / "SKILL.md").is_file():
+            raise HarnessUnsupported("install", platform, f"missing toolkit skill: {name}")
+        for file in sorted(src.rglob("*")):
+            if file.is_file() and "__pycache__" not in file.parts and file.suffix != ".pyc":
+                desired[str(Path("skills") / name / file.relative_to(src))] = file
+    # Support files serve emitted skills; with none emitted they are clutter.
+    support = [str(p.relative_to(dektools_source)) for p in (dektools_source / "scripts").glob("*.py")]
+    for rel in ([*support, "tool-catalog.json"] if selected else []):
+        if (dektools_source / rel).is_file():
+            desired[rel] = dektools_source / rel
 
+    def digest(path: Path) -> str:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
 
-def _prune_tool(host_root: Path, name: str) -> None:
-    """Remove one deselected tool's emitted surface.
-
-    Scoped to the exact paths an emit would have written for that tool, so
-    "non-destructive" holds: a disabled tool loses its surface, and nothing
-    else in the host tree is touched.
-    """
-    shutil.rmtree(host_root / "skills" / name, ignore_errors=True)
-    (host_root / "commands" / f"{name}.md").unlink(missing_ok=True)
+    # Validate the complete change before touching any toolkit content.
+    conflicts = []
+    for legacy in legacy_names:
+        for rel in (f"skills/{legacy}/SKILL.md", f"commands/{legacy}.md"):
+            if (host_root / rel).exists() and rel not in owned:
+                conflicts.append(rel)
+    for name in catalogued - set(selected):
+        rel = f"skills/{name}/SKILL.md"
+        if (host_root / rel).exists() and rel not in owned:
+            conflicts.append(rel)
+    for rel in set(owned) | set(desired):
+        dst = host_root / rel
+        if Path(rel).is_absolute() or ".." in Path(rel).parts:
+            raise HarnessUnsupported("install", platform, f"invalid owned path: {rel}")
+        contained(dst)
+        if dst.exists():
+            current = digest(dst)
+            if rel in desired:
+                if current != owned.get(rel) and current != digest(desired[rel]):
+                    conflicts.append(rel)
+            elif current != owned[rel]:
+                conflicts.append(rel)
+    if conflicts:
+        raise HarnessUnsupported(
+            "install", platform,
+            "preserved modified/unowned toolkit files: " + ", ".join(sorted(conflicts))
+            + "; move these files aside after review, then reapply selection",
+        )
+    for rel in sorted(set(owned) - set(desired)):
+        dst = host_root / rel
+        dst.unlink(missing_ok=True)
+        parent = dst.parent
+        while parent != host_root:
+            try:
+                parent.rmdir()
+            except OSError:
+                break
+            parent = parent.parent
+    hashes = {}
+    for rel, src in desired.items():
+        _copy_file(src, host_root / rel, target_dir, result)
+        hashes[rel] = digest(src)
+    host_root.mkdir(parents=True, exist_ok=True)
+    temp = manifest.with_suffix(".tmp")
+    contained(temp)
+    temp.write_text(json.dumps({"version": 1, "enabled": sorted(requested), "files": hashes}, indent=2) + "\n")
+    temp.replace(manifest)
+    result.written.append(manifest)
 
 
 # --------------------------------------------------------------------------- #
 # write primitives
 # --------------------------------------------------------------------------- #
+def _prune_retired_core(result: EmitResult) -> None:
+    """Remove retired core files left by an earlier install of this host tree.
+
+    The host roots are the parents of the skills roots this emit wrote a
+    ``_lib/`` file into, so only trees DekSpec itself installs are touched. A
+    file whose content matches no shipped version was edited locally: it is
+    kept and reported.
+    """
+    from dekspec.roles.legacy import content_digest
+
+    written = {p.resolve() for p in result.written}
+    roots = {p.parent.parent.parent for p in result.written if p.parent.name == "_lib"}
+    for root in sorted(roots):
+        for rel, shipped in RETIRED_HOST_FILES.items():
+            path = root / rel
+            if not path.is_file() or path.resolve() in written:
+                continue
+            if content_digest(path.read_bytes()) in shipped:
+                path.unlink()
+                result.removed.append(path)
+            else:
+                result.preserved.append(path)
+
+
 def _copy_file(src: Path, dst: Path, target_dir: Path, result: EmitResult) -> None:
     """Copy one file ``src`` -> ``dst`` (overwrite), recording ``dst``.
 
@@ -270,15 +375,22 @@ def _layout_claude(source_dir: Path, target_dir: Path, result: EmitResult) -> No
 
 
 def _layout_codex(source_dir: Path, target_dir: Path, result: EmitResult) -> None:
-    # AGENTS.md is the Codex host marker / entry document.
-    _write_marker(
-        target_dir / "AGENTS.md",
-        "# DekSpec (Codex)\n\n"
-        "DekSpec skill suite installed under `.codex/`. "
-        "Skills live in `.codex/skills/`, commands in `.codex/commands/`.\n",
-        target_dir,
-        result,
-    )
+    # AGENTS.md is the Codex host's entry document. It is created only when
+    # absent — an existing instruction file is never overwritten (ADR-063) —
+    # with an empty DekSpec-owned region that `dekspec aggregate agents-md`
+    # fills without a migration.
+    agents = target_dir / "AGENTS.md"
+    if not (agents.exists() or agents.is_symlink()):
+        _write_marker(
+            agents,
+            "# DekSpec (Codex)\n\n"
+            "DekSpec skill suite installed under `.codex/`. "
+            "Skills live in `.codex/skills/`, commands in `.codex/commands/`.\n\n"
+            "<!-- dekspec:agents-md begin -->\n"
+            "<!-- dekspec:agents-md end -->\n",
+            target_dir,
+            result,
+        )
     root = target_dir / ".codex"
     _copy_skills_and_commands(source_dir, root, target_dir, result)
     _copy_hooks(source_dir, root / "hooks" / "hooks.json", target_dir, result)

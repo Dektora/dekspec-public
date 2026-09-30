@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """L9 check (mechanical): every Verification `cmd:` resolves to something runnable.
 
-The /write-intent skill must confirm, before Accept and hard before --testpass,
-that each command in the Intent's `## Verification` yaml block actually points at
-a runnable script or tool. This script does the *resolvability* check only — it
-NEVER executes the commands (that is --testpass's job, and would be unsafe here).
+The /write-intent skill must confirm, before Accept, that each command in the
+Intent's `## Verification` yaml block actually points at a runnable script or
+tool. This script does the *resolvability* check only — it NEVER executes the
+commands (that is `dekspec intent verify`'s job, ADR-057, and would be unsafe
+here).
 
 Resolution rules (audit-v2 L9):
   * `pytest ...`            -> pytest must be importable / on PATH.

@@ -32,6 +32,8 @@ hand-coordinating parallel agents over a shared repo doesn't scale. Success is a
 green merge from an unattended overnight run. We are NOT building a chat IDE.
 ```
 
+**Roles (ADR-061).** This skill plays DekSpec's Agent Role Specifications; the engineer never selects one. Authoring, revise and resync modes play the **`specifier`** role, audit modes the **`auditor`** role: run `dekspec resource role specifier` or `dekspec resource role auditor` at the start of the mode and follow it (a delegated `*-author` agent loads `specifier` itself). See [`_lib/mode_dispatcher.md`](../_lib/mode_dispatcher.md) §The role each universal mode plays and [`_lib/agent_roles.md`](../_lib/agent_roles.md).
+
 ## Mode Detection
 
 See [`_lib/mode_detection_template.md`](../_lib/mode_detection_template.md) for the canonical parse/routing contract. Default mode: **Fan-Out Mode (default authoring path)** — substantive authoring is delegated to a fresh-context subagent (per bead `ds-di2` / INT-032).
@@ -138,6 +140,8 @@ If the engineer asks to change `Why This Exists` substantively, surface: "Changi
 
 ## Audit Mode (read-only)
 
+_Plays the **`auditor`** role — run `dekspec resource role auditor` first and follow it: deterministic `dekspec validate` / `dekspec audit` output is primary evidence; report findings, change nothing._
+
 Reads `dekspec/system-vision.md`. Reports findings but mutates nothing.
 
 ### Step 1: Parse + schema validation
@@ -149,7 +153,7 @@ Reads `dekspec/system-vision.md`. Reports findings but mutates nothing.
 
 1. **H1 form** — H1 must be `# System Vision: <Name>` or `# <Plain Name>`. If H1 starts with `# Vision Note:`, surface CRITICAL — that form is rejected by the parser as of dekspec v0.38.0+.
 2. **Required sections** — all six load-bearing sections present and non-empty: `preamble` (text between H1 and first H2), `What This Is`, `Who This Is For`, `Why This Exists`, `What Success Looks Like`, `What We Are Not Building`. Surface IMPORTANT for any missing.
-3. **Status coherence** — Status is one of `TODO | DRAFT | PROPOSED | ACCEPTED | LOCKED | DEPRECATED`. Status `LOCKED` while `Modified` is today's date suggests an edit slipped past the lock — surface as IMPORTANT.
+3. **Status coherence** — Status is one of `DRAFT | PROPOSED | ACCEPTED | LOCKED | DEPRECATED` (`TODO` retired by ADR-057; `dekspec migrate` maps it to `DRAFT`). Status `LOCKED` while `Modified` is today's date suggests an edit slipped past the lock — surface as IMPORTANT.
 4. **Amendment Log** — if status is `LOCKED` or `ACCEPTED`, an Amendment Log section should exist and have at least one row recording the most recent status transition. Missing is MINOR.
 5. **Date stamps** — `Created` and `Modified` are present and `YYYY-MM-DD`. Missing or malformed is IMPORTANT.
 

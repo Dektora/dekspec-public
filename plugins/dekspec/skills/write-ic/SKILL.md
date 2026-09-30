@@ -30,6 +30,8 @@ Cut the contract for the boundary WS-007 flags between the model server (provide
 
 **Mode dispatcher pattern:** see [`skills/_lib/mode_dispatcher.md`](../_lib/mode_dispatcher.md) for canonical mode semantics + the universal `--teaching` mode (per ds-int-007 / INT-008).
 
+**Roles (ADR-061).** This skill plays DekSpec's Agent Role Specifications; the engineer never selects one. Authoring, revise and resync modes play the **`specifier`** role, audit modes the **`auditor`** role: run `dekspec resource role specifier` or `dekspec resource role auditor` at the start of the mode and follow it (a delegated `*-author` agent loads `specifier` itself). See [`_lib/mode_dispatcher.md`](../_lib/mode_dispatcher.md) §The role each universal mode plays and [`_lib/agent_roles.md`](../_lib/agent_roles.md).
+
 ## Mode Detection
 
 See [`_lib/mode_detection_template.md`](../_lib/mode_detection_template.md) for the canonical parse/routing contract. Default mode: **Creation Mode**.
@@ -118,6 +120,8 @@ Skill-specific structural checks to surface as Open Issues: LINK-IC-AE (missing 
 
 ## Audit Mode
 
+_Plays the **`auditor`** role — run `dekspec resource role auditor` first and follow it: deterministic `dekspec validate` / `dekspec audit` output is primary evidence; report findings, change nothing._
+
 Read-only quality check on an existing Interface Contract.
 
 1. Read the contract at the provided path
@@ -166,11 +170,7 @@ Arguments: the contract path.
    
    Starting guided review...
    ```
-6.5. **Spec-Reviewer dispatch** (shared `reviewer_mode` path — see [`_lib/reviewer_mode.md`](../_lib/reviewer_mode.md)). This ADDS an adversarial Spec-Reviewer pass alongside the open-issue loop; it does NOT replace it. Perform the shared four-step dispatch:
-   a. Load the `spec-reviewer` ContextSpec: `from dekspec.constraint_compiler.parser import parse_context_spec; context_spec = parse_context_spec("dekspec/context-specs/role-spec-reviewer.md")` (`context_spec["role_identity"] == "spec-reviewer"`).
-   b. Take the `ReviewerIC` artifact this `--review` mode already holds (the contract at the provided path; the caller owns this IO, the dispatcher is IO-free).
-   c. Dispatch through the shared surface: `from dekspec.spec_review.reviewer import Reviewer; findings = Reviewer().dispatch(context_spec, artifact)` (`-> list[Finding]`, per IC-016).
-   d. Present each returned `Finding` to the engineer at its severity (default `P2` — approval-blocking, not auto-merge) as additional review items alongside the open issues below. Do not reshape the records; they route into the AE-003 surface via the `SPEC-REVIEW` audit-rule family (`dekspec.spec_review.reviewer` → `spec_review_rules`).
+6.5. **Spec-reviewer dispatch** — run the shared spec-reviewer dispatch in [`_lib/agent_roles.md`](../_lib/agent_roles.md) §Spec-reviewer dispatch for this Interface Contract: `dekspec resource role spec-reviewer`, one fresh-context sub-agent composed policy → role → procedure → assignment, and its findings presented at their severity (default P2) as additional review items alongside the open issues below. It ADDS an independent pass; it does NOT replace the open-issue loop. If it did not run, say so — never present your own review as the spec-reviewer's.
 6.6. **Interface-depth lens** (adversarial — per **ADR-036** deep-modules principle + **Constitution Article 4**). This is the contract-review half of the depth check; its sibling is the `interface-depth` lens in the brief-review pipeline (`plugins/dekspec/skills/review-ib/lenses.md`). Run it as a non-sycophantic pass over the contract's `## Interface Definition`, `## Error Semantics`, and `## Consistency Guarantees`:
    - **Question:** Is this contract DEEP — a small, simple surface (few operations, lean parameter lists) hiding a substantial amount of implementation behavior — or SHALLOW: a surface nearly as complex as the implementation it fronts, leaking invariants, ordering, and error-handling onto the parties that call it?
    - **Attack patterns** (find a match; do not give a friendly read):
@@ -258,7 +258,7 @@ Promotes a PROPOSED Interface Contract to ACCEPTED after every quality check pas
 
 1. Read the contract at the provided path
 2. Verify current status is PROPOSED. If not, STOP:
-   - TODO, DRAFT → "This contract is still [status]. It must be revised to PROPOSED before it can be accepted."
+   - DRAFT → "This contract is still DRAFT. It must be revised to PROPOSED before it can be accepted."
    - ACCEPTED → "This contract is already ACCEPTED."
    - LOCKED → "This contract is LOCKED. Unlock first with `--unlock` if changes are needed."
 
@@ -327,7 +327,7 @@ See [`_lib/lock_unlock.md`](../_lib/lock_unlock.md) §Unlock for the canonical 4
 - **status_after**: PROPOSED
 - **artifact_index_path**: `dekspec/interface-contract-index.md`
 
-Downstream impact scan (run during Step 2 alongside the reason gate): grep specs and IBs for references to this contract; surface the impact list to the engineer before recording the reason. Cascade reminder to surface in Step 4: downstream specs and IBs may need review, affected IBs may need `/write-ibs --resync <affected IBs>`, and the contract must be re-locked via `/write-ic --lock <path>` when the substantive change settles.
+Downstream impact scan (run during Step 2 alongside the reason gate): grep specs and IBs for references to this contract; surface the impact list to the engineer before recording the reason. Cascade reminder to surface in Step 4: downstream specs may need review; IBs that reference the contract (`→ IC-NNN §Section`) receive the new text at their next `dekspec ib context`, and evidence or verdicts bound to the old text go stale (ADR-057) — revise any IB whose acceptance conditions no longer fit; the contract must be re-locked via `/write-ic --lock <path>` when the substantive change settles.
 
 ## Input
 
@@ -397,7 +397,7 @@ When in doubt, write the contract. The cost of an unnecessary contract is low; t
      2. **maximize-flexibility** — the most configurable/composable surface.
      3. **optimize-the-common-case** — the surface tuned for the dominant call path.
 
-     Then **compare** the three on deep-module criteria — no leaked invariants/ordering, a clear seam, a minimal surface hiding maximal complexity, deep-not-shallow per ADR-036 — and **synthesize** the deepest result (which may borrow from more than one candidate). Record the comparison in the contract's **`## Options Considered / Rejected Rationale`** section: the three designs, why each was kept or rejected, and the deep-module reason the surviving surface is deepest. This is the section the `T-IC-OPTIONS-MISSING` P3 advisory expects populated on a high-blast-radius IC; its quality (genuine divergence of the three designs, an honest comparison, a deepest-synthesis pick) is REVIEW_IB / REVIEW_PR-graded per ADR-026, not a shell predicate.
+     Then **compare** the three on deep-module criteria — no leaked invariants/ordering, a clear seam, a minimal surface hiding maximal complexity, deep-not-shallow per ADR-036 — and **synthesize** the deepest result (which may borrow from more than one candidate). Record the comparison in the contract's **`## Options Considered / Rejected Rationale`** section: the three designs, why each was kept or rejected, and the deep-module reason the surviving surface is deepest. This is the section the `T-IC-OPTIONS-MISSING` P3 advisory expects populated on a high-blast-radius IC; its quality (genuine divergence of the three designs, an honest comparison, a deepest-synthesis pick) is judged by independent review, not a shell predicate.
 3. Present draft for engineer review — engineer should verify parties, shared conventions, error semantics, and consistency guarantees
 
 ## Phase 3: ADR Check

@@ -47,6 +47,8 @@ Secret store is Vault; authn is OIDC. SAST is CodeQL, no DAST yet.
 SP-001 singleton already exists, so this one declares bounded_context: api-gateway.
 ```
 
+**Roles (ADR-061).** This skill plays DekSpec's Agent Role Specifications; the engineer never selects one. Authoring, revise and resync modes play the **`specifier`** role, audit modes the **`auditor`** role: run `dekspec resource role specifier` or `dekspec resource role auditor` at the start of the mode and follow it (a delegated `*-author` agent loads `specifier` itself). See [`_lib/mode_dispatcher.md`](../_lib/mode_dispatcher.md) §The role each universal mode plays and [`_lib/agent_roles.md`](../_lib/agent_roles.md).
+
 ## Mode Detection
 
 See [`_lib/mode_detection_template.md`](../_lib/mode_detection_template.md) for the canonical parse/routing contract. Default mode: **Create Mode** (`--create` is the no-flag default per sibling-skill convention).
@@ -203,6 +205,8 @@ clean, commit the SP at PROPOSED. Add a row to the SP index (if one exists;
 otherwise the index lives implicitly in the directory listing).
 
 ## Analyze Mode
+
+_Plays the **`auditor`** role — run `dekspec resource role auditor` first and follow it: deterministic `dekspec validate` / `dekspec audit` output is primary evidence; report findings, change nothing._
 
 Read-only health check. Runs the same schema-validation predicate that
 `--accept` would run, but mutates nothing.

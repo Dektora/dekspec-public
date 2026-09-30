@@ -4,13 +4,11 @@
 
 DRAFT
 
-*Valid statuses:* `TODO` → `DRAFT` → `PROPOSED` → `ACCEPTED` → `LOCKED` | any stage → `DEPRECATED`
+*Valid statuses:* `DRAFT` → `PROPOSED` → `ACCEPTED` | any stage → `DEPRECATED` (ADR-046: a living reference rests at ACCEPTED; it is revised with cascade, never locked)
 
-- **TODO** — placeholder; needs review and rewrite against current system state
 - **DRAFT** — being written; anything goes
 - **PROPOSED** — complete draft ready for review; engineer has not yet accepted
 - **ACCEPTED** — engineer approved; downstream work may exist; substantive changes allowed but must cascade
-- **LOCKED** — frozen; editorial amendments only; unlock back to PROPOSED for substantive changes
 - **DEPRECATED** — terminal; retired from any stage when the artifact is no longer needed
 
 ## Subtype

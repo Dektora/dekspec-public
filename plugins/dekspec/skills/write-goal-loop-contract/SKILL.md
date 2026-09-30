@@ -7,7 +7,7 @@ reasoning_effort: high
 disable-model-invocation: false
 allowed-tools: Read Write Edit Bash
 argument-hint: [--help] [task or intent to turn into a goal contract]
-related_skills: [orchestrate-coding-session, orchestrate-intent, prototype]
+related_skills: [orchestrate-coding-session, implement, prototype]
 ---
 
 Turn a fuzzy "go do this for a while" into a **goal contract** — a verifiable
@@ -49,8 +49,9 @@ agentic loop. Pick the driver that fits the run:
 - **`/schedule` (cron routine)** — for runs that fire on a clock (nightly,
   hourly) rather than continuously.
 - **`/dekspec:orchestrate-coding-session`** — when the run IS a dekspec construction
-  session (dispatch a ready bead set in isolated worktrees), that skill is the
-  native driver; write-goal-loop-contract just sharpens the objective + stop condition feeding it.
+  session (execute ready IBs — `dekspec ib ready` — in isolated worktrees), that
+  skill is the native driver, and each IB's completion gate (`dekspec ib gate`) is
+  its stop condition; write-goal-loop-contract just sharpens the objective + stop condition feeding it.
 - **Plain agentic turn** — for a sub-one-turn job, just give Claude the contract.
 
 ## When to use it
@@ -226,11 +227,11 @@ At runtime, render the manifest per `_lib/help_mode_template.md` and stop.
 
 - For a task with no verifiable "done" definition — narrow it to one first, or it
   is not a write-goal-loop-contract candidate.
-- To dispatch a dekspec bead set — that is `/dekspec:orchestrate-coding-session`;
+- To execute accepted dekspec IBs — that is `/dekspec:orchestrate-coding-session`;
   write-goal-loop-contract only sharpens the objective + stop condition it runs against.
 
 ## Related
 
 - `/dekspec:orchestrate-coding-session` — the native driver when the run is a dekspec construction session.
-- `/dekspec:orchestrate-intent` — walks one Intent's lifecycle to LOCKED (a governed alternative to a free-form goal loop).
-- `/dekspec:prototype` — when the goal is to explore a design shape disposably rather than drive to a verifiable outcome. Ships in **DekTools** (ADR-047), so it is an optional on-ramp: DekTools may not be installed, or `prototype` may not be enabled in its à-la-carte selection. Core is self-sufficient by design — when the tool is absent, say so plainly and carry on with the contract; never report its absence as a failure.
+- `/dekspec:implement` — drives ready Intents or IBs to integrated, verified completion (a governed alternative to a free-form goal loop, ADR-059).
+- `/prototype` — when the goal is to explore a design shape disposably rather than drive to a verifiable outcome. Ships in **DekTools** (ADR-047), so it is an optional on-ramp: DekTools may not be installed, or `prototype` may not be enabled in its à-la-carte selection. Core is self-sufficient by design — when the tool is absent, say so plainly and carry on with the contract; never report its absence as a failure.

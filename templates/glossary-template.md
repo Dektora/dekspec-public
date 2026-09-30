@@ -1,8 +1,8 @@
 # Domain Glossary
 
-Canonical definitions for every domain term used across this system's artifacts. This is the singleton document at `dekspec/domain-glossary.md`. It is authored continuously — every time `/write-ggc --add-term` adds a term, or the recurrence pipeline auto-promotes a `/write-ggc --log` entry past the threshold, a row lands here.
+Canonical definitions for every domain term used across this system's artifacts. This is the singleton document at `dekspec/domain-glossary.md`. It is authored continuously — every time `/write-glossary` adds a term, or the recurrence pipeline auto-promotes a logged correction (`/write-corrections`) past the threshold, a row lands here.
 
-Read this document before introducing any new domain term in an artifact. If a term you need is missing, run `/write-ggc --add-term` to add it.
+Read this document before introducing any new domain term in an artifact. If a term you need is missing, run `/write-glossary` to add it.
 
 ## Created
 
@@ -35,7 +35,7 @@ Read this document before introducing any new domain term in an artifact. If a t
 
 ## Amendment Log
 
-*Add an entry for every change after the glossary's first row is added. The glossary has no status field — it is a living document that grows continuously via `/write-ggc`.*
+*Add an entry for every change after the glossary's first row is added. The glossary has no status field — it is a living document that grows continuously via `/write-glossary`.*
 
 | Date | Type | Change | Author |
 |------|------|--------|--------|

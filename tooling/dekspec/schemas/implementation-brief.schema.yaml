@@ -45,7 +45,14 @@ properties:
     # `review_grandfathered: bool` field (MSN-017 two-tier review).
     # Pre-existing IBs are stamped review_grandfathered=true by the
     # IU-2 migration (ds-20su).
-    const: "0.3.0"
+    # Bumped 0.3.0 → 0.4.0 by ADR-055/056/057 (disciplined delegation):
+    # status enum reduced to decision states; `review_grandfathered`
+    # replaced by the explicit `authority_policy`; contract fields added
+    # (parent, outcome, rationale, scope, obligations, protected_surfaces,
+    # acceptance, acceptance_assets, implementation_hypothesis,
+    # environment_prerequisites). Persisted 0.3.0 IR migrates via
+    # `tooling/dekspec/migrations/lifecycle_decisions.py`.
+    const: "0.4.0"
 
   id:
     description: Canonical IB identifier derived from filename (e.g., IB-001).
@@ -58,15 +65,13 @@ properties:
     minLength: 1
 
   status:
-    description: 'IB status. The lifecycle directory (queued/active/completed) is reflected in source.path; status is what the IB body declares.'
-    # Extended at INT-102 IU-1 (ds-2zoj) — MSN-017 two-tier review pipeline.
-    # New states: REVIEW_IB (IB queued for IB-level review),
-    # REVIEW_IB_FAIL (IB review found a blocking gap),
-    # REVIEW_PR (PR queued for PR-level review),
-    # REVIEW_PR_FAIL (PR review found a blocking gap),
-    # TESTFAIL (CI / pytest regressed).
-    enum: [TODO, DRAFT, PROPOSED, ACCEPTED, QUEUED, ACTIVE, COMPLETED,
-           REVIEW_IB, REVIEW_IB_FAIL, REVIEW_PR, REVIEW_PR_FAIL, TESTFAIL]
+    description: >-
+      IB governed status (ADR-057): decisions only. PROPOSED requests
+      authorization; ACCEPTED authorizes execution and takes the acceptance
+      baseline; COMPLETE is written only by `dekspec ib complete` after the
+      evidence gate passes. Ownership, progress, attempts, reviews and
+      blockers live in the execution record, not here.
+    enum: [DRAFT, PROPOSED, ACCEPTED, COMPLETE, SUPERSEDED, DEPRECATED]
 
   audit_profile:
     description: >-
@@ -77,18 +82,126 @@ properties:
     default: "v1"
     pattern: "^v[0-9]+$"
 
-  review_grandfathered:
+  authority_policy:
     description: >-
-      True iff this IB pre-dates the MSN-017 two-tier review pipeline
-      (INT-102) and is therefore exempt from REVIEW_IB / REVIEW_PR
-      gating. Stamped by the IU-2 migration (ds-20su) on pre-existing
-      IBs. New IBs authored after INT-102 lock leave this field
-      false (the default), meaning they MUST pass review.
-      Extracted from the IB header via
-      `**Review grandfathered:** true|false`; absent meta-line means
-      false.
-    type: boolean
-    default: false
+      ADR-055 authority policy. `delegated`: binding obligations, acceptance
+      conditions and a revisable implementation hypothesis. `legacy`: the
+      ADR-049-era restrictive meaning (Files to Modify is an allowlist;
+      escalate on any unlisted file). Absent header line parses as legacy.
+    enum: [legacy, delegated]
+
+  parent:
+    description: Optional context parent (Intent, Working Spec or Mission). Not required (ADR-056).
+    type: object
+    additionalProperties: false
+    required: [id]
+    properties:
+      id:
+        type: string
+        pattern: "^(?:INT|WS|MSN)-\\d{3,}$"
+
+  spec_impact:
+    description: >-
+      Governing specifications this change must update (ADR-056 §4). Delivery
+      verification fails unless each named artifact is modified in the delivery.
+    type: array
+    items:
+      type: string
+      pattern: "^(?:(?:ADR|IC|WS|AE|SP)-\\d{3,}|CONSTITUTION|SYSTEM-VISION)$"
+
+  outcome:
+    description: The observable state true when the IB is complete.
+    type: string
+
+  rationale:
+    description: Why the change is wanted (enough to review without a parent).
+    type: string
+
+  scope:
+    description: Allowed change surface (binding boundary). Globs; a change outside is a scope expansion.
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [glob]
+      properties:
+        glob: {type: string, minLength: 1}
+        note: {type: string}
+
+  obligations:
+    description: >-
+      Binding obligations. A reference names the canonical home (ADR/IC/WS/AE/SP/
+      INT/MSN/IB, CONSTITUTION, SYSTEM-VISION) and optional section; a local
+      obligation is stated here because this IB is its canonical home.
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [id]
+      properties:
+        id: {type: string, pattern: "^O-\\d+$"}
+        ref: {type: string, pattern: "^(?:(?:ADR|IC|WS|AE|SP|INT|MSN|IB)-\\d{3,}|CONSTITUTION|SYSTEM-VISION)$"}
+        section: {type: string}
+        note: {type: string}
+        local: {type: boolean}
+        text: {type: string}
+
+  protected_surfaces:
+    description: Paths or `path::symbol` that must not be modified, renamed or deleted; stronger than scope.
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [surface]
+      properties:
+        surface: {type: string, minLength: 1}
+        reason: {type: string}
+
+  acceptance:
+    description: Acceptance conditions, each verified by exactly one of pytest nodes, a command, or an independent review.
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [id, condition, verify]
+      properties:
+        id: {type: string, pattern: "^AC-\\d+$"}
+        condition: {type: string, minLength: 1}
+        timeout: {type: integer, minimum: 1}
+        verify:
+          type: object
+          additionalProperties: false
+          minProperties: 1
+          maxProperties: 1
+          properties:
+            pytest:
+              type: array
+              minItems: 1
+              items: {type: string, minLength: 1}
+            command: {type: string, minLength: 1}
+            review: {type: string, minLength: 1}
+
+  acceptance_assets:
+    description: Additional protected acceptance assets (fixtures, golden data) beyond the named test files.
+    type: array
+    items: {type: string, minLength: 1}
+
+  implementation_hypothesis:
+    description: Revisable starting guesses (likely files, approach, reuse). Not binding.
+    type: array
+    items: {type: string}
+
+  environment_prerequisites:
+    description: Live services/tools needed at execution; probes run at `dekspec ib start`.
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [prerequisite, probe, required]
+      properties:
+        prerequisite: {type: string}
+        probe: {type: string}
+        required: {type: boolean}
 
   source:
     type: object

@@ -39,7 +39,7 @@ Run these **read-only** captures and incorporate every relevant signal:
 Before drafting, do the legwork the operator would otherwise have to do:
 
 - **Dupe search via GitHub**: `gh search issues "<topic keyword>" --repo Dektora/dekspec --state open --limit 5`. If any open issue's title overlaps materially with the proposed topic, surface the candidate(s) in the preview as `## Related → potential duplicate` and **invite the operator to choose** between filing-anyway / piggybacking on the existing issue (via the preview gate in step 5).
-- **Related LOCKED dekspec/ artifacts**: `Grep` under `dekspec/intents/`, `dekspec/architecture-elements/`, `dekspec/adrs/` for the topic keyword. Cite any matches by ID + one-line gloss in `## Related`.
+- **Related dekspec/ artifacts**: `Grep` under `dekspec/intents/`, `dekspec/architecture-elements/`, `dekspec/adrs/` for the topic keyword. Cite any matches by ID + one-line gloss in `## Related`.
 - **Related CHANGELOG entries**: `Grep` `CHANGELOG.md` for the topic keyword. Cite the most-recent matching `## [vX.Y.Z]` heading + one-liner so the issue records "this surface last changed in vX.Y.Z".
 - **Related open `br` beads**: `br list --status open` (parse, filter for topic-keyword matches in title/body). If any match, surface them in `## Related` so the operator can decide whether the GitHub issue is even needed (a `br` bead may already cover it for in-repo work).
 - **Related recent commits**: pick the 1–3 most-recent commits from `git log --oneline -20` whose subject matches the topic. Cite them by short SHA + subject.
@@ -208,7 +208,7 @@ On success, `gh issue create` prints the issue URL on stdout. Surface that URL o
 
 ## When NOT to use
 
-- For **in-repo, claim-and-execute** work — use `br create` and the bead workflow per `CLAUDE.md` § Issue tracking.
+- For **in-repo backlog** work — file an issue or governance bead with `br create` per `CLAUDE.md` § Issue tracking; a code change is executed as an IB (`dekspec ib new`, ADR-056), not a bead.
 - For **library-self-spec changes** (anything under `dekspec/`) — use `/dekspec:write-intent` instead. The issue surface is for *reports*, not authoring.
 - For **DIV-NNN handoffs from consumer repos** — those flow upstream as `br` beads with `--labels div-handoff,dekspec` per `CLAUDE.md` § Cross-repo discipline.
 

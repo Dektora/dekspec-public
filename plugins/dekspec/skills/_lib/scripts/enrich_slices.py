@@ -26,8 +26,8 @@ The companion of the `_lib/discover_slices.md` prose helper: the prose is the
 operator-facing routine, this script is the mechanism. Importable
 (`enrich_and_write(repo)`) for tests, and CLI-runnable for the prose to shell.
 
-Style mirrors `resolve_bead_context.py`: argparse, `cmd_*` dispatcher, `int`
-return codes, `main(argv)` entry point. Stdlib + the dekspec engine only.
+Style: argparse, `cmd_*` dispatcher, `int` return codes, `main(argv)` entry
+point. Stdlib + the dekspec engine only.
 """
 
 from __future__ import annotations

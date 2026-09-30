@@ -2,11 +2,10 @@
 
 ## Status
 
-TODO
+DRAFT
 
-*Valid statuses:* `TODO` → `DRAFT` → `PROPOSED` → `ACCEPTED` → `LOCKED` | any stage → `DEPRECATED`
+*Valid statuses:* `DRAFT` → `PROPOSED` → `ACCEPTED` → `LOCKED` | any stage → `DEPRECATED`
 
-- **TODO** — placeholder; needs review and rewrite against current system state
 - **DRAFT** — being written; anything goes
 - **PROPOSED** — complete draft ready for review; engineer has not yet accepted
 - **ACCEPTED** — engineer approved; downstream work may exist; substantive changes allowed but must cascade
@@ -27,13 +26,13 @@ TODO
 
 ## Silent Failure Domain(s)
 
-[Which of the five domains this boundary touches. A contract spanning two domains is a signal to review whether it should be split.]
+[Which domains this boundary can fail in *silently* — wrong results without an error. A contract spanning several is a signal to review whether it should be split. The list is neutral and open: replace or extend it with your project's own domains (or override this template in `dekspec/templates/`).]
 
-- [ ] Transformer internals (position IDs, injection layer, KV cache)
-- [ ] Numerical precision (quantization, wave compression, serialization round-trips)
-- [ ] GPU multi-process isolation (device assignment, process crash recovery)
-- [ ] Graph consistency (shadow graph / Neo4j flush, phantom nodes)
-- [ ] Timeline coherence (topic segmentation, tier assignment, decay, shadow timeline / PostgreSQL)
+- [ ] Numerical precision (rounding, serialization round-trips, lossy encodings)
+- [ ] Concurrency and process isolation (races, partial failure, crash recovery)
+- [ ] Data consistency across stores (write ordering, flush, phantom or orphaned records)
+- [ ] Time and ordering (clocks, time zones, sequencing, idempotency)
+- [ ] Resource limits (memory, quotas, rate limits, timeouts)
 
 ## Governing ADRs
 
@@ -87,7 +86,7 @@ AE-NNN: [Title]
 
 ## Shared Conventions
 
-[Conventions that apply across all operations in this contract: serialization format, content types, dtype handling, error response structure, tenant isolation rules.]
+[Conventions that apply across all operations in this contract: serialization format, content types, numeric types, error response structure, tenant isolation rules.]
 
 - [Convention 1]
 - [Convention 2]
@@ -102,7 +101,7 @@ AE-NNN: [Title]
 - **Consistency contract:** warm/write/flush/read phases with data format and ordering guarantees
 - **In-process adapter:** function signatures with input/output contracts, preconditions, postconditions
 
-Use tables for structured data. Be specific about types, shapes, dtypes, and ordering guarantees.]
+Use tables for structured data. Be specific about types, shapes, units and ordering guarantees.]
 
 ---
 
@@ -114,13 +113,12 @@ Use tables for structured data. Be specific about types, shapes, dtypes, and ord
 |------------|-------|-----------|
 | [constraint name] | [value or `n/a` with justification] | [why this value, what breaks at this boundary if it drifts] |
 
-[*Example rows — replace or remove. Originally drawn from a tensor-on-the-wire ML project; substitute your project's cross-cutting constraints.*
+[*Example rows — replace or remove; they only illustrate the kinds of constraint that belong here.*
 
-- *CUDA device — device or n/a — justification if n/a*
-- *Tensor dtype on wire — dtype*
-- *Tensor dtype at rest — dtype*
-- *Serialization format — JSON dict / torch.save / protobuf / n/a*
-- *Precision threshold — max error or n/a*]
+- *Hardware / device placement — value or n/a — justification if n/a*
+- *Wire format — JSON / protobuf / n/a*
+- *Numeric precision — max error or n/a*
+- *Data-store path — which store each side reads and writes*]
 
 ## Error Semantics
 

@@ -1,86 +1,59 @@
 ---
 name: orchestrate-coding-session
-description: Dispatch unblocked beads to parallel sub-agents in isolated worktrees, then collect results and land the plane.
+description: Execute accepted Implementation Briefs directly — select ready IBs, dispatch each to a fresh-context sub-agent whose prompt is built from `dekspec ib context`, drive counted attempts to recorded evidence, verify the delivery head, and hand off to review and landing.
 mode: lite
 model: claude-opus-4-7
 reasoning_effort: high
 disable-model-invocation: true
 allowed-tools: Read Bash Agent
-argument-hint: [<ib-path-or-id> | --confirm-dispatch | --dry-run | --help] [optional engineer guidance]
-related_skills: [write-code-beads, write-tests, orchestrate-intent, review-pr]
+argument-hint: [<IB-NNN> | <INT-NNN> | --confirm-dispatch | --dry-run | --help] [optional engineer guidance]
+related_skills: [write-ibs, write-tests, write-evals, implement, review-pr, land-intent]
 ---
 
-Orchestrate a parallel coding session across multiple beads.
+Execute accepted IBs directly (ADR-056): no code beads, no bead claiming. This is the construction phase on its own; to carry ready work all the way through review, integration and completion without further prompts, use `/dekspec:implement` (ADR-059). Its driver renders builder and reviewer prompts in core from the same `dekspec ib context` packet this skill pastes, so both paths hand workers one contract. The IB is the work contract, its execution record (`.dekspec/execution/<IB>/`) holds ownership, plan, attempts, deviations, blockers and evidence, and `dekspec ib …` is the only interface to it. This skill runs the work and produces evidence; it never records a review verdict and never completes an IB.
 
-> **Fresh-context dispatch — structural, not advisory.** Orchestration is exactly the kind of work where stale conversation context is dangerous: it decides which beads to claim and how to reconcile results, and a polluted context window can anchor those decisions on phantom state. This skill therefore does not *ask* the operator to `/clear` before continuing — it delegates its orchestration body into the `dekspec:coding-orchestrator` subagent. Being invoked as a subagent **is** the fresh context: the subagent carries none of this session's prior history, so "dispatch runs in fresh context" becomes a structural guarantee of the dispatch path rather than a prose warning the operator can decline. The `dekspec:coding-orchestrator` subagent carries the full Phase 1-5 dispatch contract authoritatively; this skill resolves the inputs (the claimed bead set) and hands them to that subagent. The Phase sections below are the authoritative dispatch logic the subagent adopts.
+> **Fresh-context dispatch — structural, not advisory.** Orchestration decides which IBs to run and how to reconcile results; a stale conversation can anchor those decisions on phantom state. This skill therefore delegates its body to the `dekspec:coding-orchestrator` subagent — being invoked as a subagent **is** the fresh context. This skill resolves the inputs (the IB set and the delivery worktree) and hands them over; the sections below are the contract the subagent follows.
 
 ## Starter Prompt
 
 ```prompt
 /dekspec:orchestrate-coding-session INT-123
 
-Dispatch INT-123's ready bead set in parallel worktrees. Auto-dispatch is
-fine — show me the plan, then land the plane.
+Run INT-123's ready IBs in parallel worktrees. Show me the plan, then go.
 ```
 
 ## Mode Detection
 
-Parse `$ARGUMENTS` for flags. If `--help` is present, skip to **Help Mode**. Otherwise:
+Parse `$ARGUMENTS`. If `--help` is present, skip to **Help Mode**. Otherwise:
 
-- If a positional IB path/ID or Intent ID (e.g. `dekspec/impl-briefs/IB-123-*.md` or `IB-123` or `INT-123`) is provided as the first positional argument in `$ARGUMENTS`, extract the value into shell var `$IB_ARG` and strip it from `$ARGUMENTS` before proceeding.
-- Strip any other flags (`--confirm-dispatch`, `--dry-run`) and proceed.
-
-If `$IB_ARG` was provided, resolve it to a parent Intent id so Phase 1 can filter the ready set to that Intent's beads:
-```bash
-if [[ "$IB_ARG" == INT-* ]]; then
-  FILTER_INTENT_ID="$IB_ARG"
-else
-  FILTER_INTENT_ID=$(.venv/bin/python -c "
-import sys
-from pathlib import Path
-from dekspec.cli import _resolve_ib_to_intent
-try:
-    _, intent_id = _resolve_ib_to_intent(sys.argv[1], Path('.'))
-    print(intent_id)
-except Exception as e:
-    sys.exit(1)
-" "$IB_ARG")
-  if [ -z "$FILTER_INTENT_ID" ]; then
-    echo "STOPPED — could not resolve IB/Intent argument $IB_ARG."
-    exit 1
-  fi
-fi
-```
-
-If `$FILTER_INTENT_ID` is set, Phase 1 still runs `br ready` but keeps only candidates whose resolved parent Intent matches it (see Phase 1 §Step 1). If `$IB_ARG` is absent, Phase 1 dispatches the full `br ready` set.
+- `--confirm-dispatch` — present the dispatch plan and wait for approval before dispatching.
+- `--dry-run` — select work and present the plan; start no run and dispatch nothing.
+- A first positional `IB-NNN` (or IB path) or `INT-NNN` narrows **Select work**; anything else is engineer guidance.
 
 ## Help Mode
 
-See [`_lib/help_mode_template.md`](../_lib/help_mode_template.md) for the canonical Help rendering contract. Manifest for this skill:
+See [`_lib/help_mode_template.md`](../_lib/help_mode_template.md). Manifest:
 
 ```yaml
 skill_name: "/orchestrate-coding-session"
-one_line:   "Orchestrate parallel bead execution in isolated worktrees"
+one_line:   "Execute accepted IBs directly in isolated worktrees, to recorded evidence"
 modes:
-  - { flag: "--confirm-dispatch", args: "", description: "Pause after the dispatch plan and wait for engineer approval before launching sub-agents. Default is auto-dispatch (plan shown for transparency only)." }
-  - { flag: "--dry-run", args: "", description: "Run Phase 1 (discover, claim, dependency check) and present the dispatch plan, but do not launch any sub-agents. Use for pre-flight planning." }
+  - { flag: "--confirm-dispatch", args: "", description: "Pause after the dispatch plan for engineer approval. Default: show the plan and proceed." }
+  - { flag: "--dry-run", args: "", description: "Select work and present the dispatch plan; start no run and launch no sub-agent." }
   - { flag: "--help", args: "", description: "Show this help message." }
 examples:
   - "/orchestrate-coding-session"
-  - "/orchestrate-coding-session INT-123"
-  - "/orchestrate-coding-session --confirm-dispatch"
+  - "/orchestrate-coding-session IB-214"
+  - "/orchestrate-coding-session INT-123 --confirm-dispatch"
   - "/orchestrate-coding-session --dry-run"
-  - "/orchestrate-coding-session \"only dispatch BEAD-42 and BEAD-43\""
-  - "/orchestrate-coding-session --confirm-dispatch \"focus on the injection pipeline beads\""
-  - "/orchestrate-coding-session --help"
 extra_sections:
   - heading: "WORKFLOW"
     body:
-      - "Phase 1: Discover & claim unblocked beads, check dependencies"
-      - "Phase 2: Dispatch sub-agents in parallel worktrees"
-      - "Phase 3: Collect results, merge worktree branches"
-      - "Phase 4: Land the plane — close beads, run tests, file follow-ups"
-      - "Phase 5: Check for newly unblocked work"
+      - "1. Select ready IBs (dekspec ib ready | named IB | an Intent's child IBs)"
+      - "2. Per IB: dekspec ib start --owner <builder>; prompt = dekspec ib context"
+      - "3. Builder: investigate → ib plan → counted attempts → ib verify"
+      - "4. Merge, dekspec delivery verify at the head"
+      - "5. Hand off: /dekspec:review-pr → dekspec ib complete → /dekspec:land-intent"
 ```
 
 At runtime, render the manifest per `_lib/help_mode_template.md` and stop.
@@ -89,378 +62,173 @@ At runtime, render the manifest per `_lib/help_mode_template.md` and stop.
 
 $ARGUMENTS
 
-## Flags
+## Select work
 
-- `--confirm-dispatch` — Pause after presenting the dispatch plan and wait for engineer approval before dispatching sub-agents. Without this flag, the dispatch plan is displayed for transparency and execution proceeds immediately.
-- `--dry-run` — Run Phase 1 only. Discover, claim, and verify dependencies, then present the dispatch plan and stop. No sub-agents are launched. Claimed beads are unclaimed before stopping. Use for pre-flight planning and dependency verification.
+- **No argument** — `dekspec ib ready --json`: accepted delegated IBs whose dependencies are COMPLETE and that no run owns.
+- **`IB-NNN`** — that IB. `dekspec ib status IB-NNN` shows its run state: not started, running (resume it with its recorded owner) or blocked.
+- **`INT-NNN`** — the Intent's child IBs, i.e. the IBs whose `**Parent:**` is the Intent (`grep -rl '^\*\*Parent:\*\* INT-NNN' dekspec/impl-briefs/`). Run the ready ones; report the rest with the reason.
 
-> **`--package` mode retired (MSN-016 / ADR-024).** The content-addressed Package builder (`dekspec package build`) was removed with the executor/factory abstraction. The skill's dispatch sources are now only: a positional IB/Intent id (→ `br ready` filtered to that Intent's beads) or no argument (→ the full `br ready` set).
+Not executable here — report and skip, never work around:
 
-## Pre-Flight Checks
+- **Legacy IB** (`**Authority policy:** legacy`) — it keeps its ADR-049 meaning (ADR-055), and `dekspec ib start` refuses it. Adopt it first (`/dekspec:write-ibs --adopt`, then `dekspec ib adopt`); in-flight legacy bead work moves into the record with `dekspec ib import-beads`.
+- **Not ACCEPTED** — authorization is `dekspec ib accept` (ADR-057), not this skill's decision. Acceptance tests are mandatory before it, in the one authoring order (ADR-062): write the IB (`dekspec ib lint`, `dekspec ib propose`) → `/dekspec:write-tests` → `/dekspec:review-ib` (the oracle review; a `Floor reviewed:` row) → `dekspec ib accept`. A pre-start re-baseline (`dekspec ib baseline`) after the tests change repeats the oracle review and records a new row first.
+- **Acceptance floor incomplete** — `dekspec implement ready IB-NNN` reports `acceptance-tests-missing` (a named acceptance node or declared asset is not in the baseline) or `acceptance-floor-unreviewed` (no `Floor reviewed:` row names the baseline digest). The IB was authorized out of that order and `/dekspec:implement` refuses it. Report it with the fix and skip it unless the engineer directs otherwise. A builder never creates a missing acceptance test: anything added after the baseline goes through `dekspec ib amend` and is an attention item the completing reviewer oracle-judges before acknowledging it (ADR-057, ADR-062).
+- **Dependencies incomplete** — an IB whose `**Depends on:**` IBs are not COMPLETE is not ready and `ib start` refuses it. It becomes ready once its dependencies pass review and `dekspec ib complete`, so a chain of dependent IBs alternates execution and review.
+- **Blocked** — a recorded blocker refuses new attempts until the operator records `dekspec ib unblock --decision …`.
 
-Before doing anything else, verify all quality support files exist:
+Present the plan and stop here under `--dry-run`:
 
-1. Run `br ready --json` to get the candidate bead list.
-2. For each bead, run `../_lib/scripts/resolve_bead_context.py <bead-id>` and read `ib_path` from the JSON output (the script resolves the bead's `external_ref`, stripping any `:suffix` qualifier such as `IB-037:phase-2`).
-3. Run `scripts/preflight_quality_gates.py <IB> [<IB> ...]` with the resolved IB paths. The script reads each IB, collects every referenced checklist / test / eval file path from the Quality Checklists, Files to Modify, and Acceptance Criteria sections, and verifies each exists on disk. A referenced file that is missing but listed in some IB's `## Files to Modify` table is a greenfield **deliverable** (a bead in the set creates it) — reported under `claimed`, never a STOP. It returns JSON `{missing, claimed, present, checked, ok}`.
-4. Surface stderr on non-zero exit. The script exits **1** only when a referenced quality file is missing **and** claimed by no IB in the set (the STOP condition), and **2** when an IB path itself cannot be read. On exit 1 — STOP. Report the `missing` list:
+```
+DISPATCH PLAN — delivery <branch> (<worktree>)
+  IB-214  <title>  scope: <globs>  → builder-IB-214   parallel
+  IB-215  <title>  scope: <globs>  → builder-IB-215   after IB-214 (overlapping scope)
+  skipped: IB-216 (legacy — adopt first), IB-217 (depends on IB-214)
+```
 
-  "⚠️ Quality gate files missing and unclaimed by any bead — session cannot proceed safely:
-  - [path/to/missing/file.md]
-   These files are referenced by the IB, are not on disk, and no bead in the set claims to create them. Add them before running this session."
+## Delivery and session prelude
 
-Do NOT proceed past this point until the script exits 0 (all referenced quality files exist).
+One pull request = one worktree = one delivery unit (ADR-048, ADR-058): an IB, an Intent's IBs, or a Mission cluster. Work in that delivery worktree (`/dekspec:use-worktrees` creates one); record `PRE_SESSION_COMMIT=$(git rev-parse HEAD)`.
 
-5. Record the current HEAD for use in Phase 4:
-  ```bash
-   PRE_SESSION_COMMIT=$(git rev-parse HEAD)
-  ```
-
-## Session Lifecycle Wiring
-
-Per WS-010 (MSN-002 orchestration plane), this skill opens a `dekspec session` on entry and closes it on exit, so off-spec (vibecoding) drift is recorded against a single session for the dispatch round. The session is opened **after** all Pre-Flight Checks STOP conditions clear (quality-gate files present, agent-mail reachable) — early-exit paths never leave a half-opened session.
-
-### Prelude: open session
-
-After Pre-Flight Checks pass and before Phase 1, detect any outer session and open a new one if needed:
+Bind the commit-time scope guard: `dekspec session start IB-NNN` makes the pre-commit `vibecoding-check` refuse staged files outside that IB's Scope or on its Protected Surfaces. Bind the delivery worktree to its single IB, or to the Intent for a multi-IB delivery. Session state is per worktree, so each builder binds its own worktree to its own IB. Never nest:
 
 ```bash
-# Resolve SESSION_BIND_ID: if all claimed beads share one parent Intent, use
-# INT-NNN; else use the first claimed bead's id. session_lifecycle.start()
-# routes ^INT-\d{3,}$ → bound_intent_id, else → bound_bead_id.
-
-# Detect outer session via the CLI's machine-readable status envelope.
+BIND_ID=IB-214   # or INT-123 for a multi-IB delivery
 STATUS_JSON=$(dekspec session status --machine-readable 2>/dev/null || echo '{"active":false}')
-OUTER_SESSION_PRESENT=0
-OUTER_BOUND_TO=""
-if echo "$STATUS_JSON" | python -c "import sys,json; d=json.load(sys.stdin); sys.exit(0 if d.get('active') else 1)"; then
-  OUTER_BOUND_TO=$(echo "$STATUS_JSON" | python -c "import sys,json; d=json.load(sys.stdin); print(d.get('bound_intent_id') or d.get('bound_bead_id') or '')")
-  if [ "$OUTER_BOUND_TO" = "$SESSION_BIND_ID" ]; then
-    # Outer session bound to the same target — defer to it.
-    OUTER_SESSION_PRESENT=1
-  else
-    # Outer session bound to a different target — refuse to nest.
-    echo "STOPPED — outer session active for $OUTER_BOUND_TO, refusing to nest under $SESSION_BIND_ID. End the outer session first (\`dekspec session end\`)."
-    exit 1
-  fi
-fi
-if [ "$OUTER_SESSION_PRESENT" = "0" ]; then
-  dekspec session start "$SESSION_BIND_ID" --branch "$(git branch --show-current)"
+OUTER=$(echo "$STATUS_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print((d.get('bound_intent_id') or d.get('bound_bead_id') or '') if d.get('active') else '')")
+if [ -z "$OUTER" ]; then
+  dekspec session start "$BIND_ID" --branch "$(git branch --show-current)"
+  OPENED_SESSION=1
+elif [ "$OUTER" != "$BIND_ID" ]; then
+  echo "STOPPED — active session bound to $OUTER; end it first (dekspec session end)."; exit 1
 fi
 ```
 
-### Epilogue: report off-spec drift, then close session
+At the end, run `dekspec session report` (off-spec drift), then `dekspec session end --reason "/orchestrate-coding-session complete"` only if this skill opened the session.
 
-At **SESSION COMPLETE** (end of Phase 5), first run `dekspec session report` so the operator sees any off-spec (vibecoding) drift recorded during the session (MSN-009) — the report runs against whatever session is active, whether this skill opened it or deferred to an outer one. Then close the session **only if this skill opened it** (skip when an outer session was deferred to):
+## Dispatch
+
+Parallelism is the orchestrator's judgment — there is no universal sizing (ADR-056). Independent IBs whose Scope globs do not overlap can run at once, each in an isolated worktree (`Agent` with `isolation: "worktree"`, all launched in one message). Overlapping IBs run in sequence. One IB may also be split: its builder commits a plan with internal tasks, and task agents claim them with `dekspec ib task IB-NNN claim T-x`.
+
+Per IB, in the delivery worktree:
+
+1. `DEKSPEC_ACTOR=builder-IB-NNN dekspec ib start IB-NNN --owner builder-IB-NNN`. It checks status and dependencies, binds the generated context, and runs the IB's Environment Prerequisites probes. Exit 3 means blocked: a required prerequisite is unavailable. Report it and do not dispatch. Give each builder its own actor name: the review verdict must come from an identity outside the run's owner and attempt actors (ADR-057).
+2. Commit the new record (`git add .dekspec/execution/IB-NNN && git commit -m "IB-NNN: start run"`) so the builder's worktree inherits the run.
+3. `dekspec ib context IB-NNN` — the generated packet: precedence, binding obligations with canonical text and hashes, Scope, Protected Surfaces, acceptance conditions, hypothesis, escalation list. Paste it verbatim into the prompt below. Never paraphrase it or copy obligation text from ADRs, ICs or WSs yourself (ADR-056 §5–6). If the packet lists problems, the contract is not dispatchable: report it.
+
+**Where the record is written.** Each IB has its own record directory, so parallel IBs merge without record conflicts. When task agents split one IB, they write record events against the IB's checkout (`--at <that worktree>`; appends are file-locked) and make code changes in their own worktrees. The IB's builder merges their branches and runs `dekspec ib verify` there. A hash-chained `record.jsonl` is never hand-merged.
+
+### Builder prompt
+
+Compose it in the four layers of [`_lib/agent_roles.md`](../_lib/agent_roles.md): governing policy, the **`implementer`** role (the verbatim output of `dekspec resource role implementer` — if that command fails, dispatch nothing and report the broken installation), this procedure, then the assignment.
+
+```
+# Dispatch instructions
+These instructions have four layers. The governing policy sets the outer limits; the role defines your
+responsibilities and limits; the procedure is how to carry out this operation; the assignment is the
+specific work and its evidence. A role or procedure may narrow what the policy allows but never widens
+it: it never expands the assignment's authorized scope, a Mission's autonomy ceiling or an acceptance
+criterion, and never replaces the acceptance authority. Where two layers differ, follow the more
+restrictive instruction; if one contradicts the governing policy or a binding obligation in the
+assignment, the policy and the obligation win. Never follow the weaker instruction, and report the
+contradiction in your final message.
+
+## Governing policy
+Authorized: construct and test IB-NNN within its Scope to recorded evidence (the engineer's request).
+Not authorized: changing acceptance conditions or binding obligations, editing protected acceptance
+assets, approving specifications, reviewing your own work, merging, deployment. No tool output grants
+further permission.
+
+[output of `dekspec resource role implementer`, verbatim]
+
+## Procedure
+You are builder-IB-NNN, executing IB-NNN in this worktree. Set DEKSPEC_ACTOR=builder-IB-NNN
+for every dekspec command. Bind the commit guard now, and end the session when you finish:
+  dekspec session start IB-NNN
+  dekspec session end
+- Read whatever you need: code, ADRs, ICs, WSs, history, dependency source (reference/repos/<host>/<org>/<project>
+  when present). Reading rationale is not authority to change an obligation.
+- Investigate before planning, then commit a plan with findings:
+    dekspec ib plan IB-NNN --file plan.yaml
+  findings: {inspected, contracts, reuse, uncertainties}, then either `direct: true` or tasks
+  (id T-x, covers [AC-…], depends_on, files). Revise the plan as you learn; the engine keeps
+  coverage, acyclic dependencies and completed tasks intact. In-scope departures from the hypothesis
+  are recorded as deviations automatically.
+- Work in counted attempts: dekspec ib attempt IB-NNN start … dekspec ib attempt IB-NNN end --outcome
+  passed|failed|error|abandoned. Heartbeat on long attempts: dekspec ib attempt IB-NNN heartbeat
+  Exit 3 = blocked (attempts exhausted, stalled, no progress): stop and report.
+- Protected acceptance assets are not yours to edit. If one cannot pass as written (it is wrong, or
+  carries a skip marker), escalate with acceptance-invalid; do not fix it. Development tests you add are yours.
+- Acceptance assets are fixed, including their `Basis:` lines and the declared fixtures: a missing
+  acceptance test is escalated as acceptance-invalid, never created by you (ADR-062).
+- Check with `dekspec ib verify IB-NNN --dry-run`; finish with `dekspec ib verify IB-NNN`, which records the
+  evidence. Commit your work on this worktree's branch.
+- Escalate only for the reasons in the packet's "Escalate" list:
+  dekspec ib block IB-NNN --reason <reason> --detail "…"
+  (reason: contract-conflict, scope-expansion, acceptance-invalid, prerequisite-unavailable or other)
+  and stop. Everything else is your engineering judgment.
+
+Report:
+STATUS: VERIFIED | BLOCKED
+IB: IB-NNN   BRANCH: <branch>   ATTEMPTS: <used>/<allowed>
+ACCEPTANCE: <per AC from the last ib verify>
+DEVIATIONS: <recorded, or none>
+BLOCKER: <reason + detail, or none>
+FOLLOW-UPS: <out-of-scope discoveries, or none>
+
+## Assignment
+### Execution context (generated by `dekspec ib context IB-NNN` — authoritative, do not edit)
+[packet, verbatim]
+
+### Engineer guidance
+[relevant guidance, or "none"]
+```
+
+## Collect and merge
+
+- **VERIFIED** — merge the builder's branch into the delivery branch (`git merge <branch> --no-edit`). Never auto-resolve a conflict in a file two IBs touched, in an execution record, or in an acceptance asset. Abort that merge (`git merge --abort`) and surface it. Accepting the incoming side is safe only for files no other IB in the session touched.
+- **BLOCKED** — `dekspec ib status IB-NNN` shows the blocker. Surface it with its route. A scope expansion or obligation change needs an IB amendment (`/dekspec:write-ibs`). An invalid acceptance condition needs `dekspec ib amend --reviewer … --reason …` by an independent reviewer. An exhausted, stalled or no-progress run needs an operator decision (`dekspec ib unblock --decision …`). Never unblock, amend or re-dispatch past a blocker on your own.
+- Record out-of-scope discoveries as follow-ups for the operator (`/project-board`, an optional DekTools tool, if they want them tracked). Do not widen any IB to absorb them.
+
+Then re-run `dekspec ib ready` and offer another round for newly ready IBs.
+
+## Verify the delivery head
+
+After the last merge, at the delivery head:
 
 ```bash
-# Off-spec drift summary (MSN-009) — surface vibecoding drift to the
-# operator before the session closes. Read-only; runs unconditionally.
-dekspec session report
-
-if [ "$OUTER_SESSION_PRESENT" = "0" ]; then
-  dekspec session end --reason "/orchestrate-coding-session complete"
-fi
+dekspec delivery verify          # every included IB's acceptance + the integration command, same content
 ```
 
-**`--dry-run` exception:** When the skill is invoked with `--dry-run`, the prelude still runs (to honor the outer-session detection contract), but the epilogue runs **before** Phase 1's claimed beads are unclaimed and the skill exits. This keeps `--dry-run` from leaving a half-opened session.
+Any later commit makes this evidence stale (ADR-057, ADR-058). When `.dekspec/config.yaml` sets no `execution.integration_command`, also run the repository suite. Compare any failure against a temporary worktree at `PRE_SESSION_COMMIT` (`git worktree add /tmp/pre-<ts> $PRE_SESSION_COMMIT`, run, `git worktree remove --force`) to separate pre-existing failures from regressions this session introduced. A regression stops the session.
 
-### Failure modes
+## Hand off — do not claim completion
 
-- **Outer session bound to a different bead/Intent:** the prelude STOPs with the diagnostic above. No beads are claimed; no agents are dispatched.
-- **`dekspec session start` raises `SessionAlreadyActiveError`:** indicates a stale session. End it (`dekspec session end`) and retry the skill; if that fails, surface to the engineer.
-- **Pre-Flight Checks STOP fires before the prelude runs:** no session is opened; the skill exits cleanly. The epilogue does not run.
-- **Phase 4 surfaces stopped or conflicted beads:** SESSION COMPLETE still fires at the end of Phase 5; the epilogue closes the session.
-
-## Lifecycle DB writes — retired (MSN-016 / ADR-024)
-
-> **The IC-004 execution-attempt lifecycle-DB writes were retired with the executor abstraction (ADR-024 / MSN-016).** The SQLite lifecycle DB and the `dekspec executions record-attempt / record-event / complete / ls` verbs no longer exist, and IC-004 (the executor/lifecycle-DB-write contract) is DEPRECATED. This skill no longer writes attempt / event / complete rows and no longer resolves a per-Intent `attempt_id`. There is no replacement verb — the skill is a plain in-process bead dispatcher whose only persistent side-effects are git history (merged bead commits), bead-tracker state (`br`), and the `dekspec session` off-spec drift record.
-
-## Phase 1 — Discover & Claim
-
-**Step 1 — discover candidates:**
-
-Run `br ready --json` to get all unblocked beads. This is the candidate set.
-
-- **No positional argument**: use the full `br ready` set as candidates and proceed to step 2.
-
-- **A positional IB/Intent id was given** (`$FILTER_INTENT_ID` set in Mode Detection): keep only candidates whose resolved parent Intent matches `$FILTER_INTENT_ID`. For each `br ready` bead, run `../_lib/scripts/resolve_bead_context.py <bead-id>` and read `intent_id` from the JSON; drop any bead whose `intent_id` != `$FILTER_INTENT_ID`. If the filtered set is empty, STOP and tell the engineer:
-
-  > "⚠️ No ready beads resolve to $FILTER_INTENT_ID — nothing to dispatch. Confirm the Intent has open, unblocked beads (`br ready --json`) and that their `external_ref` points at the Intent's IB(s)."
-
-2. For each candidate bead:
-
-  a. `br show <id>` — confirm unclaimed (no assignee, not `in_progress`)
-   b. Read the bead's `external_ref` IB to identify target files
-   c. Call `file_reservation_paths` (agent-mail MCP) with `exclusive=true` on those files
-      - If agent-mail is unavailable or returns an error — STOP. Tell the engineer:
-        "⚠️ agent-mail is unavailable — file reservations could not be acquired. Proceeding without locks risks concurrent file collisions. Continue anyway? (y/n)"
-      - If engineer says no — stop the session entirely
-      - If engineer says yes — skip reservations and proceed to step (e), noting in the dispatch plan that locks were not held
-   d. **If conflicts** — skip this bead, move to the next candidate
-   e. Claim it: `br update <id> --claim --actor orchestrator`
-   f. If the IB is in `queued/`, move it to `active/` and update the bead's `external_ref`
-3. Collect all successfully claimed beads into a dispatch list
-4. If zero beads claimed, report and stop
-
-Present the dispatch plan:
+Report what ran and hand off:
 
 ```
-DISPATCH PLAN — [N] beads claimed:
-  BEAD-1: [title] → [IB path] → [files]
-  BEAD-2: [title] → [IB path] → [files]
-  ...
+SESSION DONE — delivery <branch> @ <head>
+  verified at head: IB-214, IB-215     blocked: IB-218 (acceptance-invalid: …)
+  next: /dekspec:review-pr  (independent verdict per IB: dekspec ib review)
+        dekspec ib complete IB-NNN   (only after that verdict)
+        /dekspec:land-intent        (operator-confirmed merge per ADR-026, gated by dekspec delivery check)
+  diff: git diff <PRE_SESSION_COMMIT>..HEAD --stat
 ```
 
-If `--confirm-dispatch` is set, wait for engineer approval before proceeding. Otherwise, proceed to Phase 2 immediately.
-
-## Phase 2 — Dispatch Sub-Agents
-
-For each claimed bead, before dispatching, verify dependency merges are present:
-
-- Check the bead's `dependencies` field. For each listed dependency:
-  1. Run `git log --oneline --grep "bead <dep-id>"` to check if the dependency's commit is present in the current branch
-  2. If found — dependency is merged, proceed
-  3. If not found AND the dependency's worktree branch exists in this session — merge it now:
-    ```bash
-     git merge <dep-worktree-branch> --no-edit
-    ```
-  
-     Re-check with git log. If still not found, stop and surface to the engineer.
-  4. If not found AND no worktree branch exists for it — the dependency was never merged. STOP:
-  
-    "⚠️ bead [ID] depends on [dep-id] whose changes are not present in the current branch and no worktree branch exists to merge. Resolve this before dispatching."
-
-Then dispatch a sub-agent using the Agent tool with `isolation: "worktree"`. Launch all agents in a **single message** so they run in parallel.
-
-**The bead is the sub-agent's sole authority during construction (ADR-049).** All upstream decisions (IB / ADR / WS / IC) were reconciled into the bead's Constraints & Decisions by `write-code-beads`. The coding sub-agent implements (how); it does not decide (what). Do **not** inline the IB, ADRs, ICs, or the Working Spec into the sub-agent prompt — the guarantee is structural (the agent cannot follow a document it never receives). If a bead cannot be implemented without the IB, that is a `write-code-beads` defect to fix in the bead, never a reason to re-open the IB channel here.
-
-Each sub-agent prompt MUST include:
-
-1. **The full bead JSON** (from `br show <id> --json`) — the reconciled decision record; the sub-agent cannot access `br`
-2. **Eval file contents** if the bead references them
-3. **Pre-written test file contents** if `tests/bead/test_<bead-slug>.py` exists (check before dispatch)
-4. **Checklist contents** if referenced (e.g., `python-quality-checklist.md`, `security-checklist.md`) — the orchestrator resolves the referenced eval/checklist paths (conductor decision-work); the sub-agent receives the files, not the IB
-5. **The workflow instructions** (copied verbatim from the Sub-Agent Workflow section below)
-6. **Local dependency-source paths** if present — for any library/SDK/framework the bead implements against, check for vendored source under `reference/repos/<host>/<org>/<project>` (e.g. `reference/repos/github.com/pallets/flask`) and inline the path list so the sub-agent greps the real implementation instead of guessing APIs. This is **opt-in/best-effort**: if no `reference/repos/` tree exists, pass "None" and dispatch normally — its absence never blocks dispatch.
-
-### Sub-Agent Prompt Template
-
-```
-You are implementing bead [ID]: [title]
-
-The bead below is your sole authority (ADR-049). It carries every decision
-already made upstream and reconciled by write-code-beads. Implement it exactly
-as specified — decide HOW to render it in code, not WHAT to do. Do not seek or
-infer decisions from an IB, ADR, WS, or IC; if something needed to implement is
-genuinely missing from the bead, STOP and report an expertise gap.
-
-## Bead
-[full bead JSON]
-
-## Evals
-[eval file contents, or "None"]
-
-## Checklists
-[checklist contents, or "None"]
-
-## Pre-Written Tests
-[test file contents if tests/bead/test_<slug>.py exists, or "None — write tests during implementation"]
-
-## Dependency Source
-[reference/repos paths for libraries this bead uses, or "None"]
-
-## Workflow
-
-1. **Interface-first:** Write public interface signatures only — no implementation yet
-2. **Source before guessing:** When you implement against a library/SDK/framework, search its real source before writing code — do NOT guess API names or signatures. If a path is listed under Dependency Source, grep it first; otherwise consult the official repo. If the API still can't be resolved from source, surface it as an expertise gap rather than guessing.
-3. Implement the interfaces
-4. **Tests (the *vertical* half of behavior-first TDD — ADR-036 hybrid-B):**
-   - If pre-written tests exist: remove `@pytest.mark.skip` markers and run them — all must pass. These are the independent up-front floor from `/write-tests`; do NOT rewrite or weaken them.
-   - If no pre-written tests: write tests for all deterministic behavior.
-   - Then, *as you implement*, add tests **one at a time** for behavior the code reveals — red → green per behavior — bounded to this bead's IB file list. These additions supplement the up-front floor; they never replace or soften it. Each added test must assert observable behavior through the public interface (not internal shape), the same bar the floor is held to.
-5. Run evals if they exist
-6. **Refactor pass (behavior-preserving, bounded — Constitution Article 4 / ADR-036):** With tests green, look for refactor candidates across the files you changed. Two kinds: (a) **extract duplication** — repeated API calls, parsing, validation, or business logic → a local reusable helper, keeping domain policy in the calling route/action/component; and (b) **deepen modules** — move complexity *behind* a simpler interface. A module whose interface is nearly as complex as its implementation is shallow (Article 4); combine or deepen it so callers see a small interface over the real work. Keep domain policy at the call site and keep the diff small. **Never refactor while a test is RED — get to green first.** Re-run tests after each change — they MUST still pass. If deepening or extraction would require touching a file outside this bead's IB file list (e.g. a shared service module), do NOT do it inline — surface it as a follow-up in your output. If any change risks altering behavior, skip it and keep the working version.
-7. Run `ubs` on all changed files — fix any findings
-8. Commit all changes with message: "bead [ID]: [title]"
-
-## Interrupt-Level Stop Patterns
-
-These trigger at ANY point during the workflow. They are not sequential — they interrupt work immediately.
-
-**When the IB doesn't cover something:**
-EXPERTISE GAP — Bead: [ID] | Need: [question] | Blocks: [what]
-STOPPED — awaiting engineer decision
-
-**When bead/IB constraints conflict with each other or with existing code:**
-CONFLICT — [describe the contradiction]. Cannot resolve from bead/IB alone.
-STOPPED — awaiting engineer decision
-
-**When the bead's declared interface is shallow or wrong** (it leaks complexity or invariants to callers such that a clean implementation isn't possible within it) — surface it rather than silently building around it. A shallow interface is a smell per Constitution Article 4; do not absorb the leak into your implementation.
-SHALLOW INTERFACE — Bead: [ID] | The declared interface forces callers to [carry which complexity/invariant] | A clean implementation needs [the deeper interface or contract change]
-STOPPED — awaiting engineer decision
-
-## Rules
-
-- Do NOT read ADRs, interface contracts, or the Working Spec — all decisions were reconciled into the IB
-- If something is missing from the IB, surface it as an expertise gap
-- Never guess domain constraints — surface and stop
-- Never guess a third-party API name or signature — search the library's real source first (Dependency Source paths if listed, else its official repo)
-- Stay within the files listed in the IB. Do not touch other files.
-- If a function or type your bead depends on (from a dependency bead) is missing from the codebase, do NOT re-implement it. Surface immediately:
-  DEPENDENCY MISSING — Bead: [ID] | Missing: [what is absent] | Blocks: [what you cannot do]
-  STOPPED — awaiting orchestrator resolution
-
-## Refactoring Checklist (conditional)
-
-Applies only when the bead's domain includes `refactoring` or the IB is marked as a refactoring IB. Skip entirely for feature work or bug fixes.
-
-Before finishing, verify:
-- [ ] No behavior change — all existing tests pass without modification
-- [ ] No new silent exception handling
-- [ ] No new architectural boundary violations
-- [ ] All moved functions retain their original signatures
-- [ ] Import paths updated everywhere
-
-## Output
-
-When done, report:
-STATUS: [COMPLETE | STOPPED]
-BEAD: [ID]
-FILES_CHANGED: [list]
-TESTS: [pass/fail summary]
-EVALS: [pass/fail/skipped]
-REFACTOR: [extracted N helpers / deepened M modules | none needed | deferred: <cross-file follow-up>]
-UBS: [clean/findings]
-BLOCKERS: [none, or description]
-```
-
-## reference/repos/ convention (source-as-context)
-
-A bead implements better against a library when it can grep the library's **real source** instead of guessing from docs. The convention: drop dependency source under
-
-```
-reference/repos/<host>/<org>/<project>
-```
-
-e.g. `reference/repos/github.com/pallets/flask`. Phase 2 checks for a matching tree per bead dependency and, when present, inlines the path into the sub-agent prompt's Dependency Source block. The tree is populated manually (clone/copy the dep source) — there is no auto-download. The convention is **opt-in and best-effort**: a session with no `reference/repos/` tree dispatches exactly as before.
-
-## Phase 3 — Collect & Merge
-
-As each sub-agent returns:
-
-1. Parse its status report
-2. If STOPPED — surface the blocker to the engineer immediately
-3. If COMPLETE — merge the worktree branch into the current branch:
-  ```bash
-   git merge <worktree-branch> --no-edit
-  ```
-
-   If the merge has conflicts:
-  - "Resolve automatically" means: conflicts in files not touched by other beads in this session can be resolved by accepting the incoming changes (`git checkout --theirs <file> && git add <file>`). Do NOT auto-resolve conflicts in files touched by multiple beads — surface those to the engineer.
-  - If a conflict cannot be safely auto-resolved: run `git merge --abort`, unclaim the bead (`br update <id> --unclaim`), release its file reservations, and surface the conflict to the engineer before proceeding.
-  - If ALL beads in the session have unresolvable conflicts: abort all merges, unclaim all beads, release all reservations, and stop. Do not proceed to Phase 4.
-
-Once all agents have returned and merges are attempted, present a summary:
-
-```
-SESSION RESULTS — [N] beads dispatched:
-  ✅ BEAD-1: [title] — merged
-  ✅ BEAD-2: [title] — merged
-  ⚠️  BEAD-3: [title] — merge conflict: [description]
-  ❌ BEAD-4: [title] — STOPPED: [reason]
-```
-
-## Phase 4 — Land the Plane
-
-For each completed and merged bead:
-
-1. Close the bead: `br close <id>`
-2. Release file reservations: call `release_file_reservations` (agent-mail MCP) for each held reservation. Skip this step if agent-mail was unavailable and reservations were not acquired.
-3. If all beads for an IB are now closed, move the IB from `active/` to `completed/`
-
-For each stopped or conflict bead:
-
-1. Release file reservations
-2. Unclaim: `br update <id> --unclaim`
-3. File the blocker as a comment or follow-up bead
-
-Finally:
-
-1. Run the full test suite: `python3 -m pytest tests/ -q 2>&1 | tail -20`
-  - If all tests pass — done.
-  - If collection errors appear (e.g., `ModuleNotFoundError`) — automatically run the same command on a temporary worktree at the pre-session commit to determine if they are pre-existing:
-    ```bash
-    BASELINE_PATH="/tmp/baseline-check-$(date +%s)"
-    git worktree add "$BASELINE_PATH" <pre-session-commit>
-    cd "$BASELINE_PATH" && python3 -m pytest tests/ -q 2>&1 | tail -10
-    git worktree remove --force "$BASELINE_PATH"
-    ```
-  - If baseline has the same errors — confirmed pre-existing, report clean.
-  - If baseline is clean but HEAD has errors — regression introduced by this session. Stop, investigate, and do not proceed to SESSION COMPLETE until resolved.
-2. For any out-of-scope discoveries noted by sub-agents, file follow-up beads:
-  ```bash
-   br create --title "[description of discovery]" --priority P2 --status open --type task \
-     --labels "follow-up" --external-ref "<IB ref>"
-  ```
-
-   Add a note explaining what was discovered and why it is out of scope for this session.
-3. Run `br sync`
-4. Present the merged diff for engineer review:
-  ```bash
-   git diff <pre-session-commit>..HEAD --stat
-  ```
-
-```
-LANDED — Session complete.
-  Merged: [N] beads into [current branch]
-  Stopped: [N] beads (see blockers above)
-  Follow-ups filed: [list or "none"]
-
-  Review the merged state with: git log --oneline <pre-session-commit>..HEAD
-```
-
-## Phase 5 — Check for Newly Unblocked Work
-
-After landing, run `br ready` again. If new unblocked beads appear (previously blocked by beads just closed), present them to the engineer:
-
-"These beads are now unblocked: [list]. Continue with another dispatch round? (y/n)"
-
-If yes, return to Phase 1.
-If no, proceed to SESSION COMPLETE.
-
-**⛔ SESSION COMPLETE.**
-
-## Directive Library
-
-Ready-to-use phrases for the engineer during a session:
-
-```
-"Drop BEAD-X from the dispatch list."
-"Only dispatch BEAD-X and BEAD-Y."
-"That bead is out of scope. Unclaim it."
-"Show me the blocker details for BEAD-X."
-"Re-dispatch BEAD-X with this guidance: ..."
-"Stop all agents. Land the plane now."
-```
+Completion is evidence plus an independent verdict at the head (ADR-057). A green session, closed tasks or passing tests are not completion.
 
 ## Common Pitfalls
 
-- Don't proceed past Pre-Flight when `preflight_quality_gates.py` exits 1 — STOP and report the `missing` list; a referenced checklist/test/eval file that doesn't exist on disk *and is claimed by no bead* means the session cannot enforce the quality process the IB promises. (A missing file listed in an IB's `## Files to Modify` is a greenfield deliverable — it shows under `claimed`, not `missing`, and does not STOP.)
-- Don't dispatch sub-agents in separate messages — launch every Agent call in a **single message** so they run in parallel worktrees; serial dispatch defeats the entire purpose of this skill.
-- Don't let a sub-agent read the IB, ADRs, ICs, or the Working Spec — all decisions were reconciled into the **bead** by `write-code-beads` (ADR-049). Inline the bead (plus evals, tests, checklists) into the prompt; the sub-agent has no `br` access, implements the reconciled decisions, and must not re-derive or re-decide contracts. A bead that can't be built without the IB is a `write-code-beads` defect, not a dispatch-time exception.
-- Don't auto-resolve merge conflicts in files touched by more than one bead in this session — surface those to the engineer. Only accept-theirs on files no other dispatched bead claims.
-- Don't reach SESSION COMPLETE on a pytest collection error without running the pre-session-commit baseline check — confirm the failure is pre-existing, not a regression this session introduced, before declaring clean.
-- Don't reach for `dekspec executions` / lifecycle-DB writes — those verbs and the IC-004 attempt/event/complete contract were retired with the executor abstraction (MSN-016 / ADR-024). The skill records nothing to a lifecycle DB; do not invent a replacement.
-- Don't close beads or skip the epilogue when an outer session was deferred to — only close the session this skill opened (`OUTER_SESSION_PRESENT=0`), and always run `dekspec session report` first to surface off-spec drift.
+- Don't build the builder prompt from anything but `dekspec ib context` and `dekspec resource role implementer`. Hand-assembled obligation text or a paraphrased role is a second copy that drifts (ADR-056, ADR-061).
+- Don't let a builder edit an acceptance test, not even to remove a skip marker, or create a missing one. The baseline catches the change. A skipped node never satisfies its condition, so a skipped or missing acceptance test is an escalation.
+- Don't hand-merge `record.jsonl` or reset attempt counts by re-running `ib start` elsewhere. Counts survive restarts on purpose.
+- Don't dispatch an IB that `ib start` refused, and don't treat exit 3 as a transient error.
+- Don't record a verdict, run `dekspec ib complete`, or merge to the base branch from this skill.
 
 ## Verification Checklist
 
-- [ ] Pre-Flight `preflight_quality_gates.py` exited 0 (or the session was stopped) — no missing quality files were dispatched against.
-- [ ] `PRE_SESSION_COMMIT` was captured before Phase 1 and used in the Phase 4 baseline/diff steps.
-- [ ] Every claimed bead was either merged + closed, or unclaimed with its file reservations released and a blocker recorded — no bead left claimed-but-abandoned.
-- [ ] All held agent-mail file reservations were released (or the session ran with reservations explicitly skipped and noted in the plan).
-- [ ] The full `pytest tests/ -q` run is green, or any failure was confirmed pre-existing against the pre-session-commit baseline.
-- [ ] `dekspec session report` ran at the epilogue, and the session this skill opened was closed (skipped only when deferring to an outer session).
-- [ ] Phase 5 ran `br ready` again and either dispatched another round or reached the **⛔ SESSION COMPLETE** terminal state.
-
+- [ ] Every dispatched IB was ACCEPTED, delegated and started with `dekspec ib start` under a distinct builder identity.
+- [ ] Every builder prompt carried the verbatim `dekspec ib context` packet and the verbatim `implementer` role layer.
+- [ ] Every IB ended VERIFIED (evidence recorded) or BLOCKED (blocker recorded), and each blocker was surfaced with its route.
+- [ ] `dekspec delivery verify` ran at the final head; regressions were checked against `PRE_SESSION_COMMIT`.
+- [ ] `dekspec session report` ran, and the session this skill opened was ended.
+- [ ] The report hands off to `/dekspec:review-pr` and `/dekspec:land-intent` and claims no completion.

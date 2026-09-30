@@ -1,14 +1,16 @@
 """Git-hooks installer + enforcement-plane glue under MSN-002 / INT-010.
 
-Pure-Python helpers that copy `templates/git-hooks/*.template` into a
-consumer repo's `.git/hooks/` directory and verify they are present.
+Helpers that copy `templates/git-hooks/*.template` into the directory git
+executes a consumer repo's hooks from (as `git rev-parse --git-path hooks`
+names it: `.git/hooks/`, the common directory for a linked worktree, or
+`core.hooksPath`) and verify they are present.
 The hooks themselves are POSIX shell scripts that call
 `dekspec session status --machine-readable` (INT-009) and gate
 `git commit` / `git push` on the result.
 
 This module owns:
 - `install_hooks(target_repo, *, force=False)` — write pre-commit + pre-push
-  templates into `.git/hooks/`, chmod 0o755, refuse overwrite without force.
+  templates into git's hooks directory, chmod 0o755, refuse overwrite without force.
 - `uninstall_hooks(target_repo)` — remove the DekSpec-managed hook files.
 - `hooks_installed(target_repo)` — True when both hooks are present + carry
   the DekSpec signature line.
@@ -20,8 +22,10 @@ not hook-enforced. Consumers opt in via `dekspec session install-hooks`
 """
 from __future__ import annotations
 
+import os
 import shutil
 import stat
+import subprocess
 from pathlib import Path
 
 # Hook files this module manages. The template filename strips `.template`.
@@ -55,35 +59,38 @@ def _templates_dir() -> Path:
     return library_root() / "templates" / "git-hooks"
 
 
-def _resolve_hooks_dir(target_repo: Path) -> Path:
-    """Return `<target>/.git/hooks/`, raising if `<target>/.git` is missing.
+# Environment variables that would make git locate a repository other than the
+# one at `target_repo` (e.g. when this runs inside another repository's hook).
+_REPO_LOCATING_ENV = ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE")
 
-    `git worktree` checkouts have `.git` as a regular file pointing at the
-    main repo's `.git/worktrees/<name>` directory; in that case we still
-    install into the per-worktree `hooks/` directory (git's worktree-aware
-    hook resolution will find them there).
+
+def _resolve_hooks_dir(target_repo: Path) -> Path:
+    """Return the directory git executes hooks from for the work tree at `target_repo`.
+
+    Resolution is git's own (`git rev-parse --git-path hooks`), so a linked
+    worktree resolves to the shared common directory and `core.hooksPath`
+    is honoured exactly as git honours it. `target_repo` must be the top
+    level of a git work tree; anything else raises `GitHooksError`, so an
+    enclosing repository is never written to by mistake. The directory is
+    not created here — see `install_hooks`.
     """
     target = target_repo.resolve()
-    git_dir = target / ".git"
-    if not git_dir.exists():
-        raise GitHooksError(
-            f"not a git repository: {target} (missing .git/)"
+    env = {k: v for k, v in os.environ.items() if k not in _REPO_LOCATING_ENV}
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(target), "rev-parse", "--show-toplevel", "--git-path", "hooks"],
+            capture_output=True, text=True, env=env, check=False,
         )
-
-    if git_dir.is_file():
-        # Worktree: parse the `gitdir: <path>` line.
-        content = git_dir.read_text(encoding="utf-8").strip()
-        if not content.startswith("gitdir:"):
-            raise GitHooksError(
-                f"unexpected .git file shape at {git_dir}: {content!r}"
-            )
-        git_dir = Path(content.split(":", 1)[1].strip())
-        if not git_dir.is_absolute():
-            git_dir = (target / git_dir).resolve()
-
-    hooks_dir = git_dir / "hooks"
-    hooks_dir.mkdir(parents=True, exist_ok=True)
-    return hooks_dir
+    except OSError as exc:
+        raise GitHooksError(f"cannot run git to locate the hooks directory: {exc}") from exc
+    lines = proc.stdout.splitlines()
+    if proc.returncode != 0 or len(lines) != 2 or Path(lines[0]).resolve() != target:
+        raise GitHooksError(
+            f"not a git repository: {target} (not the top level of a git work tree)"
+        )
+    hooks_dir = Path(lines[1])
+    # A relative answer is relative to the directory git ran in: `target`.
+    return hooks_dir if hooks_dir.is_absolute() else target / hooks_dir
 
 
 def _template_path(hook_name: str) -> Path:
@@ -107,7 +114,11 @@ def _is_dekspec_managed(hook_path: Path) -> bool:
 
 
 def install_hooks(target_repo: Path, *, force: bool = False) -> list[Path]:
-    """Install DekSpec pre-commit + pre-push hooks into `<target_repo>/.git/hooks/`.
+    """Install the DekSpec hooks into the directory git runs hooks from.
+
+    That is `git rev-parse --git-path hooks` for `target_repo`: `.git/hooks/`
+    in a plain clone, the shared common directory's `hooks/` in a linked
+    worktree, or `core.hooksPath` when configured (created if absent).
 
     Returns the list of written hook paths. Raises `GitHooksError` if any
     target hook file exists and is not DekSpec-managed and `force=False`.
@@ -126,6 +137,7 @@ def install_hooks(target_repo: Path, *, force: bool = False) -> list[Path]:
                 f"  pass force=True (or --force on the CLI) to clobber."
             )
 
+    hooks_dir.mkdir(parents=True, exist_ok=True)
     for hook_name in _HOOK_NAMES:
         src = _template_path(hook_name)
         dst = hooks_dir / hook_name

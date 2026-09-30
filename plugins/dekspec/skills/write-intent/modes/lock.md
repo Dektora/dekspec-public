@@ -1,30 +1,43 @@
-# Complete Mode (→ COMPLETE)
+# Complete Mode (ACCEPTED → COMPLETE)
 
 [← back to dispatcher](../SKILL.md)
 
 
-Reads `<Intent-path>`. Runs from the `main` branch. Marks a finished Intent `COMPLETE`.
+Reads `<Intent-path>`. Marks a finished Intent `COMPLETE` through the engine's evidence gate (ADR-057). The `--lock` flag keeps its name for compatibility; Intents never lock (ADR-046).
 
-> **ADR-046.** Intents terminate at `COMPLETE`, not `LOCKED` — a finished Intent is a historical record, not a frozen decision. The former ADR-017 three-path lock gate (Path A/B/C) and its L13 audit rule are **retired**: the pre-freeze audit they ran is redundant with `MERGED` (an Intent only reaches its terminal after its branch merged, which already passed CI + PR review). The `--lock` flag is retained for compatibility; it now completes the Intent.
+An Intent is complete when every child IB — every IB whose `**Parent:**` is this Intent — is `COMPLETE` (each through `dekspec ib complete`) and the Intent's `## Verification` block has current passing evidence. Nothing else substitutes: not a merge, not closed tracker items, not a green run recorded elsewhere. Completion checks content, not the branch, so it may run at the delivery head before `dekspec delivery check` or on `main` after the merge.
 
-### Step 1: Validate
+### Step 1: Run the outcome verification
 
-1. Current branch must be `main`.
-2. Status is `MERGED` (engineer-set after the Intent's work merged to `main`). If it is any other status, refuse, naming the current status and the expected `MERGED`.
-3. *Direct-bead Intents only (no live `int/` branch to merge):* if the work landed via direct beads rather than a branch merge, confirm every bead in `## Layer impact analysis` is `closed` — run `python ../_lib/scripts/artifact_ops.py check-retro-lock <Intent-path>` (surface stderr and refuse on non-zero exit; it names any open bead). This is the evidence the work landed for an Intent that never carried a live branch.
+```
+dekspec intent verify INT-NNN
+```
 
-### Step 2: Mission Append (if `mission:` is set)
+It executes every Verification `cmd:` (the ADR-029 outcome test among them) against the current content and records evidence in `.dekspec/execution/INT-NNN/`. On a failure, surface the failing entries and stop; fixing the regression is ordinary work on the relevant IB (a failure is evidence, not a status — there are no TESTFAIL records). An entry marked `manual: true` is not executed; it must carry a `manual_rationale:` and is satisfied only by an independent verdict:
 
-If the Intent's `Mission:` field is populated:
+```
+dekspec intent review INT-NNN --reviewer <reviewer> --actor <reviewer> --verdict pass --policy-revision <N> --notes "<what was checked>"
+```
 
-1. Locate the Mission file at `dekspec/missions/MSN-NNN-*.md`.
-2. If the Mission file does not exist, log a non-blocking warning identifying the missing file path and skip the append. Do **not** refuse.
-3. If the Mission file exists, append a row to the Mission's Intent queue section: `| INT-NNN | <title> | <type> | COMPLETE |`. The Mission's own `/write-mission --review` handles richer queue updates; this is a one-line append. (A Mission activates once its first child Intent is `COMPLETE`.)
+The attestation is the **`verifier`** role's ([`_lib/agent_roles.md`](../../_lib/agent_roles.md)): the attester works from `dekspec resource role verifier` and passes the policy revision shown in its header (`policy revision <N>`). The reviewer must not be an identity that built any child IB, and the acting identity (`--actor` or `DEKSPEC_ACTOR`) must be the named reviewer.
 
-### Step 3: Promote
+### Step 2: Complete
 
-1. Flip Status to `COMPLETE`, bump Modified, and append the Amendment Log row — run `python ../_lib/scripts/artifact_ops.py transition <Intent-path> --from MERGED --to COMPLETE --note "Merged to main; completed via /write-intent --lock (ADR-046)." --engineer <engineer-or-agent>`. Surface stderr on non-zero exit and STOP.
-2. Move the Intent's row in `dekspec/intent-index.md` from the **Active queue** table to the **Archive** table. The Archive row uses the smaller column set (Intent / Title / Status / Superseded-By / Merged date / Mission / Notes); copy the title and mission from the Active row, set Status `COMPLETE`, set Merged date to today's date, leave Superseded-By empty. (Cross-table move with a column-shape change — hand-authored.)
-3. Surface a closing summary: the Intent is complete; its file remains the executed record. If the Intent had a Mission, mention the Mission's Intent queue was updated.
+```
+dekspec intent complete INT-NNN
+```
+
+It refuses unless the Intent is ACCEPTED, at least one IB names it as parent, every such IB is COMPLETE, and the outcome evidence (plus any manual verdict) is current for this exact content. On success it writes Status `COMPLETE` and the Amendment Log row itself — do not flip Status by hand (`artifact_ops.py transition` refuses Intent → COMPLETE). On refusal, surface the gate's unmet checks verbatim; `--check-only` evaluates the gate without writing.
+
+### Step 3: Mission Append (if `mission:` is set)
+
+1. Locate the Mission file at `dekspec/missions/MSN-NNN-*.md`. If it does not exist, log a non-blocking warning and skip.
+2. Update this Intent's row in the Mission's Intent queue to `COMPLETE` (append `| INT-NNN | <title> | <type> | COMPLETE |` if it is missing). `dekspec intent complete` does not touch the Mission, so this step is not optional; run `/write-mission --review <Mission-path>` for richer queue updates. The Mission completes separately through `/write-mission --complete`.
+
+### Step 4: Index
+
+Move the Intent's row in `dekspec/intent-index.md` from the **Active queue** table to the **Archive** table (Intent / Title / Status / Superseded-By / Merged date / Mission / Notes): Status `COMPLETE`, the completion date in the date column, Superseded-By empty. (Cross-table move with a column-shape change — hand-authored; `dekspec regen-indexes` is the deterministic alternative.)
+
+Surface a closing summary: the Intent is complete, its evidence record, and whether the Mission queue was updated.
 
 **End of Complete Mode.**

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # DekSpec pre-push hook — enforcement gate per MSN-002 / INT-010.
 #
-# Refuses pushes unless `dekspec session start <bead-id>` has opened a
+# Refuses pushes unless `dekspec session start <IB-NNN|INT-NNN>` has opened a
 # session bound to the work. Escape hatches:
 #
 #   DEKSPEC_BYPASS_SESSION=1 git push ...     # logged to bypass.log
@@ -48,7 +48,7 @@ fi
 printf 'dekspec: pre-push BLOCKED — no active session.\n' >&2
 printf '\n' >&2
 printf '  Open a session naming the work:\n' >&2
-printf '      dekspec session start <bead-id-or-INT-NNN>\n' >&2
+printf '      dekspec session start <IB-NNN|INT-NNN>\n' >&2
 printf '\n' >&2
 printf '  Or bypass (logged for audit):\n' >&2
 printf '      DEKSPEC_BYPASS_SESSION=1 git push ...\n' >&2

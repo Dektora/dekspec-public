@@ -1,8 +1,9 @@
 """`dekspec audit failure-classes` aggregator (INT-126 / ds-99ko).
 
-Read-only walk over the bead corpus (`.beads/issues.jsonl`), grouping
-beads carrying a `failure-class:<class>` label and producing a markdown
-or JSON report. Cross-references each bead's `external_ref` so the
+Read-only walk over the IB execution records (`.dekspec/execution/*/record.jsonl`
+— every `attempt.ended` event that names a `failure_class`, ADR-056) plus the
+legacy code-bead corpus (`.beads/issues.jsonl`, beads carrying a
+`failure-class:<class>` label), producing a markdown or JSON report. Cross-references each bead's `external_ref` so the
 post-mortem ritual (engineer → class label → aggregator → §Class Lanes
 amendment per INT-125) can trace bead → Intent → IB → revert SHA.
 
@@ -73,7 +74,7 @@ def aggregate(
     field stays `None`.
     """
     repo_root = Path(repo_root)
-    rows = list(_load_beads(repo_root, window_days))
+    rows = list(_load_attempts(repo_root, window_days)) + list(_load_beads(repo_root, window_days))
     if by == "class":
         groups = _group_by(rows, key=lambda r: r.failure_class)
     elif by == "type":
@@ -173,9 +174,36 @@ def _load_beads(repo_root: Path, window_days: int) -> Iterable[BeadRow]:
             yield BeadRow(
                 id=str(rec.get("id") or "<unknown>"),
                 failure_class=failure_class,
-                bead_type=rec.get("type"),
+                bead_type=rec.get("issue_type") or rec.get("type"),
                 updated_at=updated_raw,
                 external_ref=rec.get("external_ref"),
+            )
+
+
+def _load_attempts(repo_root: Path, window_days: int) -> Iterable[BeadRow]:
+    """Yield one row per classified failed attempt in the IB execution records."""
+    root = repo_root / ".dekspec" / "execution"
+    if not root.is_dir():
+        return
+    cutoff = datetime.now(timezone.utc) - timedelta(days=window_days)
+    for record in sorted(root.glob("*/record.jsonl")):
+        artifact = record.parent.name
+        for line in record.read_text(encoding="utf-8").splitlines():
+            try:
+                ev = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            data = ev.get("data") or {}
+            if ev.get("type") != "attempt.ended" or not data.get("failure_class"):
+                continue
+            if not _within_window(ev.get("ts"), cutoff):
+                continue
+            yield BeadRow(
+                id=f"{artifact}#attempt-{data.get('attempt')}",
+                failure_class=data["failure_class"],
+                bead_type="attempt",
+                updated_at=ev.get("ts"),
+                external_ref=artifact,
             )
 
 

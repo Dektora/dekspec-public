@@ -1,5 +1,5 @@
 {
-  "description": "DekSpec audit + drift + lint + rotation-handoff hooks. Blocks writes to LOCKED artifacts on edit; fast per-artifact validation on edit; full audit + vendoring drift check + structured rotation-handoff emit at session end / compaction; handoff resume at session start.",
+  "description": "DekSpec audit + drift + lint + handoff hooks. Blocks writes to LOCKED artifacts on edit; fast per-artifact validation on edit; full audit + vendoring drift check + structured handoff emit at session end / compaction; handoff resume at session start.",
   "hooks": {
     "SessionStart": [
       {

@@ -1,82 +1,80 @@
 ---
 name: write-ibs
-description: Decompose a finalized Working Spec into Implementation Briefs. Use after a spec is finalized and ready for implementation planning.
+description: Author Implementation Briefs — the smallest governed work contract, executed directly (ADR-056). Use for a bounded change (outcome + rationale + references are enough, no parent needed), to decompose an Intent or a Working Spec into IBs, to audit, review, revise or accept an IB, or to adopt a legacy IB into the delegated authority policy.
 mode: full
 model: claude-opus-4-7
 reasoning_effort: max
 disable-model-invocation: false
 allowed-tools: Read Write Edit Grep Glob Bash Agent
-argument-hint: [--provisional <slug>] [--help | --teaching | --audit | --review | --accept | --approve | --resync | --revise | --dry-run] [path to finalized spec or existing IB] [engineer notes or path to notes file]
-related_skills: [write-ws, write-ic, write-code-beads, write-tests, orchestrate-intent]
+argument-hint: [--provisional <slug>] [--help | --teaching | --audit | --review | --revise | --resync | --accept | --adopt | --dry-run] [description of the change, Intent / Working Spec path, or IB path] [engineer notes or path to notes file]
+related_skills: [write-intent, write-ws, write-ic, write-tests, review-ib, orchestrate-coding-session]
 ---
 
 > **Vendored asset paths:** Template + doc paths below resolve via `dekspec resource template <name>` / `dekspec resource doc <name>` (wheel-bundled since v0.91.0; consumer-fs override wins when present). See [`_lib/vendored_assets.md`](../_lib/vendored_assets.md) for the full resolution rule.
 
-Decompose a finalized Working Spec into Implementation Briefs.
+Author Implementation Briefs. An IB is the smallest governed work contract and is executed directly — there are no code beads (ADR-056). One IB carries a bounded change; an Intent or a Working Spec that spans more than one IB is decomposed into several.
 
 > **⛔ CONTEXT CHECK** — see [`_lib/context_check.md`](../_lib/context_check.md)
 >
-> This skill reconciles specs, ADRs, and interface contracts into a single authoritative implementation document. Prior conversation context can degrade reconciliation quality — the model may resolve against phantom context instead of the actual documents.
+> This skill decides what binds an implementing agent. Prior conversation context can leak unapproved decisions into an IB as if they were obligations.
 >
-> First message → proceed. Prior history → ask "context may affect IB reconciliation quality, recommend /clear, continue? (y/n)" + wait.
+> First message → proceed. Prior history → ask "context may affect IB quality, recommend /clear, continue? (y/n)" + wait.
 
 **Mode dispatcher pattern:** see [`skills/_lib/mode_dispatcher.md`](../_lib/mode_dispatcher.md) for canonical mode semantics + the universal `--teaching` mode (per ds-int-007 / INT-008).
 
 ## Starter Prompt
 
 ```prompt
-/dekspec:write-ibs dekspec/working-specs/WS-021-numeric-routing.md
+/dekspec:write-ibs Make `dekspec validate` reject an Intent whose Verification cmd is empty.
 
-Decompose this finalized (ACCEPTED) Working Spec into Implementation Briefs.
-The spec spans a parser pass and an emitter pass — cut them as vertical slices and
-pin the shared IR types verbatim into each slice's C&D (ADR-054), and respect the
-ICs it references.
+Bounded change, no parent. The rule belongs to the Intent parser; ADR-013 governs the
+severity vocabulary. Include the failure path and the CLI entry point in Acceptance.
 ```
+
+## The contract you are writing
+
+The template `dekspec/templates/implementation-brief-template.md` is authoritative for the format; follow it section by section. What the sections mean:
+
+- **Three kinds of content (ADR-055).** *Binding obligations* — `## Obligations`, `## Protected Surfaces`, `## Scope`; the implementing agent preserves them. *Acceptance conditions* — the `## Acceptance` YAML block; the agent demonstrates them and never weakens them. *Implementation hypothesis* — `## Implementation Hypothesis`; a starting guess the agent revises after investigating, within Scope, without asking. Classify by meaning, not by where a sentence used to live.
+- **One home per fact (ADR-056).** An obligation owned by an ADR, IC, WS, AE, SP or the Constitution is *referenced* (`- **O-1** → ADR-036`, `- **O-2** → IC-012 §Shape`), never copied — no Spec Context, no reconciled restatement. Tag an obligation `(local)` only when this IB is its canonical home. `dekspec ib context IB-NNN` delivers the canonical text, its source revision and hash to the implementing agent; a reference to a superseded, deprecated, missing or unapproved source blocks `propose`, `accept` and `start`.
+- **No mandatory chain (ADR-056).** `**Parent:**` (INT-, WS- or MSN-NNN) is optional. A bounded change needs only Outcome, Rationale and references. When the change alters architecture or a contract, name the specs in `**Spec impact:**` — verification fails unless the delivery modifies them.
+- **Authority policy.** New IBs say `**Authority policy:** delegated`. An IB without the line, or with `legacy`, keeps the ADR-049 meaning (Files to Modify is an allowlist) until it is adopted (`--adopt`).
+- **Lifecycle (ADR-057).** `DRAFT` → `PROPOSED` (`dekspec ib propose`) → `ACCEPTED` (`dekspec ib accept`, which takes the acceptance baseline) → `COMPLETE` (only `dekspec ib complete`), plus `SUPERSEDED` / `DEPRECATED`. Ownership, plans, attempts, deviations, evidence and verdicts live in the execution record (`.dekspec/execution/IB-NNN/`), never in the IB.
+- **The authoring order (ADR-062).** Write the IB (`dekspec ib lint`, `dekspec ib propose`) → `/dekspec:write-tests` (mandatory for every `pytest:` condition: a `Basis:` per new assertion, a behavior-free surface skeleton, genuine red on `dekspec ib floor`) → `/dekspec:review-ib` (its `acceptance-oracle` lens records a passing floor review as a `Floor reviewed: PASS — digest …` Amendment Log row) → `dekspec ib accept`, run by the authorizer only while `dekspec ib floor` still reports the digest that row names (the command does not check it; `/implement` readiness does). A pre-start re-baseline after the tests change repeats the review. The builder never writes acceptance tests; `/implement` readiness refuses an IB whose named nodes are missing from its baseline or whose baseline digest no floor review names.
+
+**Roles (ADR-061).** This skill plays DekSpec's Agent Role Specifications; the engineer never selects one. Authoring, revise and resync modes play the **`specifier`** role, audit modes the **`auditor`** role: run `dekspec resource role specifier` or `dekspec resource role auditor` at the start of the mode and follow it (a delegated `*-author` agent loads `specifier` itself). See [`_lib/mode_dispatcher.md`](../_lib/mode_dispatcher.md) §The role each universal mode plays and [`_lib/agent_roles.md`](../_lib/agent_roles.md).
 
 ## Mode Detection
 
-See [`_lib/mode_detection_template.md`](../_lib/mode_detection_template.md) for the canonical parse/routing contract. Default mode (no flag): content-shape dispatch — if the file is a Working Spec, enter **Decomposition Mode**; if it is an existing IB, enter **Audit Mode**; otherwise ask the engineer what they want to do.
+See [`_lib/mode_detection_template.md`](../_lib/mode_detection_template.md) for the canonical parse/routing contract. Default mode (no flag): content-shape dispatch — an existing IB path → **Audit Mode**; a Working Spec or Intent path, or a description of a change → **Create / Decompose Mode**; otherwise ask the engineer.
 
-- **Help mode** — `--help` flag is present. Skip to the **Help Mode** section below.
-- **Teaching mode** — `--teaching` flag is present. Skip to the **Teaching Mode** section below.
-- **Accept mode** — `--accept` or `--approve` flag is present (`--approve` is a retained alias). Proceed to **Fan-Out Mode (default decomposition path)**. Accept is the IB's terminal state (ADR-046 — IBs are consumed-once specs that rest at `ACCEPTED` and never lock); an ACCEPTED IB is ready for `/write-code-beads`.
-- **Audit mode** — `--audit` flag is present, OR the file contains `## Constraints & Decisions` and `## Done When` (i.e., it is an existing IB). Skip to the **Audit Mode** section below. Do NOT run the decomposition workflow.
-- **Review mode** — `--review` flag is present. Skip to the **Review Mode** section below.
-- **Resync mode** — `--resync` flag is present. Skip to the **Resync Mode** section below.
-- **Revise mode** — `--revise` flag is present. Proceed to **Fan-Out Mode (default decomposition path)**.
-- **Dry-run mode** — `--dry-run` flag is present. Skip to the **Dry-Run Mode** section below.
-- **Decomposition mode** — no flag + the file is a Working Spec (contains `## Specification` or located under `dekspec/working-specs/`). Default substantive-work path. Proceed to **Fan-Out Mode (default decomposition path)**.
+- **Help mode** — `--help` flag. Skip to **Help Mode**.
+- **Teaching mode** — `--teaching` flag. Skip to **Teaching Mode**.
+- **Audit mode** — `--audit` flag, or no flag + an existing IB path. Skip to **Audit Mode**. Read-only.
+- **Review mode** — `--review` flag. Skip to **Review Mode**.
+- **Revise mode** — `--revise` flag. Skip to **Revise Mode**.
+- **Resync mode** — `--resync` flag. Skip to **Resync Mode**.
+- **Accept mode** — `--accept` flag. Skip to **Accept Mode**.
+- **Adopt mode** — `--adopt` flag, expects a legacy IB. Skip to **Adopt Mode**.
+- **Dry-run mode** — `--dry-run` flag. Skip to **Dry-Run Mode**.
+- **Provisional mode** — `--provisional <slug>` (composes with Create). See **Provisional Mode**.
+- **Create / Decompose mode** — no flag + a description, a Working Spec path or an Intent path. Proceed to **Create / Decompose Mode**.
 
 **Routing (per [`_lib/mode_detection_template.md`](../_lib/mode_detection_template.md)):**
-- Substantive-work (fan-out via Agent tool): (no flag + WS shape, i.e. Decomposition), `--accept` / `--approve`, `--revise`
-- Inline (parent context): `--help`, `--teaching`, `--audit`, `--review`, `--resync`, `--dry-run`
+- Substantive-work (fan-out via Agent tool): Create / Decompose, `--revise`, `--adopt`
+- Inline (parent context): `--help`, `--teaching`, `--audit`, `--review`, `--resync`, `--accept`, `--dry-run`
 
 ## Fan-Out Mode
 
 See [`_lib/fan_out.md`](../_lib/fan_out.md) for the canonical ds-di2 orchestrator/subagent contract. Manifest for this skill:
 
 - **subagent_type**: `dekspec:ib-author`
-- **substantive_modes**: [default decomposition (no flag + Working Spec path), `--accept`, `--revise`]
-- **inline_modes**: [`--help`, `--teaching`, `--audit`, `--review`, `--resync`, `--dry-run`]
-- **mechanical precondition** (orchestrator runs inline BEFORE dispatch; refuse if it fails): walk the spec graph to confirm the parent WS is `ACCEPTED` or higher (the L12 precondition — see §L12 Precondition below).
-- **bundle_list** (Step 1 context — resolve every path to absolute before dispatch; workers should not guess `cwd`):
-  1. Template path — `dekspec/templates/implementation-brief-template.md` (absolute). If missing, halt and tell the engineer to vendor dekspec.
-  2. Parent Working Spec — the WS path from `$ARGUMENTS` (decomposition) OR the WS named in the IB's `Spec` header field (accept / revise). L12 status gate run BEFORE dispatch.
-  3. Parent Intent (if present) — if the WS's `Parent Intent` field names an INT-NNN, include its absolute path (worker uses for cross-IB traceability).
-  4. Governing ADRs — walk the WS's ADR references; for each, run `python ../_lib/scripts/resolve_supersession.py <ADR-ID>` and use the resolved live ADR (the script walks the `Superseded by` chain deterministically and detects cycles / dangling refs; surface stderr on non-zero exit). Include the resolved ADR paths.
-  5. Interface Contracts — the ICs referenced by the WS, by absolute path.
-  6. Sibling IBs — any existing IBs under the flat `dekspec/impl-briefs/` directory whose `Spec` field matches the parent WS (for cross-IB coupling checks in Phase 5). For the collision-free starting IB-NNN, run `python ../_lib/scripts/artifact_ops.py next-id ib` (surface stderr on non-zero exit); allocate sequential ids from there.
-  7. Domain glossary — absolute path to `dekspec/domain-glossary.md` (L10 terminology checks).
-  8. Engineer guidance — `$ARGUMENTS` verbatim (free-form notes, inline notes for revise, or `.md`/`.txt` file path); do NOT summarize.
-  9. Mode-specific constraints: **Decomposition** — full decomposition workflow (Phase 1–5 below), IB Decomposition Principles, Decomposition Checklist, Fidelity Audit content + cohesion + coupling rules, Conflict Detection procedure (passed by reference to this skill body's anchors — worker reads them from the vendored skill, keeping the prompt compact and authoritative); **Accept** — "Run Audit Mode against the IB path. If clean and engineer confirmed, walk PROPOSED→ACCEPTED per Accept Mode Step 4. Refuse if any severity-important-or-worse finding"; **Revise** — "Apply engineer notes per Revise Mode classification (constraint / scope / clarity / structural / rejection). Run Conflict Detection + Fidelity Audit + sibling coupling checks before save. If structural, halt and return the structural escalation rather than mutating."
-  10. Return-shape contract — worker returns a structured summary with `mode`, `artifacts` (list of `{path, status, validate_result, ib_number}`), `audit_summary` (per-IB pass/fail with check counts), `escalations` (unresolved issues needing engineer input), `failure_mode` ∈ {clean, insufficient_context, structural_escalation, audit_failure}.
-- **expected_output_path**:
-  - Decomposition: one or more `dekspec/impl-briefs/IB-NNN-<slug>-brief.md` files in the flat `dekspec/impl-briefs/` directory, each at `Status: PROPOSED`.
-  - Accept: the existing IB path, mutated in place to `Status: ACCEPTED` with an Amendment-Log row appended.
-  - Revise: the existing IB path, mutated in place, with `Engineer review` reset and (if new ambiguity surfaced) new `## Open Issues` entries.
-- **validation**: `dekspec validate <absolute-path-to-IB> --json` per IB. Worker runs and includes the result in its return summary; orchestrator re-runs as trust-but-verify (worker's claim is suggestive; the validate call is authoritative). Validation/surface contract: see [`_lib/validate_and_surface.md`](../_lib/validate_and_surface.md). Failure-mode routing: `insufficient_context` → surface gap verbatim, do NOT retry blindly; `structural_escalation` → present per Phase 4 step 16 ("requires re-decomposition"), wait for engineer decision; `audit_failure` → present failing checks (worker already iterated up to 2 rounds per Phase 4 step 17; further iteration requires engineer judgment); `clean` → present per-IB summary (mirrors Engineer Review Gate report), serve per **Serve for Review** section, instruct engineer on next steps (accept → `/write-code-beads`). In all cases, do NOT swallow worker errors — the raw return is a first-class signal about material quality.
-
-**End of Fan-Out Mode — the inline sections below (Workflow, IB Decomposition Principles, Decomposition Checklist, Conflict Detection, Fidelity Audit, etc.) are the AUTHORITATIVE SPEC the worker follows. Do NOT execute them in the orchestrator's context.**
+- **substantive_modes**: [Create / Decompose, `--revise`, `--adopt`]
+- **inline_modes**: [`--help`, `--teaching`, `--audit`, `--review`, `--resync`, `--accept`, `--dry-run`]
+- **mechanical precondition** (orchestrator, before dispatch): when the input is a Working Spec, run the L12 gate below; when it is an Intent, confirm it is `ACCEPTED`.
+- **bundle_list** (absolute paths): the IB template; the input (description verbatim, or the WS / Intent path); the domain glossary; the ADR, IC and WS paths the input names (the worker reads what it needs — it references them, it does not copy them); existing IBs sharing the same Parent (for scope overlap and shared-shape homes); engineer notes verbatim; the mode's section of this skill by name.
+- **expected_output_path**: `dekspec/impl-briefs/IB-NNN-<slug>.md` per IB (Create), or the input IB path (revise / adopt).
+- **validation**: the orchestrator re-runs `dekspec ib lint IB-NNN` and `dekspec validate <path>` per IB (trust-but-verify; see [`_lib/validate_and_surface.md`](../_lib/validate_and_surface.md)). Surface worker escalations verbatim — an underdefined contract is a finding, not something to paper over.
 
 ## Help Mode
 
@@ -84,27 +82,26 @@ See [`_lib/help_mode_template.md`](../_lib/help_mode_template.md) for the canoni
 
 ```yaml
 skill_name: "/write-ibs"
-one_line:   "Manage Implementation Briefs for the DekSpec workflow"
+one_line:   "Author, audit, revise, accept and adopt Implementation Briefs (ADR-055–058)"
 modes:
-  - { flag: "", args: "<spec-path>", description: "Decompose a finalized Working Spec into IBs. Auto-detects Audit Mode if given an IB path (i.e., a file containing `## Constraints & Decisions` + `## Done When`). (Decomposition Mode)" }
-  - { flag: "--audit", args: "<IB-path | glob>", description: "Run conflict detection + fidelity audit on existing IB(s). Read-only — reports findings without changes. (Audit Mode)" }
-  - { flag: "--review", args: "<IB-path>", description: "Walk through open issues interactively; resolve one at a time with the engineer. (Review Mode)" }
-  - { flag: "--resync", args: "<IB-path>", description: "Re-derive IB sections after the source WS / ADRs / ICs changed. Diffs upstream against IB and proposes per-section updates. (Resync Mode)" }
-  - { flag: "--revise", args: "<IB-path> <notes>", description: "Targeted update from engineer feedback. Notes: inline text or path to a .md / .txt file. (Revise Mode)" }
-  - { flag: "--accept", args: "<IB-path | glob>", description: "Promote IB(s) PROPOSED → ACCEPTED after a clean audit + engineer confirmation. ACCEPTED is the IB's terminal state (ADR-046 — IBs never lock); an ACCEPTED IB is ready for `/write-code-beads`. `--approve` is a retained alias. (Accept Mode)" }
-  - { flag: "--dry-run", args: "<spec-path>", description: "Preview the decomposition: estimated IB count, dependency graph, silent-failure-domain coverage. Lightweight (1 round of checks). (Dry-Run Mode)" }
-  - { flag: "--teaching", args: "<spec-path>", description: "Interactive tutorial walking a new author through decomposing a finalized Working Spec into Implementation Briefs. (Teaching Mode)" }
+  - { flag: "", args: "<description | WS-path | Intent-path>", description: "Create one IB for a bounded change (no parent needed), or decompose an ACCEPTED Intent / Working Spec into IBs. Writes delegated IBs per the template: obligations referenced, Acceptance YAML, revisable hypothesis. Ends at PROPOSED via `dekspec ib propose` when lint is clean. (Create / Decompose Mode)" }
+  - { flag: "--audit", args: "<IB-path | glob>", description: "Read-only contract check: `dekspec ib lint` + authoring checks + cross-IB checks. (Audit Mode)" }
+  - { flag: "--review", args: "<IB-path>", description: "Walk open issues with the engineer and run the Spec-Reviewer pass. (Review Mode)" }
+  - { flag: "--revise", args: "<IB-path> <notes>", description: "Apply engineer notes; re-authorizes an accepted contract through `ib baseline` or `ib amend`. (Revise Mode)" }
+  - { flag: "--resync", args: "<IB-path | glob>", description: "Repair obligation references after an upstream ADR / IC / WS changed (superseded source, renamed section). Never copies text. (Resync Mode)" }
+  - { flag: "--accept", args: "<IB-path | glob>", description: "Authorize after a clean audit, written acceptance tests, a passing oracle review (`Floor reviewed:` row) and engineer confirmation: `dekspec ib propose` (if DRAFT) then `dekspec ib accept`, which takes the acceptance baseline. (Accept Mode)" }
+  - { flag: "--adopt", args: "<IB-path>", description: "Rewrite a legacy IB into the delegated format, classifying each legacy constraint deliberately, then `dekspec ib adopt`. (Adopt Mode)" }
+  - { flag: "--dry-run", args: "<WS-path | Intent-path>", description: "Preview the IB cut — titles, Scope, dependencies, shared-shape homes — without writing. (Dry-Run Mode)" }
+  - { flag: "--teaching", args: "", description: "Walk a new author through one IB section by section. (Teaching Mode)" }
   - { flag: "--help", args: "", description: "Show this help message." }
 examples:
+  - "/write-ibs \"reject Intents whose Verification cmd is empty\""
+  - "/write-ibs dekspec/intents/INT-005-attachment-mime-coverage.md"
   - "/write-ibs dekspec/working-specs/WS-001-foo.md"
-  - "/write-ibs --audit dekspec/impl-briefs/IB-001-component-brief.md"
   - "/write-ibs --audit \"dekspec/impl-briefs/**/*.md\""
-  - "/write-ibs --review IB-001-component-brief.md"
-  - "/write-ibs --resync IB-001-component-brief.md"
-  - "/write-ibs --revise IB-001-component-brief.md \"done-when too vague; remove graph_cache.py\""
-  - "/write-ibs --revise IB-001-component-brief.md review-notes.md"
-  - "/write-ibs --accept IB-001-component-brief.md"
-  - "/write-ibs --dry-run dekspec/working-specs/WS-001-foo.md"
+  - "/write-ibs --revise IB-012 \"AC-2 must cover the empty-file case\""
+  - "/write-ibs --accept IB-012"
+  - "/write-ibs --adopt dekspec/impl-briefs/active/IB-040-foo.md"
   - "/write-ibs --help"
 ```
 
@@ -117,806 +114,134 @@ See [`_lib/teaching_mode.md`](../_lib/teaching_mode.md) for the canonical 4-step
 - **artifact_kind**: IB (Implementation Brief)
 - **template_path**: `templates/implementation-brief-template.md`
 - **methodology_section**: §4 Layer 3 of `docs/dekspec-methodology.md`
-- **exemplar_paths**: `dekspec/impl-briefs/`
-- **required_sections**: [Parent WS, Source AEs, Depends-on, Goal, Constraints & Decisions, Files to Modify, Do Not Touch, Governing ADRs, Done When]
+- **exemplar_paths**: `dekspec/impl-briefs/` (prefer an IB whose header says `**Authority policy:** delegated`)
+- **required_sections**: [Outcome, Rationale, Scope, Obligations, Protected Surfaces, Acceptance, Implementation Hypothesis, Environment Prerequisites]
 
-Skill-specific structural checks to surface as Open Issues: T40-IB-GOAL, T41-IB-DONE-WHEN, LINK-IB-AE.
+Skill-specific checks to surface as Open Issues: every `dekspec ib lint IB-NNN` problem; any obligation that restates another artifact's text instead of referencing it.
 
-**Test-path contract (DSF-005/006).** When authoring the IB's `## Test Layout` + `## Done When`, use only the `/write-tests` output locations — bead tests at `tests/bead/test_<bead-slug>.py` (**exactly one per bead**) and IB composition tests at `tests/integration/test_<ib-slug>.py`. Flag any IB that invents alternate paths (`tests/acceptance/`, `tests/architecture/`, …) or lists multiple bead-level test files for a single bead.
+## Create / Decompose Mode
 
-**Skill-unique scope note:** Teaching Mode walks a single IB section-by-section. The default no-flag creation mode triggers a full Working-Spec decomposition workflow that produces multiple IBs; Teaching Mode does not — it is for the engineer who is authoring their first IB by hand.
+### Inputs and preconditions
 
-## Accept Mode
+- **A description of a bounded change** (no parent). Enough when it yields an Outcome, a Rationale and the references that govern it. Ask for what is missing; do not invent it.
+- **An Intent** — must be `ACCEPTED`. Each IB gets `**Parent:** INT-NNN`, and its Scope lies inside the Intent's `Components affected:`. Together the IBs deliver the Intent's Desired Outcome (the Intent's Verification is the cross-IB proof, run by `dekspec intent verify`).
+- **A Working Spec** — the IBs reference its sections (`→ WS-NNN §Section`); `**Parent:** WS-NNN` when the WS is the reason the IB exists. **L12 gate:** run `dekspec validate <ws-path> --json`; if the WS is `ACCEPTED` and carries any unresolved `P1` open issue (`blocking_pre_ib` per ADR-013 / LINK-WS-BLOCKING-PRE-IB-CLEAN), refuse and name each issue. A WS at DRAFT/PROPOSED cannot be referenced as binding (it is not approved) — settle it first. No bypass flag.
 
-Promote one or more IBs from PROPOSED → ACCEPTED after a clean audit + engineer confirmation. `--approve` is a retained alias for `--accept`.
+### Investigate
 
-### Steps
+Read what the change touches before cutting it: the code on the likely paths, the governing ADRs / ICs / WS sections (resolve supersession with `python ../_lib/scripts/resolve_supersession.py <ADR-ID>`), and existing IBs with the same Parent. Investigation is proportionate — a one-file change needs little. Findings feed the hypothesis; a finding that contradicts a binding source is a conflict to raise with the engineer, never to settle silently.
 
-1. Resolve the target(s) — single IB path or glob expanding to multiple IBs under `dekspec/impl-briefs/`.
-2. **For each IB, run Audit Mode first.** If any IB has severity-important-or-worse findings, refuse to accept that IB until the findings are resolved (via `--revise` or `--review`).
-3. Present the per-IB summary:
+### Cut the IBs
 
-```
-ACCEPT PLAN — N IBs:
-  ✅ IB-001-component-brief.md — audit clean, ready to accept
-  ✅ IB-002-component-brief.md — audit clean, ready to accept
-  ❌ IB-003-component-brief.md — 2 fidelity failures (must resolve before accept)
-  ⏭️  IB-004-component-brief.md — already ACCEPTED, skipped
+One IB per independently verifiable outcome — something whose acceptance conditions can be demonstrated without another IB's implementation. Split when outcomes are unrelated or fail independently; keep together what one business rule would change together. No fixed sizing: an IB is as large as one coherent, reviewable outcome.
 
-Proceed with the ✅ IBs? (yes / no)
-```
+**Shared foundations route, they do not default to extraction (ADR-054, delivery revised by ADR-056).** Cut vertical slices. When several slices need the same type, schema or constant:
 
-4. Wait for explicit "yes". Then for each ready IB, run the status walk deterministically:
-   `python ../_lib/scripts/artifact_ops.py transition <IB-path> --from PROPOSED --to ACCEPTED --note "Audit passed; engineer confirmed; promoted PROPOSED to ACCEPTED." --engineer <author>` — this flips Status and appends the Amendment-Log row in one step (IB files carry no Modified field, so none is bumped). Surface stderr on non-zero exit; skip that IB and report the failure.
-5. Report:
+1. **Interface Contract** — when the shared surface is a genuine cross-component boundary.
+2. **Pin once** *(the default)* — write the shape in exactly one home: an IC section, a WS section, or a `(local)` obligation of one IB. Every consumer references that home (`- **O-n** → IB-NNN §O-1`, `→ WS-NNN §Section`, `→ IC-NNN §Section`); `dekspec ib context` delivers it byte-identical to each consumer by construction. Declare no dependency edge for a pin. The referenced home must be approved before consumers can be proposed (accept the pin-home IB first). `IB-NNN §O-n` resolves a one-line local obligation; a multi-line shape belongs in an IC or WS section.
+3. **Foundation IB** — the exception: ≥ 2 real dependents, types only and no logic, reviewable on its own.
 
-```
-✅ N IB(s) promoted PROPOSED → ACCEPTED.
-   Next: run /write-code-beads on each accepted IB in dependency order.
-```
+Do not absorb a shared type into whichever slice needs it first — that is a hidden sequencing edge; declare `**Depends on:**` if you mean one. Dependencies form a DAG.
 
-If all queued IBs are now ACCEPTED, the report ends with: *"All IBs accepted. Run `/write-code-beads` on each IB in numbered order."*
+**Deep-module pass (Constitution Article 4 / ADR-036).** Where an IB exposes an interface to other IBs, design it for depth: fewer operations, simpler parameters, complexity hidden inside, dependencies injected rather than constructed, operation-specific signatures rather than a generic conduit — so the boundary is mockable and dependents stay testable without this IB.
 
-**End of Accept Mode — do not continue to the decomposition workflow.**
+### Write each IB
 
-> **No Lock Mode for IBs.** Per **ADR-046** (terminal status by artifact nature), an Implementation Brief is a consumed-once spec that rests at `ACCEPTED` and never locks. `ACCEPTED` *is* the terminal state and the downstream gate: `/write-code-beads` and `/write-tests` accept an IB at `ACCEPTED`. There is no `ACCEPTED → LOCKED` promotion — the earlier `--lock` mode was retired when `LOCKED` was removed from the IB status enum (ds-3fn7).
+Scaffold with `dekspec ib new <slug> --title "<title>"` (add `--parent INT-NNN` or `--parent WS-NNN`); it allocates the next IB id, writes the template with `**Authority policy:** delegated` at DRAFT, and logs the creation. Then fill:
+
+- **Outcome** — the observable state when the IB is complete, not a task list.
+- **Rationale** — enough for a reviewer to judge the change without a parent; with a parent, reference it instead of restating it.
+- **Scope** — globs where changes are allowed without further permission, each resolving to real paths; plus **Out of scope** for what a reasonable engineer might assume is included.
+- **Obligations** — references to the canonical homes, with a short applicability note only when the reference alone does not say how it applies. `(local)` only for obligations this IB owns. List the obligations that actually bind this change, not every ADR in the neighbourhood.
+- **Protected Surfaces** — what must not change even inside Scope (`path::symbol` for one Python function or class), each with the reason.
+- **Acceptance** — the YAML block. Each condition names exactly one verification: `pytest` nodes, a `command` that exits 0 only when the behavior holds, or a `review` judgment. Cover the **observable** behavior, the **integrated** behavior through the real entry point, and the **failure** behavior (missing, invalid, unavailable input). Conditions must be demonstrable, not "works correctly". Name the test nodes the conditions need even though the tests do not exist yet — `/write-tests` writes them next, before authorization (they are mandatory, never left to the builder); list other fixtures or golden data as protected assets. A `command:` condition's `condition` text is its expectation basis (ADR-062): state what the command checks and why that result shows the behavior; a pass criterion the change itself controls (a string it prints, a count it computes) is not independent. For numerical or data transformations, pin exact input/output examples supplied by the engineer or a reference implementation — never invent them.
+- **Implementation Hypothesis** — likely files, approach and reuse, explicitly revisable. Nothing here binds; if something must bind, it is an obligation or a protected surface.
+- **Environment Prerequisites** — live services or tools with a probe command; `dekspec ib start` blocks truthfully when a required probe fails.
+- **Header** — `**Depends on:**` (IB ids, or none), `**Spec impact:**` (the ADR / IC / WS / AE / SP ids the delivery must update when architecture or contracts change, else none), `**Parent:**`.
+
+When two binding sources contradict each other, or a source contradicts the code in a way the IB cannot settle, stop and put the question to the engineer; record the resolution in the canonical home (ADR / IC / WS), not in the IB.
+
+### Check and save
+
+1. `dekspec ib lint IB-NNN` must pass (contract problems + reference resolution); `dekspec validate <path>` must report no errors.
+2. Across the set: no two IBs change the same function without a dependency between them; every shared shape has exactly one home and every consumer references it; the dependency graph is acyclic; with an Intent parent, every Scope lies inside `Components affected:`.
+3. For each IB whose lint is clean and whose references resolve to approved sources, request the decision: `dekspec ib propose IB-NNN` (DRAFT → PROPOSED). An IB referencing a not-yet-approved home stays DRAFT until that home is accepted.
+4. Report per IB: id, Outcome, Parent, obligations referenced, acceptance conditions (observable / integration / failure), dependencies, lint result, status. Then name what only the engineer can judge — whether the acceptance conditions capture the right behaviors, the protected surfaces and Out of scope match intent, and any engineer-supplied values are correct — and point at `--accept`.
+
+## Audit Mode
+
+_Plays the **`auditor`** role — run `dekspec resource role auditor` first and follow it: deterministic `dekspec validate` / `dekspec audit` output is primary evidence; report findings, change nothing._
+
+Read-only; writes nothing. For each IB (path or glob):
+
+1. `dekspec ib lint IB-NNN` and `dekspec validate <path>`; report every problem.
+2. A `legacy` IB: report "legacy authority policy — adopt with `/write-ibs --adopt`" and the legacy-shape findings only; do not grade it against the delegated contract.
+3. Authoring checks: obligations reference their homes and restate nothing (flag any ADR / IC / WS text pasted into the IB); `(local)` used only for IB-owned obligations; each acceptance condition names one verification and the set covers observable, integration and failure behavior; Scope globs resolve and Protected Surfaces exist; the hypothesis contains nothing that must bind; `**Spec impact:**` is named when the change alters architecture or a contract; `**Parent:**` resolves if set.
+4. Cross-IB checks over IBs sharing a Parent: shared shapes have one home; no overlapping Scope on the same function without a dependency; the dependency graph is acyclic.
+5. For an ACCEPTED IB, `dekspec ib status IB-NNN` shows whether the contract changed since the baseline (a change without `ib baseline` / `ib amend` fails verification).
+
+Report findings by severity with the remedial mode (`--revise`, `--resync`, `--adopt`).
 
 ## Review Mode
 
-Walk through open issues interactively — present each issue with context and a recommendation, resolve with the engineer one at a time.
+Walk the IB's unchecked `## Open Issues` with the engineer, one at a time: present the issue, check whether it is still valid against the current IB and its referenced sources, recommend resolve / revise / defer / dismiss, apply the engineer's choice (resolution or dismissal note with today's date). If there are none, say so.
 
-Arguments: the IB path.
+**Spec-reviewer dispatch** — run the shared spec-reviewer dispatch in [`_lib/agent_roles.md`](../_lib/agent_roles.md) §Spec-reviewer dispatch for this IB alongside the open-issue walk: `dekspec resource role spec-reviewer`, one fresh-context sub-agent composed policy → role → procedure → assignment, and its findings presented at their severity (default P2) with the open issues. If it did not run, say so — never present your own review as the spec-reviewer's.
 
-### Steps
-
-1. Read the IB at the provided path
-2. Parse the `## Open Issues` section. Collect all unchecked items (`- [ ]`).
-3. If no unchecked items exist: "No open issues in [path]. Nothing to review." **End of Review Mode.**
-4. Read the artifact's Goal, Constraints & Decisions, Done When, and Out of Scope sections for context.
-5. Read the source spec (from the Spec header field) and governing ADRs to check for cross-artifact relevance.
-6. Present a summary:
-   ```
-   REVIEW SESSION: [path]
-   Engineer review: [current field value]
-   Open issues: [N] ([M] blocking, [K] non-blocking)
-   
-   Starting guided review...
-   ```
-6.5. **Spec-Reviewer dispatch** (shared `reviewer_mode` path — see [`_lib/reviewer_mode.md`](../_lib/reviewer_mode.md)). This ADDS an adversarial Spec-Reviewer pass alongside the open-issue loop; it does NOT replace it. Perform the shared four-step dispatch:
-   a. Load the `spec-reviewer` ContextSpec: `from dekspec.constraint_compiler.parser import parse_context_spec; context_spec = parse_context_spec("dekspec/context-specs/role-spec-reviewer.md")` (`context_spec["role_identity"] == "spec-reviewer"`).
-   b. Take the `ReviewerIB` artifact this `--review` mode already holds (the IB at the provided path; the caller owns this IO, the dispatcher is IO-free).
-   c. Dispatch through the shared surface: `from dekspec.spec_review.reviewer import Reviewer; findings = Reviewer().dispatch(context_spec, artifact)` (`-> list[Finding]`, per IC-016).
-   d. Present each returned `Finding` to the engineer at its severity (default `P2` — approval-blocking, not auto-merge) as additional review items alongside the open issues below. Do not reshape the records; they route into the AE-003 surface via the `SPEC-REVIEW` audit-rule family (`dekspec.spec_review.reviewer` → `spec_review_rules`).
-7. For each unchecked issue, in order:
-   a. Present the issue:
-      ```
-      ───────────────────────────────────────
-      ISSUE [N/total]: [issue description]
-      Source: [source]
-      Severity: [blocking / non-blocking]
-      ───────────────────────────────────────
-      ```
-   b. Analyze the issue against the current IB content:
-      - Has this issue already been addressed by changes to the IB since it was logged?
-      - Is the issue still valid given the current state of the source spec, governing ADRs, and sibling IBs?
-      - What would resolving this issue require — a change to this IB, a resync from the spec, or an upstream change?
-   c. Present a recommendation:
-      ```
-      RECOMMENDATION: [resolve / revise IB / defer / dismiss]
-      
-      [Specific explanation — what to change and why, or why to defer/dismiss]
-      
-      [If resolve or revise: show the proposed change]
-      ```
-   d. Wait for the engineer's response.
-   e. Based on response:
-      - **Resolve** — check off the issue, append resolution: `- [x] [Issue] — **Source:** ... — **Severity:** ... — **Resolved:** [today] [resolution summary]`
-      - **Revise** — apply the agreed change to the IB body, then check off the issue with resolution note
-      - **Defer** — leave unchecked, optionally update the issue description with new context
-      - **Dismiss** — check off with strikethrough and dismissal note: `- [x] ~~[Issue]~~ — **Source:** ... — **Severity:** ... — **Dismissed:** [today] [reason]`
-8. Update **Modified** date. If any IB body changes were made, reset the `Engineer review` field to `[ ] Not yet reviewed — do not run /write-code-beads until checked` (changes invalidate prior approval).
-9. Run **Conflict Detection** and **Fidelity Audit** on the revised IB if any body changes were made.
-10. Present summary:
-    ```
-    REVIEW COMPLETE: [path]
-    
-    Resolved: [N]
-    Dismissed: [N]
-    Deferred: [N]
-    
-    [If blocking issues remain]: ⚠️  [N] blocking issues remain — IB should not be approved.
-    [If no blocking issues remain]: ✅ No blocking issues remain — IB is ready for engineer approval.
-    [If body changes were made]: Engineer review has been reset — re-approve before /write-code-beads.
-    ```
-
-**End of Review Mode — do not continue to the decomposition workflow.**
-
-## Resync Mode
-
-Run this when `--resync` is present. Use when the spec has changed and specific IBs need to be refreshed against the updated spec. The file path may be a single IB or a glob pattern.
-
-For each resolved IB file:
-
-1. Read the IB
-2. Identify the source spec from the IB's Spec Context section
-3. Read the current version of the spec
-4. Read all ADRs listed in the IB's Governing ADRs table (applying supersession rules as in the decomposition workflow)
-5. Diff the IB's embedded spec context against the current spec — identify what changed
-6. Present the changes to the engineer:
-   ```
-   IB: [IB-NNN-component-brief.md]
-   Spec changes affecting this IB:
-     - [description of each change]
-   
-   Proposed updates to Constraints & Decisions:
-     - [what will change]
-   
-   Proceed with update? (y/n)
-   ```
-7. If approved: update the IB's Spec Context (re-copy relevant sections verbatim), re-reconcile Constraints & Decisions, and update the `Modified` date
-8. Run **Conflict Detection** on the updated IB
-9. Run **Fidelity Audit** on the updated IB (content completeness + cohesion checks)
-10. Run **coupling checks** against all sibling IBs for the same spec — the resync may have changed the IB's scope or constraints in ways that affect coupling with siblings.
-11. If all checks pass — save. Reset `Status` to `PROPOSED` (the update invalidates prior acceptance).
-12. If any check fails — report failures, do not save until resolved.
-
-After processing all IBs:
-
-```
-UPDATE RESULTS:
-  ✅ IB-001-component-brief.md — updated, needs re-acceptance
-  ✅ IB-002-component-brief.md — updated, needs re-acceptance
-  ⏭️  IB-003-component-brief.md — no spec changes affect this IB, skipped
-```
-
-If any beads exist for updated IBs, warn: "Beads exist for updated IBs. Open beads should be deleted and re-created after re-acceptance. Run `br delete <bead-id>` for affected beads."
-
-**End of Resync Mode — do not continue to the decomposition workflow.**
+For an adversarial pre-authorization review of the contract and the oracle review of its acceptance tests (ADR-062), `/dekspec:review-ib` is the dedicated skill. If body changes were made, re-run Audit Mode and apply the Revise Mode re-authorization rules.
 
 ## Revise Mode
 
-Run this when `--revise` is present. Use when the engineer has review notes — from a review session, present annotations, or their own analysis — that need to be worked into an IB.
+Arguments: the IB path, then notes (inline, or a `.md` / `.txt` path). Classify each note:
 
-Arguments after the IB path are the engineer's notes. These can be:
-- **Inline text** — free-form notes directly in the arguments
-- **A file path** — if the remaining argument is a path to an existing `.md` or `.txt` file, read it as the notes
+- **Hypothesis** — files, approach, sequencing. Edit freely at any status; it is not part of the contract hash.
+- **Contract** — Outcome, Scope, Obligations, Protected Surfaces, Acceptance, assets, Depends on, Spec impact.
+- **Structural** — split, merge, re-cut, new IB. Exit Revise Mode and route to Create / Decompose; Revise changes one existing IB.
+- **Rejection** — the IB rests on a wrong premise. Stop and ask.
 
-### Steps
+Present the classified plan, wait for approval, apply it, log new ambiguity as `## Open Issues` (**Source:** review), then re-run Audit Mode. A contract change needs re-authorization, by status:
 
-1. Read the IB
-2. Read the engineer's notes (inline or from file)
-3. Classify each note as one of:
-   - **Constraint change** — affects Constraints & Decisions (e.g., "add bfloat16 dtype constraint", "remove the fallback path")
-   - **Scope change** — affects Files to Modify, Out of Scope, or the IB's boundary (e.g., "this shouldn't touch graph_cache.py", "add the migration script")
-   - **Clarity fix** — affects Done When, Spec Context, or domain constraints (e.g., "done-when for endpoint X is too vague", "clarify which CUDA device")
-   - **Structural issue** — affects dependency ordering, IB splits, or requires a new IB (e.g., "this should be two IBs", "this depends on IB-003 not IB-001")
-   - **Rejection** — the note indicates a fundamental problem that can't be patched (e.g., "this IB is based on a wrong assumption about the data model")
-4. Present the classified notes and proposed changes:
-   ```
-   REVISION PLAN for [IB-NNN-component-brief.md]:
-   
-   Constraint changes:
-     - [note] → update C&D entry: [proposed change]
-   
-   Scope changes:
-     - [note] → update Files to Modify / Out of Scope: [proposed change]
-   
-   Clarity fixes:
-     - [note] → update [section]: [proposed change]
-   
-   Structural issues (require engineer decision):
-     - [note] → [what needs to happen]
-   
-   Proceed with non-structural changes? (y/n)
-   ```
-5. Wait for engineer approval. Structural issues and rejections always require explicit engineer direction before proceeding.
-   - If the engineer approves a structural change that requires creating new IBs (split this IB, merge with another IB, re-cut boundaries), **exit Revise Mode**. Instruct the engineer: "This structural change requires re-decomposition. Run `/write-ibs <spec-path>` to re-derive the affected IBs, or manually restructure and re-run `/write-ibs --audit` on the results." Revise Mode can only modify a single existing IB — it cannot create or delete IBs.
-6. Apply approved non-structural changes. Update the `Modified` date.
-7. If the revision introduces ambiguity, contradictions, or concerns that cannot be fully resolved during this revision, log them as new entries in the `## Open Issues` section with **Source:** `review` and appropriate severity. Inform the engineer: "New open issues were logged. Run `--review` to walk through them."
-8. Run **Conflict Detection** on the revised IB
-9. Run **Fidelity Audit** on the revised IB (content completeness + cohesion checks)
-10. Run **coupling checks** against all sibling IBs for the same spec — the revision may have introduced coupling problems (e.g., a scope change that now overlaps with another IB's files, a new C&D entry that creates common coupling). Read sibling IBs from `dekspec/impl-briefs/` matching the same spec reference.
-11. If all checks pass — save. Reset the `Engineer review` field to `[ ] Reviewed and approved` (the revision invalidates prior approval).
-12. If any check fails — report failures, do not save until resolved.
+- **DRAFT / PROPOSED** — edit; re-run `dekspec ib lint`. A contract or test change moves the floor digest, so the oracle review (`/dekspec:review-ib`) is repeated before `dekspec ib accept`.
+- **ACCEPTED, run not started** — after the edit, repeat the oracle review of the changed tests (`/dekspec:review-ib`, a new `Floor reviewed:` row naming the new floor digest), then `dekspec ib baseline IB-NNN --reason "<why>"` refreshes the acceptance baseline (the authorizer's action).
+- **ACCEPTED, run started** — only `dekspec ib amend IB-NNN --reviewer <independent reviewer> --reason "<why>"` changes the contract or acceptance assets (ADR-057); the completing review verdict must acknowledge the amendment. Never weaken an acceptance condition to make a run pass.
+- **COMPLETE / SUPERSEDED / DEPRECATED** — do not revise; author a new IB.
 
-### Examples
+## Resync Mode
 
-Inline notes:
-```
-/write-ibs --revise IB-001-component-brief.md done-when criteria for the /synthesize endpoint are too vague, need explicit status codes. Also remove graph_cache.py from files to modify — that belongs in IB-002.
-```
+IBs hold references, not copies, so an upstream edit reaches them at the next `dekspec ib context` with no resync (and makes prior evidence stale automatically). This mode repairs references that no longer resolve. For each IB: run `dekspec ib lint IB-NNN`; for each reference problem — a superseded or deprecated source, a missing section, an unapproved source — propose the repair (repoint to the successor, fix the section name, or wait for approval) and apply it with the engineer's confirmation. A repointed obligation is a contract change: apply the Revise Mode re-authorization rules. Never paste the source text into the IB to make a reference go away.
 
-Notes from file:
-```
-/write-ibs --revise IB-001-component-brief.md review-notes.md
-```
+## Accept Mode
 
-**End of Revise Mode — do not continue to the decomposition workflow.**
+Authorization is the engineer's decision (ADR-057); passing `--accept` after the audit report is that decision.
+
+1. Resolve the target(s); run Audit Mode on each. Refuse any IB with a lint problem, an unresolved `P1` open issue, or an unresolved reference — and, for an IB with `pytest:` conditions or declared assets, any IB whose acceptance tests are not written (`/dekspec:write-tests`) or whose current floor digest (`dekspec ib floor IB-NNN`) no `Floor reviewed:` row in its Amendment Log names (run `/dekspec:review-ib` first; ADR-062).
+2. Present the plan (ready / blocked / already ACCEPTED) and wait for an explicit yes.
+3. For each ready IB: `dekspec ib propose IB-NNN` if it is still DRAFT, then `dekspec ib accept IB-NNN`. Accept writes ACCEPTED and records the acceptance baseline — the contract hash, the acceptance assets named by the conditions (the reviewed tests, `Basis:` lines included) and the runner inputs. Surface stderr on refusal and skip that IB. Pass `--actor <identity>` (or set `DEKSPEC_ACTOR`) when the engineer is not the git user.
+4. Report the next steps: execution picks up from `dekspec ib ready` (or `/dekspec:implement`). Any pre-start change to the acceptance tests repeats the oracle review (a new `Floor reviewed:` row) before `dekspec ib baseline IB-NNN --reason "…"` re-protects them.
+
+## Adopt Mode (legacy IBs)
+
+A legacy IB keeps the ADR-049 meaning until it is adopted deliberately — never by bulk relabeling (ADR-055). Arguments: the legacy IB path.
+
+1. Read the IB, its Governing ADRs, referenced ICs and its WS. Confirm `**Authority policy:** legacy` (or no line).
+2. **Classify each `## Constraints & Decisions` entry, one by one**, and record the decision:
+   - **Binding obligation** whose canonical home exists → an `O-n` reference to that home (`→ ADR-NNN`, `→ IC-NNN §Section`, `→ WS-NNN §Section`).
+   - **Binding obligation** owned by this IB alone → an `O-n (local)` obligation.
+   - **Implementation hypothesis** (file choices, sequencing, algorithm preferences not required by a contract) → `## Implementation Hypothesis`.
+   - **Obsolete / duplicated** → dropped, with the reason.
+   Record the table (legacy entry → disposition) in an `## Adoption` section of the IB; present each classification to the engineer, who confirms or corrects it. An entry you cannot classify is an open question, not a default.
+3. Convert `## Files to Modify` into `## Scope` globs (the legitimate change area, not just the guessed files) plus hypothesis entries; `## Do Not Touch` into `## Protected Surfaces`; `## Done When` into the `## Acceptance` YAML (observable, integration and failure conditions, each with one verification). Add Outcome and Rationale.
+4. Replace the legacy sections with the new ones and set `**Authority policy:** delegated`. Run `dekspec ib lint IB-NNN` until clean.
+5. Record the switch: for a PROPOSED or ACCEPTED IB, `dekspec ib adopt IB-NNN --reason "<summary of the classification>"` (writes the Amendment Log row and, for ACCEPTED, the adoption baseline; run it as the author or authorizer, not as one of the run's builders — it is refused for a builder, for an IB never committed as legacy, and once a delegated baseline exists). A DRAFT IB needs no engine step — add an Amendment Log row and proceed to `dekspec ib propose`.
+6. If the IB had legacy code beads, `dekspec ib import-beads IB-NNN` moves them into its execution record as tasks (owner, status, dependencies and closure evidence preserved).
 
 ## Dry-Run Mode
 
-Preview the decomposition without drafting full IBs. Use to validate spec scoping before committing to the expensive decomposition pass.
-
-### Input
-
-Spec path: the argument after `--dry-run`.
-
-### Steps
-
-1. Read the spec
-2. Read all ADRs referenced in the spec (applying supersession rules)
-3. Identify the independently verifiable units of work — the same decomposition logic as the full workflow, but produce only titles and one-line scope descriptions, not full IB drafts
-4. Map the dependency graph between units
-5. Identify which silent failure domains are touched (injection, quantization, graph, CUDA)
-6. Run the IB Count Assessment
-7. **Lightweight decomposition spot-check (1 round only).** Run a subset of the decomposition checklist for fast feedback:
-
-   **Cohesion (per candidate):**
-   - [ ] Can state purpose in one sentence without "and" connecting unrelated concerns
-   - [ ] Single primary failure domain
-
-   **Coupling (across candidates):**
-   - [ ] No two candidates modify the same file's functions (content coupling check)
-   - [ ] No circular dependencies in the graph
-
-   **Graph:**
-   - [ ] DAG is valid
-   - [ ] Depth > 3 flagged
-   - [ ] Anti-pattern scan: kitchen sink, God IB, circular dependency
-
-   **Checks deferred to full run:** passenger files, narrow dependency surface, control coupling, transitive leakage, fan-out limits, stability of high-fan-in IBs, all fidelity audit checks, conflict detection.
-
-8. Present:
-
-```
-DRY RUN — [spec path] (1 round, lightweight checks)
-
-Estimated IBs: [N] ([assessment from count table])
-
-Dependency graph:
-  IB-1: [component] — no dependencies
-  IB-2: [component] — no dependencies
-  IB-3: [component] — depends on IB-1
-  IB-4: [component] — depends on IB-1, IB-3
-  IB-5: [component] — depends on IB-4
-
-Silent failure domains: [list]
-Governing ADRs: [list]
-
-Decomposition spot-check:
-  [✅/⚠️/❌ per check run — list results]
-
-Checks deferred to full run: passenger files, dependency surface,
-  control coupling, transitive leakage, fan-out, fidelity audit
-
-[If 7-10]: ⚠️  Consider whether this is two subsystems in one spec.
-[If 10+]:  ❌ Too large — split the spec before decomposing.
-
-Proceed with full decomposition? (yes / no / rescope)
-```
-
-If the engineer says "yes," proceed to the full **Decomposition Mode** workflow starting at Phase 1 step 1. The full run re-derives candidates from scratch with full decomposition checklist rigor — the dry-run's candidates are guidance, not a starting point. Phase 1 can reuse already-loaded sources (spec, ADRs) without re-reading them.
-
-If "no" or "rescope," stop.
-
-**End of Dry-Run Mode.**
-
-## Input
-
-Spec path: $ARGUMENTS
-
-If no path is provided, list all `.md` files in `dekspec/working-specs/` and ask the engineer to select one.
-
-## Safety Check
-
-Before proceeding, check if IBs already exist for this spec in `dekspec/impl-briefs/`:
-- If IBs exist in `queued/` — warn: "IBs already exist for this spec. Continuing will regenerate them. Continue or abort?"
-- If IBs exist in `active/` or `completed/` — warn: "IBs for this spec are already in progress or completed. This is unusual. Continue or abort?"
-
-Wait for engineer confirmation before proceeding.
-
-## L12 Precondition — `blocking_pre_ib` open_issues must be clean
-
-**Per LINK-WS-BLOCKING-PRE-IB-CLEAN audit rule + ADR-013 severity vocabulary.** A Working Spec that has walked past PROPOSED (i.e., status is `ACCEPTED`, `IMPLEMENTING`, `TESTPASS`, `TESTFAIL`, `MERGED`, or `LOCKED`) must not carry any P1 open_issues. P1 is the canonical severity for the legacy `blocking_pre_ib` / `blocking_pre_code` / `blocking` artifact-side aliases — these signal spec-blocking questions that must be settled BEFORE IBs land. This is the "Clarify Before Plan" gate documented in `templates/working-spec-template.md` ("Zero `blocking (pre-IB)` open issues must remain when `/write-ibs` is invoked.").
-
-Before entering the decomposition workflow, run the gate check:
-
-```bash
-dekspec validate <spec-path> --json
-```
-
-Read the returned IR's `status` field and `open_issues` array.
-
-- If `status` is `DRAFT` or `PROPOSED`: skip the gate (P1 open_issues are expected during authoring). Proceed to Workflow.
-- If `status` is `ACCEPTED` or higher, filter `open_issues` for entries with `severity == "P1"`.
-  - If the P1 list is empty: gate clean, proceed to Workflow.
-  - **If any P1 entries remain: REFUSE.** Emit an error naming each unresolved issue (the `text` field), the WS's `id`, and pointing the engineer at the WS's `## Open Issues` section. Suggested error shape:
-
-    ```
-    Refuse: /write-ibs against {ws_id} ({status}) blocked by L12 — {N} unresolved P1
-    open_issue(s) (`blocking_pre_ib` semantic per ADR-013):
-
-      1. {issue.text (first 120 chars)}
-      2. ...
-
-    Resolve each in the WS's `## Open Issues` section (settle the question
-    and demote the severity to P2/P3 with a resolution note, OR check the
-    `[x]` box), or unlock the WS back to PROPOSED until the blockers
-    resolve. Re-run /write-ibs once the gate is clean.
-    ```
-
-  Exit without writing any IB.
-
-**Why this exists:** the IR field already collapses `blocking_pre_ib` (and its sibling aliases) to P1 per ADR-013; the audit rule LINK-WS-BLOCKING-PRE-IB-CLEAN fires when these reach ACCEPTED. Pairing the audit (a doctor-time finding) with this skill-time precondition closes the gap where an engineer could `/write-ibs` against a WS whose blockers were never resolved.
-
-**No bypass flag.** The whole point of the gate is mechanical enforcement; if override is needed, unlock the WS back to PROPOSED first.
-
-## Workflow
-
-### Phase 1: Gather Sources
-
-1. Read the Planning Agent role from `dekspec/project-context.md`
-2. Read `dekspec/domain-glossary.md` for canonical domain terminology
-3. Read the finalized spec from the provided path (default: `dekspec/working-specs/`)
-4. Read all ADRs referenced in the spec. For each ADR, check its Status and Supersession fields:
-   - If `Superseded by` names another ADR — read the superseding ADR instead. Do NOT use the superseded ADR's decisions.
-   - If `Proposed` — note it as proposed, not accepted. Flag to the engineer if it governs a critical constraint.
-   - If `Accepted` — use as authoritative.
-4. Read the IB template from `dekspec/templates/implementation-brief-template.md`
-
-### Phase 2: Decompose (with iteration)
-
-5. Draft all candidate IBs — one per independently verifiable unit of work — without saving yet. Apply the **IB Decomposition Principles** (cohesion, coupling, anti-patterns — see sections below) when deciding where to cut boundaries.
-6. Run the **Decomposition Checklist** (see section below) against all candidates
-7. **Classify each failure:**
-   - **Auto-fixable** — missing file, passenger file, narrow interface needed, incomplete dependency declaration. Fix immediately and re-check.
-   - **Requires re-decomposition** — scattered responsibility, circular dependency, kitchen sink, artificial split, God IB, fan-out explosion. Restructure the candidate IBs (merge, split, or re-cut boundaries) and re-run the full checklist.
-   - **Requires engineer decision** — ambiguous scope, conflicting ADRs about where a concern belongs, genuine tension between cohesion and coupling that could be resolved multiple ways.
-
-8. **Iterate up to 3 rounds.** Most decompositions pass after round 1. Round 2 catches cascading issues from round 1 fixes. Round 3 signals a fundamental problem — likely in the spec, not the cut. Each round:
-   - Fix all auto-fixable issues
-   - Re-decompose if structural issues were found
-   - Re-run the full decomposition checklist
-   - If all checks pass → proceed to Phase 3
-   - If structural issues persist → re-decompose and try the next round
-
-9. **After 3 rounds, if issues remain:** STOP. The problem is almost certainly upstream (ambiguous spec, missing ADR decisions, conflicting scope). Present the unresolved issues to the engineer:
-   ```
-   DECOMPOSITION QUALITY GATE — 3 rounds completed, [N] issues unresolved:
-
-   Round 1: [M] issues found, [fixed] auto-fixed, [redecomp] required re-decomposition
-   Round 2: [M] issues found, [fixed] auto-fixed, [redecomp] required re-decomposition
-   Round 3: [M] issues remaining:
-     - [issue description — why it could not be resolved]
-     - [issue description — requires engineer decision]
-
-   Options:
-     A) Resolve these issues and re-run (provide guidance)
-     B) Accept the current decomposition with known issues
-     C) Abort and rescope the spec
-   ```
-   Wait for engineer decision before proceeding.
-
-### Phase 3: Present & Confirm
-
-10. Map the full IB dependency graph. Present to the engineer with the decomposition quality summary:
-    ```
-    DECOMPOSITION COMPLETE — [N] IBs, [rounds] resolution rounds
-
-    Dependency graph:
-      IB-001: [component] — no dependencies
-      IB-002: [component] — depends on IB-001
-      IB-003: [component] — depends on IB-001
-      IB-004: [component] — depends on IB-002, IB-003
-
-    Decomposition checklist: all [N] checks passed
-    [Or: [N] checks passed, [M] accepted with known issues (see above)]
-
-    Confirm or correct before proceeding.
-    ```
-11. Wait for engineer confirmation. If the engineer corrects the graph (reorders, merges, splits), re-run the decomposition checklist on the corrected structure before proceeding. Up to 2 engineer correction rounds. If the checklist still fails after 2 corrections, present the remaining issues and proceed only with the engineer's explicit acceptance of the known issues.
-12. Assign IB numbers based on confirmed dependency order (see IB Numbering)
-
-### Phase 4: Draft, Audit, Save (with iteration per IB)
-
-For each IB, in dependency order:
-
-13. Draft the full IB content (all template sections populated from spec, ADRs, and ICs)
-14. Run **Conflict Detection**
-15. Run **Fidelity Audit**
-16. **Classify each failure:**
-    - **Auto-fixable** — missing C&D entry, unexplained n/a, spec context scope bleed, missing escalation protocol, passenger file. Fix by re-reading source documents and correcting the IB.
-    - **Requires re-decomposition** — fidelity audit reveals the IB can't be made self-contained because the cut is wrong (e.g., a needed constraint belongs to another IB's scope, or testing this IB requires another IB's implementation). This means the decomposition was flawed. **Escalate to the engineer:**
-      ```
-      DECOMPOSITION ISSUE discovered during IB-NNN drafting:
-        [description of why this IB cannot be made self-contained]
-      
-      Suggest: [merge with IB-MMM / split differently / add dependency]
-      Approve restructure? (yes / no / alternative)
-      ```
-      If approved, restructure the affected IBs (merge, split, or re-cut). Then restart Phase 4 from step 13 for ALL IBs in the restructured set — not just the failing IB. Restructuring may change IB numbers, dependency order, and file assignments, so previously-saved IBs in the affected set must be re-drafted and re-audited. IBs outside the restructured set (no dependency on the affected IBs) do not need to be restarted.
-    - **Requires engineer decision** — conflicting ADRs, ambiguous spec, missing information that can't be inferred.
-
-17. **Iterate up to 2 rounds per IB.** Content issues are mechanical — if they can't be fixed in 2 rounds, the problem is structural (bad decomposition boundary), not content. Each round:
-    - Fix all auto-fixable issues
-    - Re-run Conflict Detection and Fidelity Audit
-    - If all checks pass → save the IB
-    - If issues persist → try round 2
-
-18. **After 2 rounds per IB, if issues remain:** The boundary is likely wrong. STOP for that IB and escalate to the engineer as a decomposition issue (step 16, "requires re-decomposition"). Do NOT save an IB that fails the fidelity audit. Other IBs that do not depend on the failing IB may proceed.
-
-### Phase 5: Final Cross-IB Validation (1 round — escalate immediately)
-
-After all IBs are drafted and individually audited:
-
-19. Run the **coupling checks from the Fidelity Audit** across the full IB set one final time — content coupling, common coupling, control coupling, transitive leakage, fan-out, stability of high-fan-in IBs. This is a single pass — cross-IB issues at this stage indicate a decomposition problem that per-IB iteration cannot fix.
-20. If cross-IB issues are found that were not caught during per-IB auditing (possible because some coupling issues only emerge when viewing the full set):
-    - Fix auto-fixable issues (e.g., a shared type pinned in IB-3 but missing from a sibling slice's C&D)
-    - Escalate structural issues to the engineer immediately — do not iterate
-21. Save all passing IBs. Report:
-    ```
-    IB GENERATION COMPLETE:
-      ✅ IB-001: [title] — all checks passed (N rounds)
-      ✅ IB-002: [title] — all checks passed (N rounds)
-      ⚠️  IB-003: [title] — accepted with known issues: [list]
-      ❌ IB-004: [title] — not saved, [N] unresolved issues (requires engineer)
-
-    Total resolution rounds: [N] decomposition + [M] per-IB
-    ```
-
-## IB Decomposition Principles
-
-Two forces drive decomposition:
-
-1. **High cohesion within each IB** — everything in the IB serves one purpose
-2. **Low coupling between IBs** — IBs interact through narrow, well-defined interfaces
-
-### Cohesion (what goes IN an IB)
-
-Cohesion is strongest when every element in the IB contributes to a single well-defined task (functional cohesion). Weaker forms are acceptable only when explicitly justified.
-
-- **Functional unity.** An IB has one reason to exist and one primary way it can fail. Test: can you state its purpose in one sentence where removing any clause makes it incomplete? If the sentence uses "and" to connect two unrelated concerns, it is two IBs.
-- **No passengers.** Every file in the IB serves its purpose. If you remove a file and the acceptance criteria can still be met, that file belongs in a different IB. The converse: if a file is needed but missing, the IB's scope is incomplete.
-- **Single primary failure domain.** An IB has one domain it primarily operates in. Incidental contact with another domain is fine if the primary concern is clear and acceptance criteria are unambiguous about which behavior is verified.
-- **Independently testable.** You can write a meaningful test for the IB's output without another IB's implementation. This is the concrete proof of sufficient cohesion.
-- **No scattered responsibility.** A single concern must not be split across multiple IBs. If changing one business rule would require modifying three IBs, the concern is scattered — consolidate the pieces that serve that rule into one IB. (Conversely, if one IB contains pieces of three unrelated concerns, it is a kitchen sink.)
-
-**Weak cohesion forms to watch for and reject:**
-- **Temporal cohesion** — "these changes all need to happen for the release." That is a schedule constraint, not a functional unit. Each change is its own IB.
-- **Logical cohesion** — "these are all the graph-related changes." Domain affinity is not functional unity. Two graph changes that serve different purposes are two IBs.
-- **Procedural cohesion** — "step 1 then step 2 then step 3" where the steps serve different purposes. Sequential steps that serve one purpose (e.g., parse → validate → transform for a single data pipeline) are fine. Sequential steps that serve different purposes (e.g., create schema → seed data → build API) are separate IBs with dependencies.
-
-### Coupling (what goes BETWEEN IBs)
-
-Coupling should be as loose as possible. Data coupling (passing simple data between IBs) is the target. Stronger forms must be identified and eliminated or explicitly managed.
-
-**Coupling types, from acceptable to unacceptable:**
-
-| Type | Description | Acceptable? |
-|---|---|---|
-| **Data coupling** | IBs communicate through simple data — types, function signatures, return values | Yes — target this |
-| **Stamp coupling** | IB-A produces a complex structure, IB-B uses only part of it | Acceptable if unavoidable, but prefer narrowing the interface |
-| **Control coupling** | IB-A's output includes a flag or mode that changes IB-B's behavior | Avoid — IB-B should not change behavior based on IB-A's internal decisions. Extract the decision into IB-B's own constraints. |
-| **Common coupling** | Two IBs share mutable global state (database table, config, cache) | Must be explicit — extract shared state into its own IB or declare the dependency with the coupling documented in C&D |
-| **Content coupling** | One IB modifies the internals of code another IB also modifies | Never in parallel — same function requires sequential dependency or consolidation |
-
-**Additional coupling principles:**
-
-- **Shared foundations route, they do not default to extraction (ADR-054).** Cut IBs as **vertical slices** — each independently grabbable, each carrying its own thin cut through the stack. When a type, model, or constant is needed by multiple slices, route it:
-  1. **Interface Contract (L2)** — when the shared surface is a genuine cross-component boundary. It is an IC, not an IB.
-  2. **Pin by contract** *(the default)* — put the shape **verbatim** into every consuming slice's `Constraints & Decisions`. Declare no dependency edge. The slices stay independently grabbable and still converge: measured at 288/288 identical type shapes across 168 parallel agents, versus 8.3% unpinned (`docs/evaluations/cd-pinning-prototype.md`).
-  3. **Foundation IB** — a bar-clearing **exception**, not the reflex: ≥2 real dependents, types only and no logic, reviewable as its own PR.
-  Do **not** absorb the shared type into whichever slice happens to need it first — that is a sequencing edge wearing a vertical disguise, and it should be declared as a dependency if you mean it.
-
-  **The pin must actually arrive.** Pinning only works if the verbatim shape reaches every consuming bead. A missing pin does not reliably fail loudly — in the control, a third of agents wrote defensive shims that let integration *pass* while leaving eleven mutually distinct definitions of one type in a single system. Verify the pin is present in each consuming slice's C&D before dispatch; integration tests will not catch its absence.
-- **Narrow dependency surface.** An IB exposes the minimum interface needed by dependent IBs — not the full implementation, just what the next IB consumes. (Interface Segregation: don't force a dependent IB to depend on interfaces it doesn't use.)
-- **No transitive leakage.** If IB-3 depends on IB-2, which depends on IB-1, then IB-3 should need nothing from IB-1's internals. IB-2 must fully encapsulate whatever it consumes from IB-1. If IB-3 needs to reach through IB-2 to use IB-1's types or functions directly, the boundary between IB-1 and IB-2 is wrong.
-- **Stability principle.** IBs with high fan-in (many other IBs depend on them) should be the simplest and most stable. Under ADR-054 high fan-in is itself a smell — a shape that many slices need is usually a pin or an IC, not a dependency. Where a foundation IB does clear the bar, it contains types only and no logic. Conversely, IBs with high fan-out (depend on many other IBs) are inherently riskier and should be scrutinized for scope creep.
-- **Fan-out limit.** An IB that depends on more than 3 other IBs is a red flag — it may be trying to orchestrate too much. Consider whether it can be split or whether some dependencies are artificial.
-
-### Deep-Module Design Pass (Constitution Article 4 / ADR-036)
-
-The interface an IB exposes to its dependents — the types, signatures, and return values downstream IBs consume — should be *designed for depth*, not merely transcribed from the cut. A boundary whose exposed surface is nearly as complex as the implementation behind it is a **shallow module**: every dependent IB (and every test that mocks it) pays the cost of that surface. After drafting candidate boundaries, run the Ousterhout questions over each IB's exposed interface:
-
-- Can I reduce the number of functions/operations a dependent IB must call against this one?
-- Can I simplify the parameters those signatures take?
-- Can I hide more complexity *inside* this IB — invariants, ordering, error handling — so dependents learn one compact surface instead of reconstructing the rules?
-- Is the exposed interface nearly as complex as this IB's implementation? If so it is shallow — deepen it (push complexity inward, narrow the surface) or fold it into an adjacent IB before the boundary hardens.
-
-This is the design counterpart to **Narrow dependency surface** above: narrowing says expose *the minimum*; the depth pass says make that minimum *carry its weight* — a deep boundary is both narrow and complexity-hiding.
-
-**Interface-for-testability.** Prefer dependencies an IB *receives* (injected / passed in via a constructor or function argument) over ones it constructs internally, and prefer operation-specific (SDK-style) signatures over one generic conduit that switches on a mode flag. Both are what make the IB's boundary mockable at test time — the boundary-only mocking discipline ADR-036 expects, and the same property that lets a dependent IB be tested without this IB's implementation (the cohesion test above).
-
-### Decomposition Checklist
-
-Run after drafting candidate IBs, before presenting the dependency graph to the engineer:
-
-**Cohesion checks (per IB):**
-- [ ] Can state the IB's purpose in one sentence without "and" connecting unrelated concerns
-- [ ] Removing any file would make at least one acceptance criterion unsatisfiable (no passengers)
-- [ ] Single primary failure domain — if multiple domains are touched, one is clearly primary
-- [ ] Acceptance criteria test one coherent behavior, not multiple unrelated behaviors
-- [ ] Can write a meaningful test without another IB's implementation
-- [ ] Not temporal cohesion ("all needed for the release") or logical cohesion ("all graph-related")
-- [ ] No scattered responsibility — changing one business rule does not require modifying multiple IBs
-
-**Coupling checks (across IBs):**
-- [ ] No two IBs modify the same function without an explicit dependency between them (no content coupling)
-- [ ] All dependencies are through data interfaces — types, signatures, return values (data coupling)
-- [ ] No control coupling — no IB's output includes a flag or mode that changes another IB's behavior
-- [ ] Shared types/models/constants are **routed per ADR-054** — an IC when a real cross-component boundary, otherwise pinned verbatim into every consuming slice's C&D; a foundation IB only where it clears the bar (≥2 dependents, types only, own PR)
-- [ ] Every pinned shape is **present verbatim** in each consuming slice's C&D — the pin is the mechanism; an undelivered pin fails silently
-- [ ] Each dependency surface is narrow — dependent IB needs specific outputs, not the full implementation
-- [ ] No hidden common coupling (shared DB tables, config mutations, cache state) — all shared state is documented or extracted
-- [ ] No transitive leakage — IB-3 does not need IB-1's internals to use IB-2's output
-- [ ] No IB depends on more than 3 other IBs (fan-out check — investigate if exceeded)
-- [ ] High fan-in IBs (many dependents) are simple and stable — they define interfaces, not complex logic
-- [ ] Each IB's exposed interface is deep, not shallow — its surface (operations + parameters dependents call) is meaningfully simpler than the implementation it fronts (deep-module design pass, Constitution Article 4 / ADR-036)
-- [ ] Dependencies an IB needs are injected (passed in), not constructed internally, and the boundary is operation-specific (SDK-style) rather than one generic conduit — so it is mockable at the boundary (ADR-036)
-
-**Graph checks:**
-- [ ] Dependency graph is a DAG (no cycles)
-- [ ] Depth > 3 has been investigated — is the depth inherent to the problem or an artifact of the cut?
-- [ ] Independent IBs (no mutual dependency) are not artificially chained
-- [ ] No anti-patterns present (see below)
-
-### Anti-Patterns
-
-**Cohesion anti-patterns:**
-
-| Anti-pattern | Sign | Fix |
-|---|---|---|
-| **Kitchen sink** | Many files, multiple failure domains, unrelated acceptance criteria | Split along failure domain boundaries — one primary domain per IB |
-| **Artificial split** | Two IBs can't be tested independently despite being separate | Reunite — splitting destroyed cohesion without reducing coupling |
-| **Trivial IB** | Work is too small to justify IB + bead + test + PR overhead | Absorb into a related IB |
-| **Passenger files** | Files listed but not needed for acceptance criteria | Remove; create separate IB if they need changes |
-| **Shotgun surgery** | A single business rule change would require modifying multiple IBs | Responsibility is scattered — consolidate the pieces that serve that rule |
-| **Temporal bundle** | IB groups unrelated changes because they're "needed for the same release" | Split into functionally cohesive IBs; the schedule is not a design constraint |
-
-**Coupling anti-patterns:**
-
-| Anti-pattern | Sign | Fix |
-|---|---|---|
-| **Hidden common coupling** | Two IBs modify same DB table/config but declare no dependency | Extract shared state into its own IB or add explicit dependency |
-| **Stamp coupling chain** | IB-1 produces a large structure, downstream IBs each use one field | Narrow the interface — IB-1 produces what each consumer actually needs |
-| **Control coupling** | IB-A's output includes a flag that changes IB-B's behavior path | IB-B should own its own decision; move the logic into IB-B's constraints |
-| **Transitive leakage** | IB-3 imports types/functions from IB-1 to use IB-2's output | IB-2's interface is incomplete — it should encapsulate what it consumes from IB-1 |
-| **God IB** | One IB that every other IB depends on, containing mixed concerns | Re-cut as vertical slices and pin the shared shapes (ADR-054). Do **not** split it into "types in one, utilities in another" — that is logical cohesion, which §Cohesion rejects two sections above. |
-| **Circular dependency** | IB-A depends on IB-B and IB-B depends on IB-A (directly or transitively) | Restructure — pin the shared shape into both slices so neither depends on the other (ADR-054), or promote it to an IC if it is a real boundary |
-| **Feature envy** | An IB spends more time working with another IB's data than its own | Responsibility is misplaced — move the envious logic to the IB that owns the data |
-| **Inappropriate intimacy** | Two IBs that reference each other's internal implementation details in their C&D sections | Decouple — define a clean interface between them; each IB should know only the other's public contract |
-| **Fan-out explosion** | An IB depends on 4+ other IBs | IB is likely orchestrating too much — split it or question whether all dependencies are real |
-
-### Minimum Viable IB
-
-Not everything warrants its own IB. Minimum bar:
-- Changes at least one file in a functionally meaningful way
-- Has at least one testable acceptance criterion
-- Produces something a dependent IB needs OR is a terminal consumer
-- Can be reviewed as one coherent PR
-
-Below this bar, absorb the work into a related IB.
-
-## IB Content Rules
-
-- **Log corrections.** When any mode (decomposition, audit, accept, review, revise, resync) corrects a domain misinterpretation — wrong term usage, confused concepts, contradicted architectural facts — invoke `/write-corrections --log` with the correction details before proceeding. This feeds the glossary promotion pipeline.
-- Copy spec context **verbatim** — only the sections directly relevant to this IB's scope. Do not include spec sections that apply to other IBs. Do not summarize what you do include.
-- The coding agent has no access to the spec; everything it needs must be in the IB
-- State exact files to modify
-- State domain constraints explicitly: CUDA device, tensor dtype, read/write path, precision threshold, do-not-touch functions
-- List all governing ADRs in the **Governing ADRs** table (number + title only) — for traceability. Do not instruct the coding agent to load them.
-- Merge spec context, ADR decisions, and interface contract constraints into a single **Constraints & Decisions** section — one entry per concern, already reconciled. Where sources agree, write one rule. Where they conflict, resolve with the engineer first (see Conflict Detection), then write the resolved rule. Use exactly this format for every entry: `- **[topic]:** [what to do — concrete, not a reference to a document]`. The coding agent reads only this section for implementation guidance.
-- **Interface Contracts:** If the spec references an interface contract, extract the specific constraints it imposes on THIS IB's scope and embed them as entries in Constraints & Decisions. Copy the path into the Interface Contracts section for traceability only. If no contract exists but the IB introduces a new API boundary, flag this to the engineer — do not invent a contract.
-- **Probe Results:** If the spec or ADRs reference any experimental validation, extract the specific finding that governs THIS IB's behavior and embed it as an entry in Constraints & Decisions. Copy a one-line finding summary into the Probe Results section for traceability only. If none, write "none."
-- **Out of Scope:** Every boundary a reasonable engineer might assume is included must be listed here if it belongs to a different IB or is not in scope at all. Do not leave this section vague.
-- **Escalation Protocol:** Copy the Escalation Protocol verbatim from the template — do not modify it.
-- **Done When:** Each criterion must map to a specific test, observable output, or measurable behavior. Not "works correctly" — instead: "function X returns Y given input Z", "endpoint returns 200 with body matching schema", "eval score >= threshold on dataset D". If a criterion cannot be stated this concretely, ask the engineer before writing it.
-- **Golden I/O (required for numerical/data transformation IBs):** Include 2-3 concrete input/output pairs with exact values in the Done When section. For tensor operations, provide small tensors (2x2 or 3x3) with exact expected output values. For non-numerical IBs (pure wiring, configuration), replace with Golden State Transitions showing before/after system states. These values are provided by the engineer or derived from a reference implementation — the coding agent cannot invent them. If Golden I/O is needed but the engineer has not provided it, STOP and ask before proceeding.
-- **Test Promotion Criteria:** List which Working Spec business rules and Interface Contract constraints this IB's tests should reference in their docstrings for promotion candidacy. Format: `Promotion refs: WS-NNN Rule N, IC-NNN Constraint N`. This enables automated test promotion after bead closure.
-- Reference relevant checklists: `dekspec/templates/checklists/python-quality-checklist.md`, `dekspec/templates/checklists/security-checklist.md`, `dekspec/templates/checklists/eval-quality-checklist.md`
-- The template (`dekspec/templates/implementation-brief-template.md`) must be completely filled out. Every section, every placeholder. If information is missing, ask the engineer before proceeding — do not guess or leave blanks.
-- The **Precedence** section must be copied verbatim into every IB — do not modify the resolution order.
-
-## IB Count Assessment
-
-| IB count | Assessment |
-|----------|-----------|
-| 1-3 | Normal — focused feature or component |
-| 4-6 | Acceptable — complex subsystem with multiple interacting components |
-| 7-10 | Warning — review whether this is actually two subsystems in one spec |
-| 10+ | Too large — split the spec |
-
-Split the spec if:
-- A new engineer can't understand the full scope in under 30 minutes
-- You can't describe the IB dependency graph from memory
-- The spec spans two silent failure domains (injection, quantization, graph, CUDA)
-
-## Dependencies and Production Gates
-
-| Type | Meaning | Enforced by |
-|------|---------|------------|
-| Technical | Next IB's code depends on this IB's code being merged | Bead `depends_on` field |
-| Production gate | Next IB depends on this IB's behavior verified in production | Engineer discipline |
-
-Production gates sit between IBs, not within them. The observable must be stated specifically — not "looks good" but a concrete checkable signal.
-
-## Conflict Detection (called from Phase 4, step 14)
-
-Before saving any IB, perform an explicit conflict-detection pass:
-
-1. **ADR vs. ADR** — do any two ADR rules embedded in this IB contradict each other? (e.g., one says "always use bfloat16", another says "upcast to float32 at boundary")
-2. **ADR vs. spec context** — does any ADR rule contradict a statement in the embedded spec context?
-3. **Constraint vs. checklist** — does any domain constraint or ADR rule contradict a pattern prescribed by the referenced checklists?
-
-For each conflict found:
-- State the conflict explicitly: "ADR-NNN says X; spec section Y says Z — these conflict."
-- Ask the engineer to resolve it before proceeding.
-- Do NOT guess, pick one silently, or write the IB with the conflict unresolved.
-
-If no conflicts are found, state: "No conflicts detected." and proceed to fidelity audit.
-
-## Fidelity Audit (called from Phase 4, step 15; coupling checks also in Phase 5, step 19)
-
-The IB must be fully self-contained. The coding agent and bead creator will not read ADRs, interface contracts, or the Working Spec — they rely entirely on what is inlined in the IB. This audit verifies that inlining is complete and that cohesion/coupling principles are met.
-
-For each IB, verify:
-
-**Content completeness:**
-- [ ] **Constraints & Decisions is populated** — not empty, not placeholder text
-- [ ] **Every governing ADR's relevant decision is inlined** — for each ADR in the Governing ADRs table, at least one entry in Constraints & Decisions traces back to that ADR's decision. If an ADR is listed but no corresponding C&D entry exists, the decision was not inlined.
-- [ ] **Interface contract constraints are embedded in C&D** — not only referenced by path in the Interface Contracts section. If the Interface Contracts section lists a path but no C&D entry reflects its constraints, the contract was not inlined.
-- [ ] **Probe Results section is populated or "none"** — if experimental findings exist and are referenced, they are embedded in C&D, not only referenced by path
-- [ ] **C&D entries are concrete rules, not document references** — no entry says "see ADR-NNN" or "per the interface contract." Every entry states what to do directly.
-- [ ] **Domain Constraints table has no unexplained n/a values** — if the spec specifies a value for a constraint (CUDA device, dtype, read/write path, precision threshold), the IB must carry it. An n/a is valid only when the constraint genuinely does not apply to this IB's scope.
-- [ ] **Spec Context is scoped to this IB only** — does not include sections that belong to other IBs
-- [ ] **Done When criteria are specific and verifiable** — each criterion maps to a test, observable, or measurable output, not vague language like "works correctly"
-- [ ] **Out of Scope is not empty** — at least one boundary is listed
-- [ ] **Escalation Protocol is present and verbatim from template**
-- [ ] **Files to Modify lists files that exist in the repo** — verify with Glob
-- [ ] **Code-state assertions in C&D are verified** — for each C&D entry that asserts something about the current state of a file (e.g., "function X exists," "import Y is already present," "lines N-M implement pattern P"), verify the assertion by reading or grepping the relevant file. Wrong code-state claims directly mislead the coding agent.
-- [ ] **Golden I/O is present for numerical/data transformation IBs** — if the IB involves tensor operations, serialization, scoring, or data transformation, Done When must include 2-3 concrete input/output pairs with exact values. If the IB is non-numerical, Golden State Transitions are acceptable. If neither is present and the IB involves computation, flag as a failure.
-- [ ] **Test Promotion Criteria is present** — the IB lists which WS business rules and IC constraints its tests should reference for promotion candidacy. Format: `Promotion refs: WS-NNN Rule N, IC-NNN Constraint N`.
-
-**Cohesion checks (per IB):**
-- [ ] **Functional unity** — IB purpose can be stated in one sentence. If the sentence has "and" connecting two unrelated concerns, cohesion is suspect.
-- [ ] **No passenger files** — every file in Files to Modify is necessary to satisfy at least one Done When criterion. Grep the Done When section for each file; if a file is not referenced by any criterion, it may be a passenger.
-- [ ] **Single primary failure domain** — if the IB's Domain Constraints span multiple domains (e.g., both CUDA and graph), one is clearly primary and the acceptance criteria focus on that domain.
-- [ ] **Acceptance criteria are coherent** — all Done When criteria relate to the IB's stated purpose. No criterion tests a behavior that belongs to a different IB.
-
-**Coupling checks (across all IBs in this batch):**
-- [ ] **No content coupling** — for each file that appears in multiple IBs, verify they modify different functions. If two IBs modify the same function, one must depend on the other or they must be consolidated. Check with Grep for function names across IB Files to Modify lists.
-- [ ] **Dependencies are data-only** — for each dependency in the graph, verify the dependent IB needs only a type, return value, or function signature from the upstream IB — not shared mutable state.
-- [ ] **No control coupling** — no IB's C&D section describes producing a flag or mode that changes another IB's behavior. Each IB owns its own behavioral decisions.
-- [ ] **No hidden common coupling** — check if any two IBs write to the same database table, config file, or cache without declaring a dependency. Grep IB descriptions and C&D sections for database/config/cache references.
-- [ ] **Shared types routed (ADR-054)** — if the same type, model, or constant appears in multiple IBs' C&D sections, verify it is *pinned verbatim and identically* in each, or promoted to an IC, or in a bar-clearing foundation IB. Divergent restatements of one shape are the failure this checks for.
-- [ ] **No transitive leakage** — for each IB with a dependency depth > 1, verify it does not reference types or functions from a grandparent IB. It should only know about its direct dependencies.
-- [ ] **No circular dependencies** — the dependency graph is acyclic. If a cycle is detected, pin the shared shape into both slices rather than extracting a foundation IB.
-- [ ] **Fan-out within limits** — no IB depends on more than 3 others. If exceeded, investigate: is the IB orchestrating too much?
-- [ ] **Stability of high-fan-in IBs** — IBs with 3+ dependents contain only interface definitions and simple logic, not complex implementation.
-
-Classify each failure as auto-fixable, requires re-decomposition, or requires engineer decision (see Phase 4, step 16). Iterate up to 2 rounds per IB. Do NOT save an IB that fails the fidelity audit.
-
-## IB Numbering
-
-Number IBs sequentially to encode dependency order — the number is not cosmetic, it is the implementation sequence:
-
-- Filename: `dekspec/impl-briefs/IB-NNN-[component]-brief.md` (NNN = 001, 002, 003…)
-- Before assigning numbers, map the full dependency graph: which IBs produce outputs that others require?
-- IBs with no dependencies come first. IBs that depend on earlier IBs get higher numbers.
-- If two IBs are independent (no dependency either direction), order them by risk — higher-risk or more foundational work gets the lower number.
-- The number sequence is the recommended `/write-code-beads` and implementation order. An engineer should be able to work top-to-bottom without encountering a missing dependency.
-
-## Save
-
-Save each IB to `dekspec/impl-briefs/IB-NNN-[component]-brief.md`
-
-## Serve for Review
-
-After saving IBs (in decomposition mode) or after modifying IBs (in resync or revise mode), check if present is available:
-
-```bash
-curl -s -o /dev/null -w "%{http_code}" http://localhost:7979/health
-```
-
-If the server responds with `200`, register each saved/modified IB:
-
-```bash
-curl -s -X POST http://localhost:7979/open \
-  -H "Content-Type: application/json" \
-  -d '{"path": "<absolute-path-to-IB>"}'
-```
-
-Report the URLs to the engineer:
-
-```
-IBs served for review in present:
-  - IB-001-component: http://217.77.3.83:7979/doc/<slug>
-  - IB-002-component: http://217.77.3.83:7979/doc/<slug>
-  
-Index: http://217.77.3.83:7979
-```
-
-If present is not running, skip silently — do not start it or report an error. The engineer can serve files manually with `/present` if they want.
-
-## Changing a Spec After IBs Exist
-
-When a spec changes after IBs have been written, use the `--resync` flag to update affected IBs. The cascade depends on how far downstream work has progressed:
-
-| State | Action |
-|---|---|
-| IBs in `queued/` only (no beads) | `/write-ibs --resync <affected IBs>` → re-accept → `/write-code-beads` |
-| Beads exist but no code has run | Resync IBs → delete open beads (`br delete <ids>`) → `br sync` → re-accept → `/write-code-beads` in numbered order |
-| Beads `in_progress` or `closed` | STOP — coding has started. Make an explicit decision: continue with current IBs, revert, or file correction beads. Do not resync silently. |
-
-If the spec change is fundamental enough that resyncing individual IBs is insufficient, delete all IBs and re-run the full decomposition: `/write-ibs <spec-path>`.
-
-## Spec Status Update
-
-After all IBs are saved, prompt the engineer:
-"IBs have been generated. The Working Spec should remain at `ACCEPTED` status. Any future spec changes must cascade to all affected IBs and beads."
-
-Do not update the spec status yourself — this is an engineer action.
-
-## Engineer Review Gate
-
-After all IBs are saved, present the engineer with a summary of audit results and what needs human review:
-
-```
-IBs ready for engineer review:
-
-IB-NNN-component-brief.md
-  Conflict Detection: ✅ passed
-  Fidelity Audit: ✅ passed ([N] content, [N] cohesion, [N] coupling checks)
-  Cross-IB Validation: ✅ passed
-  Engineer judgment needed:
-    - [ ] Domain constraints are correct for this component (machine can verify format, not domain truth)
-    - [ ] Done When criteria capture the right behaviors (not just any testable behaviors)
-    - [ ] Out of Scope boundaries match your intent
-    - [ ] Golden I/O values are numerically correct
-    - [ ] IB number reflects the right implementation order for your team
-```
-
-The automated audit verified structural correctness (completeness, consistency, cohesion, coupling). The engineer's review focuses on **domain truth** — things only a human with domain knowledge can validate.
-
-Instruct the engineer:
-
-"To accept: run `/write-ibs --accept <IB path or glob>` to re-run the full audit and mark accepted if all checks pass. `--approve` is retained as an alias.
-
-Run `/write-code-beads` on one IB at a time, in numbered order, after each is accepted."
-
-Do NOT suggest running /write-code-beads until at least the first IB is accepted. Subsequent IBs can be reviewed and beaded independently.
+For a WS or Intent path: investigate lightly and list the candidate IBs — title, Outcome in one line, likely Scope, dependencies, where each shared shape would live — plus any cut that looks wrong (unrelated outcomes in one IB, one rule split across several, cycles). Write nothing. Offer to proceed with Create / Decompose.
 
 ## Provisional Mode
 
-`--provisional <incubation-slug>` redirects authoring into the provisional staging area (`dekspec/provisional/<incubation-slug>/`) instead of the canonical `dekspec/impl-briefs/` directory. The canonical Status transition + audit walker pick the work up only after the hand-promote workflow (see [`docs/dekspec-operating-guide.md` §Provisional Promotion](../../../../docs/dekspec-operating-guide.md#step-4--provisional-promotion-hand-promote-workflow)) is run later. (The previous CLI verb was retired 2026-05-25; see `plugins/dekspec/skills/_lib/cli_verbs.md` for the rename history.)
-
-Use this mode when:
-- The exploration may span many commits before ratification.
-- Companion artifacts (ADRs / AEs / ICs that this Implementation Brief depends on) will be authored alongside in the same incubation folder.
-- The canonical ID should NOT be claimed until the originating Intent reaches ACCEPTED.
-
-### Steps
-
-1. Parse `$ARGUMENTS` for `--provisional <slug>`. Strip the flag pair before proceeding so the remaining args feed normal authoring.
-2. If the incubation folder `dekspec/provisional/<slug>/` does not exist OR does not yet contain a `IB-provisional-*.md` file for this work, scaffold via:
-   ```
-   dekspec library new-provisional IB <slug> --title "<H1 title from remaining $ARGUMENTS>" [--incubation <slug>] [--no-branch]
-   ```
-   The CLI scaffolds the folder + skeleton + (by default) a git branch named per kind. Surface its stderr on non-zero exit and STOP.
-3. Read the scaffolded file at `dekspec/provisional/<slug>/IB-provisional-<title-slug>.md` (the CLI prints the path).
-4. **Populate the skeleton with this skill's authoring discipline** — every section the canonical-mode flow would fill in goes here (Motivation, Linked AEs, Components affected, Verification, etc.). The PROVISIONAL banner at the top stays.
-5. **IBs terminate at `ACCEPTED`** (ADR-046 — they never lock), so there is no lock step to combine with `--provisional`. A provisional IB is hand-promoted to its canonical PROPOSED file via the hand-promote workflow (see `docs/dekspec-operating-guide.md` §Provisional Promotion), then driven to `ACCEPTED` with `--accept` in the normal flow.
-6. **`--analyze` and `--review`** remain available in provisional mode — they operate on the provisional file's content without requiring canonical-graph visibility.
-7. Closing step: surface to the engineer the path of the provisional file, the branch (if created), and the next-step hand-promote workflow (see `docs/dekspec-operating-guide.md` §Provisional Promotion).
-
-### Cross-references
-
-- `INT-079` — provisional folder substrate (parser-ignore, doctor advisory).
-- `INT-082` — copy-on-write spec staging (`replaces:` frontmatter, sibling-collision audit).
-- `INT-083` — atomic promotion (CLI verb retired 2026-05-25; the hand-promote workflow is canonical — see `_lib/cli_verbs.md`).
-- `INT-084` — `dekspec library new-provisional` scaffold + auto-branch.
-
-**End of Provisional Mode.**
+`--provisional <incubation-slug>` authors into `dekspec/provisional/<incubation-slug>/` instead of `dekspec/impl-briefs/`. Scaffold with `dekspec library new-provisional IB <slug> --title "<title>" [--no-branch]` (surface stderr on failure), then fill the skeleton with this skill's Create discipline; the PROVISIONAL banner stays. A provisional IB cannot be proposed or accepted — hand-promote it first (see `docs/dekspec-operating-guide.md` §Provisional Promotion), then `--accept`. Close by reporting the provisional path, the branch if one was created, and the promotion step.
 
 ## Write-Time CoW Guard (INT-082 phase 4)
 
@@ -924,79 +249,42 @@ See [`_lib/cow_write_guard.md`](../_lib/cow_write_guard.md) for the canonical co
 
 **Form:** kind-dir — canonical artifacts under `dekspec/<kind-dir>/`.
 
-## Output
+## Rules
 
-One or more IB files in `dekspec/impl-briefs/`, each with **Status** set to `PROPOSED` and pending engineer acceptance via `/write-ibs --accept <path or glob>`.
+- **Log corrections.** When any mode corrects a domain misinterpretation — wrong term usage, confused concepts, contradicted architectural facts — invoke `/write-corrections --log` with the correction details before proceeding. This feeds the glossary promotion pipeline.
+- **Reference, never copy.** Obligations point at their canonical home; the generated context carries the text. A copied obligation is a second authority that drifts.
+- **The hypothesis never binds.** If a file restriction, algorithm or sequence must hold, state it as an obligation or protected surface with its reason.
+- **Acceptance is the contract's teeth.** Every condition is demonstrable by its named verification, and the set covers failure and integration, not only the happy path.
+- **Status changes go through the engine.** `dekspec ib propose` / `ib accept` / `ib complete` write IB statuses; never hand-edit them (`artifact_ops.py transition` refuses IB → COMPLETE).
+- **Location.** New IBs live in `dekspec/impl-briefs/` (where `dekspec ib new` writes them). A repository that keeps status folders keeps them aligned with the live statuses: `queued/` = DRAFT / PROPOSED, `active/` = ACCEPTED, `completed/` = COMPLETE.
 
 ## Common Pitfalls
 
-- Don't `/write-ibs` against a WS still at DRAFT/PROPOSED, or one carrying unresolved P1 `blocking_pre_ib` open_issues — the L12 precondition refuses it; settle the WS blockers (or unlock the WS) first, there is no bypass flag.
-- Don't summarize or paraphrase spec/ADR/IC content into an IB — copy the scoped sections verbatim and reconcile every ADR/IC decision into a concrete `Constraints & Decisions` entry; the coding agent reads only the IB, never the sources.
-- Don't leave an ADR or IC listed in the Governing ADRs / Interface Contracts section with no matching C&D entry — a listed-but-not-inlined source is a fidelity-audit failure, not traceability.
-- Don't cut IBs along domain affinity or release timing ("all the graph changes," "everything needed for the release") — that is logical/temporal cohesion; cut along functional units with one primary failure domain each.
-- Don't keep iterating per-IB content fixes past 2 rounds or decomposition past 3 — persistent failures mean the boundary or the spec is wrong; escalate to the engineer as a re-decomposition issue instead of forcing a save.
-- Don't restructure only the failing IB after a re-decomposition — restart Phase 4 for the entire affected dependency set, since numbers, order, and file assignments shift.
-- Don't hold an IB back for a "lock" step — IBs terminate at `ACCEPTED` (ADR-046); once `--accept` passes, the IB is ready for `/write-code-beads`. There is no `ACCEPTED → LOCKED` promotion.
-- Don't ship a shallow interface — one whose exposed surface (operations + parameters dependents call) is nearly as complex as what it hides. That pushes the complexity onto every dependent IB and every test that mocks it; deepen it per Constitution Article 4 / ADR-036 (fewer operations, simpler parameters, more complexity hidden inside).
-- Don't make an IB construct its own dependencies or expose one generic conduit when injected dependencies and an operation-specific (SDK-style) surface would be mockable at the boundary — the latter is what makes ADR-036's boundary-only mocking (and independent testability) work.
-- Don't invent Golden I/O values for numerical IBs — the engineer or a reference implementation supplies them; STOP and ask if they're missing.
+- Pasting ADR, IC or WS text into an IB "so the agent has it" — reference it; `dekspec ib context` delivers it with its revision.
+- Writing the implementation plan as obligations — file lists and sequencing are hypothesis; the agent revises them after investigating.
+- Acceptance that only exercises the happy path, or conditions like "works correctly" — add integration and failure conditions with a concrete verification each.
+- Authoring an Intent, WS or Mission to justify a bounded change — one IB is enough (ADR-056).
+- Pinning a shared shape into every consuming IB — pin it once and reference that home.
+- Loosening an acceptance condition mid-run to get green — only `dekspec ib amend` with an independent reviewer changes acceptance after execution starts.
+- Inventing golden values for numerical transformations — ask the engineer or use a reference implementation.
 
 ## Verification Checklist
 
-- [ ] L12 precondition was run via `dekspec validate <spec-path> --json` and the WS carries zero unresolved P1 open_issues (or status was DRAFT/PROPOSED and the gate was correctly skipped).
-- [ ] Every governing ADR (supersession-resolved) and every referenced IC has at least one concrete `Constraints & Decisions` entry in each IB that consumes it — no listed-but-not-inlined source.
-- [ ] Each saved IB passed Conflict Detection and the full Fidelity Audit (content + cohesion + coupling) with no severity-important-or-worse finding, and the cross-IB Phase 5 coupling pass ran once over the full set.
-- [ ] The dependency graph is a DAG, no IB depends on more than 3 others, and IB numbers encode the confirmed implementation order.
-- [ ] No IB that failed the fidelity audit was saved; failing IBs were escalated to the engineer, not silently shipped.
-- [ ] Every saved/revised IB is at `Status: PROPOSED` (decomposition/resync/revise) or `ACCEPTED` (`--accept`, the IB terminal per ADR-046) with an Amendment-Log row appended.
-- [ ] `dekspec relink` was run against the repo root after the artifact writes (the mandatory Closing Step).
-- [ ] The Engineer Review Gate summary was presented and the engineer was instructed to `--accept` before any `/write-code-beads`.
+- [ ] Every IB is `**Authority policy:** delegated`, passes `dekspec ib lint`, and validates.
+- [ ] Obligations are references (or `(local)` for IB-owned ones); nothing is copied from an ADR, IC or WS.
+- [ ] Acceptance covers observable, integration and failure behavior; each condition names exactly one verification.
+- [ ] Scope, Protected Surfaces and Out of scope are explicit; the hypothesis binds nothing.
+- [ ] `**Spec impact:**` names the specs a change to architecture or contracts must update.
+- [ ] Shared shapes have one home; dependencies form a DAG; Intent-parented Scopes lie inside `Components affected:`.
+- [ ] Statuses were written only by `dekspec ib propose` / `ib accept` (or `ib adopt` for adoption).
+- [ ] `dekspec relink` ran as the closing step.
 
 ## Closing Step
 
-**Mandatory closing step for every substantive mode of this skill** (the modes that write or revise an Implementation Brief — Creation, `--accept`, `--resync`, `--revise`, `--review`). After the artifact file(s) are saved and any index update is done, run:
+**Mandatory closing step for every mode that writes or revises an IB** (Create / Decompose, `--revise`, `--resync`, `--accept`, `--adopt`, `--review` with edits). After the files are saved, run:
 
 ```
 dekspec relink
 ```
 
-against the repo root. This deterministically re-derives and renders the cross-artifact `Linked Artifacts` backlinks from the forward links the artifact declares, stitching the spec graph in one pass. This is a required action, not a reminder — do not defer it, do not surface a "backfill the backlinks later" note to the engineer. `dekspec relink` is the graph-repair pass; running it is the last thing the skill does before reporting back.
-
-## Two-Tier Review Pipeline State-Machine (MSN-017)
-
-> Added by **INT-122** + **INT-124** (LOCKED 2026-05-30). MSN-017 layered the IB lifecycle with five new states (REVIEW_IB, REVIEW_IB_FAIL, REVIEW_PR, REVIEW_PR_FAIL, TESTFAIL) per ADR-026. The transitions below name the `/write-ibs` mode that owns each step + the auto-fire / dispatch contract.
-
-### Transition matrix
-
-| From state | Mode / trigger | To state | Auto-fire / dispatch |
-|---|---|---|---|
-| PROPOSED | `--accept` | ACCEPTED | (engineer approval) |
-| ACCEPTED | (state-entry hook) | **REVIEW_IB** | auto-invoke `/dekspec:review-ib <IB-ID>` (INT-106 LOCKED) |
-| REVIEW_IB | verdict GO | IMPLEMENTING | (operator advances per RECOMMEND mode; AUTO per INT-118) |
-| REVIEW_IB | verdict NO-GO | **REVIEW_IB_FAIL** | `dekspec.action_handlers.dispatch("REVIEW_IB_FAIL", context)` → INT-113 handler module (`/write-ibs --revise` + re-fire REVIEW_IB) |
-| REVIEW_IB | verdict INSUFFICIENT_EVIDENCE | (hold) | operator decides; sidecar logs the abstention |
-| IMPLEMENTING | green CI | TESTPASS | per **INT-123** (coding-session wiring) |
-| IMPLEMENTING | red CI | **TESTFAIL** | `dekspec.action_handlers.dispatch("TESTFAIL", context)` → INT-114 handler (`/orchestrate-coding-session --retry` + re-eval) |
-| TESTFAIL | retry green | TESTPASS | handler advances on AUTO mode; operator approves on RECOMMEND |
-| TESTFAIL | retry red | IMPLEMENTING (loop) | new failure recorded in TESTFAIL log; sidecar updated |
-| TESTPASS | PR-open on IB-aggregate branch | **REVIEW_PR** | auto-invoke `/dekspec:review-pr <PR-#>` (INT-107 LOCKED); trigger seam = `tooling/dekspec/hooks/pr_open.py` OR `dekspec review trigger <PR-#>` per INT-124 |
-| REVIEW_PR | verdict GO | MERGED-ready | operator merges per RECOMMEND mode; AUTO auto-merges |
-| REVIEW_PR | verdict NO-GO | **REVIEW_PR_FAIL** | `dekspec.action_handlers.dispatch("REVIEW_PR_FAIL", context)` → INT-115 handler (`/write-ibs --revise` + new commits on top + re-fire REVIEW_PR) |
-| REVIEW_PR | verdict INSUFFICIENT_EVIDENCE | (hold) | operator decides |
-
-### Action-handler dispatch (INT-121 registry)
-
-Each FAIL state's handler is registered against the `dekspec.action_handlers` Python registry (INT-121 LOCKED) at module import time. The `/write-ibs` lifecycle reaches `dispatch(fail_state, context)` on every transition into a FAIL state. The dispatch contract:
-
-- `register(fail_state, handler_path_or_module)` — idempotent; `ConflictingHandlerError` on different-handler re-register.
-- `dispatch(fail_state, context)` → `HandlerResult(transition, staged_artifacts, summary)`. `UnregisteredFailStateError` if no handler for the state.
-- `HandlerContext` carries: `ib_id`, `ib_path`, `sidecar_review_path`, `audit_doctor_snapshot_sha`, `mode` (RECOMMEND/MIXED/AUTO), `coding_session_ref`, `ib_branch`.
-- The state machine commits the FAIL transition BEFORE calling dispatch — a handler crash leaves the FAIL state standing for operator intervention.
-
-### Mode-aware advancement (INT-118 config)
-
-The active mode is resolved per `dekspec.review.config.resolve_mode(.dekspec/config.yaml, .dekspec/review-thresholds.yaml)`:
-
-- **RECOMMEND** (default) — handlers stage actions + signal operator; no auto-advance. `transition='hold'`.
-- **MIXED** — auto-advance on lenses with operator-committed silver thresholds; escalate otherwise.
-- **AUTO** — auto-advance on lenses ≥ gold threshold. Reverts to RECOMMEND when thresholds YAML is absent.
+against the repo root. It re-derives the cross-artifact `Linked Artifacts` backlinks from the forward links the artifacts declare. It is the last thing the skill does before reporting back.

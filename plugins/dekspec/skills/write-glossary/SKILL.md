@@ -60,6 +60,8 @@ The interactive synonym disambiguation relies on iterative back-and-forth that f
 
 **End of Fan-Out Mode.**
 
+**Roles (ADR-061).** This skill plays DekSpec's Agent Role Specifications; the engineer never selects one. Authoring, revise and resync modes play the **`specifier`** role, audit modes the **`auditor`** role: run `dekspec resource role specifier` or `dekspec resource role auditor` at the start of the mode and follow it (a delegated `*-author` agent loads `specifier` itself). See [`_lib/mode_dispatcher.md`](../_lib/mode_dispatcher.md) §The role each universal mode plays and [`_lib/agent_roles.md`](../_lib/agent_roles.md).
+
 ## Mode Detection
 
 Parse `$ARGUMENTS` for flags. If a flag is present, strip it and enter the corresponding mode.
@@ -295,6 +297,8 @@ already flipped, say so and hand it back rather than writing the other artifact.
 **End of Promotion Hand-Off.**
 
 ## Audit Mode
+
+_Plays the **`auditor`** role — run `dekspec resource role auditor` first and follow it: deterministic `dekspec validate` / `dekspec audit` output is primary evidence; report findings, change nothing._
 
 Glossary structural health is an **engine** concern, not a prose one. This mode is a thin router:
 it runs the authoritative check and reads back its findings. It deliberately implements no checks

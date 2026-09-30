@@ -1,51 +1,39 @@
-# Decompose Mode (ACCEPTED → IMPLEMENTING)
+# Decompose Mode (author the child IBs; Status stays ACCEPTED)
 
 [← back to dispatcher](../SKILL.md)
 
 
-Reads `<Intent-path>`. Refuses if Status is not `ACCEPTED`. Branches by IB-need (Decision #12) and scaffolds beads.
+Reads `<Intent-path>`. Refuses if Status is not `ACCEPTED`. Produces the Intent's Implementation Briefs — delegated IBs whose `**Parent:**` is this Intent (ADR-056). It produces nothing else: no code beads, no direct work items, no status change. An Intent completes from its IBs (ADR-057), so the IBs are the whole decomposition.
 
-> **Inline execution.** This mode runs directly in the parent context so it has access to the `Skill` tool and can invoke the sister skills `/write-ibs` and `/write-code-beads` directly.
+> **Inline execution.** This mode runs in the parent context so it can invoke `/write-ibs` directly.
 
 ### Step 1: Validate
 
 1. File exists; Status is `ACCEPTED`.
-2. Open Issues table has zero blocking entries (analyze must have closed them).
-3. Size Assessment shows all caps PASS.
-4. Layer impact analysis has a populated WS-fan-in mapping per IU (recorded by `--analyze` Step 7).
-5. For `type: bug`: the `Reproduction:` block is populated and concrete (not just "TBD").
-6. The current branch is `int/INT-NNN-<slug>` matching the Intent's `Branch` field. If the engineer is on a different branch, refuse with the correct branch named.
+2. Open Issues has no unresolved `P1` entry and no unresolved over-cap `P2` finding.
+3. For `type: bug`: the `Reproduction:` block (or the Non-Reproducible Waiver) is populated and concrete.
 
-### Step 2: Bug-Type Reproduction Scaffold (type: bug only)
+No branch or worktree is required to decompose. Authoring IBs is a spec change; the delivery worktree (ADR-048 / ADR-058, `/dekspec:use-worktrees`) is set up when execution starts.
 
-For `type: bug`, the first IB / bead is the failing test that proves the Reproduction — and that test **is the Intent's ADR-029 Outcome Verification test** (a single user-observable proof, authored strong-TDD red-first). There is no separate `--bug-reproduction` mode: produce it through the normal `/write-code-beads <IB-or-Intent-path>` flow as one bead whose acceptance criterion is "the test runs, asserts the documented failing behavior, and fails on the current code (red-first); the fix makes it green." Capture that bead's eventual test path and substitute it into the Intent's Verification block, replacing the `<reproduction-test-path-from-IB-1>` placeholder with the concrete file path (this is the same path named in the `## Outcome Verification` section). Save.
+### Step 2: Author the IBs
 
-For non-bug types, skip Step 2.
+Take the candidate-IB list `--analyze` recorded under **Layer impact analysis** as a starting point, not a contract — re-cut it if the code says otherwise. For each IB, invoke `/write-ibs` with this Intent as input (it authors delegated IBs from an Intent, sets `**Parent:** INT-NNN`, references obligations rather than copying them, and writes the `## Acceptance` block). A single mechanical IB may instead be scaffolded with `dekspec ib new <slug> --parent INT-NNN` and filled per the IB template.
 
-### Step 3: Per-IU Branch by WS Fan-In
+Obligations on the set:
 
-For each Implementation Unit recorded in the Layer impact analysis (excluding IB-1 if `type: bug`):
+- **Scope inside the Intent.** Every IB's Scope globs lie within the Intent's `Components affected:`. A needed path outside it is an `--amend` on the Intent first.
+- **Outcome covered.** Together the IBs' acceptance conditions deliver the Intent's Desired Outcome; the Intent's Verification (run later by `dekspec intent verify`) is the cross-IB proof.
+- **Bug reproduction.** For `type: bug`, one IB's acceptance names the failing reproduction test — the Intent's ADR-029 Outcome Verification test, written by `/write-tests` before authorization with a `Basis:` for its expected result and genuinely red on `dekspec ib floor`, then oracle-reviewed by `/dekspec:review-ib` before `dekspec ib accept` protects it (ADR-062). Substitute that test path for the `<reproduction-test-path-from-IB-1>` placeholder in the Verification block and in `## Outcome Verification`.
+- **Shared shapes pinned once (ADR-054 as revised by ADR-056).** A type or contract several IBs need lives in one home — an IC, a WS section, or one IB's local obligation that the others reference as `IB-NNN §O-n` — and reaches each IB through `dekspec ib context`.
 
-- **WS fan-in = 1** (single-WS IU). Invoke `/write-code-beads <Intent-path>` directly with a per-IU scope marker. The bead reads the WS content from the named WS without an intermediate IB.
-- **WS fan-in ≥ 2** (multi-WS IU). Invoke `/write-ibs <Intent-path>` first to author IB-NNN with the reconciled spec content. Then invoke `/write-code-beads <IB-path>` to scaffold the bead(s) under that IB. The IB's parent is the Intent; the bead's parent is the IB.
+### Step 3: Size Re-Check
 
-The skill awaits the sister-skill calls; both are interactive enough that the engineer reviews each IB / bead before it lands. Record each IB-NNN and bead-XXXX produced in the Intent's Layer impact analysis as a verification trail.
+Count the IBs produced and the components they actually touch. If either exceeds its cap (≤ 3 IBs, ≤ 3 components), the decomposition shows the Intent is over-cap: record the P2 "re-split before acceptance" open issue, run `--amend` (Status cascades to DRAFT), and resolve it via [`_lib/oversized_splitting.md`](../../_lib/oversized_splitting.md). Leave the drafted IBs at DRAFT so the split can re-parent or discard them.
 
-### Step 4: Post-Decomposition Cap Re-Check
+### Step 4: Record
 
-Sum:
-
-- IUs decomposed (IBs + direct-bead IUs)
-- Components actually touched by the produced beads (cross-checked against `Components affected:`)
-
-If either exceeds its hard cap (≤3 IUs, ≤3 components), the decomposition is wrong-shaped. Discard the new IBs / beads (mark them ABANDONED via the sister skills' rollback paths or, failing that, surface them for manual cleanup), set the Intent's Status back to `OVERSIZED`, log the cap violation in Open Issues, and refuse to transition to `IMPLEMENTING`. Immediately trigger the **Automated Oversized Splitting & Mission Scaffolding Flow** (detailed in Analyze Mode, Step 5) to partition the scope and redirect the focus of orchestration.
-
-### Step 5: Promote
-
-If all checks pass:
-
-1. Flip Status to `IMPLEMENTING`, bump Modified, and append the Amendment Log row — run `python ../_lib/scripts/artifact_ops.py transition <Intent-path> --from ACCEPTED --to IMPLEMENTING --note "Decomposed into N IUs (M IBs, K direct beads); transitioned ACCEPTED to IMPLEMENTING via /write-intent --decompose" --engineer <engineer-or-agent>` (fill in N/M/K from the decomposition; surface stderr on non-zero exit and STOP).
-2. Update `dekspec/intent-index.md` — run `python ../_lib/scripts/artifact_ops.py update-index dekspec/intent-index.md --id INT-NNN --status IMPLEMENTING` (surface stderr on non-zero exit), then update the row's IUs column by hand.
-3. Surface the next-step message: bead execution proceeds via `/orchestrate-coding-session` per bead. When all beads have closed, run `/write-intent --testpass` to verify diff confinement and run the Verification predicate.
+1. Replace the L3 row of **Layer impact analysis** with the list of child IBs (`IB-NNN — <title>`); the authoritative relation is each IB's `**Parent:**` field, which `dekspec intent complete` reads.
+2. Bump Modified and append an Amendment Log row: `| <date> | Substantive | Decomposed into N IBs (IB-…); Status holds ACCEPTED. | <engineer-or-agent> |`.
+3. Surface the next step, per IB in the one authoring order (ADR-062): write the IB (`dekspec ib lint`, `dekspec ib propose`) → `/dekspec:write-tests` (mandatory for every `pytest:` condition; genuine red on `dekspec ib floor`) → `/dekspec:review-ib` (the oracle review; a passing floor review is a `Floor reviewed:` Amendment Log row) → `dekspec ib accept` (`/write-ibs --accept`). A pre-start change to the tests repeats the review before `dekspec ib baseline`. Then execute them (`/dekspec:implement`, or `dekspec ib ready` + `/dekspec:orchestrate-coding-session`). When every child IB is COMPLETE, run `/write-intent --lock` to complete the Intent.
 
 **End of Decompose Mode.**

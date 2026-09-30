@@ -1,18 +1,18 @@
 ---
 name: write-intent
-description: "Use to create or operate on a single Intent (INT-NNN) — a committed, machine-verifiable unit of cross-component work captured as a file. Trigger when the engineer wants to: author/capture a committed direction or planned change as an Intent before starting; decompose an Intent into beads/IBs; amend it to change scope, components, or globs; accept, analyze, review, or audit it; complete it (the `--lock` flag, retained for compatibility, marks a merged Intent COMPLETE per ADR-046), sync post-merge, or supersede it. Phrases like \"author the intent for this\", \"decompose INT-x\", \"amend INT-x to add...\", \"lock INT-x now its branch merged\", or \"capture this as a committed direction\" all apply — even when stated in plain language without flags. This handles ONE Intent operation or transition. A request to walk an Intent through its whole lifecycle step-by-step belongs to orchestrate-intent instead."
+description: "Use to create or operate on a single Intent (INT-NNN) — a committed outcome that spans several Implementation Briefs, captured as a file with its outcome test. Trigger when the engineer wants to: author/capture a committed direction or planned change as an Intent before starting; decompose an Intent into IBs; amend it to change scope, components, or globs; accept, analyze, review, or audit it; complete it (the `--lock` flag, retained for compatibility, runs `dekspec intent complete` once its IBs are complete — ADR-057), sync post-completion, or supersede it. Phrases like \"author the intent for this\", \"decompose INT-x\", \"amend INT-x to add...\", \"complete INT-x now its IBs are done\", or \"capture this as a committed direction\" all apply — even when stated in plain language without flags. This handles ONE Intent operation or transition. Driving an Intent through specification belongs to spec-intent, and implementing a ready Intent end to end belongs to implement. A bounded change that fits one IB needs no Intent (ADR-056) — use /write-ibs."
 mode: lite
 model: claude-opus-4-7
 reasoning_effort: max
 disable-model-invocation: false
 allowed-tools: Read Write Edit Grep Glob Bash Agent
-argument-hint: [--canonical] [--provisional <slug>] [--help | --teaching | --audit | --review | --analyze | --accept | --approve | --decompose | --testpass | --lock | --sync | --supersede [--by <INT-NNN|MSN-NNN>] | --amend [--editorial]] [description or path to Intent]
-related_skills: [orchestrate-intent, write-ws, write-ibs, write-code-beads, write-mission]
+argument-hint: [--canonical] [--provisional <slug>] [--help | --teaching | --audit | --review | --analyze | --accept | --approve | --decompose | --lock | --sync | --supersede [--by <INT-NNN|MSN-NNN>] | --amend [--editorial]] [description or path to Intent]
+related_skills: [spec-intent, implement, write-ws, write-ibs, write-mission]
 ---
 
 > **Vendored asset paths:** Template + doc paths below resolve via `dekspec resource template <name>` / `dekspec resource doc <name>` (wheel-bundled since v0.91.0; consumer-fs override wins when present). See [`_lib/vendored_assets.md`](../_lib/vendored_assets.md) for the full resolution rule.
 
-> **Scope of this skill (Phase 1 + Phase 3 complete).** Phase 1: **(no flag)**, **`--analyze`**, **`--accept`** (Part A — v5 Prompt 4), and **`--decompose`**, **`--testpass`**, **`--lock`** (Part B — v5 Prompt 6). Phase 3: **`--sync`**, **`--audit`**, **`--review`**, **`--amend`** (P3.1–P3.4). All flags are now implemented; Phase 4 (the autonomous orchestration brain) is **out of scope for this repo** — it lives in `dekfactory`. See `docs/architecture.md` §What does NOT live here.
+> **When an Intent applies (ADR-056).** An Intent is optional. Use it when an outcome spans several IBs and needs its own outcome test (ADR-029) and components scope. A bounded change is one IB with its own outcome, rationale and acceptance — author it with `/write-ibs` (or `dekspec ib new <slug>`) and skip the Intent.
 
 > **⛔ CONTEXT CHECK** — see [`_lib/context_check.md`](../_lib/context_check.md)
 >
@@ -27,8 +27,12 @@ related_skills: [orchestrate-intent, write-ws, write-ibs, write-code-beads, writ
 ```prompt
 /dekspec:write-intent The attachment pipeline must reject any upload whose declared MIME type disagrees with its sniffed magic bytes.
 
-Author a new Intent for this. It touches the upload validator and the attachment store; link it to the AE that owns ingest. I want a DRAFT + branch out of this run.
+Author a new Intent for this. It touches the upload validator and the attachment store; link it to the AE that owns ingest. I want a DRAFT out of this run.
 ```
+
+## Lifecycle (ADR-057)
+
+`DRAFT` → `PROPOSED` → `ACCEPTED` → `COMPLETE`, plus `SUPERSEDED`. Statuses record decisions only: PROPOSED requests one, ACCEPTED authorizes the outcome, COMPLETE is recorded by `dekspec intent complete` when every child IB (an IB whose `**Parent:**` is this Intent) is COMPLETE and the Intent's Verification has current passing evidence. Progress lives in the child IBs' execution records. OVERSIZED, IMPLEMENTING, TESTPASS and MERGED are retired: an over-cap analysis is a P2 open issue, not a status; `dekspec migrate` maps legacy files.
 
 ## Session-Start Reminder (Provisional Awareness)
 
@@ -38,36 +42,39 @@ When entering Creation Mode or Analyze Mode on an Intent that is **pre-ACCEPTED*
 
 Skip the banner in Lock / Sync / Audit / Review / Help / Teaching modes — those operate on already-settled artifacts and the CoW guard does not apply.
 
+**Roles (ADR-061).** This skill plays DekSpec's Agent Role Specifications; the engineer never selects one. Authoring, revise and resync modes play the **`specifier`** role, audit modes the **`auditor`** role: run `dekspec resource role specifier` or `dekspec resource role auditor` at the start of the mode and follow it (a delegated `*-author` agent loads `specifier` itself). See [`_lib/mode_dispatcher.md`](../_lib/mode_dispatcher.md) §The role each universal mode plays and [`_lib/agent_roles.md`](../_lib/agent_roles.md).
+
 ## Mode Detection
 
 See [`_lib/mode_detection_template.md`](../_lib/mode_detection_template.md) for the canonical parse/routing contract. Default mode: **Creation Mode**.
 
-Parse `$ARGUMENTS` for the mode flag, then **load the corresponding per-mode body from `modes/<slug>.md`** (Mode Index lazy load — INT-087). Only the chosen mode's body is read into the working context; the other 15 mode files stay on disk.
+Parse `$ARGUMENTS` for the mode flag, then **load the corresponding per-mode body from `modes/<slug>.md`** (Mode Index lazy load — INT-087). Only the chosen mode's body is read into the working context.
 
 - **Help mode** — `--help` flag. Load [`modes/help.md`](modes/help.md).
 - **Teaching mode** — `--teaching` flag. Load [`modes/teaching.md`](modes/teaching.md).
-- **Analyze mode** — `--analyze` flag, expects a path to an existing Intent file. Load [`modes/analyze.md`](modes/analyze.md).
-- **Accept mode** — `--accept` flag, expects a path to an existing Intent file in PROPOSED. Load [`modes/accept.md`](modes/accept.md).
+- **Analyze mode** — `--analyze` flag, expects a path to an existing Intent in DRAFT. Load [`modes/analyze.md`](modes/analyze.md).
+- **Accept mode** — `--accept` flag, expects a path to an existing Intent in PROPOSED. Load [`modes/accept.md`](modes/accept.md).
 - **Approve mode** — `--approve` flag, expects a path to an existing Intent file. Load [`modes/approve.md`](modes/approve.md).
 - **Decompose mode** — `--decompose` flag, expects a path to an Intent in ACCEPTED. Load [`modes/decompose.md`](modes/decompose.md).
-- **Testpass mode** — `--testpass` flag, expects a path to an Intent in IMPLEMENTING. Load [`modes/testpass.md`](modes/testpass.md).
-- **Lock mode** — `--lock` flag, expects a path to an Intent eligible for locking via either sufficient path (ADR-017). Load [`modes/lock.md`](modes/lock.md).
-- **Sync mode** — `--sync` flag, expects a path to an Intent in COMPLETE (ADR-046 — post-completion cleanup). Load [`modes/sync.md`](modes/sync.md).
-- **Supersede mode** — `--supersede` flag (+ `--by <INT-NNN|MSN-NNN>`), expects a path to a non-LOCKED pre-implementation Intent (DRAFT / OVERSIZED / PROPOSED / ACCEPTED) absorbed by a named successor artifact (ADR-035). Load [`modes/supersede.md`](modes/supersede.md).
-- **Audit mode** — `--audit` flag, expects a path to an Intent in any non-terminal status. Load [`modes/audit.md`](modes/audit.md).
+- **Lock mode** — `--lock` flag (retained name; it completes the Intent), expects a path to an Intent in ACCEPTED whose child IBs are COMPLETE. Load [`modes/lock.md`](modes/lock.md).
+- **Sync mode** — `--sync` flag, expects a path to an Intent in COMPLETE (post-completion cleanup). Load [`modes/sync.md`](modes/sync.md).
+- **Supersede mode** — `--supersede` flag (+ `--by <INT-NNN|MSN-NNN>`), expects a path to a not-yet-complete Intent (DRAFT / PROPOSED / ACCEPTED) absorbed by a named successor artifact (ADR-035). Load [`modes/supersede.md`](modes/supersede.md).
+- **Audit mode** — `--audit` flag, expects a path to an Intent in any status but SUPERSEDED. Load [`modes/audit.md`](modes/audit.md).
 - **Review mode** — `--review` flag, expects a path to an Intent in DRAFT, PROPOSED, or ACCEPTED. Load [`modes/review.md`](modes/review.md).
-- **Amend mode** — `--amend` flag, expects a path to an Intent in any non-terminal status. Load [`modes/amend.md`](modes/amend.md).
+- **Amend mode** — `--amend` flag, expects a path to an Intent in DRAFT, PROPOSED, or ACCEPTED. Load [`modes/amend.md`](modes/amend.md).
 - **Provisional mode** — `--provisional <slug>` flag (composes with other modes). Load [`modes/provisional.md`](modes/provisional.md) in addition to the chosen mode body.
 - **Fan-Out mode** — internal orchestrator dispatch for substantive-work modes (Creation, `--analyze`, `--accept`). Load [`modes/fan-out.md`](modes/fan-out.md) when dispatching a substantive-work mode to a fresh-context subagent.
 - **Creation mode** — no flag. Load [`modes/create.md`](modes/create.md). **Defaults to provisional** (ADR-030 hard default): with no opt-out the new Intent lands under `dekspec/provisional/` and no canonical id is allocated. Passing **`--canonical`** opts into canonical-direct authoring (lands in `dekspec/intents/`, allocates an `INT-NNN` id). The routing authority is the `dekspec library author-target --kind INT [--canonical]` verb — create.md calls it rather than hardcoding the directory.
 
+The former `--testpass` mode is retired (ADR-057): the Verification block is executed by `dekspec intent verify`, and per-IB scope confinement by `dekspec ib verify`.
+
 **Routing (per [`_lib/mode_detection_template.md`](../_lib/mode_detection_template.md)):**
 - Substantive-work (fan-out via Agent tool): (no flag), `--analyze`, `--accept`
-- Inline (parent context): `--help`, `--teaching`, `--review`, `--audit`, `--lock`, `--sync`, `--supersede`, `--testpass`, `--amend`, `--decompose`, `--approve`
+- Inline (parent context): `--help`, `--teaching`, `--review`, `--audit`, `--lock`, `--sync`, `--supersede`, `--amend`, `--decompose`, `--approve`
 
 ## Interview Rigor (default-on)
 
-This skill **optionally composes the [`interview-me`](../../dektools/skills/interview-me/SKILL.md) tool** (INT-167 / D13), which ships in the **DekTools** plugin (ADR-047). It does not re-author the interview prose, and there is no `--grill` flag. When the engineer's input is fuzzy or underspecified and the tool is available, invoke `/dekspec:interview-me <INT-NNN | description>` so the engineer is interviewed one decision-tree question at a time, with a recommended answer per question, repo-exploration for discoverable answers, glossary + governing ADR/AE citation with conflict-flagging, fuzzy-term sharpening, and scenario-based stress-testing of asserted relationships.
+This skill **optionally composes the [`interview-me`](../../../dektools/tools/interview-me/SKILL.md) tool** (INT-167 / D13), which ships in the **DekTools** plugin (ADR-047). It does not re-author the interview prose, and there is no `--grill` flag. When the engineer's input is fuzzy or underspecified and the tool is available, invoke `/interview-me <INT-NNN | description>` so the engineer is interviewed one decision-tree question at a time, with a recommended answer per question, repo-exploration for discoverable answers, glossary + governing ADR/AE citation with conflict-flagging, fuzzy-term sharpening, and scenario-based stress-testing of asserted relationships.
 
 **Degrade gracefully when it is absent.** DekTools may not be installed, or `interview-me` may not be enabled in its à-la-carte selection. Core is self-sufficient by design (ADR-047), so this is a supported configuration, not an error: fall back to asking the engineer the same decisions inline, one at a time, and continue. Never block authoring on a toolkit tool, and never report its absence as a failure.
 
@@ -83,21 +90,20 @@ At interview end, read the hand-off log `dekspec/.scratch/interview-me/<artifact
 
 | Mode | Flag | File | One-liner |
 |---|---|---|---|
-| Creation | (no flag) | [modes/create.md](modes/create.md) | Author a new Intent (INT-NNN) from the engineer's description; writes DRAFT + branch. |
-| Analyze | `--analyze` | [modes/analyze.md](modes/analyze.md) | Top-down coverage + bottom-up archaeology + size assessment + drift. DRAFT → PROPOSED (or OVERSIZED). |
+| Creation | (no flag) | [modes/create.md](modes/create.md) | Author a new Intent from the engineer's description; writes DRAFT. |
+| Analyze | `--analyze` | [modes/analyze.md](modes/analyze.md) | Coverage + archaeology + size assessment + drift. DRAFT → PROPOSED; an over-cap result is a P2 open issue and Status stays DRAFT. |
 | Accept | `--accept` | [modes/accept.md](modes/accept.md) | Engineer-only gate. PROPOSED → ACCEPTED. Re-runs linkage/shape/drift before promotion. |
-| Decompose | `--decompose` | [modes/decompose.md](modes/decompose.md) | Branch by IB-need (Decision #12); scaffolds IBs / beads. ACCEPTED → IMPLEMENTING. |
-| Testpass | `--testpass` | [modes/testpass.md](modes/testpass.md) | Diff-confinement + Verification predicate eval. IMPLEMENTING → TESTPASS (or TESTFAIL records). |
-| Complete | `--lock` | [modes/lock.md](modes/lock.md) | Complete a finished Intent: `MERGED` → `COMPLETE` (ADR-046). ADR-017 lock gate retired. |
-| Sync | `--sync` | [modes/sync.md](modes/sync.md) | Post-merge cleanup walkthrough — mark checklist items, surface new ones, apply small edits. |
-| Supersede | `--supersede` (+ `--by <INT-NNN\|MSN-NNN>`) | [modes/supersede.md](modes/supersede.md) | Non-LOCKED pre-implementation Intent absorbed by a named successor → SUPERSEDED + index Archive move (ADR-035). Refuses LOCKED / in-flight / shipped / terminal. |
+| Decompose | `--decompose` | [modes/decompose.md](modes/decompose.md) | Author the child IBs (`**Parent:** INT-NNN`, delegated) via `/write-ibs`. Status stays ACCEPTED. |
+| Complete | `--lock` | [modes/lock.md](modes/lock.md) | `dekspec intent verify` + `dekspec intent complete`: ACCEPTED → COMPLETE on child-IB completion and current outcome evidence. |
+| Sync | `--sync` | [modes/sync.md](modes/sync.md) | Post-completion cleanup walkthrough — mark checklist items, surface new ones, apply small edits. |
+| Supersede | `--supersede` (+ `--by <INT-NNN\|MSN-NNN>`) | [modes/supersede.md](modes/supersede.md) | Not-yet-complete Intent absorbed by a named successor → SUPERSEDED + index Archive move (ADR-035). |
 | Audit | `--audit` | [modes/audit.md](modes/audit.md) | Read-only health check — every check the lifecycle modes enforce, mutates nothing. |
 | Review | `--review` | [modes/review.md](modes/review.md) | Interactive section-by-section walkthrough; engineer applies/declines edits per section. |
-| Amend | `--amend` (+ optional `--editorial`) | [modes/amend.md](modes/amend.md) | Structured mid-flight substantive change with invariant re-check + Status cascade. With `--editorial`: appends a `Type=editorial` Amendment Log row, refuses on behavioral-field diffs, does NOT cascade Status (INT-088 IU-1). |
+| Amend | `--amend` (+ optional `--editorial`) | [modes/amend.md](modes/amend.md) | Structured substantive change with invariant re-check + Status cascade. With `--editorial`: appends a `Type=editorial` Amendment Log row, refuses on behavioral-field diffs, does NOT cascade Status (INT-088 IU-1). |
 | Approve | `--approve` | [modes/approve.md](modes/approve.md) | Record a peer-review approval signature in the Amendment Log (team profile, INT-021). |
 | Help | `--help` | [modes/help.md](modes/help.md) | Render the USAGE / MODES / EXAMPLES block and stop. |
 | Teaching | `--teaching` | [modes/teaching.md](modes/teaching.md) | Interactive tutorial walking a new author through writing an Intent section-by-section. |
-| Provisional | `--provisional <slug>` | [modes/provisional.md](modes/provisional.md) | Redirect authoring into `dekspec/provisional/<slug>/` until `promote-provisional` runs. |
+| Provisional | `--provisional <slug>` | [modes/provisional.md](modes/provisional.md) | Redirect authoring into `dekspec/provisional/<slug>/` until the hand-promote workflow runs. |
 | Fan-Out (internal) | — | [modes/fan-out.md](modes/fan-out.md) | Orchestrator/subagent dispatch contract for substantive-work modes (Creation, `--analyze`, `--accept`). |
 
 **Dispatcher contract.** After parsing the mode flag in Mode Detection above, read the corresponding `modes/<slug>.md` file with the `Read` tool and follow its body as the active mode contract. The shared scaffolding below (Write-Time CoW Guard, Rules, Output, Closing Step) runs across every substantive-mode invocation regardless of which per-mode body is loaded.
@@ -114,26 +120,25 @@ At interview end, read the hand-off log `dekspec/.scratch/interview-me/<artifact
 
 ## Help Mode
 
-> **Index-stub.** When the engineer passes `--help`, the active mode body lives in [`modes/help.md`](modes/help.md). The manifest below is duplicated here so that the `T-SKILL-HELP-MODE-PRESENT` audit rule (a mechanical check that reads only `SKILL.md`) sees the canonical YAML keys (`skill_name`, `one_line`, `modes`, `examples`) plus the `_lib/help_mode_template.md` citation. Per-mode lazy-load (INT-087) keeps the per-mode body as the source of truth; this stub satisfies the audit rule's literal-token requirement.
+> **Index-stub.** When the engineer passes `--help`, the active mode body lives in [`modes/help.md`](modes/help.md). The manifest below is duplicated here so that the `T-SKILL-HELP-MODE-PRESENT` audit rule (a mechanical check that reads only `SKILL.md`) sees the canonical YAML keys (`skill_name`, `one_line`, `modes`, `examples`) plus the `_lib/help_mode_template.md` citation.
 
 See [`_lib/help_mode_template.md`](../_lib/help_mode_template.md) for the canonical Help rendering contract. Manifest for this skill:
 
 ```yaml
 skill_name: "/write-intent"
-one_line:   "Author, analyze, accept, decompose, testpass, or lock an Intent (Phase 1 complete)"
+one_line:   "Author, analyze, accept, decompose into IBs, or complete an Intent"
 modes:
   - { flag: "", args: "<description>", description: "Creation mode — see modes/create.md." }
   - { flag: "--analyze", args: "<Intent-path>", description: "Analyze mode — see modes/analyze.md." }
   - { flag: "--accept", args: "<Intent-path>", description: "Accept mode — see modes/accept.md." }
   - { flag: "--decompose", args: "<Intent-path>", description: "Decompose mode — see modes/decompose.md." }
-  - { flag: "--testpass", args: "<Intent-path>", description: "Testpass mode — see modes/testpass.md." }
-  - { flag: "--lock", args: "<Intent-path>", description: "Lock mode — see modes/lock.md." }
+  - { flag: "--lock", args: "<Intent-path>", description: "Complete mode (dekspec intent complete) — see modes/lock.md." }
   - { flag: "--sync", args: "<Intent-path>", description: "Sync mode — see modes/sync.md." }
-  - { flag: "--supersede", args: "<Intent-path> --by <INT-NNN|MSN-NNN>", description: "Supersede mode — non-LOCKED pre-implementation Intent absorbed by a named successor → SUPERSEDED (ADR-035). See modes/supersede.md." }
+  - { flag: "--supersede", args: "<Intent-path> --by <INT-NNN|MSN-NNN>", description: "Supersede mode — not-yet-complete Intent absorbed by a named successor → SUPERSEDED (ADR-035). See modes/supersede.md." }
   - { flag: "--audit", args: "<Intent-path>", description: "Audit mode — see modes/audit.md." }
   - { flag: "--review", args: "<Intent-path>", description: "Review mode — see modes/review.md." }
   - { flag: "--amend", args: "<Intent-path>", description: "Amend mode — see modes/amend.md." }
-  - { flag: "--amend --editorial", args: "<Intent-path>", description: "Editorial-only amend — append a Type=editorial Amendment Log row; refuses on behavioral-field diffs (Verification / Components affected / Acceptance Criteria / IU list); does NOT cascade Status. INT-088 IU-1." }
+  - { flag: "--amend --editorial", args: "<Intent-path>", description: "Editorial-only amend — append a Type=editorial Amendment Log row; refuses on behavioral-field diffs (Verification / Components affected / Acceptance Criteria / Layer impact analysis); does NOT cascade Status. INT-088 IU-1." }
   - { flag: "--approve", args: "<Intent-path>", description: "Approve mode — see modes/approve.md." }
   - { flag: "--teaching", args: "", description: "Teaching mode — see modes/teaching.md." }
   - { flag: "--provisional", args: "<slug>", description: "Provisional mode — see modes/provisional.md." }
@@ -153,55 +158,53 @@ See [`_lib/cow_write_guard.md`](../_lib/cow_write_guard.md) for the canonical co
 
 ## Rules
 
-- **Files canonical (Decision D2 / v5 §21).** Intents live as markdown files at `dekspec/intents/INT-NNN-<slug>.md`. External trackers (Linear, Jira, GitHub Issues, Slack) may *seed* and may, at Phase 3+, *mirror* — but the file is canonical. Never write Intent content to anywhere except the file.
+- **Files canonical (Decision D2 / v5 §21).** Intents live as markdown files at `dekspec/intents/INT-NNN-<slug>.md`. External trackers may *seed* and may *mirror* — but the file is canonical. Never write Intent content anywhere except the file.
 - **Capture is human-initiated (Decision D3 / v5 §22).** This skill is invoked by an engineer running `/write-intent`. Webhook-driven creation from a tracker is forbidden. The optional `source:` field records provenance only.
-- **Serialization (ADR-016).** Per-Mission and advisory. At most one active child Intent per Mission is the intended discipline; across Missions and for Mission-less Intents there is no limit. Creation is never refused on serialization grounds — the Creation-mode check is an advisory note, and the gate of record is `dekspec audit linkage`.
+- **Serialization (ADR-016).** Per-Mission and advisory. At most one active child Intent per Mission is the intended discipline; across Missions and for Mission-less Intents there is no limit. Creation is never refused on serialization grounds — the gate of record is `dekspec audit linkage`.
 - **Type drives shape.** The Intent's `type:` field selects the required block, the default Verification predicate, and the validation rules. Do not silently switch type — if the engineer's intent re-shapes mid-draft, surface and ask.
-- **No template placeholders in DRAFT.** Every template section that is required at this stage must be populated with real content. `<reproduction-test-path-from-IB-1>` is the one allowed verbatim placeholder, and only inside the bug-type Verification block; `--decompose` (Part B) resolves it.
+- **No template placeholders in DRAFT.** Every template section that is required at this stage must be populated with real content. `<reproduction-test-path-from-IB-1>` is the one allowed verbatim placeholder, and only inside the bug-type Verification block; `--decompose` resolves it.
 - **D19 / D20 are hard.** Measurable targets and decision rationale do not belong in an Intent. Move them to WS / ADR. The skill refuses to advance state until each finding is resolved.
-- **Linked Architecture Elements is mandatory (Decision D12).** Every Intent links to at least one existing AE. If the engineer cannot name one, that signals either the Intent is too small or there is missing AE work — surface and stop.
+- **Linked Architecture Elements is mandatory (Decision D12).** Every Intent links to at least one existing AE. If the engineer cannot name one, that signals either the Intent is too small (make it one IB) or there is missing AE work — surface and stop.
+- **One home per fact (ADR-056).** The Intent owns the outcome, its outcome test and the components scope. It does not restate ADR, IC or WS content, and it records no execution history: child IBs reference their obligations, and progress, attempts, failures and evidence live in execution records under `.dekspec/execution/`. The retired `## TESTFAIL records` section and bead rows in `Layer impact analysis` are not written for new work.
 - **Log corrections.** When this skill corrects a domain misinterpretation in the engineer's input — wrong term, confused concept, contradicted architectural fact — invoke `/write-corrections --log` with the correction details before proceeding. Feeds the glossary promotion pipeline.
-- **Diff confinement is hard.** `--testpass` Step 2 is the gate that prevents Intents from quietly growing scope. An out-of-scope edit appends a TESTFAIL record (Status stays IMPLEMENTING — the TESTFAIL Status flip retired 2026-05-25) even when every Verification check passes. The remedy is either reverting the out-of-scope edit or re-running `--analyze` with an updated `Components affected:` (which re-validates the size cap). Never silently extend the glob list inside `--testpass`.
-- **Verification fast-fails on first failure.** `--testpass` Step 3 stops at the first non-zero check. Subsequent checks are not run because they may depend on invariants the failing check guards. The engineer fixes, then re-runs.
-- **Outcome verification shares one scoping altitude with the bead tests (INT-151).** When authoring an Intent's `outcome_verification` declaration (the single user-observable proof, per ADR-029), apply the same scoping altitude the `/write-tests` **scoping role-pass** applies to per-bead assertions: classify each pinned mechanism **REQUIRED / GIVEN / INCIDENTAL** and keep the outcome assertion as tight as the Intent's intent and no tighter. An `outcome_verification` test that pins an INCIDENTAL mechanism is over-specified — pin the user-observable behavior instead. This keeps the per-Intent `outcome_verification` and the per-bead assertions speaking one vocabulary, reinforcing `fence-durable` / `fence-golden-path` rather than introducing a second altitude language.
-- **`--lock` completes the Intent (ADR-046).** Run from `main` only. Requires Status `MERGED` (`MERGED` → `COMPLETE`); a direct-bead Intent additionally confirms its `Layer impact analysis` beads are all closed (`check-retro-lock`). The ADR-017 Path A/B/C lock gate + the L13 audit rule are retired — the pre-freeze audit was redundant with `MERGED`.
+- **Components affected bounds the child IBs.** Each child IB's Scope globs should lie inside the Intent's `Components affected:`. Widening scope goes through `--amend` (which re-runs the size assessment), never by quietly authoring an IB outside it. Per-IB scope and protected surfaces are checked by `dekspec ib verify`.
+- **Outcome verification shares one scoping altitude with the IB acceptance tests (INT-151).** When authoring an Intent's `outcome_verification` declaration (the single user-observable proof, per ADR-029), apply the same scoping altitude the `/write-tests` **scoping role-pass** applies to acceptance assertions: classify each pinned mechanism **REQUIRED / GIVEN / INCIDENTAL** and keep the outcome assertion as tight as the Intent's intent and no tighter. An `outcome_verification` test that pins an INCIDENTAL mechanism is over-specified — pin the user-observable behavior instead. This keeps the per-Intent `outcome_verification` and the per-IB acceptance conditions speaking one vocabulary, reinforcing `fence-durable` / `fence-golden-path` rather than introducing a second altitude language.
+- **Completion is evidence-backed (ADR-057).** `--lock` completes the Intent only through `dekspec intent complete`: every child IB COMPLETE (each through `dekspec ib complete`) and a current passing `dekspec intent verify` run; manual Verification entries additionally need an independent `dekspec intent review` verdict. Never hand-edit Status to COMPLETE — `artifact_ops.py transition` refuses it.
 - **`--audit` is strictly read-only.** Audit never mutates the Intent file, never transitions Status, never appends an Amendment Log entry. If a finding requires action, the audit output recommends the remedial mode (`--amend` for substantive, `--review` for editorial); the engineer must explicitly invoke it.
-- **`--sync` is non-substantive only.** Sync handles post-merge cleanup against the existing `## Post-implementation sync` checklist plus newly-discovered tail items. It refuses to touch any file outside the original `Components affected:` globs + `dekspec/` content paths. Substantive changes route through `--amend`, never through `--sync`.
-- **`--review` cannot promote Status.** Review is editorial — engineer-driven Q&A walkthrough. It applies edits the engineer accepts and may end in DRAFT or hold whatever incoming Status the Intent already had, but it never transitions PROPOSED → ACCEPTED (that's `--accept`'s job).
-- **`--amend` cascades Status backwards on substantive change.** Amending a PROPOSED Intent reverts it to DRAFT (Coverage Report + Size Assessment no longer match); amending an ACCEPTED Intent reverts it to DRAFT (the acceptance is no longer current). The engineer re-runs `--analyze` to re-validate. IMPLEMENTING amendments hold Status if `Components affected:` still covers the diff; OVERSIZED amendments are the typical remedy path.
-- **`--amend` refuses on terminal statuses.** TESTPASS, MERGED, COMPLETE, SUPERSEDED cannot be amended. A `COMPLETE` Intent that needs a *substantive* change spawns a successor Intent (a new `/write-intent` invocation) and marks the original `SUPERSEDED`. An *editorial* correction to a `COMPLETE` Intent (a stale `Components affected:` glob, a broken cross-reference) is a direct file edit + an Amendment-Log row — a `COMPLETE` Intent is a historical record, not a frozen decision (ADR-046), so there is no unlock/relock cycle.
-- **OVERSIZED never produces a SUPERSEDED shell** (governing decision: **ADR-028**, LOCKED 2026-05-29 — "Default OVERSIZED handling to PEEL-OFF; reserve SUPERSEDE for LOCKED override / deprecation"). `SUPERSEDED` means *this artifact was overridden or deprecated* and is reserved for `COMPLETE` Intents that shipped (ADR-046 — a shipped Intent terminates at `COMPLETE`, not `LOCKED`). Provisional state (DRAFT / OVERSIZED — never shipped) resolves via one of two non-SUPERSEDE paths: **PEEL-OFF** (default when the Intent has a natural core slice — narrow parent in place + scaffold N-1 siblings under the same Mission, parent keeps its identity / slot / history) or **CONVERT-TO-MISSION** (default when the Intent's scope is an umbrella over N capability surfaces — extract substance into a new Mission's near-immutable section, scaffold child Intents, **delete the OVERSIZED Intent file**, no Archive row). The shared partition-shape decision tree lives in [`_lib/oversized_splitting.md`](../_lib/oversized_splitting.md); both `/write-intent --analyze` and `/dekspec:orchestrate-intent` enter it on cap-violation, and `/write-mission` has a `from-oversized: <INT-NNN-path>` Decision Gate entry for the CONVERT branch. SUPERSEDE+N is **not** a default and is rarely correct — it only applies to genuine LOCKED overrides per ADR-028.
+- **`--sync` is non-substantive only.** Sync handles post-completion cleanup against the existing `## Post-implementation sync` checklist plus newly-discovered tail items. It refuses to touch any file outside the original `Components affected:` globs + `dekspec/` content paths. Substantive changes route through `--amend`, never through `--sync`.
+- **`--review` cannot promote Status.** Review is editorial — engineer-driven Q&A walkthrough. It never transitions PROPOSED → ACCEPTED (that's `--accept`'s job).
+- **`--amend` cascades Status backwards on substantive change.** Amending a PROPOSED or ACCEPTED Intent reverts it to DRAFT (the Coverage Report, Size Assessment and acceptance no longer match); the engineer re-runs `--analyze`. An amendment that pushes the Intent over a cap records the P2 re-split open issue.
+- **`--amend` refuses on terminal statuses.** COMPLETE and SUPERSEDED cannot be amended. A `COMPLETE` Intent that needs a *substantive* change spawns a successor Intent and marks the original `SUPERSEDED`. An *editorial* correction to a `COMPLETE` Intent (a stale `Components affected:` glob, a broken cross-reference) is a direct file edit + an Amendment-Log row — a `COMPLETE` Intent is a historical record, not a frozen decision (ADR-046).
+- **An over-cap Intent never produces a SUPERSEDED shell** (governing decision: **ADR-028** — "Default oversized handling to PEEL-OFF; reserve SUPERSEDE for LOCKED override / deprecation"). An Intent that has not completed resolves an over-cap finding via one of two non-SUPERSEDE paths: **PEEL-OFF** (default when the Intent has a natural core slice — narrow the parent in place and scaffold the siblings under the same Mission; the parent keeps its identity, slot and history) or **CONVERT-TO-MISSION** (default when the scope is an umbrella over several capability surfaces — extract the substance into a new Mission, scaffold child Intents, delete the draft Intent file, no Archive row). The shared partition-shape decision tree lives in [`_lib/oversized_splitting.md`](../_lib/oversized_splitting.md); `/write-mission` has a `from-oversized: <INT-NNN-path>` Decision Gate entry for the CONVERT branch. SUPERSEDE is reserved for overriding or deprecating a finished (COMPLETE) Intent — ADR-028's LOCKED-override case — and for ADR-035 absorption by a named successor.
 
 ## Output
 
 - `dekspec/intents/INT-NNN-<slug>.md` lifecycle transitions:
   - Creation: → DRAFT
-  - `--analyze`: DRAFT → PROPOSED (clean) or DRAFT → OVERSIZED (cap exceeded)
+  - `--analyze`: DRAFT → PROPOSED (clean); an over-cap result records a P2 "re-split before acceptance" open issue and Status stays DRAFT
   - `--accept`: PROPOSED → ACCEPTED
-  - `--decompose`: ACCEPTED → IMPLEMENTING (or back to OVERSIZED if post-decomposition caps exceeded)
-  - `--testpass`: IMPLEMENTING → TESTPASS (clean) or Status stays IMPLEMENTING (any failure appends a TESTFAIL record and the engineer's fix-then-rerun loop is captured there; the `TESTFAIL` Status flip retired 2026-05-25)
-  - `--lock`: MERGED → COMPLETE (ADR-046)
+  - `--decompose`: Status holds at ACCEPTED; child IBs are authored with `**Parent:** INT-NNN`
+  - `--lock`: ACCEPTED → COMPLETE, written by `dekspec intent complete`
   - `--sync`: COMPLETE (status hold) + Post-implementation sync checklist edits
   - `--audit`: read-only; no Status mutation
   - `--review`: status hold; editorial edits applied during walkthrough
-  - `--amend`: substantive change with potential Status cascade backwards (PROPOSED → DRAFT, ACCEPTED → DRAFT, or any → OVERSIZED if a cap fails)
-- Branch `int/INT-NNN-<slug>` (Creation only)
+  - `--amend`: substantive change with Status cascade backwards (PROPOSED → DRAFT, ACCEPTED → DRAFT)
 - Updated `dekspec/intent-index.md` per state transition (Active queue ↔ Archive)
-- IB / bead artifacts produced by `--decompose` (sister skills do the actual writing)
-- Amendment Log entries on Accept, Decompose, Testpass, Lock, Sync (editorial), Review (editorial), Amend (substantive). Audit writes nothing.
-- Verification block per-check results recorded inside the Intent body on `--testpass`
-- TESTFAIL records appended on every `--testpass` failure (record per-fail, not overwrite). Status stays IMPLEMENTING — the `TESTFAIL` Status flip retired 2026-05-25.
+- Child IBs produced by `--decompose` (`/write-ibs` does the writing)
+- Amendment Log entries on Accept, Decompose, Complete, Sync (editorial), Review (editorial), Amend (substantive). Audit writes nothing.
+- Outcome evidence and verdicts in the Intent's execution record (`.dekspec/execution/INT-NNN/`), never in the Intent body
 - Mission Intent queue append on `--lock` if `mission:` is set and the Mission file exists
 - Post-implementation sync checklist updates on `--sync` (mark `[x]` items + new `[ ]` bullets discovered)
 - Audit findings printed to stdout on `--audit`; exit code 0/1 based on CRITICAL findings
 
 ## Common Pitfalls
 
-- **Don't bake measurable targets or decision rationale into the Intent — route them to WS / ADR.** D19/D20 are hard refusals; an Intent that names a latency budget or argues *why* an approach was chosen will not advance state until the finding is resolved upstream.
-- **Don't author a new `/write-intent` to make a substantive change to a `COMPLETE` Intent unless you actually mean to supersede it.** A `COMPLETE` Intent is a historical record, editable (ADR-046): editorial fixes (stale glob, broken cross-ref, renamed path) are a direct edit + an Amendment-Log row; genuine behavioral change spawns a successor Intent and marks the original `SUPERSEDED`.
-- **Don't silently widen `Components affected:` inside `--testpass` to absorb an out-of-scope edit — revert the edit or re-run `--analyze`.** Diff confinement is the gate that stops scope creep; extending the glob list bypasses the size-cap re-validation and appends a TESTFAIL record anyway.
-- **Don't treat OVERSIZED as a SUPERSEDE case.** Provisional state (DRAFT / OVERSIZED, never shipped) resolves via PEEL-OFF or CONVERT-TO-MISSION per ADR-028; `SUPERSEDED` is reserved for `COMPLETE` Intents that shipped and were overridden.
-- **Don't advance an Intent that names zero existing AEs (D12).** No linked Architecture Element signals the Intent is too small or that AE work is missing — surface and stop rather than fabricating a link.
+- **Don't author an Intent for a change one IB can carry.** No mandatory chain (ADR-056): an Intent that would decompose into a single IB adds a parent with nothing distinct to say — author the IB directly.
+- **Don't bake measurable targets or decision rationale into the Intent — route them to WS / ADR.** D19/D20 are hard refusals.
+- **Don't author a new `/write-intent` to make a substantive change to a `COMPLETE` Intent unless you actually mean to supersede it.** Editorial fixes are a direct edit + an Amendment-Log row; genuine behavioral change spawns a successor Intent and marks the original `SUPERSEDED`.
+- **Don't treat an over-cap finding as a SUPERSEDE case.** It resolves via PEEL-OFF or CONVERT-TO-MISSION per ADR-028.
+- **Don't advance an Intent that names zero existing AEs (D12).** Surface and stop rather than fabricating a link.
+- **Don't copy obligations or history into the Intent.** Child IBs reference ADR/IC/WS obligations; test outcomes and progress stay in execution records.
 - **Don't edit a canonical artifact claimed by a pre-ACCEPTED Intent directly — stage copy-on-write first.** Run `dekspec library cow-stage <path>` before any canonical `Edit`/`Write`; skipping it trips the `T-COW-CANONICAL-EDITED` advisory.
 
 ## Verification Checklist
@@ -210,17 +213,17 @@ See [`_lib/cow_write_guard.md`](../_lib/cow_write_guard.md) for the canonical co
 - [ ] No template placeholders remain in a DRAFT (the bug-type `<reproduction-test-path-from-IB-1>` is the only allowed verbatim placeholder).
 - [ ] The Intent links at least one existing AE (D12), and no D19/D20 finding (measurable target / decision rationale) is left unresolved.
 - [ ] Any canonical-file write was preceded by a `dekspec library cow-stage` check, and edits to a claimed path were redirected to the provisional sibling.
-- [ ] The Status transition recorded matches the mode's contract (e.g. `--accept` PROPOSED → ACCEPTED; `--audit` mutated nothing; `--review` did not promote Status).
+- [ ] The Status transition recorded matches the mode's contract (e.g. `--accept` PROPOSED → ACCEPTED; `--decompose` held ACCEPTED; COMPLETE written only by `dekspec intent complete`; `--audit` mutated nothing).
 - [ ] The required Amendment Log entry was appended for mutating modes, and `--audit` wrote nothing.
 - [ ] Any domain misinterpretation corrected during the run was logged via `/write-corrections --log` before proceeding.
 - [ ] `dekspec relink` was run against the repo root as the final action of every substantive mode.
 
 ## Closing Step
 
-**Mandatory closing step for every substantive mode of this skill** (the modes that write or revise an Intent — Creation, `--analyze`, `--accept`, `--decompose`, `--testpass`, `--lock`, `--sync`, `--review`, `--amend`). After the artifact file is saved and any index update is done, run:
+**Mandatory closing step for every substantive mode of this skill** (the modes that write or revise an Intent — Creation, `--analyze`, `--accept`, `--decompose`, `--lock`, `--sync`, `--review`, `--amend`). After the artifact file is saved and any index update is done, run:
 
 ```
 dekspec relink
 ```
 
-against the repo root. This deterministically re-derives and renders the cross-artifact `Linked Artifacts` backlinks from the forward links the artifact declares, stitching the spec graph in one pass. This is a required action, not a reminder — do not defer it, do not surface a "backfill the backlinks later" note to the engineer. `dekspec relink` is the graph-repair pass; running it is the last thing the skill does before reporting back.
+against the repo root. This deterministically re-derives and renders the cross-artifact `Linked Artifacts` backlinks from the forward links the artifact declares, stitching the spec graph in one pass. This is a required action, not a reminder — do not defer it. `dekspec relink` is the graph-repair pass; running it is the last thing the skill does before reporting back.

@@ -48,3 +48,16 @@ methodology_profile: full
 # See IC-006 §Dispatch request `repository_scope`.
 # repo:
 #   scope: "Dektora/dektora"
+
+# The AGENTS.md projection (optional; ADR-063). `dekspec aggregate agents-md`
+# replaces only the DekSpec-owned region of the instruction file, between
+# `<!-- dekspec:agents-md begin -->` and `<!-- dekspec:agents-md end -->`.
+# Declaring the projection here fixes its settings — generation, `--check`
+# and `dekspec doctor` all use them — and lets doctor fail on a stale
+# projection (and, with `required: true`, on a missing one). Writing the
+# projection file with different --status/--include is a usage error.
+# agents_md:
+#   path: AGENTS.md
+#   status: [LOCKED, ACCEPTED]
+#   include: [CONSTITUTION, SECURITY_PROFILE, VISION, GLOSSARY, AE, ADR, IC, WS]
+#   required: true

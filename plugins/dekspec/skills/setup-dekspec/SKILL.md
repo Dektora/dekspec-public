@@ -7,14 +7,14 @@ reasoning_effort: high
 disable-model-invocation: false
 allowed-tools: Read Write Edit Bash
 argument-hint: [--help] [--at PATH]
-related_skills: [using-dekspec, write-glossary, write-code-beads]
+related_skills: [using-dekspec, write-glossary, write-ibs]
 ---
 
 Run the per-repo DekSpec initial-configuration walkthrough: front-end the
 existing `.dekspec/config.yaml` (via `dekspec config get` / `dekspec config
 set`) so the engineer configures, once, the choices a working DekSpec adoption
 needs — which issue tracker the repo uses, where ephemeral skill output lands,
-the triage-label vocabulary downstream issue/bead flows consume, the
+the triage-label vocabulary the issue-tracking flows consume, the
 domain-glossary location, and the methodology profile. Each answer persists as
 a config key that round-trips through `dekspec config get`.
 
@@ -62,11 +62,13 @@ edits an existing config, it does not scaffold one.
 1. **Issue tracker** — `issue_tracker` (enum `br | github | gitlab | local`).
    *Recommended:* `br` (the in-repo beads-rust tracker; committed JSONL,
    repo-scoped). Choose `github`/`gitlab` only if the team tracks work on the
-   remote forge, `local` for an offline tracker. The issue/bead-authoring flows
-   consume this.
+   remote forge, `local` for an offline tracker. The tracker holds issue and
+   governance work (the `iss-` / `ds-` workspaces); it is **not** the
+   construction surface — accepted IBs are executed directly and
+   `dekspec ib ready` is the pull surface (ADR-056).
    - **Then initialize it (`br` only).** Setting the config does *not* create
      the tracker DB. After persisting `issue_tracker=br`, run `br init` in the
-     repo so `br list` / the bead-authoring flows don't hit `NOT_INITIALIZED`
+     repo so `br list` / the issue-tracking flows don't hit `NOT_INITIALIZED`
      (`dekspec init`/INT-178 acquire the `br` *binary* but never init the DB).
      It is idempotent — skip if `.beads/` already exists (`br init` on an
      initialized repo is a no-op). No local init is needed for
@@ -77,7 +79,7 @@ edits an existing config, it does not scaffold one.
 3. **Triage-label vocabulary** — `triage_labels.hitl`, `triage_labels.afk`,
    `triage_labels.buckets`. *Recommended:* `hitl` / `afk` for the
    human-in-the-loop vs away-from-keyboard labels, and a small ordered bucket
-   list the team triages into. These are the labels the issue/bead-authoring
+   list the team triages into. These are the labels the issue-tracking
    flows consume. For the `buckets` list, write the nested object shape
    directly into `.dekspec/config.yaml` (a YAML list) rather than forcing it
    through a single scalar `config set`.

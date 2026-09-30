@@ -1,13 +1,13 @@
-# Sync Mode (COMPLETE — post-merge cleanup)
+# Sync Mode (COMPLETE — post-completion cleanup)
 
 [← back to dispatcher](../SKILL.md)
 
 
-Reads `<Intent-path>`. The Intent has merged and completed (ADR-046 — Intents terminate at `COMPLETE`, not `LOCKED`); `--sync` is the structured way to handle the minor non-substantive cleanups that surface only after the diff lands.
+Reads `<Intent-path>`. The Intent has completed (ADR-057 — Intents terminate at `COMPLETE`, not `LOCKED`); `--sync` is the structured way to handle the minor non-substantive cleanups that surface only after the work lands.
 
 ### Step 1: Validate
 
-1. File exists; Status is `COMPLETE`. Refuse with the expected status if not — substantive changes on a non-`COMPLETE` Intent route through `--amend`; sync is for post-merge tail only.
+1. File exists; Status is `COMPLETE`. Refuse with the expected status if not — substantive changes on a non-`COMPLETE` Intent route through `--amend`; sync is for the post-completion tail only.
 2. The `## Post-implementation sync` section exists. If absent (older Intent that predates the template revision), add the section with the template-empty shape and continue.
 
 ### Step 2: Walk the existing checklist
@@ -16,7 +16,7 @@ For each bullet currently under `## Post-implementation sync`:
 
 1. Read the bullet text.
 2. Determine whether the item is **complete** (the doc was edited, the test was promoted, the cross-ref now resolves):
-   - If the bullet describes a file edit, `git log -1 --since="<lock-date>" -- <file>` is non-empty.
+   - If the bullet describes a file edit, `git log -1 --since="<completion-date>" -- <file>` is non-empty.
    - If the bullet describes a test-promotion candidate, the test now exists at the promotion target path.
    - If the bullet describes a cross-reference, the referenced artifact exists.
 3. If complete, prefix the bullet with `[x] `; otherwise leave as `[ ] `. Add a short one-line completion note where useful (e.g., `— done in commit <sha>`).
@@ -25,7 +25,7 @@ For each bullet currently under `## Post-implementation sync`:
 
 Walk these signals and propose new bullets if they surface:
 
-- **Test promotion.** For each IB consumed by this Intent, check whether the IB's promotion-candidate tests were referenced anywhere via the IB's promotion-refs note. If candidates exist but the corresponding `tests/promoted/<name>.py` does not, add a bullet.
+- **Durable specs.** For each child IB, check its `**Spec impact:**` specs were updated (its completion gate enforced this) and that any WS example or AE description the delivery made stale is corrected; a stale one → a bullet.
 - **Cross-reference rot.** Grep `dekspec/dekspec-operating-guide.md` and `AGENTS.md` for references to artifacts this Intent renamed / split. Any obsolete reference → a bullet.
 - **WS docstring lag.** If any Working Spec listed in `Layer impact analysis` has a `## Example` or `## Test Hooks` section that names a file the Intent renamed, → a bullet.
 

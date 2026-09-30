@@ -6,9 +6,8 @@
 
 DRAFT
 
-*Valid statuses:* `TODO` → `DRAFT` → `PROPOSED` → `ACCEPTED` → `LOCKED` | any stage → `DEPRECATED`
+*Valid statuses:* `DRAFT` → `PROPOSED` → `ACCEPTED` → `LOCKED` | any stage → `DEPRECATED`
 
-- **TODO** — placeholder; needs review and rewrite against current project state
 - **DRAFT** — being written; anything goes
 - **PROPOSED** — complete draft ready for review; engineer has not yet accepted
 - **ACCEPTED** — engineer approved; AGENTS.md emission can rely on it
@@ -185,6 +184,13 @@ DRAFT
     max_attempts_per_attempt | max_attempts_per_bead |
     promotion_threshold_clean_runs | demotion_threshold_reverts |
     effective_model_snapshot | effective_corpus_volume
+
+  `max_attempts_per_attempt` and `max_attempts_per_bead` are legacy
+  tolerance columns: still validated, consumed by nothing (there are no
+  code beads — ADR-056). Execution bounds are policy, not obligation, and
+  live in `.dekspec/config.yaml` under `execution:` (max_attempts,
+  stall_minutes, no_progress_attempts, integration_command), enforced by
+  the IB execution record (ADR-057).
 -->
 
 | intent_type | risk_tier | lane | budget_cap_tokens | budget_cap_dollars | max_attempts_per_attempt | max_attempts_per_bead | promotion_threshold_clean_runs | demotion_threshold_reverts | effective_model_snapshot | effective_corpus_volume |

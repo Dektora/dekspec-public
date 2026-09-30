@@ -55,7 +55,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -585,11 +585,18 @@ def compute_drift(
             if not path.is_file():
                 continue
             if path.resolve() not in expected_consumer_paths:
+                try:
+                    rel = path.resolve().relative_to(repo_root.resolve()).as_posix()
+                except ValueError:
+                    rel = ""
+                detail = ("retired by the library and kept because it was modified locally — review it, then delete it"
+                          if rel in RETIRED_VENDORED_CONTENT
+                          else "present in consumer but not in current library manifest")
                 findings.append(DriftFinding(
                     kind="unknown",
                     library_path=None,
                     consumer_path=str(path),
-                    detail="present in consumer but not in current library manifest",
+                    detail=detail,
                 ))
 
     # Version marker check (.dekspec-version)
@@ -642,6 +649,9 @@ class UpgradeReport:
     files_unchanged: int
     files_removed: int
     version_marker_written: bool
+    #: Retired files kept because they were modified locally (see
+    #: RETIRED_VENDORED_CONTENT) — the operator reviews and deletes them.
+    files_preserved: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -664,6 +674,7 @@ class ReconcileReport:
     files_removed: int
     version_marker_written: bool
     noop: bool
+    files_preserved: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -732,8 +743,9 @@ def reconcile(
                 noop=True,
             )
 
+    preserved: list[str] = []
     files_written, files_unchanged, files_removed = vendor_from(
-        lib, repo_root, dry_run=dry_run,
+        lib, repo_root, dry_run=dry_run, preserved=preserved,
     )
     marker_written = _write_version_marker(
         repo_root, target_version, dry_run=dry_run
@@ -746,6 +758,7 @@ def reconcile(
         files_removed=files_removed,
         version_marker_written=marker_written,
         noop=False,
+        files_preserved=preserved,
     )
 
 
@@ -1014,11 +1027,34 @@ def migrate_legacy_directories(
         )
 
 
+#: Vendored files a release retired, by consumer-relative path → the sha256 of
+#: every version the library shipped. The snapshot prune removes such a file
+#: only when its content is one of these; a locally modified copy is preserved
+#: (and listed in `preserved`) rather than deleted.
+RETIRED_VENDORED_CONTENT: dict[str, frozenset[str]] = {
+    # ADR-061: Context Specifications retired in favour of library-supplied
+    # Agent Role Specifications.
+    "dekspec/templates/context-spec-template.md": frozenset({
+        "016e0d8d6cf59184cca1762de6706f6a08a5b9e7dc708d8c6324f348cbfbbab4",
+        "e1edac29c9917d76a9a958fd5f1a943f9306e41512988ac50296bb6acf8530cb",
+    }),
+}
+
+
+def _retired_digest(path: Path) -> str:
+    """Content digest for comparing a retired file with what the library shipped:
+    BOM and CRLF normalized, so line-ending conversion is not a local edit."""
+    from dekspec.roles.legacy import content_digest
+
+    return content_digest(path.read_bytes())
+
+
 def vendor_from(
     lib_root: Path,
     repo_root: Path,
     *,
     dry_run: bool = False,
+    preserved: list[str] | None = None,
 ) -> tuple[int, int, int]:
     """Copy all vendored files from `lib_root` into `repo_root`.
 
@@ -1066,6 +1102,13 @@ def vendor_from(
             # skip rather than risk removing something outside the tree.
             continue
         if not stale.exists():
+            continue
+        shipped = RETIRED_VENDORED_CONTENT.get(relative_marker.as_posix())
+        if shipped is not None and _retired_digest(stale) not in shipped:
+            # Modified locally: keep it, report it, and stop managing it (it
+            # leaves the manifest, so later syncs leave it alone too).
+            if preserved is not None:
+                preserved.append(relative_marker.as_posix())
             continue
         if not dry_run:
             stale.unlink()
@@ -1201,8 +1244,9 @@ def upgrade_to(
 
     if lib_root is not None:
         # Test path — caller provides a pre-staged library tree.
+        preserved: list[str] = []
         files_written, files_unchanged, files_removed = vendor_from(
-            lib_root.resolve(), repo_root, dry_run=dry_run,
+            lib_root.resolve(), repo_root, dry_run=dry_run, preserved=preserved,
         )
         marker_written = _write_version_marker(repo_root, target_version, dry_run=dry_run)
         return UpgradeReport(
@@ -1214,13 +1258,15 @@ def upgrade_to(
             files_unchanged=files_unchanged,
             files_removed=files_removed,
             version_marker_written=marker_written,
+            files_preserved=preserved,
         )
 
     with tempfile.TemporaryDirectory(prefix="dekspec-upgrade-") as tmp:
         clone_dest = Path(tmp) / "dekspec"
         _clone_library_at(target_version, repo_url, clone_dest)
+        preserved = []
         files_written, files_unchanged, files_removed = vendor_from(
-            clone_dest, repo_root, dry_run=dry_run,
+            clone_dest, repo_root, dry_run=dry_run, preserved=preserved,
         )
         marker_written = _write_version_marker(repo_root, target_version, dry_run=dry_run)
 
@@ -1233,6 +1279,7 @@ def upgrade_to(
         files_unchanged=files_unchanged,
         files_removed=files_removed,
         version_marker_written=marker_written,
+        files_preserved=preserved,
     )
 
 

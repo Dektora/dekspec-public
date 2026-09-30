@@ -44,7 +44,7 @@ Each authoring skill enumerates its full flag catalog as a bulleted list immedia
 
 > - **<Mode label>** — `--<flag>` flag. Skip to **<Mode-Section-Name>**.
 
-The flag catalog is per-skill because lifecycle / artifact-specific modes diverge across artifact kinds (e.g., ADRs have `--supersede`; Intents add `--decompose` / `--testpass` / `--sync` / `--amend`; Missions add `--activate` / `--complete` / `--kill`; GGC adds `--log` / `--add-term`; tests add `--all` / `--integration`). Centralizing this list would either lose those distinctions or balloon the substrate with conditionals.
+The flag catalog is per-skill because lifecycle / artifact-specific modes diverge across artifact kinds (e.g., ADRs have `--supersede`; Intents add `--analyze` / `--decompose` / `--sync` / `--amend`; Missions add `--activate` / `--complete` / `--kill`; GGC adds `--log` / `--add-term`; tests add `--all` / `--integration`). Centralizing this list would either lose those distinctions or balloon the substrate with conditionals.
 
 The "no flag → Default Mode" bullet, if present, is the final entry.
 
@@ -98,7 +98,7 @@ This substrate's contracts should be revisited if:
 
 - A new authoring skill introduces a parse step the boilerplate cannot express (e.g., positional sub-commands that look unlike a flag). At that point, either extend the parse contract here or document the divergence in the skill.
 - The substantive-vs-inline routing split (per `ds-di2`) is superseded by a different architectural directive. Update Part 3 here and the per-skill routing notes will follow on next edit.
-- More than half of the authoring skills end up duplicating their flag-to-mode bullet shapes across artifacts (e.g., every lifecycle artifact ends up with the same `--lock` / `--unlock` / `--accept` / `--revise` quartet). At that point, consider promoting that quartet to a named lifecycle preset here and let per-skill bullets cite it.
+- More than half of the authoring skills end up duplicating their flag-to-mode bullet shapes across artifacts (e.g., every lockable decision/contract artifact ends up with the same `--lock` / `--unlock` / `--accept` / `--revise` quartet). At that point, consider promoting that quartet to a named lifecycle preset here and let per-skill bullets cite it.
 
 ## Links
 

@@ -46,7 +46,7 @@ properties:
     # retired: backlinks are now derived from the union of forward links
     # and emitted by `dekspec relink`, not schema-validated input.
     # Persisted v0.1.0 IR JSON migrates via the IB-045 migration module.
-    const: "0.2.0"
+    const: "0.3.0"  # ADR-057: TODO retired
 
   id:
     description: Canonical AE identifier derived from filename (e.g., AE-014).
@@ -60,7 +60,7 @@ properties:
 
   status:
     description: Lifecycle state. Compiler emits enforcement only for LOCKED artifacts (v0.1 PoC may relax via --treat-as-locked flag).
-    enum: [TODO, DRAFT, PROPOSED, ACCEPTED, DEPRECATED]
+    enum: [DRAFT, PROPOSED, ACCEPTED, DEPRECATED]
 
   subtype:
     description: "C4-aligned architectural subtype (Numbered Governance Rule 1, audit T10). Stored as snake_case slug for stable machine matching."

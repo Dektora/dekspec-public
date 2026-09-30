@@ -10,7 +10,7 @@ stdlib `ast` module and produces a deterministic structured summary:
   `import` the scanned module.
 
 The helper is pure-Python: it has no CLI concern and no LLM concern. The
-`/dekspec:archeology` skill's `--scan` and `--cross-ref` modes shell out to
+`/recover-specs` DekTools tool's `--scan` and `--cross-ref` modes shell out to
 it. Per INT-030 / IB-118.
 """
 from __future__ import annotations

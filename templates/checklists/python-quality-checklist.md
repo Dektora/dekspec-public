@@ -1,7 +1,7 @@
 # Python Quality Checklist
 
-Reference this from Implementation Briefs when the bead involves Python code.
-The coding agent reads this during the session.
+Reference this from Implementation Briefs when the IB involves Python code.
+The implementing agent reads it during execution.
 
 ---
 
@@ -9,13 +9,13 @@ The coding agent reads this during the session.
 
 - Blocking I/O or CPU-bound computation in a coroutine without `run_in_executor`
 - `time.sleep()` in async code — must be `await asyncio.sleep()`
-- Missing `__slots__` on high-frequency dataclasses or value objects (tensor wrappers, pipeline state, graph nodes)
+- Missing `__slots__` on high-frequency dataclasses or value objects (value objects, pipeline state, records)
 - `isinstance()` checks in hot loops — use dispatch or protocols instead
 - Catching `BaseException` or `Exception` without re-raise
 - Mutable default arguments: `def f(x: list = [])` — classic bug
 - String concatenation in loops — use `"".join()` or `io.StringIO`
 - `import *` outside of carefully controlled `__init__.py` re-exports
-- `pickle` for persistent storage — use `safetensors`, `orjson`, or `msgpack`
+- `pickle` for persistent storage — use a safe, versioned format (e.g. JSON, `msgpack`)
 - Thread-unsafe operations on shared state without a lock or queue boundary
 - Missing `await` on a coroutine — becomes a coroutine object silently, not an error
 - `global` or `nonlocal` in anything other than simple closures
@@ -23,13 +23,13 @@ The coding agent reads this during the session.
 
 ## Performance — Check in Hot Paths
 
-- Python loops over embeddings/tensors — use vectorized torch/numpy operations instead
+- Python loops over large numeric arrays — use vectorized operations (e.g. numpy) instead
 - Repeated attribute lookup in tight loops — cache in local variables (`_sqrt = math.sqrt`)
 - `list` used as a queue — use `collections.deque` for O(1) popleft
 - Full list materialized when only iteration is needed — use generator expressions
 - `json` in performance-sensitive serialization — use `orjson` (10-100x faster)
 
-## Async — Check in FastAPI/Server Code
+## Async — Check in Async Server Code
 
 - CPU computation >1ms in a coroutine — offload with `loop.run_in_executor(None, fn, arg)`
 - `asyncio.gather()` vs `TaskGroup` — prefer `TaskGroup` (3.11+) for structured concurrency where all tasks must succeed or all cancel

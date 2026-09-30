@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """Spec-phase worktree-collision guard (ds-2tky).
 
-The Intent spec-phase lifecycle (Creation / provisional / `--analyze` /
-`--accept` / `--decompose`) historically isolated work with a git BRANCH
-(`git checkout -b int/INT-NNN-<slug>`) on the *shared* working tree. When a
-second Intent lifecycle (spec or coding) runs in the same checkout, the two
-flip HEAD against each other: commits from one Intent leak into the other's
-ancestry, polluting its diff and tripping `--testpass` diff-confinement. The
-coding phase already isolates per-bead work in git worktrees
-(`orchestrate-coding-session`); the spec phase did not.
+The Intent spec-phase lifecycle (Creation / provisional) isolates work with a
+git BRANCH (`git checkout -b int/INT-NNN-<slug>`) on the *shared* working
+tree. When a second Intent lifecycle (spec or coding) runs in the same
+checkout, the two flip HEAD against each other: commits from one Intent leak
+into the other's ancestry, polluting every IB's scope diff (`dekspec ib
+verify`). Delivery work belongs in its own worktree (ADR-048 / ADR-058,
+`/use-worktrees`).
 
 This guard runs *before* `git checkout -b` at Intent-branch creation. It
 REFUSES (exit 2) to create a new Intent branch on top of another Intent's

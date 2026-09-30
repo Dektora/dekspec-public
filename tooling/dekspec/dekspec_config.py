@@ -142,6 +142,16 @@ def _validate(data: Any, path: Path) -> None:
         )
 
 
+DEKTOOLS_RENAMES = {'prj-mgr': 'project-board', 'write-issue-beads': 'project-board', 'diagnose-bug': 'debug', 'debug-testfail': 'debug', 'analyze-module-depth': 'audit-codebase', 'orchestrate-module-deepening': 'deepen', 'deepen-until-dry': 'deepen', 'brownfield-ingest': 'ingest-docs', 'archeology': 'recover-specs', 'rotation-handoff': 'handoff', 'coding-session-forensics': 'diagnose-session'}
+
+
+def migrate_dektools_names(names: list[str]) -> list[str]:
+    # Setup is always available and never selectable (ADR-060); an older
+    # selector accepted it, so drop it on read and the next write persists that.
+    renamed = (DEKTOOLS_RENAMES.get(n, n) for n in names)
+    return list(dict.fromkeys(n for n in renamed if n != "setup-dektools"))
+
+
 def load_config(repo_root: str | Path) -> dict[str, Any]:
     """Read + schema-validate `.dekspec/config.yaml`; return the parsed dict.
 
@@ -174,6 +184,10 @@ def load_config(repo_root: str | Path) -> dict[str, Any]:
     # retired (it only paired with `executor.kind=dekfactory`).
     raw.pop("executor", None)
     raw.pop("auth", None)
+    toolkit = raw.get("dektools")
+    selection = toolkit.get("enabled") if isinstance(toolkit, dict) else None
+    if isinstance(selection, list) and all(isinstance(n, str) for n in selection):
+        raw["dektools"]["enabled"] = migrate_dektools_names(selection)
     _validate(raw, path)
     return raw
 
@@ -216,6 +230,8 @@ def get_key(repo_root: str | Path, dotted_key: str) -> Any:
             f"Valid keys: {', '.join(DEKSPEC_CONFIG_KEYS)}"
         )
     config = load_config(repo_root)
+    if dotted_key == "dektools.enabled":
+        return config.get("dektools", {}).get("enabled", [])
     node: Any = config
     for part in dotted_key.split("."):
         if not isinstance(node, dict) or part not in node:
@@ -235,12 +251,14 @@ def dektools_catalog_path(start: Path | None = None) -> Path | None:
     simply is not there. Callers must treat that as "cannot know", never as
     "no tools exist".
     """
+    use_bundled = start is None
     start = (start or Path(__file__)).resolve()
     for parent in start.parents:
         candidate = parent / "plugins" / "dektools" / "tool-catalog.json"
         if candidate.is_file():
             return candidate
-    return None
+    bundled = Path(__file__).parent / "_vendored/dektools/tool-catalog.json"
+    return bundled if use_bundled and bundled.is_file() else None
 
 
 def known_dektools_tools(catalog_path: Path | None = None) -> set[str]:
@@ -283,6 +301,10 @@ def _validate_dektools_selection(value: Any) -> None:
     a pip-installed engine, and core must not depend on DekTools being
     present at all.
     """
+    if isinstance(value, list) and "setup-dektools" in value:
+        raise DekspecConfigError(
+            "'setup-dektools' is always available and is not selectable (ADR-060)."
+        )
     known = known_dektools_tools()
     if not known or not isinstance(value, list):
         return
@@ -291,7 +313,7 @@ def _validate_dektools_selection(value: Any) -> None:
         raise DekspecConfigError(
             f"{', '.join(repr(u) for u in unknown)} "
             f"{'is' if len(unknown) == 1 else 'are'} not a DekTools tool. "
-            f"Valid tools: {', '.join(sorted(known))}"
+            f"Valid tools: {', '.join(sorted(known - {'setup-dektools'}))}"
         )
 
 

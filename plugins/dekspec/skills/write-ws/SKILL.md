@@ -6,13 +6,13 @@ model: claude-opus-4-7
 reasoning_effort: max
 disable-model-invocation: false
 allowed-tools: Read Write Edit Grep Glob Bash Agent
-argument-hint: [--provisional <slug>] [--help | --teaching | --audit | --review | --accept | --approve | --lock | --unlock | --revise] [description or path to spec] [notes]
+argument-hint: [--provisional <slug>] [--help | --teaching | --audit | --review | --accept | --approve | --revise] [description or path to spec] [notes]
 related_skills: [write-intent, write-ae, write-adr, write-ic, write-ibs]
 ---
 
 > **Vendored asset paths:** Template + doc paths below resolve via `dekspec resource template <name>` / `dekspec resource doc <name>` (wheel-bundled since v0.91.0; consumer-fs override wins when present). See [`_lib/vendored_assets.md`](../_lib/vendored_assets.md) for the full resolution rule.
 
-Write, lock, or unlock a Working Spec.
+Write, revise, or accept a Working Spec — the home of behavioral requirements that span or outlive a single IB. A WS is optional upstream of an IB: author one only when behavior spans briefs or must outlive them (ADR-056). A WS rests at `ACCEPTED` and never locks (ADR-046).
 
 ## Starter Prompt
 
@@ -33,14 +33,14 @@ embedding scoring. It consumes the timeline store (AE-011) and produces graph no
 
 **Mode dispatcher pattern:** see [`skills/_lib/mode_dispatcher.md`](../_lib/mode_dispatcher.md) for canonical mode semantics + the universal `--teaching` mode (per ds-int-007 / INT-008).
 
+**Roles (ADR-061).** This skill plays DekSpec's Agent Role Specifications; the engineer never selects one. Authoring, revise and resync modes play the **`specifier`** role, audit modes the **`auditor`** role: run `dekspec resource role specifier` or `dekspec resource role auditor` at the start of the mode and follow it (a delegated `*-author` agent loads `specifier` itself). See [`_lib/mode_dispatcher.md`](../_lib/mode_dispatcher.md) §The role each universal mode plays and [`_lib/agent_roles.md`](../_lib/agent_roles.md).
+
 ## Mode Detection
 
 See [`_lib/mode_detection_template.md`](../_lib/mode_detection_template.md) for the canonical parse/routing contract. Default mode: **Creation Mode**.
 
 - **Help mode** — `--help` flag. Skip to **Help Mode**.
 - **Teaching mode** — `--teaching` flag. Skip to **Teaching Mode**.
-- **Lock mode** — `--lock` flag. Skip to **Lock Mode**.
-- **Unlock mode** — `--unlock` flag. Skip to **Unlock Mode**.
 - **Accept mode** — `--accept` flag. Skip to **Accept Mode**.
 - **Audit mode** — `--audit` flag. Skip to **Audit Mode**.
 - **Review mode** — `--review` flag. Skip to **Review Mode**.
@@ -50,7 +50,7 @@ See [`_lib/mode_detection_template.md`](../_lib/mode_detection_template.md) for 
 
 **Routing (per [`_lib/mode_detection_template.md`](../_lib/mode_detection_template.md)):**
 - Substantive-work (fan-out via Agent tool): (no flag), `--accept`, `--revise`
-- Inline (parent context): `--help`, `--teaching`, `--audit`, `--review`, `--lock`, `--unlock`
+- Inline (parent context): `--help`, `--teaching`, `--audit`, `--review`, `--approve`
 
 ## Fan-Out Mode
 
@@ -58,7 +58,7 @@ See [`_lib/fan_out.md`](../_lib/fan_out.md) for the canonical ds-di2 orchestrato
 
 - **subagent_type**: `dekspec:ws-author`
 - **substantive_modes**: [Creation (default), `--accept`, `--revise`]
-- **inline_modes**: [`--help`, `--teaching`, `--audit`, `--review`, `--lock`, `--unlock`]
+- **inline_modes**: [`--help`, `--teaching`, `--audit`, `--review`, `--approve`]
 - **bundle_list** (Step 1 context):
   1. Template path — `dekspec/templates/working-spec-template.md`.
   2. Methodology references — `docs/dekspec-methodology.md` §4 Layer 2 (Working Specs); `dekspec/dekspec-operating-guide.md` §Working Specs (if present).
@@ -68,7 +68,7 @@ See [`_lib/fan_out.md`](../_lib/fan_out.md) for the canonical ds-di2 orchestrato
   6. Engineer guidance — `$ARGUMENTS` verbatim (Creation: the description; `--accept`: the spec path; `--revise`: spec path + notes).
   7. Constraints — the Rules block at the bottom of this skill (1-2 pages max; every business rule testable; every failure mode has stated behavior; serialized role passes; template fully populated; self-contained spec — no cross-WS references; cascade awareness for IBs; corrections logged via `/write-corrections --log`).
 - **expected_output_path**: `dekspec/working-specs/WS-NNN-<slug>.md` (Creation) or the input path (`--accept` / `--revise`; subagent edits in place).
-- **validation**: `dekspec validate <output-path>`. Validation/surface contract: see [`_lib/validate_and_surface.md`](../_lib/validate_and_surface.md) — on non-zero exit, surface verbatim and stop, do not silently retry. Mode-specific post-checks: Creation — Status PROPOSED + index row added + Expertise Audit Record present; `--accept` — Status ACCEPTED + index updated + no Amendment Log entry (reserved for post-LOCK changes); `--revise` — Modified updated + reset to PROPOSED if previously ACCEPTED/LOCKED + new ambiguities under `## Open Issues` + IB cascade reminder surfaced if IBs exist.
+- **validation**: `dekspec validate <output-path>`. Validation/surface contract: see [`_lib/validate_and_surface.md`](../_lib/validate_and_surface.md) — on non-zero exit, surface verbatim and stop, do not silently retry. Mode-specific post-checks: Creation — Status PROPOSED + index row added + Expertise Audit Record present; `--accept` — Status ACCEPTED + index updated + no Amendment Log entry; `--revise` — Modified updated + reset to PROPOSED if previously ACCEPTED + new ambiguities under `## Open Issues` + IB cascade reminder surfaced if IBs reference the spec.
 
 **End of Fan-Out Mode.**
 
@@ -78,15 +78,13 @@ See [`_lib/help_mode_template.md`](../_lib/help_mode_template.md) for the canoni
 
 ```yaml
 skill_name: "/write-ws"
-one_line:   "Create, audit, review, revise, accept, lock, or unlock Working Specs"
+one_line:   "Create, audit, review, revise, or accept Working Specs"
 modes:
   - { flag: "", args: "<description>", description: "Create a new Working Spec with expertise audit and serialized role passes." }
   - { flag: "--audit", args: "<WS-path>", description: "Read-only quality check: template completeness, ADR consistency, domain constraints, failure modes, expertise audit record, and open issues." }
   - { flag: "--review", args: "<WS-path>", description: "Walk through open issues interactively. Present each issue with context and a recommendation. Engineer resolves, defers, or dismisses each." }
   - { flag: "--revise", args: "<WS-path> <notes>", description: "Incorporate engineer review notes. Re-runs affected expertise audit passes and critic review on changed sections. Notes: inline text or path to notes file." }
   - { flag: "--accept", args: "<WS-path>", description: "Promote a PROPOSED Working Spec to ACCEPTED (PROPOSED → ACCEPTED). Runs final audit; refuses if any check fails. Passing the flag counts as deliberate engineer approval — no additional confirmation is asked." }
-  - { flag: "--lock", args: "<WS-path>", description: "Lock an ACCEPTED Working Spec (ACCEPTED → LOCKED). Runs pre-lock audit. Rejects if any check fails." }
-  - { flag: "--unlock", args: "<WS-path>", description: "Unlock a LOCKED Working Spec (LOCKED → PROPOSED). Runs downstream impact assessment. Requires a reason." }
   - { flag: "--teaching", args: "", description: "Interactive tutorial walking a new author through writing a Working Spec section-by-section. (Teaching Mode)" }
   - { flag: "--help", args: "", description: "Show this help message." }
 examples:
@@ -95,8 +93,6 @@ examples:
   - "/write-ws --review dekspec/working-specs/WS-001-salt-pipeline.md"
   - "/write-ws --revise WS-001-salt-pipeline.md \"failure mode for empty moment stack is missing, add CUDA device constraint for embedding scoring\""
   - "/write-ws --accept dekspec/working-specs/WS-001-salt-pipeline.md"
-  - "/write-ws --lock dekspec/working-specs/WS-001-salt-pipeline.md"
-  - "/write-ws --unlock dekspec/working-specs/WS-001-salt-pipeline.md"
   - "/write-ws --help"
 ```
 
@@ -118,6 +114,8 @@ Skill-specific structural checks to surface as Open Issues: T20-WS-BUSINESS-RULE
 
 ## Audit Mode
 
+_Plays the **`auditor`** role — run `dekspec resource role auditor` first and follow it: deterministic `dekspec validate` / `dekspec audit` output is primary evidence; report findings, change nothing._
+
 Read-only quality check on an existing Working Spec.
 
 1. Read the spec at the provided path
@@ -132,7 +130,7 @@ Read-only quality check on an existing Working Spec.
    - [ ] Expertise Audit Record is complete (all triggered roles show evidence)
    - [ ] Spec fits 1-2 pages
    - [ ] Created and Modified dates are set
-   - [ ] If IBs exist for this spec, check consistency between spec and IB content
+   - [ ] If IBs reference this spec, check that their acceptance conditions still fit the spec
 3. Report:
 
 ```
@@ -143,7 +141,7 @@ Passed: [N/total]
 Failed:
   - [description of each failure]
 
-IB consistency: [no IBs / consistent / N inconsistencies found]
+IB consistency: [no referencing IBs / consistent / N inconsistencies found]
 ```
 
 Read-only — no changes made.
@@ -171,11 +169,7 @@ Arguments: the spec path.
    
    Starting guided review...
    ```
-6.5. **Spec-Reviewer dispatch** (shared `reviewer_mode` path — see [`_lib/reviewer_mode.md`](../_lib/reviewer_mode.md)). This ADDS an adversarial Spec-Reviewer pass alongside the open-issue loop; it does NOT replace it. Perform the shared four-step dispatch:
-   a. Load the `spec-reviewer` ContextSpec: `from dekspec.constraint_compiler.parser import parse_context_spec; context_spec = parse_context_spec("dekspec/context-specs/role-spec-reviewer.md")` (`context_spec["role_identity"] == "spec-reviewer"`).
-   b. Take the `ReviewerWS` artifact this `--review` mode already holds (the WS at the provided path; the caller owns this IO, the dispatcher is IO-free).
-   c. Dispatch through the shared surface: `from dekspec.spec_review.reviewer import Reviewer; findings = Reviewer().dispatch(context_spec, artifact)` (`-> list[Finding]`, per IC-016).
-   d. Present each returned `Finding` to the engineer at its severity (default `P2` — approval-blocking, not auto-merge) as additional review items alongside the open issues below. Do not reshape the records; they route into the AE-003 surface via the `SPEC-REVIEW` audit-rule family (`dekspec.spec_review.reviewer` → `spec_review_rules`).
+6.5. **Spec-reviewer dispatch** — run the shared spec-reviewer dispatch in [`_lib/agent_roles.md`](../_lib/agent_roles.md) §Spec-reviewer dispatch for this Working Spec: `dekspec resource role spec-reviewer`, one fresh-context sub-agent composed policy → role → procedure → assignment, and its findings presented at their severity (default P2) as additional review items alongside the open issues below. It ADDS an independent pass; it does NOT replace the open-issue loop. If it did not run, say so — never present your own review as the spec-reviewer's.
 7. For each unchecked issue, in order:
    a. Present the issue:
       ```
@@ -204,7 +198,7 @@ Arguments: the spec path.
       - **Defer** — leave unchecked, optionally update the issue description with new context
       - **Dismiss** — check off with strikethrough and dismissal note: `- [x] ~~[Issue]~~ — **Source:** ... — **Severity:** ... — **Dismissed:** [today] [reason]`
 8. Update **Modified** date.
-9. If any spec body changes were made and IBs exist for this spec, warn: "IBs exist for this spec. After review changes are finalized, run `/write-ibs --resync` on affected IBs."
+9. If any spec body changes were made and IBs reference this spec, surface the IB cascade reminder (see **Rules → Cascade awareness**).
 10. Present summary:
     ```
     REVIEW COMPLETE: [path]
@@ -214,7 +208,7 @@ Arguments: the spec path.
     Deferred: [N]
     
     [If blocking (pre-IB) issues remain]: ⚠️  [N] blocking (pre-IB) issues remain — cannot run /write-ibs.
-    [If blocking (pre-code) issues remain]: ⚠️  [N] blocking (pre-code) issues remain — IBs can be written but beads cannot start.
+    [If blocking (pre-code) issues remain]: ⚠️  [N] blocking (pre-code) issues remain — IBs can be written; resolve these before accepting IBs that reference this spec.
     [If no blocking issues remain]: ✅ No blocking issues remain — spec is clear for status advancement and IB generation.
     ```
 
@@ -240,8 +234,8 @@ Arguments after the path are the engineer's notes — inline text or a path to a
 7. If the revision introduces ambiguity, contradictions, or concerns that cannot be fully resolved during this revision, log them as new entries in the `## Open Issues` section with **Source:** `review` and appropriate severity. Inform the engineer: "New open issues were logged. Run `--review` to walk through them."
 8. Re-run affected expertise audit passes — if the change touches a domain that triggered an expert role, re-run that role's pass on the changed sections only
 9. Re-run one critic pass on the changed sections
-10. If status was ACCEPTED or LOCKED, reset to PROPOSED.
-11. If IBs exist for this spec, warn: "IBs exist for this spec. After revisions are finalized, run `/write-ibs --resync` on affected IBs."
+10. If status was ACCEPTED, reset to PROPOSED (re-accept with `--accept` once the revision settles).
+11. If IBs reference this spec, surface the IB cascade reminder (see **Rules → Cascade awareness**).
 
 **End of Revise Mode.**
 
@@ -253,9 +247,8 @@ Promotes a PROPOSED Working Spec to ACCEPTED after every quality check passes. P
 
 1. Read the spec at the provided path
 2. Verify current status is PROPOSED. If not, STOP:
-   - TODO, DRAFT → "This spec is still [status]. It must be revised to PROPOSED before it can be accepted."
+   - DRAFT → "This spec is still DRAFT. It must be revised to PROPOSED before it can be accepted."
    - ACCEPTED → "This spec is already ACCEPTED."
-   - LOCKED → "This spec is LOCKED. Unlock first with `--unlock` if changes are needed."
 
 ### Step 2: Final Audit
 
@@ -271,7 +264,7 @@ Run the complete Audit Mode check list — every check must pass, including IB c
 - [ ] Expertise Audit Record is complete (all triggered roles show evidence)
 - [ ] Spec fits 1-2 pages
 - [ ] Created and Modified dates are set
-- [ ] If IBs exist for this spec, spec content is consistent with IB content
+- [ ] If IBs reference this spec, their acceptance conditions still fit the spec
 
 ### Step 3: Report
 
@@ -282,7 +275,7 @@ Passed: [N/total]
 Failed:
   - [description of each failure]
 
-IB consistency: [no IBs / consistent / N inconsistencies found]
+IB consistency: [no referencing IBs / consistent / N inconsistencies found]
 
 [If all passed and IB consistency is clean]: All checks pass. Promoting PROPOSED → ACCEPTED.
 [If any failed or IB inconsistency found]: Cannot accept — resolve failures first. No changes made.
@@ -297,38 +290,13 @@ Only executed if Step 3 reported zero failures and IB consistency clean.
 1. Flip Status PROPOSED → ACCEPTED and bump Modified — run `python ../_lib/scripts/artifact_ops.py transition <WS-path> --from PROPOSED --to ACCEPTED` (no `--note`: no Amendment Log entry on accept). Surface stderr on non-zero exit and STOP.
 2. Update `dekspec/working-spec-index.md` — run `python ../_lib/scripts/artifact_ops.py update-index dekspec/working-spec-index.md --id WS-NNN --status ACCEPTED` (surface stderr on non-zero exit).
 
-No Amendment Log entry is written — the log is reserved for changes made after LOCKED status, or when unlocking back to PROPOSED.
+No Amendment Log entry is written on accept.
 
 **End of Accept Mode.**
 
-## Lock Mode (ACCEPTED → LOCKED)
+## No Lock Mode
 
-See [`_lib/lock_unlock.md`](../_lib/lock_unlock.md) §Lock for the canonical 4-step contract. Parameters:
-
-- **artifact_kind_singular**: Working Spec
-- **pre_lock_audit_ref**: §Audit Mode of this skill, extended with the WS-specific checks below
-- **status_before**: ACCEPTED
-- **status_after**: LOCKED
-- **artifact_index_path**: `dekspec/working-spec-index.md`
-
-WS-specific pre-lock audit extensions (added on top of the substrate's audit run):
-- All active silent failure domains have at least one business rule
-- All failure modes have stated behavior
-- All business rules are testable
-- Expertise Audit Record is complete (all triggered roles show evidence of their pass)
-- If Implementation Briefs exist for this spec, verify they are consistent with current spec content
-- Zero `P1` open issues remain — count every blocking-family alias that normalizes to `P1` per ADR-013: canonical `P1`, plus the legacy aliases `blocking_pre_ib` / `blocking (pre-IB)` and bare `blocking`. This gate must match audit rule `LINK-WS-BLOCKING-PRE-IB-CLEAN` exactly (it fires P1 on ANY `P1` open issue on a LOCKED WS). `blocking (pre-code)` / `blocking_pre_code` normalizes to `P2` and is NOT part of this gate.
-
-## Unlock Mode (LOCKED → PROPOSED)
-
-See [`_lib/lock_unlock.md`](../_lib/lock_unlock.md) §Unlock for the canonical 4-step contract. Parameters:
-
-- **artifact_kind_singular**: Working Spec
-- **status_before**: LOCKED
-- **status_after**: PROPOSED
-- **artifact_index_path**: `dekspec/working-spec-index.md`
-
-Downstream impact scan (run during Step 2 alongside the reason gate): check `dekspec/impl-briefs/` for IBs referencing this spec, then `.beads/beads.jsonl` for beads referencing those IBs; surface the impact list to the engineer before recording the reason. If any beads are `in_progress` or `closed`, surface an extra warning ("active or completed beads exist downstream; unlocking and changing this spec may invalidate completed work") before continuing. Cascade reminder to surface in Step 4: affected IBs need `/write-ibs --resync <affected IBs>` then `/write-ibs --accept <IBs>`, affected beads need `/write-code-beads <IB>`, and the spec must be re-locked via `/write-ws --lock <path>` when the substantive change settles.
+A Working Spec is a living reference: it rests at `ACCEPTED` and never locks (ADR-046). A substantive change is a `--revise` (ACCEPTED → PROPOSED, then `--accept` again). The former `--lock` / `--unlock` modes are retired.
 
 ## Input
 
@@ -448,7 +416,7 @@ Use this mode when:
    The CLI scaffolds the folder + skeleton + (by default) a git branch named per kind. Surface its stderr on non-zero exit and STOP.
 3. Read the scaffolded file at `dekspec/provisional/<slug>/WS-provisional-<title-slug>.md` (the CLI prints the path).
 4. **Populate the skeleton with this skill's authoring discipline** — every section the canonical-mode flow would fill in goes here (Motivation, Linked AEs, Components affected, Verification, etc.). The PROVISIONAL banner at the top stays.
-5. **Reject `--lock`** in combination with `--provisional`. LOCKED state requires linkage-walker visibility that provisional artifacts deliberately lack. The hand-promote workflow (see `docs/dekspec-operating-guide.md` §Provisional Promotion) is the canonical path to LOCKED.
+5. **Reject `--accept`** in combination with `--provisional`. A provisional WS is hand-promoted to its canonical PROPOSED file via the hand-promote workflow (see `docs/dekspec-operating-guide.md` §Provisional Promotion), then accepted with `--accept` in the normal flow.
 6. **`--analyze` and `--review`** remain available in provisional mode — they operate on the provisional file's content without requiring canonical-graph visibility.
 7. Closing step: surface to the engineer the path of the provisional file, the branch (if created), and the next-step hand-promote workflow (see `docs/dekspec-operating-guide.md` §Provisional Promotion).
 
@@ -477,7 +445,7 @@ See [`_lib/cow_write_guard.md`](../_lib/cow_write_guard.md) for the canonical co
 - Serialize role passes — each reads what the previous one added
 - The template (`dekspec/templates/working-spec-template.md`) must be completely filled out. Every section, every placeholder. If information is missing, ask the engineer before proceeding — do not guess or leave blanks.
 - **Working specs must be independent and self-contained.** A spec must stand alone — a coding agent reading only that spec and the ADRs/architecture elements it references must be able to implement the component correctly. Do NOT reference other working specs. If this spec's component has an interface with another component, describe the interface contract from THIS component's perspective (what it produces, what it consumes, what guarantees it requires). Do not say "see WS-NNN for details" — instead, state the contract directly. Working specs may reference ADRs and architecture elements, which are shared architectural context.
-- **Cascade awareness:** If this spec changes after Implementation Briefs exist, all affected IBs must be regenerated via `/write-ibs` and all affected beads recreated via `/write-code-beads`.
+- **Cascade awareness:** IBs reference this spec (`→ WS-NNN §Section`); they never copy it (ADR-056). After a change, each referencing IB receives the new text at its next `dekspec ib context`, and evidence or verdicts bound to the old text go stale (ADR-057) and must be re-run. Name the referencing IBs to the engineer, and revise (via `/write-ibs`) any IB whose acceptance conditions no longer fit.
 
 ## Output
 
@@ -496,32 +464,32 @@ Run the shared deterministic helper:
 python ../_lib/scripts/artifact_ops.py approve <WS-path> --target-status <STATUS>
 ```
 
-`<STATUS>` is the transition the signature authorizes (e.g. `ACCEPTED` or `LOCKED`). The script resolves the reviewer email from `git config user.email` (override with `--engineer <email>`) and appends a row of the form `| YYYY-MM-DD | review-approval | Reviewed and approved for <STATUS>. | <email> |`, then bumps `Modified`. The `T-APPROVAL-GATE` audit rule counts these rows under the `team` profile; once enough signatures are present the WS may walk the gated transition. Under the default `v1` profile the rule is silent. Inline mode — no fan-out.
+`<STATUS>` is the transition the signature authorizes (e.g. `ACCEPTED`). The script resolves the reviewer email from `git config user.email` (override with `--engineer <email>`) and appends a row of the form `| YYYY-MM-DD | review-approval | Reviewed and approved for <STATUS>. | <email> |`, then bumps `Modified`. The `T-APPROVAL-GATE` audit rule counts these rows under the `team` profile; once enough signatures are present the WS may walk the gated transition. Under the default `v1` profile the rule is silent. Inline mode — no fan-out.
 
 ## Common Pitfalls
 
 - Don't reference another Working Spec (`see WS-NNN for details`) — restate the interface contract from THIS component's perspective so the spec stays self-contained for a coding agent reading only it plus its ADRs/AEs.
 - Don't run the Phase 3 expert passes in parallel — serialize them strictly (ML → Quantization → CUDA → Graph → Embedding → Pipeline), saving after each, so every expert builds on the prior one's edits.
-- Don't pass `--accept` / `--lock` with any `P1` open issue still open — count the blocking-family aliases (`blocking_pre_ib` / `blocking (pre-IB)` / bare `blocking`) that normalize to `P1` per ADR-013, or the WS clears the skill gate then immediately fails `LINK-WS-BLOCKING-PRE-IB-CLEAN` under `dekspec doctor`.
-- Don't combine `--lock` with `--provisional` — LOCKED requires linkage-walker visibility that provisional artifacts lack; route to LOCKED through the hand-promote workflow instead.
+- Don't pass `--accept` with any `P1` open issue still open — count the blocking-family aliases (`blocking_pre_ib` / `blocking (pre-IB)` / bare `blocking`) that normalize to `P1` per ADR-013, or the WS clears the skill gate then immediately fails `LINK-WS-BLOCKING-PRE-IB-CLEAN` under `dekspec doctor`.
+- Don't try to lock a WS — it rests at `ACCEPTED` (ADR-046); change it with `--revise` and re-accept.
 - Don't `Edit`/`Write` a claimed canonical artifact without first running `dekspec library cow-stage <path>` — redirect to the printed provisional sibling when it exits 0, or `T-COW-CANONICAL-EDITED` fires advisory on the next linkage run.
 - Don't silently correct a domain misinterpretation — invoke `/write-corrections --log` with the correction before proceeding so the glossary-promotion pipeline sees it.
 - Don't skip `dekspec relink` at the end of a substantive run — the backlinks are not optional and must not be deferred with a "backfill later" note.
 
 ## Verification Checklist
 
-- [ ] Status reflects the mode's terminal state — PROPOSED after Creation, ACCEPTED after `--accept`, LOCKED after `--lock`, PROPOSED after `--unlock`/`--revise` (reset from ACCEPTED/LOCKED).
+- [ ] Status reflects the mode's terminal state — PROPOSED after Creation, ACCEPTED after `--accept`, PROPOSED after `--revise` (reset from ACCEPTED).
 - [ ] `dekspec validate <output-path>` exits 0 (surfaced verbatim, not silently retried).
 - [ ] `dekspec/working-spec-index.md` has the matching row with the current Status; Created and Modified dates are set.
 - [ ] Every triggered expertise-audit role shows evidence in the Expertise Audit Record; spec fits 1-2 pages.
 - [ ] Zero `P1` open issues remain (canonical `P1` + all blocking-family aliases per ADR-013) for any ACCEPTED+ WS.
 - [ ] No `see WS-NNN` cross-references in the body; all interfaces are restated from this component's perspective.
-- [ ] IB cascade reminder surfaced if Implementation Briefs reference this spec and the body changed.
+- [ ] IB cascade reminder surfaced if Implementation Briefs reference this spec and the body changed (context regeneration + stale evidence).
 - [ ] `dekspec relink` was run against the repo root as the final action.
 
 ## Closing Step
 
-**Mandatory closing step for every substantive mode of this skill** (the modes that write or revise a Working Spec — Creation, `--accept`, `--revise`, `--lock`, `--unlock`). After the artifact file is saved and any index update is done, run:
+**Mandatory closing step for every substantive mode of this skill** (the modes that write or revise a Working Spec — Creation, `--accept`, `--revise`). After the artifact file is saved and any index update is done, run:
 
 ```
 dekspec relink

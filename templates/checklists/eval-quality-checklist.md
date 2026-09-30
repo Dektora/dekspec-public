@@ -1,6 +1,6 @@
 # Eval Quality Checklist
 
-Reference this from Implementation Briefs when the bead involves model output,
+Reference this from Implementation Briefs when the IB involves model output,
 scoring functions, retrieval, or injection effectiveness.
 
 ---

@@ -55,7 +55,8 @@ builder, not an artifact-lifecycle authoring skill (exempt from the
 
 - `dekspec/intents/`, `dekspec/working-specs/`, `dekspec/impl-briefs/`,
   `dekspec/interface-contracts/`, `dekspec/architecture-elements/` —
-  *status-bump-only* edits (PROPOSED→ACCEPTED→LOCKED, index rows)
+  *status-bump-only* edits (e.g. PROPOSED→ACCEPTED, index rows) — **except**
+  the IBs this branch delivers (see INCLUDE ALWAYS)
 - `dekspec/intent-index.md`, `dekspec/ws-index.md`, `dekspec/ib-index.md`,
   `dekspec/mission-index.md` — index reconciliation
 - `docs/workspace/**/pm/STATE.md`, `docs/workspace/**/pm/LEDGER.md`, `pm/` —
@@ -65,6 +66,10 @@ builder, not an artifact-lifecycle authoring skill (exempt from the
 
 - `dekspec/domain-glossary.md`, `dekspec/constitution.md`, `dekspec/system-vision.md`
 - commits that **ADD a new** ADR / AE / WS / IC / IB file (not just bump status)
+- `.dekspec/execution/**`, and every change to an IB whose execution record
+  (`.dekspec/execution/<IB>/`) this branch changes — the IB's status is its
+  authorization / completion decision, and `dekspec delivery check` reads both
+  at the PR head (ADR-057, ADR-058)
 - any commit touching `src/`, `tests/`, `infra/`, `pyproject.toml`, `setup.py`,
   `tooling/`, `plugins/`, `.github/`, or other real code/config
 
@@ -107,10 +112,28 @@ cherry-pick).
    git diff --name-only <target>..<branch>-pr \
      | grep -E '^dekspec/(intents|working-specs|impl-briefs|interface-contracts|architecture-elements)/|(^|/)(intent|ws|ib|mission)-index\.md$|^docs/workspace/.*/pm/|^pm/'
    ```
-   Expect empty. If non-empty, a classification missed a path — report it.
+   Expect nothing but the delivered IB files kept above. Anything else means a
+   classification missed a path — report it.
 6. **Report** — original N commits / F files; PR branch M commits / G files;
    K spec-only commits excluded; the new branch name; the next step
    (`git push -u origin <branch>-pr && gh pr create`).
+
+### Evidence and the landing gate
+
+Evidence and review verdicts bind to a **content** fingerprint, not to commit
+SHAs (ADR-057), and IB status lines, index files and `.dekspec/execution/**`
+are outside it. So:
+
+- A pure commit-shape rewrite — same final content, different commits — keeps
+  every IB's evidence and verdict valid.
+- Dropping or stripping anything else the fingerprint covers (a `pm/` ledger
+  row, a spec body edit) changes the head content: deterministic evidence goes
+  stale and must be regenerated (`dekspec delivery verify` on `<branch>-pr`),
+  and a verdict survives only if the dropped change touched none of its
+  reviewed surfaces.
+- Either way the head changed, so `dekspec delivery check` must pass again on
+  `<branch>-pr` before merge. `/dekspec:land-intent` runs it; CI runs
+  `dekspec delivery check --rerun` on the PR head independently.
 
 ### Edge cases
 

@@ -1,14 +1,14 @@
 # Security Checklist
 
-Reference this from Implementation Briefs when the bead touches user input handling,
-prompt construction, tool execution, graph writes, or tenant boundaries.
+Reference this from Implementation Briefs when the IB touches user input handling,
+prompt construction, tool execution, persistent writes, or tenant boundaries.
 
 ---
 
 ## Prompt Injection
 
 - [ ] User-controlled text that reaches the model is structurally isolated from instruction text (separate message roles, not string interpolation)
-- [ ] Retrieved graph content (node labels, properties, relationship metadata) is not interpolated directly into prompts
+- [ ] Retrieved content from any store or external API (records, metadata, documents) is not interpolated directly into prompts
 - [ ] Tool results are injected as `tool` role messages, not embedded in `assistant` or `system` messages
 - [ ] No f-string, template, or concatenation mixes trusted instructions with untrusted content without a clear boundary
 
@@ -23,18 +23,18 @@ prompt construction, tool execution, graph writes, or tenant boundaries.
 
 ## Tenant Isolation
 
-- [ ] Neo4j queries enforce tenant ID structurally, not just as a WHERE clause parameter
-- [ ] Graph traversals have a maximum depth bound
-- [ ] Embedding similarity queries are namespace-scoped before ranking (not filtered after)
+- [ ] Graph or database queries enforce tenant scope structurally, not just as a filter parameter
+- [ ] Recursive queries and graph traversals have a maximum depth bound
+- [ ] Similarity and search queries are tenant-scoped before ranking (not filtered after)
 - [ ] Cache keys include tenant ID
 - [ ] Logging/observability data with tenant-identifying content has access control
 
 ## Memory Poisoning
 
-- [ ] Write paths to Neo4j that accept model-generated content have structural validation
+- [ ] Write paths to any persistent store that accept model-generated content have structural validation
 - [ ] Stored content cannot later be retrieved and re-injected as system-level instructions
 - [ ] All persistent writes carry provenance metadata (author, timestamp, session ID)
-- [ ] Moment stack assembly cannot be influenced by injected graph content to prioritize attacker-controlled memories
+- [ ] Context assembly cannot be steered by injected stored content to prioritize attacker-controlled records
 
 ## Context Window Manipulation
 
@@ -48,7 +48,7 @@ prompt construction, tool execution, graph writes, or tenant boundaries.
 
 1. **Structural isolation over sanitization** — sanitization is fragile. Separate message roles, parameterized queries, strict schemas make injection geometrically harder.
 2. **Least privilege at every boundary** — model sees only what it needs; tools have minimal permissions; tenant context enforced at query layer.
-3. **Assume retrieved content is adversarial** — everything from Neo4j, vector stores, or external APIs is potentially attacker-controlled.
+3. **Assume retrieved content is adversarial** — retrieved content from any store or external API is potentially attacker-controlled.
 4. **Audit trails for persistent writes** — any write from model output must carry provenance.
 
 ---
@@ -58,7 +58,7 @@ prompt construction, tool execution, graph writes, or tenant boundaries.
 - Model output written to persistent storage without structural validation
 - Tenant ID enforced only in application code, not at the query layer
 - Tool call inputs constructed from raw model output strings
-- Retrieved graph content interpolated directly into system or user prompts
+- Retrieved content interpolated directly into system or user prompts
 - Agent loops with no maximum iteration count
 - Cross-tenant similarity results filtered after ranking rather than before
-- A single compromised session can modify memories affecting other sessions or tenants
+- A single compromised session can modify stored content affecting other sessions or tenants

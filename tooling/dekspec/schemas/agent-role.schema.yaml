@@ -1,0 +1,52 @@
+# Agent Role Specification — JSON Schema (Draft 2020-12)
+#
+# The parsed form of one library-supplied role definition,
+# tooling/dekspec/roles/<role>.md (ADR-061, IC-019). Produced by
+# dekspec.roles.parse_role_text(); consumed by dekspec.roles.load_role(),
+# which every dispatching caller uses.
+#
+# Not a project artifact: there is no status, no lifecycle and no
+# consumer-authored instance. The role identity closure is the six roles
+# ADR-061 names; a seventh role is a library change with its own dispatch,
+# validation, documentation and tests (ADR-061 §Extensibility).
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://dekspec.dektora/schemas/v1/agent-role.schema.json"
+title: Agent Role Specification
+type: object
+additionalProperties: false
+required: [id, title, legacy_id, policy_revision, sections]
+
+properties:
+  id:
+    description: Stable machine identity of the role.
+    enum: [specifier, spec-reviewer, implementer, code-reviewer, verifier, auditor]
+  title:
+    description: Plain-language name, from the H1 after "Agent Role Specification:".
+    type: string
+    minLength: 1
+  legacy_id:
+    description: The retired Context Specification id this role continues (traceability only).
+    type: string
+    pattern: "^CS-\\d{3}$"
+  policy_revision:
+    description: >-
+      Declared policy revision. Incremented when a change alters what the role
+      must do, may do or must produce; editorial changes keep it. Recorded
+      evidence made under an older revision no longer satisfies a gate that
+      requires this role (IC-019).
+    type: integer
+    minimum: 1
+  sections:
+    description: The seven required elements of ADR-061, verbatim Markdown bodies.
+    type: object
+    additionalProperties: false
+    required: [purpose, responsibilities, inputs, authority, outputs, completion, escalation]
+    properties:
+      purpose: {type: string, minLength: 1}
+      responsibilities: {type: string, minLength: 1}
+      inputs: {type: string, minLength: 1}
+      authority: {type: string, minLength: 1}
+      outputs: {type: string, minLength: 1}
+      completion: {type: string, minLength: 1}
+      escalation: {type: string, minLength: 1}

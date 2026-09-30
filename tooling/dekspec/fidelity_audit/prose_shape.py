@@ -334,9 +334,9 @@ def _evaluate(
 # Artifact statuses for which prose-shape checks are skipped — terminal /
 # pre-authoring states where shape is not yet meaningful. Mirrors the
 # skip-status convention used by the D-15 / D-series rules.
-_SKIP_WS = {"DEPRECATED", "SUPERSEDED", "TODO"}
-_SKIP_IB = {"DEPRECATED", "COMPLETED", "TODO"}
-_SKIP_AE = {"DEPRECATED", "TODO"}
+_SKIP_WS = {"DEPRECATED", "SUPERSEDED"}
+_SKIP_IB = {"DEPRECATED", "SUPERSEDED", "COMPLETE"}
+_SKIP_AE = {"DEPRECATED"}
 
 
 # --------------------------------------------------------------------------- #

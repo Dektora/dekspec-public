@@ -55,11 +55,12 @@ properties:
 
   bound_bead_id:
     description: >-
-      Optional bead id this session is bound to. Populated when start()'s
-      caller-supplied id does not match the Intent regex. Pattern
-      ^[a-z0-9-]+$ matches the canonical br bead-id shape.
+      Optional non-Intent work id this session is bound to. Populated when
+      start()'s caller-supplied id does not match the Intent regex: an
+      Implementation Brief id (IB-NNN — the IB-bound commit guard, ADR-056)
+      or a legacy br bead id (^[a-z0-9-]+$).
     type: string
-    pattern: "^[a-z0-9-]+$"
+    pattern: "^(IB-[0-9]{3,}|[a-z0-9-]+)$"
 
   bound_intent_id:
     description: >-

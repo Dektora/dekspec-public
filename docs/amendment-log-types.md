@@ -10,7 +10,7 @@ The base vocabulary partitions into two families:
 
 ### Family A — Locked-artifact maintenance lifecycle
 
-For IRs that have a LOCKED state and may need post-lock changes. The flow is `LOCKED → unlock → substantive → lock → ...`, plus orthogonal `editorial` / `fill` / `migration` / `supersession` events.
+For IRs that have a LOCKED state and may need post-lock changes. The flow is `LOCKED → unlock → substantive → lock → ...`, plus orthogonal `editorial` / `fill` / `migration` / `supersession` events. Since ADR-046 only standing decisions and versioned contracts (ADR, IC, Constitution, System Vision, Security Profile) lock; on AE and WS rows the `unlock` / `lock` values survive in the enum for historical entries only.
 
 | value | what it records |
 |-------|-----------------|
@@ -28,9 +28,9 @@ Missions have a richer lifecycle than other IRs because they coordinate multi-In
 
 | value | what it records |
 |-------|-----------------|
-| `activate` | Mission TODO → ACTIVE. The work has been picked up. |
+| `activate` | Mission PROPOSED → ACTIVE. The work has been picked up. (Pre-ADR-057 rows read `TODO → ACTIVE`.) |
 | `review` | Mission ACTIVE checkpoint review (e.g., the L11 stale-ACTIVE advisory triggered, or scheduled progress review). |
-| `complete` | Mission ACTIVE → COMPLETING → COMPLETE. Mission Verification predicates resolved. |
+| `complete` | Mission ACTIVE → COMPLETE. Mission Verification predicates resolved inside `--complete` (the `COMPLETING` status was retired by ADR-057). |
 | `kill` | Mission ACTIVE → KILLED. Kill criteria fired (or operator manually killed). |
 | `supersede` | Mission superseded by another Mission. |
 | `editorial` | Same as Family A — typo / formatting correction. The only Family-A value that crosses over. |
@@ -40,11 +40,24 @@ Missions have a richer lifecycle than other IRs because they coordinate multi-In
 | IR | Allowed enum values | Rationale |
 |---|---|---|
 | `adr.schema.yaml` | `editorial, unlock, substantive, fill, migration, lock, supersession` | Full Family A. ADRs may be unlocked + substantively edited (e.g., refining a decision after lived experience), and they have formal supersession via the L7 audit rule. |
-| `architecture-element.schema.yaml` | `editorial, unlock, substantive, fill, migration, lock` | Family A minus `supersession`. AEs don't formally supersede each other (a deprecated AE is just deleted or marked DEPRECATED in `status`). |
-| `working-spec.schema.yaml` | `editorial, unlock, substantive, fill, migration, lock` | Same as AE. |
+| `architecture-element.schema.yaml` | `editorial, unlock, substantive, fill, migration, lock` | Family A minus `supersession`. AEs don't formally supersede each other (a deprecated AE is just deleted or marked DEPRECATED in `status`). AEs rest at ACCEPTED and never lock (ADR-046); `unlock` / `lock` remain valid only so historical rows parse. |
+| `working-spec.schema.yaml` | `editorial, unlock, substantive, fill, migration, lock` | Same as AE, including the never-lock rule. |
 | `interface-contract.schema.yaml` | `editorial, unlock, substantive, fill` | Family A minus `lock` and `supersession`. ICs lock once via the normal status flow; further substantive edits trigger a new IC, not an unlock+lock cycle. (Audit divergence D-13 candidate: do we want to add `lock` for full consistency?) |
-| `intent.schema.yaml` | `editorial, unlock, substantive` | Minimal Family A. Intent supersession is recorded via the dedicated `superseded_by` field, not the amendment log. Intents migrate via the registry but don't typically need a `migration` log entry because the lifecycle from DRAFT to LOCKED is short. |
+| `intent.schema.yaml` | `editorial, unlock, substantive` | Minimal Family A. Intent supersession is recorded via the dedicated `superseded_by` field, not the amendment log. Intents never lock (they end at COMPLETE, ADR-046/057); `unlock` survives for historical rows. Status migrations are recorded as `editorial` rows (see below). |
 | `mission.schema.yaml` | `activate, review, complete, kill, supersede, editorial` | Family B, plus the one Family-A crossover (`editorial`). Missions are coordination artifacts; their amendment_log is the source-of-truth for the lifecycle audit timeline. |
+
+## Rows written by the tooling
+
+Some Amendment Log rows are appended by commands rather than by an author. In the markdown they carry the capitalized type shown; in IR they fall under the per-IR values above.
+
+| Written by | Row type | What it records |
+|---|---|---|
+| `dekspec migrate` (markdown stage) | `Editorial` | A retired status mapped to its successor, with the prior value (ADR-057) — e.g. an IB `TESTFAIL → ACCEPTED`, an Intent `TESTPASS → ACCEPTED`, a Mission `TODO → PROPOSED`; the `**Authority policy:** legacy` stamp on an IB; removal of `Review grandfathered` / `Beads before accept`. |
+| `dekspec ib propose` · `dekspec ib accept` · `dekspec ib complete` | `Substantive` | The IB decision transition (DRAFT → PROPOSED → ACCEPTED → COMPLETE). |
+| `dekspec ib adopt` | `Substantive` | A legacy IB moved to the delegated authority policy (ADR-055). |
+| `dekspec intent complete` | `Substantive` | Intent ACCEPTED → COMPLETE once its child IBs are complete and outcome evidence is current. |
+
+Acceptance-contract amendments after execution starts (`dekspec ib amend`) are **not** Amendment Log rows: they are events in the IB's execution record (`.dekspec/execution/<IB>/record.jsonl`), where the completing review verdict must acknowledge them (ADR-057).
 
 ## Naming inconsistency — known issue
 

@@ -4,9 +4,8 @@
 
 PROPOSED
 
-*Valid statuses:* `TODO` → `DRAFT` → `PROPOSED` → `ACCEPTED` → `LOCKED` | any stage → `DEPRECATED` | `SUPERSEDED` (ADR-specific terminal)
+*Valid statuses:* `DRAFT` → `PROPOSED` → `ACCEPTED` → `LOCKED` | any stage → `DEPRECATED` | `SUPERSEDED` (ADR-specific terminal)
 
-- **TODO** — placeholder; needs review and rewrite against current system state
 - **DRAFT** — being written; anything goes
 - **PROPOSED** — complete draft ready for review; engineer has not yet accepted
 - **ACCEPTED** — engineer approved; downstream work may exist; substantive changes allowed but must cascade

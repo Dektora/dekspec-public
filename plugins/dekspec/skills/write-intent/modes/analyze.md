@@ -3,13 +3,13 @@
 [← back to dispatcher](../SKILL.md)
 
 
-Reads `<Intent-path>`. Refuses if Status is not `DRAFT` or `OVERSIZED` (analyze re-run after split is supported; later statuses do not analyze).
+Reads `<Intent-path>`. Refuses if Status is not `DRAFT` (re-running after a split or an amendment is supported; later statuses do not analyze).
 
 > **Fan-out delegated (ds-di2).** The orchestrator dispatches this mode's body to a fresh-context `dekspec:intent-author` subagent per **Fan-Out Mode** above. The steps below are the **subagent's contract**; on return, the orchestrator validates the edited Intent (`dekspec validate --kind intent <path>`) and confirms Coverage Report + Size Assessment + Status transition were populated as specified.
 
 ### Step 1: Validate
 
-1. File exists at the path; status is `DRAFT` or `OVERSIZED`.
+1. File exists at the path; status is `DRAFT`.
 2. Type field is present and is in the controlled vocabulary (audit-v2 T13). If not, refuse with a fix prompt.
 3. Autonomy field is present and is in `{manual, low, medium, high}` (audit-v2 T16). If not, refuse with a fix prompt.
 4. Components affected is non-empty and is a file-glob list (audit-v2 T15). If not, refuse.
@@ -74,29 +74,27 @@ If both checks are clean (touched AEs are live, no ADR bans the surface), procee
 
 ### Step 4: Bottom-Up Archaeology
 
-Invoke `/dekspec:archeology --scan <component-path>` for each Component listed. The scan output enumerates what exists today on the file paths the Intent will touch — public API, internal state, external callers. Apply the optional 5-phase deeper-investigation mental model (see archeology Scan Mode) to extract constraints / implicit decisions / gaps, and append the findings to the Intent's **Layer impact analysis** with explicit per-layer entries.
+Investigate what exists today on the paths the Intent will touch — public API, internal state, external callers. If the optional `/recover-specs` tool is enabled, use it for each Component listed; otherwise read the code, tests and history directly. Separate observed behavior from inferred rationale, and record the per-layer consequences (AEs, ADRs, WSs, ICs to revise or author) in the Intent's **Layer impact analysis**.
 
 ### Step 5: Size Assessment
 
-**Step 5.0 — Ephemeral user-story scope probe (INT-168 / D6).** Before measuring the caps, enumerate the candidate *user-stories* this Intent would satisfy — one line per distinct "as a `<persona>`, I can `<observable capability>`" the Intent implies. This probe exists for one purpose: to expose scope so the IU/Component cap check below is honest (a hidden third and fourth user-story is the usual tell that an Intent is secretly OVERSIZED). The probe is **purely ephemeral**: the enumerated stories are **never persisted to the Intent body** and **never emitted as beads** — they are reasoning scaffolding for the size verdict only. Use them to inform the IU count, then discard them. If the story list itself reveals more than one cohesive capability surface, that is a strong OVERSIZED signal — feed it into the cap measurement, do not write it down.
+**Step 5.0 — Ephemeral user-story scope probe (INT-168 / D6).** Before measuring the caps, enumerate the candidate *user-stories* this Intent would satisfy — one line per distinct "as a `<persona>`, I can `<observable capability>`" the Intent implies. This probe exists for one purpose: to expose scope so the IB/Component cap check below is honest (a hidden third and fourth user-story is the usual tell that an Intent is secretly over-cap). The probe is **purely ephemeral**: the enumerated stories are **never persisted to the Intent body** and **never emitted as work items** — they are reasoning scaffolding for the size verdict only. Use them to inform the IB count, then discard them. If the story list itself reveals more than one cohesive capability surface, that is a strong over-cap signal — feed it into the cap measurement, do not write it down.
 
 Measure each hard cap (Decision #5). Cap-by-cap, populate the **Size Assessment** table with the measured value and verdict:
 
 | Cap | Limit | How measured |
 |---|---|---|
-| Implementation Units (IBs / direct beads) | ≤ 3 | Count the IUs the Intent's `--decompose` would produce. Use bottom-up archaeology output. |
-| Components affected | ≤ 3 | Count the entries in `Components affected:` (each named component counts as one even if it expands to multiple globs). A shell-style brace fold `{a,b}/**` is a **legitimate single entry** — both the L7b component-resolve audit and the `--testpass` diff-confinement gate expand braces identically (ds-059n), so a fold that passes here also passes at testpass. It counts as **one** entry for this cap regardless of how many branches it expands to. **Lifecycle-implicit skill surfaces are NOT counted (ds-u6rv):** for a skill-authoring Intent, the registration mirror-pair (`_SKILL_CLASS_DEFAULTS` in `tooling/dekspec/fidelity_audit/linkage.py` + `docs/dekspec-skill-flag-defaults.md`) and the outcome test (`tests/test_outcome_<name>.py`) are mechanical scaffolding every new skill must touch — analogous to the `IMPLICIT_LIFECYCLE_GLOBS` admit-set in diff-confinement — and do **not** count toward this cap. Only the skill's real behavioral surface (the skill directory, `plugins/**/skills/<name>/**`) counts. This keeps the cap an honest blast-radius signal without forcing a brace-fold hack or an OVERSIZED verdict on a standard new-skill Intent. (They still appear in `Components affected:` — declared, diff-confined — just not counted here.) |
+| Implementation Briefs | ≤ 3 | Count the IBs the Intent's `--decompose` would produce. Use the Step 4 investigation. |
+| Components affected | ≤ 3 | Count the entries in `Components affected:` (each named component counts as one even if it expands to multiple globs). A shell-style brace fold `{a,b}/**` is a **legitimate single entry** — both the L7b component-resolve audit and the scope checks expand braces identically (ds-059n), so a fold that passes here also passes `dekspec ib verify` scope checks. It counts as **one** entry for this cap regardless of how many branches it expands to. **Lifecycle-implicit skill surfaces are NOT counted (ds-u6rv):** for a skill-authoring Intent, the registration mirror-pair (`_SKILL_CLASS_DEFAULTS` in `tooling/dekspec/fidelity_audit/linkage.py` + `docs/dekspec-skill-flag-defaults.md`) and the outcome test (`tests/test_outcome_<name>.py`) are mechanical scaffolding every new skill must touch — analogous to the `IMPLICIT_LIFECYCLE_GLOBS` admit-set in diff-confinement — and do **not** count toward this cap. Only the skill's real behavioral surface (the skill directory, `plugins/**/skills/<name>/**`) counts. This keeps the cap an honest blast-radius signal without forcing a brace-fold hack or an over-cap finding on a standard new-skill Intent. (They still appear in `Components affected:` — declared, diff-confined — just not counted here.) |
 | New L1 artifacts (AEs) | ≤ 1 | Count AEs the Intent introduces (not revises). Linked Architecture Elements that already exist do not count. |
 | New + revised L2 artifacts (WSes + ICs) | ≤ 3 | Count net new + revised, summed across WSes and ICs. |
 | Coverage gaps | ≤ 2 | Count blocking Open Issues from Step 3. |
 
-If any cap is exceeded, set Status to `OVERSIZED` and run `python ../_lib/scripts/artifact_ops.py transition <Intent-path> --from DRAFT --to OVERSIZED --note "Hard cap exceeded; transitioned to OVERSIZED via /write-intent --analyze"` to save the state in the file and indices. 
+If any cap is exceeded, the Intent is over-cap. This is an **analysis finding, not a status** (ADR-057): record a `P2` Open Issue — `Hard cap exceeded (<cap>: <measured> > <limit>) — re-split before acceptance — **Source:** analyze — **Severity:** P2` — leave Status at `DRAFT`, and enter the splitting flow below. The P2 finding blocks `--accept` until the split resolves it.
 
-Immediately initiate the **Automated Oversized Splitting & Mission Scaffolding Flow**:
+#### Over-cap splitting
 
-#### 🛠️ Automated Oversized Splitting & Mission Scaffolding Flow
-
-See [`_lib/oversized_splitting.md`](../_lib/oversized_splitting.md) — the canonical 5-step flow for handling an `OVERSIZED` Intent. This skill enters that flow when the size assessment in Step 5 above reports a cap violation.
+See [`_lib/oversized_splitting.md`](../../_lib/oversized_splitting.md) — the canonical PEEL-OFF / CONVERT-TO-MISSION decision tree (ADR-028). This skill enters it when the size assessment above reports a cap violation.
 
 ### Step 6: Verification Predicate Population
 
@@ -110,19 +108,18 @@ For the Intent's type, the Verification block was pre-populated at Creation from
   Surface stderr on a non-zero exit (code 2 = unresolved cmd[s]). For TBD
   scripts (`measure-nfr.sh`, `check-test-files-unchanged.sh`, `lint-docs.sh`,
   `check-doc-refs.sh` — see CLAUDE.md script-status footnote), the unresolved
-  result becomes a non-blocking warning naming the corresponding
-  `dektora-mi-tbd-*` tracker bead. (`scripts/check-coverage.sh` exists from
-  Phase 1 P1.3.)
+  result becomes a non-blocking warning naming the tracker issue that owns
+  the missing script.
 - Type-specific placeholders are resolved or scheduled:
-  - `<reproduction-test-path-from-IB-1>` may remain — `--decompose` (Part B) fills it in.
+  - `<reproduction-test-path-from-IB-1>` may remain — `--decompose` fills it in.
   - `<Metric>` / `<Target>` must be filled from the nfr block (refuse advance if not).
   - `<environment-smoke-script>` must be filled (refuse advance if not).
 
-Audit-v2 L9 will WARN at Accept if any cmd does not resolve to an executable script, and HARD-FAIL at `--testpass` (Part B). Surface the warnings now so they do not surprise the engineer at Accept.
+Audit-v2 L9 will WARN at Accept if any cmd does not resolve to an executable script, and `dekspec intent verify` fails on it at completion. Surface the warnings now so they do not surprise the engineer at Accept.
 
-### Step 7: WS-Fan-In Per IU
+### Step 7: Candidate IBs
 
-For each Implementation Unit the Intent's `--decompose` would produce, identify the WSes the IU's spec content draws from. If any IU draws from ≥ 2 WSes, that IU requires an Implementation Brief at `--decompose` time (Decision #12). Record the IU → WS-fan-in mapping in the Layer impact analysis as a footnote — `--decompose` (Part B) consumes this directly.
+List the IBs `--decompose` would author — one line each (outcome in a few words, likely Scope globs, the WS/IC/ADR sections it would reference). Record the list under **Layer impact analysis** (L3 row). A candidate IB draws its obligations by reference (ADR-056), so a WS is needed only where a behavioral requirement spans or outlives the IBs; note that in the L2 row.
 
 ### Step 8: Drift Checks
 
@@ -131,7 +128,7 @@ For each Implementation Unit the Intent's `--decompose` would produce, identify 
 
 ### Step 9: Mission Autonomy Ceiling (if `mission:` is set)
 
-If `Mission:` is populated, attempt to read `dekspec/missions/MSN-NNN-*.md`. If it exists, enforce `Intent.Autonomy ≤ Mission.Autonomy_ceiling` — refuse advance on violation. If the Mission file does not exist (Phase 1: Missions ship in Phase 2), log a non-blocking warning naming the missing file and proceed.
+If `Mission:` is populated, read `dekspec/missions/MSN-NNN-*.md`. If it exists, enforce `Intent.Autonomy ≤ Mission.Autonomy_ceiling` — refuse advance on violation. If the Mission file does not exist, log a non-blocking warning naming the missing file and proceed.
 
 ### Step 10: Promote
 
@@ -141,6 +138,6 @@ If all of the above pass cleanly:
 2. Update `dekspec/intent-index.md` — run `python ../_lib/scripts/artifact_ops.py update-index dekspec/intent-index.md --id INT-NNN --status PROPOSED` (surface stderr on non-zero exit).
 3. Tell the engineer the Intent is ready for `--accept`.
 
-If anything fails, record the findings in Open Issues with Source `analyze`, leave Status as `DRAFT` (or set to `OVERSIZED` if a hard cap was exceeded), and surface the findings list for the engineer to act on. Do **not** silently close gaps.
+If anything fails, record the findings in Open Issues with Source `analyze`, leave Status as `DRAFT` (an over-cap result is the P2 re-split finding above), and surface the findings list for the engineer to act on. Do **not** silently close gaps.
 
 **End of Analyze Mode.**

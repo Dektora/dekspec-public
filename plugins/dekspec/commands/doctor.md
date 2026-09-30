@@ -7,7 +7,7 @@ disable-model-invocation: false
 
 Run the DekSpec health check in two stages.
 
-**Stage 1 — CLI doctor** (`dekspec doctor`): schema validate + linkage + drift. Bash subprocess, fast, deterministic.
+**Stage 1 — CLI doctor** (`dekspec doctor`): schema validate + linkage + drift, plus the `agents-md` section — the read-only AGENTS.md freshness check (`dekspec aggregate agents-md --check`, ADR-063). With an `agents_md` block declared in `.dekspec/config.yaml`, a stale or required-but-absent projection is a warning (exit 1) and an invalid one is critical (exit 2); undeclared, it is at most advisory. Doctor never regenerates — the fix is `dekspec aggregate agents-md` (with `--migrate` once for a legacy whole-file AGENTS.md). Bash subprocess, fast, deterministic.
 
 **Stage 2 — Fidelity audit** (inlined body below): AE-aware T/D/L family (T10/T11/T12 subtype/boundary/views, D17/D18 AE no-target + no-rationale, the LINK-* linkage family, Phase 2A–2L cross-reference checks).
 
@@ -88,7 +88,7 @@ These run on Intent (`dekspec/intents/INT-NNN-*.md`) and Mission (`dekspec/missi
 - [ ] **T14 — Intent Verification block populated.** Every Intent has a `## Verification` section containing a yaml block with at least one named cmd check (each entry has `name:` and `cmd:`). Missing section, empty yaml block, or zero cmd checks = **HARD FAIL** at PROPOSED. Per-Intent overrides of the type-default Verification predicate are allowed but must be logged in the Intent body.
 - [ ] **T15 — Intent Components affected populated as file-glob list.** Every Intent has a `## Components affected` section with at least one entry. Each entry is either a named component from CLAUDE.md §Component → File-Glob Map OR a directly-inlined file glob. Missing section, empty list = **HARD FAIL** at PROPOSED.
 - [ ] **T16 — Intent Autonomy from controlled vocabulary.** Every Intent has an `## Autonomy` section populated with exactly one value from the enum: `manual`, `low`, `medium`, `high`. Missing section, empty section, or off-enum value = **HARD FAIL** at PROPOSED.
-- [ ] **T17 — Mission near-immutable section populated.** Every Mission has all 8 near-immutable fields populated: `Outcome`, `Mission Verification`, `Out-of-scope`, `Flag strategy`, `Rollback plan`, `Kill criteria`, `Autonomy ceiling`, `First Intent`. Missing field or empty placeholder text (e.g., the literal string `[Outcome]`) = **HARD FAIL** at TODO → ACTIVE transition (refuses `/write-mission --activate`). The `Flag strategy.Flag name` may be `none` provided a one-line rationale is documented. **Mission IR v0.2.0:** `Rollback plan` requires both a `Trigger:` prose paragraph AND a `steps:` fenced yaml list of `{name, cmd}` entries; `Kill criteria` requires a fenced yaml list of `{name, cmd}` entries parallel to Mission Verification. Audit-v2 L9 resolves every `cmd` in those lists; `_legacy_prose` / `_legacy_prose_N` sentinel entries with `echo SKIP_LEGACY_*` cmds are skipped by L9 (they signal human-attended steps).
+- [ ] **T17 — Mission near-immutable section populated.** Every Mission has all 8 near-immutable fields populated: `Outcome`, `Mission Verification`, `Out-of-scope`, `Flag strategy`, `Rollback plan`, `Kill criteria`, `Autonomy ceiling`, `First Intent`. Missing field or empty placeholder text (e.g., the literal string `[Outcome]`) = **HARD FAIL** at the PROPOSED → ACTIVE transition (refuses `/write-mission --activate`). The `Flag strategy.Flag name` may be `none` provided a one-line rationale is documented. **Mission IR v0.2.0:** `Rollback plan` requires both a `Trigger:` prose paragraph AND a `steps:` fenced yaml list of `{name, cmd}` entries; `Kill criteria` requires a fenced yaml list of `{name, cmd}` entries parallel to Mission Verification. Audit-v2 L9 resolves every `cmd` in those lists; `_legacy_prose` / `_legacy_prose_N` sentinel entries with `echo SKIP_LEGACY_*` cmds are skipped by L9 (they signal human-attended steps).
 
 ## Intent + Mission D-checks
 
@@ -106,8 +106,8 @@ These run on Intent prose only.
    - The Mission's Intent queue (live section) lists the child Intent.
    - The child Intent's `Mission:` field references this Mission file.
    - The child Intent's Autonomy value ≤ the Mission's Autonomy ceiling (string comparison via the `manual` < `low` < `medium` < `high` ordering).
-   Missing backlink in either direction, or Autonomy violation = **HARD FAIL** at the child Intent's `--lock` and at the Mission's `--activate`. Warning-level at the child Intent's `--accept`.
-- [ ] **L9 — Verification cmd checks resolve to executable scripts.** Every cmd entry in an Intent's `## Verification` yaml block, and in a Mission's `## Mission Verification` yaml block, resolves to an executable script or recognized tool. Resolution rules: (a) `pytest` (and any flag pattern) resolves if `pytest` is on PATH; (b) `scripts/<name>.sh` resolves if the file exists and is executable; (c) other commands resolve if invocable as `which <first-token>`. Unresolved cmd = **WARNING** at ACCEPT (with the cmd named); **HARD FAIL** at `--testpass` (the predicate must run).
+   Missing backlink in either direction, or Autonomy violation = **HARD FAIL** at the child Intent's completion (`dekspec intent complete`) and at the Mission's `--activate`. Warning-level at the child Intent's `--accept`.
+- [ ] **L9 — Verification cmd checks resolve to executable scripts.** Every cmd entry in an Intent's `## Verification` yaml block, and in a Mission's `## Mission Verification` yaml block, resolves to an executable script or recognized tool. Resolution rules: (a) `pytest` (and any flag pattern) resolves if `pytest` is on PATH; (b) `scripts/<name>.sh` resolves if the file exists and is executable; (c) other commands resolve if invocable as `which <first-token>`. Unresolved cmd = **WARNING** at ACCEPT (with the cmd named); **HARD FAIL** at `dekspec intent verify` (the predicate must run).
 
 ## Decision drift checks (corpus-level sweep)
 
@@ -187,7 +187,7 @@ Collect the current state of all DekSpec assets:
    - `dekspec/architecture-elements/AE-*.md` and `dekspec/architecture-elements/*/*.md`
    - `dekspec/working-specs/WS-*.md`
    - `dekspec/interface-contracts/IC-*.md`
-   - `dekspec/impl-briefs/{queued,active,completed}/*.md`
+   - `dekspec/impl-briefs/**/IB-*.md` (top level; legacy `active/` and `completed/` folders)
 
    For each, extract: ID, title, status, created date, modified date.
 
@@ -224,7 +224,7 @@ For each skill:
 For each template:
 
 - [ ] **Template sections match actual artifacts.** For each artifact type, read 2-3 actual artifacts and compare their section headers against the template. Flag sections present in artifacts but not in the template (custom additions) or in the template but not in artifacts (missing sections).
-- [ ] **Status lifecycle consistent.** Verify all artifacts use the same status values: DRAFT → PROPOSED → ACCEPTED → LOCKED. Flag any artifact with a status not in this set.
+- [ ] **Status lifecycle consistent.** Verify every artifact uses a status from its kind's lifecycle (ADR-046, ADR-057): decision and contract kinds (SV, Constitution, ADR, IC, SP) DRAFT → PROPOSED → ACCEPTED → LOCKED; AE and WS DRAFT → PROPOSED → ACCEPTED; IB and Intent DRAFT → PROPOSED → ACCEPTED → COMPLETE; Mission PROPOSED → ACTIVE → COMPLETE / KILLED; plus SUPERSEDED / DEPRECATED where the kind allows. Flag any other status — in particular a retired one (TODO, QUEUED, ACTIVE or COMPLETED on an IB, REVIEW_*, TESTFAIL, OVERSIZED, IMPLEMENTING, TESTPASS, MERGED, COMPLETING), which `dekspec migrate` maps.
 - [ ] **Date integrity.** For each artifact, verify Modified >= Created. Flag violations.
 
 #### 2C. Index-to-Artifact Alignment
@@ -251,7 +251,7 @@ The operating guide is the master document of the DekSpec system. Highest-drift-
 - [ ] **Role definitions in project-context.md align with operating guide references.**
 
 **Format and schema alignment:**
-- [ ] **Bead format matches write-code-beads skill.** Compare the operating guide's bead description/format with the canonical format in `/write-code-beads`. Flag any divergence.
+- [ ] **No code-bead construction prose.** Code beads and `/write-code-beads` are retired (ADR-056): the IB is executed directly. Flag any passage that still describes beads as the construction unit or `br ready` as the coding pull surface (issue and governance beads are unaffected).
 - [ ] **IB format matches write-ibs skill.** Compare the operating guide's IB description with the IB Content Rules in the skill.
 - [ ] **Template references are current.** For each template path mentioned in the operating guide, verify the template exists and its sections match what the guide describes.
 
@@ -291,7 +291,7 @@ The quick reference (`dekspec/dekspec-quick-reference.md`; in `--library-self-au
 - [ ] **Coupling/cohesion checks are only in skills that need them.**
 - [ ] **All skills with `--audit` mode follow the same reporting format.**
 - [ ] **All skills with `--revise` mode follow the same revision plan format.**
-- [ ] **Artifact skills with `--lock`/`--unlock` follow the standard state transition rules.** For `write-ws`, `write-ic`, `write-ae`, `write-adr`, `write-sp`, `write-system-vision`: Lock is ACCEPTED → LOCKED, Unlock is LOCKED → PROPOSED. **Known exceptions — not drift:** `write-intent` has a richer lifecycle (`IMPLEMENTING → TESTPASS → MERGED → LOCKED`); its `--lock` is **MERGED → LOCKED** by design. `write-mission` has no `--lock`/`--unlock` — its lifecycle runs through `--activate` / `--complete` / `--kill` / `--supersede`.
+- [ ] **Artifact skills with `--lock`/`--unlock` follow the standard state transition rules.** For `write-ic`, `write-adr`, `write-sp`, `write-system-vision`: Lock is ACCEPTED → LOCKED, Unlock is LOCKED → PROPOSED. **Known exceptions — not drift:** AE and WS never lock (ADR-046); IBs and Intents complete only through `dekspec ib complete` / `dekspec intent complete` (ADR-057), not a `--lock` flag; `write-mission` has no `--lock`/`--unlock` — its lifecycle runs through `--activate` / `--complete` / `--kill` / `--supersede`.
 
 #### 2F. Artifact Body Checks — Delegation Protocol
 
@@ -369,7 +369,7 @@ Runs when convergence evidence is present (Phase 1 Step 6 detects commits matchi
 
 - [ ] **2L.1 Cascade exclusion zones.** `dekspec/audits/**`, `dekspec/archaeology/**`, and `.beads/**` are NEVER cascade targets. Scan Amendment Log entries across all L1/L2 artifacts for phrases indicating cascade into these zones. Any hit emits `[fidelity:2L-cascade-scope-violation]`. Severity: IMPORTANT.
 - [ ] **2L.2 Open-Issues spec-vs-code classification (D16).** For each ADR / AE / WS / IC with an Open Issues section, classify every entry:
-  - **spec-coverage-gap** (acceptable) — "WS-NNN is TODO", "ADR for X pending", "glossary needs term Y", "IC boundary not yet specified".
+  - **spec-coverage-gap** (acceptable) — "WS-NNN is DRAFT", "ADR for X pending", "glossary needs term Y", "IC boundary not yet specified".
   - **code-gap** (forbidden in L1/L2) — "code does X but spec says Y", "currently in code at `<path>:<line>`", observed-vs-specified behavior divergence.
 
   Code-gaps in L1/L2 artifacts must migrate to `dekspec/divergences/DIV-NNN-*.md` or to `br` issues. Violations emit `[fidelity:2L-open-issue-code-gap]`. Severity: IMPORTANT. Grandfathered entries (pre-2026-04-24): AE-004, AE-037.

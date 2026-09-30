@@ -133,6 +133,109 @@ properties:
           type: string
           minLength: 1
 
+  execution:
+    description: >-
+      Execution policy for IB runs (ADR-057) — adaptable, model- and
+      repo-dependent numbers, not governing obligations. Every key is
+      optional; defaults live in `dekspec.execution.settings`.
+    type: object
+    additionalProperties: false
+    properties:
+      max_attempts:
+        description: 'Attempts per IB run before it blocks (counted across restarts). Default 3.'
+        type: integer
+        minimum: 1
+      stall_minutes:
+        description: 'An attempt with no heartbeat for this long is closed as stalled and blocks. Default 60.'
+        type: integer
+        minimum: 1
+      no_progress_attempts:
+        description: 'Consecutive attempts with no newly satisfied condition that return to already-seen content before the run blocks. Default 2.'
+        type: integer
+        minimum: 1
+      integration_command:
+        description: 'Repository-wide integration check `dekspec delivery verify` runs at the delivery head (e.g. `python -m pytest -q`).'
+        type: string
+        minLength: 1
+      command_timeout:
+        description: 'Timeout in seconds for each acceptance command or test run. Default 1800.'
+        type: integer
+        minimum: 1
+      python:
+        description: 'Interpreter that runs acceptance test nodes. Default: the first of the repo `.venv`, `python3`/`python` on PATH, and the interpreter running dekspec that can import pytest. An interpreter that is part of the repository content (tracked or unignored) is refused.'
+        type: string
+        minLength: 1
+      fingerprint_exclude:
+        description: 'Extra globs excluded from the implementation fingerprint (for generated files a check writes).'
+        type: array
+        items:
+          type: string
+          minLength: 1
+
+  integration:
+    description: >-
+      How `/implement` integrates a verified delivery (ADR-059). Every key is
+      optional; defaults live in `dekspec.implement.config`.
+    type: object
+    additionalProperties: false
+    properties:
+      method:
+        description: '`merge` (default) fast-forwards the base branch to the verified head; `github` lands it through a pull request with `gh`, after its required checks, never with an administrator override.'
+        enum: [merge, github]
+      base:
+        description: 'Base branch to integrate into. Default: `main`, else `master`.'
+        type: string
+        minLength: 1
+      remote:
+        description: 'Remote for `push` and the `github` method. Default `origin`.'
+        type: string
+        minLength: 1
+      push:
+        description: '`merge` only: also push the updated base branch. Default false.'
+        type: boolean
+      worktree_setup:
+        description: 'Shell command run once in each new delivery worktree (for example, create its virtual environment).'
+        type: string
+        minLength: 1
+  agents_md:
+    description: >-
+      Declares this repository's AGENTS.md projection (ADR-063): the
+      DekSpec-owned region of the instruction file that `dekspec aggregate
+      agents-md` generates and `--check` / `dekspec doctor` verify. Declaring
+      it makes the doctor gate fail on a stale, absent (when required) or
+      invalid projection. The settings here are the projection's settings;
+      the check and doctor always use them, never the file's header.
+    type: object
+    additionalProperties: false
+    properties:
+      path:
+        description: 'Instruction file, relative to the repository root. Default `AGENTS.md`.'
+        type: string
+        minLength: 1
+      status:
+        description: 'Status filter: a list of statuses, a comma-separated string, or `all`. Default LOCKED, ACCEPTED.'
+        oneOf:
+          - type: string
+            minLength: 1
+          - type: array
+            minItems: 1
+            items:
+              type: string
+              minLength: 1
+      include:
+        description: 'Projected kinds (CONSTITUTION, SECURITY_PROFILE, VISION, GLOSSARY, AE, ADR, IC, WS, IB, INT, MSN): a list or a comma-separated string. Default: the governing core, CONSTITUTION through WS.'
+        oneOf:
+          - type: string
+            minLength: 1
+          - type: array
+            minItems: 1
+            items:
+              type: string
+              minLength: 1
+      required:
+        description: 'When true, a missing projection (no file, an empty file or no region) fails the check. Default false.'
+        type: boolean
+
   triage_labels:
     description: >-
       The triage-label vocabulary the issue/bead-authoring flows consume.

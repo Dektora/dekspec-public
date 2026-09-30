@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import argparse
 import datetime
-import json
 import re
 import sys
 from pathlib import Path
@@ -39,9 +38,10 @@ KIND_DIRS: dict[str, tuple[str, str]] = {
 
 # Canonical core status ladder shared by every artifact kind (parser.py
 # _VALID_STATUSES). Kind-specific extra states (DEPRECATED, SUPERSEDED, IB/INT
-# lifecycle states, Mission TODO/ACTIVE/...) are accepted as opaque tokens by
+# lifecycle states, Mission PROPOSED/ACTIVE/...) are accepted as opaque tokens by
 # status-guard/transition but only the core ladder is ordered for --expect-min.
-STATUS_ORDER: list[str] = ["TODO", "DRAFT", "PROPOSED", "ACCEPTED", "LOCKED"]
+# ADR-057 retired TODO (it duplicated DRAFT).
+STATUS_ORDER: list[str] = ["DRAFT", "PROPOSED", "ACCEPTED", "LOCKED"]
 
 
 def _repo_root(start: Path | None = None) -> Path:
@@ -287,6 +287,71 @@ def _append_amendment_row(
     return text[:idx] + row + text[idx:]
 
 
+# Statuses retired by ADR-057 (activity mirrored as status). No transition may
+# target them; `dekspec migrate` maps any that remain in legacy files.
+RETIRED_TARGETS: frozenset[str] = frozenset({
+    "TODO", "OVERSIZED", "IMPLEMENTING", "TESTPASS", "MERGED", "COMPLETING",
+    "QUEUED", "COMPLETED", "REVIEW_IB", "REVIEW_IB_FAIL", "REVIEW_PR",
+    "REVIEW_PR_FAIL", "TESTFAIL",
+})
+
+# Per-kind targets that are retired for that kind only (ACTIVE is a live
+# Mission status; LOCKED is live for ADR / IC / SV / Constitution / SP).
+_KIND_RETIRED_TARGETS: dict[str, frozenset[str]] = {
+    "ib": frozenset({"ACTIVE", "LOCKED"}),
+    "intent": frozenset({"LOCKED"}),
+    "ae": frozenset({"LOCKED"}),
+    "ws": frozenset({"LOCKED"}),
+}
+
+# Completion is evidence-backed (ADR-057): the engine verb is the only path.
+_ENGINE_COMPLETION: dict[str, str] = {
+    "ib": "dekspec ib complete",
+    "intent": "dekspec intent complete",
+}
+
+_KIND_PREFIXES: tuple[tuple[str, str], ...] = (
+    ("IB-", "ib"), ("INT-", "intent"), ("AE-", "ae"), ("WS-", "ws"),
+    ("MSN-", "mission"), ("ADR-", "adr"), ("IC-", "ic"),
+)
+_KIND_DIRNAMES: dict[str, str] = {d: k for k, (d, _p) in KIND_DIRS.items()}
+
+
+def artifact_kind(path: Path, text: str = "") -> str | None:
+    """Best-effort artifact kind from the file name, its folder, or its H1."""
+    name = path.name
+    if name.startswith("P-"):
+        name = name[2:]
+    for prefix, kind in _KIND_PREFIXES:
+        if name.startswith(prefix):
+            return kind
+    for parent in path.parents:
+        if parent.name in _KIND_DIRNAMES:
+            return _KIND_DIRNAMES[parent.name]
+    if re.match(r"^#\s+Implementation Brief\b", text):
+        return "ib"
+    return None
+
+
+def _refuse_retired_target(path: Path, text: str, to_status: str) -> None:
+    """Raise ValueError when `to_status` is not a live target for this kind."""
+    target = to_status.upper()
+    kind = artifact_kind(path, text)
+    if target in RETIRED_TARGETS or target in _KIND_RETIRED_TARGETS.get(kind or "", frozenset()):
+        raise ValueError(
+            f"{path}: refusing transition — {target} is a retired status"
+            f"{f' for {kind.upper()}' if kind else ''} (ADR-057 keeps statuses for "
+            "decisions; progress, reviews and test outcomes live in the execution "
+            "record). See ADR-057 and `docs/artifact-and-transition-inventory.md`."
+        )
+    if target == "COMPLETE" and kind in _ENGINE_COMPLETION:
+        raise ValueError(
+            f"{path}: refusing transition — {kind.upper()} completion is "
+            f"evidence-backed (ADR-057); run `{_ENGINE_COMPLETION[kind]}`, the only "
+            "path to COMPLETE."
+        )
+
+
 def transition(
     path: Path,
     from_status: str,
@@ -297,10 +362,13 @@ def transition(
 ) -> str:
     """Flip Status from->to, bump Modified, append Amendment Log row.
 
-    Returns a human-readable summary. Raises ValueError on a status mismatch.
+    Returns a human-readable summary. Raises ValueError on a status mismatch,
+    on a retired target status (ADR-057), and on IB / Intent completion, which
+    only the engine's completion gates may record.
     """
     today = today or datetime.date.today().isoformat()
     text = path.read_text(encoding="utf-8")
+    _refuse_retired_target(path, text, to_status)
     actual = read_status(text)
     if actual != from_status.upper():
         raise ValueError(
@@ -731,12 +799,11 @@ def update_index(index_path: Path, art_id: str, status: str) -> str:
         for j in range(1, len(cells)):
             token = cells[j].strip().strip("`*_").upper()
             if token in STATUS_ORDER or token in {
-                # `TESTFAIL` retired from the Intent enum 2026-05-25 (E3
-                # audit). `TODO` (in STATUS_ORDER) is kept because it remains
-                # valid on non-Intent artifacts (AE/WS/IB/MSN).
-                "DEPRECATED", "SUPERSEDED", "COMPLETE", "ACTIVE",
-                "KILLED", "MERGED", "QUEUED", "COMPLETED",
-                "IMPLEMENTING", "TESTPASS", "OVERSIZED",
+                # Current decision states (ADR-057) plus retired tokens, so an
+                # index row still carrying a retired status can be corrected.
+                "DEPRECATED", "SUPERSEDED", "COMPLETE", "ACTIVE", "KILLED",
+                "TODO", "MERGED", "QUEUED", "COMPLETED", "IMPLEMENTING",
+                "TESTPASS", "OVERSIZED", "COMPLETING",
             }:
                 cells[j] = f" {status_up} "
                 changed = True
@@ -921,99 +988,10 @@ def find_refs(art_id: str, root: Path | None = None) -> list[str]:
 
 
 # --------------------------------------------------------------------------
-# check-retro-lock — the bead-closure gate for /write-intent --lock Path C
-# (retroactive post-merge lock; INT-142, bead ds-zyef).
-#
-# Path C lets a zero-downstream direct-bead Intent whose work already merged to
-# main reach LOCKED. This helper enforces the bead-closure portion of that gate
-# deterministically: every bead the Intent names in its `## Layer impact
-# analysis` must be `closed` in the beads JSONL. It validates each bead-shaped
-# token against the beads DB so hyphenated prose ("write-intent") is not gated,
-# and requires at least one resolvable closed bead so an Intent with no beads
-# cannot rubber-stamp itself into LOCKED via Path C.
-# --------------------------------------------------------------------------
-
-# A bead id is lowercase `<prefix>-<suffix>` (e.g. `ds-zyef`); the all-caps
-# artifact ids (INT-142, AE-006) never match. Suffix >= 3 chars rules out
-# `fan-in`. Candidates are still filtered against the beads DB below, so a
-# prose token that merely fits the shape is ignored unless it is a real bead.
-_BEAD_TOKEN_RE = re.compile(r"\b[a-z][a-z0-9]*-[a-z0-9]{3,}\b")
-
-
-def _beads_status_map(beads_file: Path) -> dict[str, str]:
-    """Parse a beads JSONL file into `{bead_id: status}` (last record wins)."""
-    out: dict[str, str] = {}
-    with beads_file.open(encoding="utf-8") as fh:
-        for line in fh:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                rec = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            bid = rec.get("id")
-            if bid:
-                out[bid] = (rec.get("status") or "").lower()
-    return out
-
-
-def check_retro_lock(
-    intent_path: Path, beads_file: Path | None = None
-) -> tuple[bool, str]:
-    """Verify every bead in the Intent's Layer impact analysis is closed.
-
-    Returns `(ok, message)`. `ok` is True only when at least one bead from the
-    `## Layer impact analysis` resolves to the beads DB and every resolved bead
-    has status `closed`. Bead-shaped tokens absent from the DB are ignored.
-    """
-    text = intent_path.read_text(encoding="utf-8")
-    lines = _section_lines(text, "Layer impact analysis")
-    if not lines:
-        return False, (
-            f"{intent_path}: no '## Layer impact analysis' section — cannot "
-            f"determine the bead set for a Path C retroactive lock."
-        )
-    if beads_file is None:
-        beads_file = _repo_root(intent_path.parent) / ".beads" / "issues.jsonl"
-    if not beads_file.is_file():
-        return False, f"{intent_path}: beads file not found at {beads_file}"
-
-    status_map = _beads_status_map(beads_file)
-    seen: set[str] = set()
-    beads: list[str] = []
-    for tok in _BEAD_TOKEN_RE.findall("".join(lines)):
-        if tok in status_map and tok not in seen:
-            seen.add(tok)
-            beads.append(tok)
-
-    if not beads:
-        return False, (
-            f"{intent_path}: no bead in the Layer impact analysis resolves to a "
-            f"record in {beads_file} — a Path C retroactive lock requires at "
-            f"least one closed bead as evidence the work landed."
-        )
-
-    open_beads = sorted(b for b in beads if status_map.get(b) != "closed")
-    if open_beads:
-        detail = ", ".join(f"{b}={status_map.get(b)!r}" for b in open_beads)
-        return False, (
-            f"{intent_path}: Path C retroactive lock refused — "
-            f"{len(open_beads)} of {len(beads)} Layer-impact bead(s) not "
-            f"closed: {detail}."
-        )
-    return True, (
-        f"{intent_path}: Path C bead-closure gate PASS — all {len(beads)} "
-        f"Layer-impact bead(s) closed ({', '.join(sorted(beads))})."
-    )
-
-
-# --------------------------------------------------------------------------
 # supersede — /write-intent --supersede (ds-9hma, doctrine in ADR-035)
 # --------------------------------------------------------------------------
 
-_SUPERSEDE_ALLOWED = frozenset({"DRAFT", "OVERSIZED", "PROPOSED", "ACCEPTED"})
-_SUPERSEDE_IN_FLIGHT = frozenset({"IMPLEMENTING", "TESTPASS", "MERGED"})
+_SUPERSEDE_ALLOWED = frozenset({"DRAFT", "PROPOSED", "ACCEPTED"})
 _SUCCESSOR_ID_RE = re.compile(r"^(?:INT|MSN)-\d{3,}$")
 
 
@@ -1023,14 +1001,13 @@ def supersede(
     engineer: str | None,
     today: str | None = None,
 ) -> str:
-    """Transition a non-LOCKED, pre-implementation Intent to SUPERSEDED.
+    """Transition a not-yet-complete Intent to SUPERSEDED.
 
-    Per ADR-035: allowed only from DRAFT / OVERSIZED / PROPOSED / ACCEPTED,
-    and only with a NAMED successor artifact (INT-NNN or MSN-NNN) recorded
-    in Superseded-By. Refuses LOCKED (the ADR-028 successor-Intent override
-    path, out of scope here), in-flight/shipped statuses (IMPLEMENTING /
-    TESTPASS / MERGED — finish the lifecycle, lock via an ADR-017 path, or
-    peel off scope), and already-SUPERSEDED.
+    Per ADR-035: allowed only from DRAFT / PROPOSED / ACCEPTED, and only with
+    a NAMED successor artifact (INT-NNN or MSN-NNN) recorded in Superseded-By.
+    Refuses LOCKED (the ADR-028 successor-Intent override path, out of scope
+    here), COMPLETE and SUPERSEDED (terminal), and any status ADR-057 retired
+    (run `dekspec migrate` first).
     """
     by = by.strip()
     if not _SUCCESSOR_ID_RE.match(by):
@@ -1048,15 +1025,15 @@ def supersede(
             "LOCKED, binding work is the ADR-028 successor-Intent path, "
             "out of scope for --supersede."
         )
-    if actual in _SUPERSEDE_IN_FLIGHT:
+    if actual in RETIRED_TARGETS:
         raise ValueError(
-            f"{path}: supersede refused — Status is {actual} (work in "
-            "flight or shipped). Finish the lifecycle, lock via an ADR-017 "
-            "path, or peel off scope instead."
+            f"{path}: supersede refused — Status {actual} was retired by "
+            "ADR-057. Run `dekspec migrate` (it maps the status and records "
+            "the prior value in the Amendment Log), then re-run."
         )
-    if actual == "SUPERSEDED":
+    if actual in ("SUPERSEDED", "COMPLETE"):
         raise ValueError(
-            f"{path}: supersede refused — Status is already SUPERSEDED "
+            f"{path}: supersede refused — Status is already {actual} "
             "(terminal)."
         )
     if actual not in _SUPERSEDE_ALLOWED:
@@ -1158,8 +1135,8 @@ def _build_parser() -> argparse.ArgumentParser:
     p_sup = sub.add_parser(
         "supersede",
         help=(
-            "transition a non-LOCKED pre-implementation Intent to SUPERSEDED "
-            "with a named successor (INT-NNN or MSN-NNN) — /write-intent "
+            "transition a not-yet-complete Intent (DRAFT / PROPOSED / "
+            "ACCEPTED) to SUPERSEDED with a named successor (INT-NNN or MSN-NNN) — /write-intent "
             "--supersede per ADR-035 (ds-9hma)"
         ),
     )
@@ -1171,23 +1148,6 @@ def _build_parser() -> argparse.ArgumentParser:
         "the Intent's direction",
     )
     p_sup.add_argument("--engineer", default=None)
-
-    p_crl = sub.add_parser(
-        "check-retro-lock",
-        help=(
-            "verify every bead in an Intent's Layer impact analysis is closed "
-            "— the bead-closure gate for /write-intent --lock Path C "
-            "(retroactive post-merge lock)"
-        ),
-    )
-    p_crl.add_argument("path", type=Path)
-    p_crl.add_argument(
-        "--beads-file",
-        dest="beads_file",
-        default=None,
-        type=Path,
-        help="path to the beads JSONL (default: <repo>/.beads/issues.jsonl)",
-    )
 
     return parser
 
@@ -1280,13 +1240,6 @@ def main(argv: list[str] | None = None) -> int:
                 return 1
             return 0
 
-        if args.command == "check-retro-lock":
-            ok, msg = check_retro_lock(args.path, args.beads_file)
-            if ok:
-                print(msg)
-                return 0
-            print(msg, file=sys.stderr)
-            return 1
     except (ValueError, FileNotFoundError, OSError) as exc:
         print(f"artifact_ops: {exc}", file=sys.stderr)
         return 1

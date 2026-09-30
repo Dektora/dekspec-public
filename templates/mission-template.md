@@ -1,18 +1,17 @@
 # Mission MSN-NNN: [Verb-first title]
 
 **Mission ID:** MSN-NNN
-**Status:** TODO | ACTIVE | COMPLETING | COMPLETE | KILLED
+**Status:** PROPOSED | ACTIVE | COMPLETE | KILLED | SUPERSEDED
 **Owner:** [single human accountable]
 **Created:** [YYYY-MM-DD]
 **Modified:** [YYYY-MM-DD]
 **Autonomy ceiling:** manual | low | medium | high
 
-*Valid statuses:* `TODO` → `ACTIVE` → `COMPLETING` → `COMPLETE` | any non-terminal stage → `KILLED`
+*Valid statuses:* `PROPOSED` → `ACTIVE` → `COMPLETE` | any non-terminal stage → `KILLED` | `SUPERSEDED` (replaced by a successor)
 
-- **TODO** — Mission file created; up-front section written; no Intents yet
-- **ACTIVE** — at least one Intent has reached `LOCKED` under this Mission
-- **COMPLETING** — flag is on, all known Intents `LOCKED`, awaiting Mission Verification predicate to evaluate true
-- **COMPLETE** — Mission Verification predicate evaluated true; flag-removal Intent (if any) `LOCKED`; Mission archived
+- **PROPOSED** — Mission framed (up-front section written); authorization to pursue it requested
+- **ACTIVE** — authorized; work under it proceeds (progress is read from its Intents and IBs, not mirrored here)
+- **COMPLETE** — Mission Verification predicate passed on current content; flag-removal Intent (if any) `COMPLETE`; archived
 - **KILLED** — kill criteria triggered or owner declared abandonment; rollback executed; archived with reason
 
 ---
@@ -36,7 +35,7 @@
   cmd: <command>
 ```
 
-*Like Intent Verification, every cmd entry must resolve to an executable script or recognized tool. The Mission Verification predicate is the gate on the `COMPLETING → COMPLETE` transition (run by `/write-mission --complete`).*
+*Like Intent Verification, every cmd entry must resolve to an executable script or recognized tool. The Mission Verification predicate is the gate on the `ACTIVE → COMPLETE` transition (run by `/write-mission --complete`).*
 
 ### Out-of-scope
 
@@ -90,7 +89,7 @@ INT-NNN — [title]
 
 ### Autonomy ceiling
 
-[Maximum Autonomy any constituent Intent may carry. No child Intent may exceed this. Phase-1-era default: `manual`. Higher ceilings opt up only when the Mission's rigor justifies it.]
+[Maximum Autonomy any constituent Intent may carry. No child Intent may exceed this. Default: `medium` (ADR-059: acceptance is the approval, so the Mission's Intents can be implemented autonomously once ready). A lower ceiling is an explicit restriction on every Intent under the Mission: name the human decision it reserves.]
 
 `manual` | `low` | `medium` | `high`
 
@@ -102,11 +101,11 @@ INT-NNN — [title]
 
 ### Intent queue
 
-[Ordered list of Intents under this Mission. As the Mission proceeds, sketches become drafts, drafts become LOCKED. The order is execution order — at most one Intent in active status at a time across the repo (Decision #9), so the queue is also the serialization queue.]
+[Ordered list of Intents under this Mission. As the Mission proceeds, sketches become drafts, drafts become COMPLETE. The order is execution order — at most one Intent in active status at a time across the repo (Decision #9), so the queue is also the serialization queue.]
 
 | INT | Title | Type | Status | Notes |
 |---|---|---|---|---|
-| INT-NNN | [title] | feature \| bug \| nfr \| ... | LOCKED | [post-LOCK note, e.g., merged-date] |
+| INT-NNN | [title] | feature \| bug \| nfr \| ... | COMPLETE | [completion note, e.g., merged-date] |
 | INT-NNN | [title] | feature | DRAFT | [working note] |
 | (sketch) | [title] | feature | — | tentative; not yet authored |
 
@@ -118,7 +117,7 @@ INT-NNN — [title]
 
 ### Burndown
 
-LOCKED: [N] / Estimated total: [M] / Sketches: [K]
+COMPLETE: [N] / Estimated total: [M] / Sketches: [K]
 
 *Surfaces remaining work for the engineer. Not a hard gate — `/write-mission --complete` evaluates the Verification predicate, not the burndown count.*
 

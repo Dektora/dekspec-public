@@ -9,13 +9,13 @@
 
 A five-layer **agentic-(software-)engineering toolkit** for AI-augmented teams — **specification, orchestration, codified rules, human oversight, and observable development**. "Spec" is the layer it's named after, not the whole of it.
 
-- **Specification** — turns the markdown artifacts your team already writes (ADRs, Architecture Elements, Working Specs, Interface Contracts, Implementation Briefs, Intents, Missions, Domain Glossary, System Vision) into a typed, validated **spec graph** that compiles into enforcement artifacts (contract tests, CI gates, AGENTS.md context).
-- **Orchestration** — dispatches parallel coding sessions to fresh-context agents in isolated worktrees, then drives the work through review to merge.
+- **Specification** — turns the markdown artifacts your team already writes (ADRs, Architecture Elements, Working Specs, Interface Contracts, Implementation Briefs, Intents, Missions, Domain Glossary, System Vision) into a typed, validated **spec graph** that is audited and compiled into check scaffolding and context: Security Profile pre-commit and CI-gate snippets, Interface Contract contract-test stubs and CI jobs for engineers to complete, and advisory AGENTS.md context for agents.
+- **Orchestration** — executes accepted Implementation Briefs directly: fresh-context agents in isolated worktrees work from a generated execution context, within bounded attempts, and the work is driven through independent review to merge.
 - **Codified rules** — compiles and *audits* your team's decisions and constraints (ADRs, Interface Contracts, the Constitution) at graded severities, instead of trusting prose an agent loads and hopes to follow.
-- **Human oversight** — gates every change behind the No Specless Edits guardrail, a two-tier non-sycophantic review pipeline, and operator-confirmed merge.
-- **Observable development** — verifies outcomes against the spec, not just the tests, and feeds what it learns back into the rules.
+- **Human oversight** — the engineer authorizes each IB's acceptance contract before construction (`dekspec ib accept`); completion requires an independent review verdict from an identity other than the builder; integration is confirmed by the operator, or by the explicit `/implement` request for that request's own delivery (ADR-059). The No Specless Edits guardrail is advisory instruction for the agent, not a runtime gate.
+- **Observable development** — completes work only on current evidence (every acceptance condition re-run against the exact content reviewed, recorded in the IB's execution record), and feeds what it learns back into the rules.
 
-DekSpec is shipped as a Python library + CLI + Claude Code skills + markdown templates, vendored into consumer repos via a single install script. The current version is **v0.124.0**.
+DekSpec ships as a Python library and CLI installed from its curated public mirror at a release tag, a Claude Code plugin for its skills, and markdown templates and methodology docs vendored into consumer repos. The current version is **v0.126.0**.
 
 ## What's here
 
@@ -23,12 +23,14 @@ DekSpec is shipped as a Python library + CLI + Claude Code skills + markdown tem
 |------|----------|
 | `tooling/dekspec/` | Python package: Constraint Compiler (parsers + 11 IR schemas + emitters), fidelity audit (~80 audit rules across the L-, T-, and D- families), persistence layer (SQLite-indexed run history), and the `dekspec` CLI. |
 | `tooling/dekspec/schemas/` | JSON Schema Draft 2020-12 definitions (YAML) for each artifact type. Shipped as package data; loadable via `importlib.resources`. |
-| `plugins/dekspec/skills/` | 25 Claude Code skills — **the spec machine** (ADR-047 core). **Authoring:** `/write-sv`, `/write-constitution`, `/write-ae`, `/write-adr`, `/write-ws`, `/write-ic`, `/write-ibs`, `/write-intent`, `/write-mission`, `/write-ggc`, `/write-sp`, `/write-evals`, `/write-tests`, `/write-code-beads`. **Lifecycle + orchestration:** `/spec-intent`, `/orchestrate-intent`, `/orchestrate-coding-session`, `/land-intent`, `/review-ib`, `/review-pr`, `/pr-branch`, `/use-worktrees`, `/write-goal-loop-contract`. **Onboarding:** `/using-dekspec`, `/setup-dekspec`. Ships as the `dekspec` plugin through the Claude Code marketplace at `Dektora/dekspec-public`. |
-| `plugins/dekspec/commands/` | Slash-command wrappers + CLI mirrors: `/compile`, `/doctor`, `/graph-export`, `/migrate`, `/validate-artifact`, `/man`, `/send-issue` (CLI verb mirrors); plus Skill-wrapper pairs for `/spec-intent`, `/orchestrate-intent`, `/orchestrate-coding-session`, `/land-intent`, `/pr-branch`, `/use-worktrees`, `/using-dekspec`, `/setup-dekspec`, `/deepen-until-dry`, `/write-goal-loop-contract`. |
-| `plugins/dektools/` | **DekTools** — the optional operator toolkit shipped as a *sibling* plugin (ADR-047): project boards (`/prj-mgr`), code-quality & security review (`/audit-codebase`, `/analyze-module-depth`, `/orchestrate-module-deepening`, `/security-review`), brownfield onboarding (`/brownfield-ingest`, `/archeology`), handoff (`/rotation-handoff`), brainstorming (`/interview-me`), troubleshoot (`/coding-session-forensics`, `/debug-testfail`, `/diagnose-bug`), explore (`/prototype`, `/spike`), issue-tracker glue (`/write-issue-beads`), and the à-la-carte selector (`/setup-dektools`). Installed separately as `dektools@dekspec`; **nothing is on by default**. `tool-catalog.json` is the authoritative roster. See `plugins/dektools/README.md`. |
-| `templates/` | Artifact templates (System Vision, Constitution, ADR, AE, WS, IC, IB, Intent, Mission, Domain Glossary, Context Spec, Security Profile, plus a checklists subdirectory). |
+| `tooling/dekspec/roles/` | The six Agent Role Specifications (ADR-061) — one canonical Markdown file per role, shipped as package data and composed into dispatched agents' instructions. Read one with `dekspec resource role <role>`. |
+| `plugins/dekspec/skills/` | 25 Claude Code skills — **the spec machine** (ADR-047 core). **Authoring:** `/write-sv`, `/write-constitution`, `/write-ae`, `/write-adr`, `/write-ws`, `/write-ic`, `/write-ibs`, `/write-intent`, `/write-mission`, `/write-glossary`, `/write-corrections`, `/write-sp`, `/write-evals`, `/write-tests`. **Lifecycle + orchestration:** `/spec-intent`, `/implement`, `/orchestrate-coding-session`, `/land-intent`, `/review-ib`, `/review-pr`, `/pr-branch`, `/use-worktrees`, `/write-goal-loop-contract`. **Onboarding:** `/using-dekspec`, `/setup-dekspec`. Ships as the `dekspec` plugin through the Claude Code marketplace at `Dektora/dekspec-public`. |
+| `plugins/dekspec/commands/` | Slash-command wrappers + CLI mirrors: `/compile`, `/doctor`, `/graph-export`, `/migrate`, `/validate-artifact`, `/man`, `/send-issue` (CLI verb mirrors); plus Skill-wrapper pairs for `/spec-intent`, `/land-intent`, `/pr-branch`, `/use-worktrees`, `/using-dekspec`, `/setup-dekspec`, `/write-glossary`, `/write-corrections`, `/write-goal-loop-contract`. The user-only skills `/implement` and `/orchestrate-coding-session` (`disable-model-invocation: true`) have no wrapper: each skill is its own slash entry. |
+| `plugins/dektools/` | **DekTools** — the optional operator toolkit shipped as a *sibling* plugin (ADR-047): project boards (`/project-board`), code-quality & security review (`/audit-codebase`, `/deepen`, `/security-review`), brownfield onboarding (`/ingest-docs`, `/recover-specs`), handoff (`/handoff`), brainstorming (`/interview-me`), troubleshoot (`/diagnose-session`, `/debug`), explore (`/prototype`, `/spike`), issue-tracker glue (`/project-board`), and the à-la-carte selector (`/setup-dektools`). Installed separately as `dektools@dekspec`; **nothing is on by default**. `tool-catalog.json` is the authoritative roster. See `plugins/dektools/README.md`. |
+| `templates/` | Artifact templates (System Vision, Constitution, ADR, AE, WS, IC, IB, Intent, Mission, Domain Glossary, Security Profile, plus a checklists subdirectory). |
 | `docs/` | Methodology docs: `dekspec-operating-guide.md`, `dekspec-quick-reference.md`, `architecture-frameworks-reference.md`, plus the framework's own `architecture.md`. |
-| `.beads/` | Project's own bead tracker (`br` CLI; SQLite + JSONL). |
+| `.beads/`, `.beads-dekspec/`, `.beads-issues/` | The project's own `br` trackers (SQLite + JSONL; ADR-052). Governance (`ds-`) and issue (`iss-`) beads are live; the code-bead (`cb-`) workspace is legacy history — construction runs from IBs (ADR-056). |
+| `.dekspec/execution/` | IB execution records (`<IB>/record.jsonl`): ownership, plans, attempts, evidence, verdicts, completion. Written by `dekspec ib`; not spec artifacts. |
 
 ## The eleven IR types
 
@@ -40,13 +42,15 @@ Each artifact type has a typed schema + lossy markdown parser + cross-artifact r
 | `AE-NNN`  | Architecture Element | L1 | The system's architectural slices (with subtype: System / Subsystem / Container / Component / Pipeline / Data Model / Cross-Cutting Concern / Platform Concern / Interface Surface / Workflow / Process) |
 | `WS-NNN`  | Working Spec | L2 | Behavioral contract: business rules + failure behaviors + interface contracts |
 | `IC-NNN`  | Interface Contract | L2 | Provider/Consumer API contracts with parties + capabilities + error semantics |
-| `IB-NNN`  | Implementation Brief | L3 | Per-task implementation contract: files-to-modify scope + done-when criteria, references its parent WS + source AEs |
-| `INT-NNN` | Intent | (cross-layer) | Captured engineer intent — what change is being made and why, with components_affected (diff-confinement globs) + verification predicate (TESTPASS gate) |
+| `IB-NNN`  | Implementation Brief | L3 | The smallest governed work contract, executed directly (no code beads): outcome, obligations by reference, protected surfaces, scope, acceptance conditions, revisable implementation hypothesis, explicit authority policy (ADR-055/056). Parent optional. |
+| `INT-NNN` | Intent | (cross-layer) | Optional outcome spanning several IBs — what change is being made and why, with components_affected (diff-confinement globs) + verification predicate (outcome evidence); completes from its IBs via `dekspec intent complete` |
 | `MSN-NNN` | Mission | (cross-Intent) | Long-horizon container: outcome, mission verification, out-of-scope contract, flag strategy, rollback plan, kill criteria, Intent queue |
 | `DOMAIN-GLOSSARY` | Domain Glossary (singleton) | L0 | Canonical term definitions: term + category + canonical_definition + not_this + code_convention |
 | `SYSTEM-VISION` | System Vision (singleton) | L0 | One-paragraph elevator pitch + What this is + Why this exists + What success looks like + What we are NOT building |
 | `CONSTITUTION` | Constitution (singleton) | L0 | Non-negotiable operational commitments across eight articles: identity, technology stack, quality standards, architecture principles, development workflow, model configuration, boundaries, amendments |
-| `CS-NNN` | Context Spec | (cross-cutting) | Role/context specification — a named role identity (auditor / specifier / implementer / verifier / code-reviewer / spec-reviewer) and the context bundle a dispatched agent operates under; consumed by the review + dispatch pipeline |
+| `SP-NNN` | Security Profile | L2 | Typed security posture: allowed dataflows, secret stores, authn methods, supply-chain sources, SAST/DAST tools, OWASP coverage; compiles to soft (advisory AGENTS.md context) / mid (pre-commit snippet) / hard (CI-gate snippet) layers |
+
+**Not an IR type: Agent Role Specifications.** DekSpec's six agent roles — specifier, spec reviewer, implementer, code reviewer, verifier, auditor — are library-internal operational contracts in `tooling/dekspec/roles/`, composed into every dispatched agent's instructions (ADR-061). A project never authors, selects or carries one. They replace the retired Context Specifications (`CS-001`…`CS-006`).
 
 ## CLI — namespaced commands
 
@@ -61,13 +65,16 @@ The CLI is grouped into namespaces (`dekspec <namespace> <verb>`):
 |-----------|-------|--------------|
 | `check` | `validate` · `compile` · `emit` · `aggregate` · `allocate-ids` · `lint-ib` | Single-file parse / compile / validate; emit IR / contract-test / ci-gate / agents-md; aggregate a project-wide AGENTS.md (one fragment per artifact). |
 | `audit` | `linkage` · `doctor` · `lock-ready` · `failure-classes` · `relink` | Fidelity audit: run all rule families (`linkage`), composite traffic-light health check (`doctor`), lock-readiness gate, failure-class report, deterministic backlink re-derivation (`relink`). |
-| `dev` | `graph` · `ingest` · `archeology` | Diagnostics: export the SpecGraph (JSON / DOT / Mermaid), brownfield markdown ingest + classification, code-vs-spec archaeology. |
+| `dev` | `graph` · `ingest` · `recover-specs` | Diagnostics: export the SpecGraph (JSON / DOT / Mermaid), brownfield markdown ingest + classification, code-vs-spec archaeology. |
 | `library` | `sync` · `init` · `new-provisional` · `author-target` · `regen-indexes` · `cow-stage` | Consumer-side content ops: scaffold / reconcile the dekspec tree, provisional incubation staging, index regen, copy-on-write write-guard. |
 | `exec` | `session` · `runs` · `config` | Session tracking, compile-run history (SQLite-indexed), per-repo `.dekspec/config.yaml`. |
 | `migrate` | — | Full upgrade pipeline: verify vendored drift → migrate-ir → migrate-artifacts. |
 | `resource` | — | Resolve a wheel-vendored asset (template / methodology doc) to a path or content. |
 | `install` | — | Emit the per-host skill / command / hook tree for a harness platform. |
 | `slices` | — | Discover structural slices of a Python repo (LLM-free). |
+| `ib` | `new` · `lint` · `propose` · `accept` · `baseline` · `amend` · `context` · `start` · `plan` · `task` · `attempt` · `verify` · `review` · `gate` · `complete` · `status` · `block` · `unblock` · `ready` · `import-beads` · `adopt` | Execute an Implementation Brief directly (ADR-055–057): authorize, generate context, run within bounded attempts, verify, record an independent verdict, complete on evidence. |
+| `delivery` | `verify` · `check` | Integrated verification and the landing gate at the exact branch head (ADR-058). |
+| `intent` | `verify` · `review` · `complete` | Intent outcome evidence and completion from its child IBs. |
 
 (`repo` remains a one-release deprecated alias for `library`.)
 
@@ -91,7 +98,7 @@ The audit engine (`dekspec audit linkage`) runs ~80 distinct rules grouped into 
 - LX-DUP — Duplicate artifact IDs across the dekspec tree
 - LX-PARSE — Parse failures surfaced as findings
 
-**T-series (structural completeness):** T11 (AE boundaries with `— why` clauses), T12 (AE views), T14 (Intent verification), T15 (Intent components_affected), T17 (Mission outcome/verification/rollback), T20/T21 (WS business_rules / failure_behavior), T30/T31 (ADR decision / validation), T40/T41 (IB goal / done_when), plus AE-purpose / AE-responsibilities completeness checks. **Singleton self-consistency** (ds-52p, since v0.40.0): T-GLOSSARY-DUPLICATE, T-GLOSSARY-MISSING-DEFINITION, T-GLOSSARY-DANGLING-ALIAS, T-VISION-MISSING-WHY, T-VISION-INCOMPLETE.
+**T-series (structural completeness):** T11 (AE boundaries with `— why` clauses), T12 (AE views), T14 (Intent verification), T15 (Intent components_affected), T17 (Mission outcome/verification/rollback), T20/T21 (WS business_rules / failure_behavior), T30/T31 (ADR decision / validation), T40/T41 (IB goal / done_when), T-IB-* (IB as an executable contract: explicit authority policy, complete contract, resolvable obligations, `COMPLETE` only with a completion record), plus AE-purpose / AE-responsibilities completeness checks. **Singleton self-consistency** (ds-52p, since v0.40.0): T-GLOSSARY-DUPLICATE, T-GLOSSARY-MISSING-DEFINITION, T-GLOSSARY-DANGLING-ALIAS, T-VISION-MISSING-WHY, T-VISION-INCOMPLETE.
 
 **D-series (content-drift routing):** D17 (no measurable targets in AE prose — route to WS), D18 (no decision rationale in AE prose — route to ADR), D19/D20 (same as D17/D18 but for Intent prose). **Symmetric coverage on WS/IC/IB** (ds-52p, since v0.40.0): D-15a (WS rationale → ADR), D-15b (IC rationale → ADR), D-15c (IB rationale → ADR), D-15d (IC numeric → WS).
 
@@ -139,7 +146,8 @@ dekspec doctor
 # Author your first artifact (in Claude Code):
 /write-ae
 
-# Once you have LOCKED + ACCEPTED artifacts, build the AGENTS.md:
+# Once you have LOCKED + ACCEPTED artifacts, fill AGENTS.md's DekSpec-owned region
+# (everything outside `<!-- dekspec:agents-md begin/end -->` stays yours):
 dekspec aggregate agents-md
 ```
 
@@ -147,18 +155,23 @@ See [Installation](#installation) for pinned versions, manual install paths, and
 
 ### Shortest path to a merged change
 
-The governed loop — the same three steps whatever the change's size:
+The governed loop for a bounded change — one Implementation Brief, no parent artifact required (ADR-056):
 
 ```bash
-# 1. Author the Intent, in Claude Code:
-/write-intent "<one-line description of the change>"
+# 1. Author the IB, in Claude Code (outcome, obligations by reference, scope, acceptance):
+/write-ibs "<one-line description of the change>"
 
-# 2. Dispatch the coding session — agents implement the beads in an isolated worktree:
+# 2. Execute it — the agent works from the generated context in an isolated worktree,
+#    investigates, plans, builds, and records evidence:
 /orchestrate-coding-session
 
-# 3. Land it — merge the IB-aggregate PR and LOCK the Intent:
+# 3. Review and land — an independent verdict per IB, evidence-backed completion,
+#    the delivery gate, then the operator-confirmed merge:
+/review-pr
 /land-intent
 ```
+
+Larger work adds only what it needs: an Intent (`/write-intent`) for an outcome spanning several IBs, a Working Spec, ADR or Interface Contract when the change alters behavior, a decision or a contract. `dekspec ib ready` lists the accepted IBs ready to execute.
 
 See the `using-dekspec` skill for the full catalog and the interactive lifecycle commands.
 
@@ -219,12 +232,12 @@ Steps 1–3 are host-agnostic. Re-run to upgrade. For `--platform claude`, plugi
 
 CLI only via pipx (isolated venv):
 ```bash
-pipx install "git+https://github.com/Dektora/dekspec-public.git@v0.124.0"
+pipx install "git+https://github.com/Dektora/dekspec-public.git@v0.126.0"
 ```
 
 CLI only into a project venv:
 ```bash
-pip install "git+https://github.com/Dektora/dekspec-public.git@v0.124.0"
+pip install "git+https://github.com/Dektora/dekspec-public.git@v0.126.0"
 ```
 
 Plugin only (in a Claude Code session OR via the `claude` CLI):
@@ -235,7 +248,7 @@ claude plugin install dekspec@dekspec
 
 ### DekTools — the optional operator toolkit (second plugin)
 
-DekSpec ships **two** plugins from the one marketplace. `dekspec` is the spec machine and is self-sufficient — it runs the whole `author → decompose → audit → review → orchestrate → code → COMPLETE` flow with nothing else installed. **DekTools** (`dektools`) is the optional sibling holding the helper tools you reach for *around* that machine: project boards, code-quality and security review, brownfield onboarding, handoff, troubleshooting, exploration, and issue-tracker glue (**ADR-047**).
+DekSpec ships **two** plugins from the one marketplace. `dekspec` is the spec machine and is self-sufficient — it runs the whole `author → audit → execute → verify → review → COMPLETE` flow with nothing else installed. **DekTools** (`dektools`) is the optional sibling holding the helper tools you reach for *around* that machine: project boards, code-quality and security review, brownfield onboarding, handoff, troubleshooting, exploration, and issue-tracker glue (**ADR-047**).
 
 `scripts/install.sh` installs the core plugin only. Add the toolkit deliberately:
 
@@ -248,33 +261,27 @@ claude plugin install dekspec@dekspec
 claude plugin install dektools@dekspec
 ```
 
-**The dependency guard is per tool, not per plugin.** Every DekTools tool declares a `dependency_tier` in `plugins/dektools/tool-catalog.json`, and the guard keys on it — the probe is simply `dekspec` on PATH:
+The marketplace plugin registers **setup only**. Say
+`/dektools:setup-dektools enable debugging and handoff`; setup emits the selected
+repository-local skills. With zero optional tools, setup remains discoverable.
+The wheel contains the same corpus for `dekspec install --platform HOST`.
 
-- **`dekspec-required`** (the default, and most of the suite) — the tool imports the engine, reads the IR, or keys off the audit/review model. With DekSpec absent it **refuses loudly** with an install remediation, rather than failing with a silent missing-`_lib` error.
-- **`dekspec-enhanced`** — zero hard coupling; **runs standalone** and merely enriches when DekSpec is detected. The guard stays silent for these. **`prj-mgr` is the only tool holding this tier**, so a DekTools-only install is narrow but real: project boards work, everything else refuses.
+Selection persists in `.dekspec/config.yaml`. Installation tracks owned hashes,
+preserves modified/unowned files and reports repair conflicts. Reload the host
+after selection or plugin changes. Old selections migrate without retaining
+legacy skill aliases. Project-board and several analysis/exploration tools work
+standalone; core-backed capabilities report missing prerequisites explicitly.
 
-ADR-047 explicitly withdrew the blanket "DekTools requires DekSpec" rule — it manufactures a dependency that does not exist for an uncoupled tool. A `SessionStart` preflight surfaces the same remediation once at session start; it prints and **exits 0**, never blocking the session, and honours `DEKTOOLS_HOOK_DISABLE=1`.
-
-**Nothing is enabled by default.** The active tool set is the `dektools.enabled` key in `.dekspec/config.yaml`, persisted with the repo so it travels with the project. `/setup-dektools` is the re-runnable interactive selector over it; the CLI form is the same contract:
-
-```bash
-dekspec config set dektools.enabled prj-mgr,spike   # comma-separated; unknown names are rejected
-dekspec config get dektools.enabled                 # → prj-mgr,spike
-dekspec install --platform claude                   # emits exactly that subset
-```
-
-`dekspec install --platform <host>` honours the selection on every host (`claude` · `codex` · `antigravity` · `cursor` · `copilot` · `pi`): re-running after a change adds newly-enabled tools and removes deselected ones. Removal is **non-destructive** — it deletes only the paths that tool's emit wrote, never a core skill and never your own files. With nothing enabled, or with the DekTools tree absent, the install output is byte-for-byte what it was before the feature existed.
-
-Note which route enforces the selection: `dekspec install --platform <host>` emits only the enabled subset, while `claude plugin install dektools@dekspec` installs the plugin whole — the harness has no partial-install semantics, which is exactly why DekTools owns the selection itself.
-
-See `plugins/dektools/README.md` for the full tool roster and tier table.
+See [DekTools installation and tool catalog](plugins/dektools/README.md) for
+purposes, requirements, supported scanners and recovery. Core `/implement` owns
+autonomous ready-work execution; the optional toolkit does not provide a builder.
 
 ### Native Windows (PowerShell / cmd)
 
 The `bash <(curl …)` one-liner does **not** run in native Windows PowerShell/cmd (no `bash`, no process substitution). Use the portable `pipx` sequence — identical to the Linux steps:
 
 ```powershell
-py -m pipx install --force "git+https://github.com/Dektora/dekspec-public.git@v0.124.0"
+py -m pipx install --force "git+https://github.com/Dektora/dekspec-public.git@v0.126.0"
 dekspec dependencies install br     # user-scoped, no admin — downloads + checksum-verifies the pinned br
 dekspec sync                        # reconcile vendored content + .dekspec-version
 dekspec install --platform codex    # per-host tree; --platform is on `dekspec install`, NOT on pipx
@@ -329,8 +336,13 @@ dekspec audit linkage --fix --apply
 # 3. Health check:
 dekspec doctor
 
-# 4. Regenerate the project-wide AGENTS.md:
+# 4. Regenerate AGENTS.md's DekSpec-owned region. The first time after upgrading
+#    past the whole-file generator, the old file is refused as a legacy layout:
+#    preview the migration, then migrate (content after its last fragment is kept):
+dekspec aggregate agents-md --migrate --dry-run   # only if the plain command asks for it
+dekspec aggregate agents-md --migrate             # only if the plain command asks for it
 dekspec aggregate agents-md
+dekspec aggregate agents-md --check               # verdict: current
 
 # 5. Commit (single PR per consumer):
 git add -A && git commit -m "chore(dekspec): bump to vX.Y.Z"
@@ -359,7 +371,7 @@ dekspec audit linkage
 # 6. Health check:
 dekspec doctor
 
-# 7. Regenerate AGENTS.md:
+# 7. Regenerate AGENTS.md's DekSpec-owned region (`--migrate` once for a legacy file, as above):
 dekspec aggregate agents-md
 
 # 8. Commit:
@@ -407,10 +419,13 @@ See [`docs/architecture.md`](docs/architecture.md) for the source → IR → com
 
 For Python-API usage patterns (load + audit + emit + persistence + vendoring via `dekspec.api`), see [`docs/EXAMPLES.md`](docs/EXAMPLES.md).
 
-Key principle: **DekSpec artifacts are the source specifications; consumers compile them into executable intermediate representations and enforcement artifacts.** Locked artifacts compile into:
-- `contract_test.py` — pytest stubs against the IC contract.
-- `ci-gate.yml` — GitLab CI job YAML with affected_paths scoping.
-- `AGENTS.md` — the worker-context constitution (aggregated per-artifact fragments).
+Key principle: **DekSpec artifacts are the source specifications; the compiler lowers them into IR and enforcement artifacts, and the execution engine carries out Implementation Briefs against them and proves completion.** Accepted and locked artifacts compile into:
+- `contract_test.py` — pytest stubs against the IC contract; every test starts as `pytest.skip` until an engineer writes the assertion, so it enforces nothing on its own.
+- `ci-gate.yml` — GitLab CI job YAML with affected_paths scoping that runs those tests.
+- Security Profile pre-commit and CI-gate snippets (`dekspec emit security-profile`) — real checks once the consumer wires them into its config.
+- `AGENTS.md` — advisory worker context aggregated from the governing core (Constitution, Security Profile, Vision, Glossary, AE, ADR, IC, WS); agents read it, nothing executes it. Work items are excluded; an agent gets its IB's obligations from `dekspec ib context`.
+
+The gates that are actually executed are the engine's: the IB acceptance baseline, `dekspec ib verify`, evidence-backed `dekspec ib complete`, and `dekspec delivery check` at the landing head.
 
 ## Governance
 
@@ -427,9 +442,7 @@ CI runs `pytest -q` + `ruff check` on Python 3.11 / 3.12 / 3.13 via GitHub Actio
 
 ## Status
 
-**v0.124.0** is the current release. The Constraint Compiler PoC (v0.2) has matured into an 11-IR, five-layer agentic-engineering toolkit with ~80 audit rules, a namespaced CLI, a public Python API at `dekspec.api`, an execution-attempt lifecycle DB (`dekspec.lifecycle`) that DekFactory (or any executor) writes to, and end-to-end test coverage. See [`CHANGELOG.md`](CHANGELOG.md) for the per-version detail.
+**v0.126.0** is the current release. The Constraint Compiler PoC (v0.2) has matured into an 11-IR, five-layer agentic-engineering toolkit with ~80 audit rules, a namespaced CLI, a public Python API at `dekspec.api`, an Execution & Evidence Engine (`dekspec ib` / `dekspec delivery` / `dekspec intent`; ADR-055 – ADR-058) that executes Implementation Briefs and completes them only on evidence, and end-to-end test coverage. See [`CHANGELOG.md`](CHANGELOG.md) for the per-version detail.
 
 Open follow-ons:
-- Mission rigor calibration after lived MSN execution data (`ds-zuy`).
-- Phase 4 orchestration brain design (`ds-j8x`) — explicitly deferred out of Phase 1–3 scope.
 - GitLab migration — when DekSpec moves to the self-hosted GitLab instance (per DekFactory ADR-003), the release workflow ports to `.gitlab-ci.yml`. Until then the curated public mirror (`Dektora/dekspec-public`, ADR-034) is the canonical install surface: `pipx install "git+https://github.com/Dektora/dekspec-public.git@vX.Y.Z"`. Public PyPI publication was removed 2026-05-12; the Cloudsmith index was retired 2026-06 (ADR-034).

@@ -14,10 +14,11 @@ Current model (ADR-016):
   - Enforcement is advisory: this script REPORTS per-Mission concurrency; it
     never refuses creation. The gate of record is `dekspec audit linkage`.
 
-Active (in-flight) statuses: DRAFT | PROPOSED | ACCEPTED | IMPLEMENTING |
-TESTPASS | MERGED. OVERSIZED (paused), LOCKED and SUPERSEDED (terminal) are
-not counted as active. (`TODO` + `TESTFAIL` retired 2026-05-25 — E3 audit —
-and are no longer in the Intent enum.)
+Active (in-flight) statuses: DRAFT | PROPOSED | ACCEPTED — the live Intent
+lifecycle before COMPLETE (ADR-057). COMPLETE and SUPERSEDED are terminal and
+not counted. Statuses ADR-057 retired (OVERSIZED, IMPLEMENTING, TESTPASS,
+MERGED, TODO) are not counted either: the parser refuses them and
+`dekspec migrate` maps them.
 
 Stdlib-only (vendored where the `dekspec` engine is not importable).
 
@@ -35,19 +36,10 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-# Statuses counted as in-flight for the per-Mission advisory (ADR-016).
-# `TODO` + `TESTFAIL` retired from the Intent enum 2026-05-25 (E3 audit).
-ACTIVE_STATUSES: frozenset[str] = frozenset(
-    {
-        "DRAFT",
-        "PROPOSED",
-        "ACCEPTED",
-        "IMPLEMENTING",
-        "TESTPASS",
-        "MERGED",
-    }
-)
-# Not counted: OVERSIZED (paused), LOCKED / SUPERSEDED (terminal).
+# Statuses counted as in-flight for the per-Mission advisory (ADR-016): the
+# live pre-completion Intent statuses (ADR-057).
+ACTIVE_STATUSES: frozenset[str] = frozenset({"DRAFT", "PROPOSED", "ACCEPTED"})
+# Not counted: COMPLETE / SUPERSEDED (terminal) and any retired status.
 
 _STATUS_SECTION = re.compile(r"^#+[ \t]+Status[ \t]*$", re.MULTILINE)
 _MISSION_SECTION = re.compile(r"^#+[ \t]+Mission[ \t]*$", re.MULTILINE)

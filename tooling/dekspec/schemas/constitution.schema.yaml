@@ -38,7 +38,7 @@ required:
 
 properties:
   ir_schema_version:
-    const: "0.1.0"
+    const: "0.2.0"  # ADR-057: TODO retired
 
   id:
     description: 'Singleton id for the Constitution.'
@@ -67,7 +67,7 @@ properties:
         format: date-time
 
   status:
-    enum: [TODO, DRAFT, PROPOSED, ACCEPTED, LOCKED, DEPRECATED]
+    enum: [DRAFT, PROPOSED, ACCEPTED, LOCKED, DEPRECATED]
 
   created:
     type: string

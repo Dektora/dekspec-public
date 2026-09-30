@@ -86,7 +86,7 @@ Proposed edit to <artifact_path>:
 - **[s]kip**: leave file untouched. "skipped — file unchanged". Next item.
 - **[q]uit**: write a checkpoint (see Phase 4.B), print resume command, stop.
 
-With `--auto-approve`, skip 3.5 and behave as if `[a]` were pressed.
+With `--auto-approve`, skip 3.5 and behave as if `[a]` were pressed — except for an item whose `context.review_only` is `true` (for example a retired file with custom content): never draft or apply an edit for it unattended; list it in the summary as "needs review" and move on.
 
 ### Phase 4 — End of queue
 

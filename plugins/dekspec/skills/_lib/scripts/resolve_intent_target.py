@@ -1,16 +1,13 @@
 #!/usr/bin/env python3
-"""Resolve an orchestrate-intent / spec-intent target argument to a concrete
-Intent file — canonical OR provisional (ds-jtfn).
+"""Resolve a spec-intent target argument to a concrete Intent file — canonical
+OR provisional (ds-jtfn).
 
-The conductor (`orchestrate-intent`) and the spec phase-executor
-(`spec-intent`) historically resolved only a CANONICAL `INT-NNN` id/path under
-`dekspec/intents/`. Per the provisional-first default (INT-133) most freshly
-authored Intents start life in a provisional incubation
-(`dekspec/provisional/<slug>/`, no canonical id allocated yet). This resolver
-accepts either form so the lifecycle walk can START on a provisional Intent;
-the canonical `INT-NNN` is allocated later at the accept gate's INT-082
-Provisional Promotion step (which `--auto` already governs via the existing
-`analyze-complete` / `accept-clean` pre-conditions — no new gate).
+Most freshly authored Intents start life in a provisional incubation
+(`dekspec/provisional/<slug>/`, no canonical id allocated yet, INT-133), so
+`spec-intent` accepts either form and can start specifying a provisional
+Intent; the canonical `INT-NNN` is allocated at the accept gate's INT-082
+Provisional Promotion step. (`/implement` resolves its own requests in core —
+`dekspec implement resolve` — and never implements a provisional draft.)
 
 Accepted argument forms:
   - canonical id            `INT-036`
@@ -137,7 +134,7 @@ def _result(path: Path, repo_root: Path, is_provisional: bool) -> dict:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="Resolve an Intent target (canonical or provisional) for orchestrate-intent / spec-intent.")
+    ap = argparse.ArgumentParser(description="Resolve an Intent target (canonical or provisional) for spec-intent.")
     ap.add_argument("target", help="INT-NNN, a canonical/provisional Intent path, or a provisional incubation slug.")
     ap.add_argument("--repo-root", default=".")
     args = ap.parse_args(argv)

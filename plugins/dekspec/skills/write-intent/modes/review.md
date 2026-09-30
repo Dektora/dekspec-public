@@ -7,7 +7,7 @@ Reads `<Intent-path>`. Interactive section-by-section walkthrough — the skill 
 
 ### Step 1: Validate
 
-1. File exists; Status is `DRAFT`, `PROPOSED`, or `ACCEPTED`. Refuse on terminal statuses (LOCKED, SUPERSEDED, MERGED) and on lifecycle-mid statuses (IMPLEMENTING, TESTPASS, OVERSIZED) — review's purpose is pre-execution polish; mid-flight changes route through `--amend`.
+1. File exists; Status is `DRAFT`, `PROPOSED`, or `ACCEPTED`. Refuse on the terminal statuses (COMPLETE, SUPERSEDED) — review is editorial polish; substantive changes route through `--amend`.
 
 ### Step 2: Walkthrough
 
@@ -24,14 +24,9 @@ For each section in this order, summarize, ask, and apply:
 
 For each `yes, revise` response, run the Edit tool to apply the engineer's stated change in-place. For each `no, leave as is` response, move on.
 
-### Step 2.5: Spec-Reviewer dispatch
+### Step 2.5: Spec-reviewer dispatch
 
-This special-case hook attaches at the validate/exit boundary — after the Step 2 section walkthrough and before the Step 3 re-validate. It ADDS an adversarial Spec-Reviewer pass alongside the walkthrough; it does NOT replace it. Perform the shared `reviewer_mode` four-step dispatch (see [`_lib/reviewer_mode.md`](../../_lib/reviewer_mode.md)):
-
-1. Load the `spec-reviewer` ContextSpec: `from dekspec.constraint_compiler.parser import parse_context_spec; context_spec = parse_context_spec("dekspec/context-specs/role-spec-reviewer.md")` (`context_spec["role_identity"] == "spec-reviewer"` — the same ContextSpec all six `--review` modes load).
-2. Take the `ReviewerIntent` artifact this `--review` mode already holds (the Intent at `<Intent-path>`; the caller owns this IO, the dispatcher is IO-free).
-3. Dispatch through the shared surface: `from dekspec.spec_review.reviewer import Reviewer; findings = Reviewer().dispatch(context_spec, artifact)` (`-> list[Finding]`, per IC-016).
-4. Present each returned `Finding` to the engineer at its severity (default `P2` — approval-blocking, not auto-merge) alongside the Step 2 walkthrough sections. Do not reshape the records; they route into the AE-003 surface via the `SPEC-REVIEW` audit-rule family (`dekspec.spec_review.reviewer` → `spec_review_rules`).
+This hook attaches at the validate/exit boundary — after the Step 2 section walkthrough and before the Step 3 re-validate. It ADDS an independent spec-reviewer pass alongside the walkthrough; it does NOT replace it. Run the shared spec-reviewer dispatch in [`_lib/agent_roles.md`](../../_lib/agent_roles.md) §Spec-reviewer dispatch for this Intent: `dekspec resource role spec-reviewer`, one fresh-context sub-agent composed policy → role → procedure → assignment (the Intent at `<Intent-path>` and its governing sources), and its findings presented at their severity (default P2) alongside the Step 2 walkthrough sections. If it did not run, say so — never present your own review as the spec-reviewer's.
 
 ### Step 3: Re-run schema validation
 

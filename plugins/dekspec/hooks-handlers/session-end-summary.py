@@ -146,7 +146,7 @@ def _emit_handoff(cwd: Path) -> None:
     the hook cannot read the transcript, so an unhinted fire would otherwise
     write an all-blank record that evicts a real one under retention. A
     populated record therefore requires the ``DEKSPEC_HANDOFF_*`` env hints or a
-    manual ``/dekspec:rotation-handoff --write``.
+    manual ``/handoff``.
     """
     engine = _import_handoff_engine(cwd)
     if engine is None:

@@ -143,7 +143,7 @@ Render the full DekSpec skill catalog. Behavior preserved verbatim from the lega
 
 1. Print a beautifully formatted, premium markdown table of all available DekSpec skills grouped by category.
 2. For each skill, include the purpose and how to trigger it in conversation.
-3. Suggest `/dekspec:spec-intent <INT-NNN>` to drive an Intent through specification, or `/dekspec:orchestrate-intent <INT-NNN>` for the full guided lifecycle walk.
+3. Suggest the IB-direct flow for a bounded change (`/write-ibs`, then `dekspec ib propose` / `accept`), or — when the outcome spans several IBs — `/dekspec:spec-intent <INT-NNN>` to drive an Intent through specification. Once work is ready, `/dekspec:implement <INT-NNN | IB-NNN>` carries it through construction, review, integration and completion without further prompts.
 
 ---
 
@@ -169,38 +169,36 @@ Use the table below as a quick reference sheet:
 | **`write-mission`** | Mission (MSN-NNN) | *"Create a long-horizon Mission for [goal]"* |
 | **`write-ic`** | Interface Contract | *"Create an Interface Contract for [boundary]"* |
 | **`write-ws`** | Working Spec | *"Write a Working Spec for [subsystem]"* |
-| **`write-ibs`** | Implementation Briefs (IB) | *"Decompose [Working Spec] into IBs"* |
-| **`write-code-beads`** | Beads (atomic work units) from an IB | *"Convert [IB] into beads"* |
+| **`write-ibs`** | Implementation Brief (IB) — the directly executable work contract; a bounded change is one IB, with or without a parent (ADR-056) | *"Write an IB for [change]"* / *"Decompose [WS or Intent] into IBs"* |
 
 ### 2. Lifecycle & Orchestration Skills
 | Skill | Purpose | How to Trigger / Ask |
 |---|---|---|
-| **`orchestrate-intent`** | Guided Intent lifecycle walker (any status → LOCKED) | *"Walk INT-NNN to LOCKED"* |
-| **`spec-intent`** | Specification phase-executor (DRAFT → ready-for-coding) | *"Spec out INT-NNN"* |
-| **`orchestrate-coding-session`** | Dispatch unblocked beads to parallel worktree sub-agents | *"Run the coding session for INT-NNN"* |
-| **`land-intent`** | Drive an Intent's PRs through review to merge | *"Land INT-NNN's PRs"* |
+| **`spec-intent`** | Specification phase-executor (DRAFT → READY; ends with `dekspec implement ready`) | *"Spec out INT-NNN"* |
+| **`implement`** | Implement ready work end to end — construct, test, independent review, repair, integrate, verify, complete (ADR-059) | `/dekspec:implement INT-NNN` · `/dekspec:implement the <feature>` |
+| **`orchestrate-coding-session`** | Execute ready IBs (`dekspec ib ready`) in isolated worktrees — investigate, plan, verify, complete | *"Run the coding session for IB-NNN / INT-NNN"* |
+| **`land-intent`** | Land a delivery: `dekspec delivery check` at the head, then the operator-confirmed merge (ADR-058) | *"Land INT-NNN"* / *"Land this branch"* |
 | **`pr-branch`** | Strip spec-authoring churn from a branch into a clean, code-review-ready PR | *"Prep a clean PR branch for review"* |
 
 ### 3. Review Skills (two-tier, non-sycophantic)
 | Skill | Purpose | How to Trigger / Ask |
 |---|---|---|
-| **`review-ib`** | Pre-impl review of an IB spec packet (14 lenses) | *"Review IB-NNN before coding"* |
-| **`review-pr`** | Post-impl review of an IB-aggregate PR diff (9 lenses) | *"Review PR #NN against its IB"* |
+| **`review-ib`** | Pre-execution review of an IB contract, before `dekspec ib accept` | *"Review IB-NNN before coding"* |
+| **`review-pr`** | Post-implementation review of the delivery diff; records one verdict per IB (`dekspec ib review`) | *"Review this PR against its IBs"* |
 
 ### 4. Verification & Quality Skills
 | Skill | Purpose | How to Trigger / Ask |
 |---|---|---|
 | **`/doctor`** | Full health check — schema + linkage + drift + T/D/L fidelity (Stage 1 CLI doctor, Stage 2 inlined fidelity body) | *"Run /doctor"* or *"Audit our specs"* |
 | **`/validate-artifact`** | Single-artifact schema validation (narrower than `/doctor`) | *"Validate dekspec/intents/INT-105-foo.md"* |
-| **`write-tests`** | Pre-generate test cases from beads | *"Generate test cases for [beads]"* |
-| **`write-evals`** | Setup probabilistic behavior evals | *"Write evals for [IB/beads]"* |
-| **`debug-testfail`** | Resumable post-spec debugging loop (Agans' 9 rules) for a TESTFAIL symptom; persists investigation state across context resets | *"Debug this TESTFAIL"* / *"Continue debugging [slug]"* |
+| **`write-tests`** | Author an IB's acceptance tests before execution (protected by the acceptance baseline) | *"Write acceptance tests for IB-NNN"* |
+| **`write-evals`** | Probabilistic behavior evals, wired as IB acceptance conditions | *"Write evals for IB-NNN"* |
+| **`debug`** | Evidence-driven diagnosis; authorized governed repair through core implementation | *"Diagnose this failure"* / *"Fix the checkout test"* |
 
 ### 5. Pre-Spec Exploration Skills
 | Skill | Purpose | How to Trigger / Ask |
 |---|---|---|
 | **`interview-me`** | Docs-anchored one-question-at-a-time interview that sharpens fuzzy input into resolved decisions (composed default-on by the high-judgment authoring skills) | *"Interview me on this fuzzy idea"* / *"Grill me on this design"* |
-| **`diagnose-bug`** | Pre-spec debugging loop — build a deterministic PASS/FAIL repro signal *first*, log to `dekspec/.scratch/diagnostics/`, then minimize→hypothesize→instrument→fix→regression-test and promote the repro into a bug Intent | *"Diagnose this bug"* / *"Reproduce this failure before we fix it"* |
 | **`prototype`** | Pre-spec throwaway-exploration loop — explore a state model (`logic`) or request/response shape (`api`) in disposable `dekspec/.scratch/prototypes/` code, then route the durable findings into `/write-ws` / `/write-ic` / `/write-ae`; no production leak | *"Prototype this design before we spec it"* / *"Sketch this API shape throwaway"* |
 | **`spike`** | Pre-Intent feasibility exploration — a focused throwaway experiment that produces VERIFIED knowledge (VALIDATED / REFUTED / INCONCLUSIVE) before committing to an approach | *"Spike this approach before we commit to an Intent"* |
 
@@ -208,8 +206,7 @@ Use the table below as a quick reference sheet:
 | Skill | Purpose | How to Trigger / Ask |
 |---|---|---|
 | **`audit-codebase`** | Audit source-code architecture quality — deep vs. shallow modules, information hiding, folderization fit (APOSD-grounded) | *"Audit this codebase's architecture"* |
-| **`analyze-module-depth`** | Surface deepening opportunities — refactors that turn shallow modules into deep ones | *"Find deepening opportunities in this codebase"* |
-| **`orchestrate-module-deepening`** | Run one end-to-end analyze → beads → implement → land architecture-deepening cycle | *"Run an architecture-deepening pass"* |
+| **`deepen`** | Multi-pass architectural deepening with retained learning and verified benefits | *"Deepen the parser"* |
 
 ### 7. Onboarding & Config Skills
 | Skill | Purpose | How to Trigger / Ask |
@@ -222,35 +219,41 @@ Use the table below as a quick reference sheet:
 | Skill | Purpose | How to Trigger / Ask |
 |---|---|---|
 | **`write-goal-loop-contract`** | Turn a fuzzy "go do this" into a verifiable goal contract and drive a persistent plan→act→test→review→iterate autonomous run | *"Write a goal contract for this overnight run"* |
-| **`rotation-handoff`** | Native session continuity — emit/read a structured, secret-redacted handoff record (objective, artifacts, decisions, next safest action) to `dekspec/.scratch/rotation-handoff/` so a rotated/compacted session resumes cold-start-free (zero dependency on `claude-mem`) | *"Write a handoff before I rotate"* / *"Resume from the last session handoff"* |
-| **`coding-session-forensics`** | Read-only post-mortem for stuck, failed, or anomalous sessions — collects evidence, detects known failure fingerprints, recommends recovery commands | *"Investigate why this session got stuck"* |
-| **`archeology`** | Brownfield spec-gap recovery — code → ratifiable Intent | *"Recover the spec gaps in this repo"* |
-| **`brownfield-ingest`** | Classify inherited markdown prose into DekSpec artifact slots | *"Ingest legacy document [path]"* |
-| **`write-issue-beads`** | Non-coding issue beads (bug/task/issue/chore) triaged from an arbitrary report/request/note; grooms the standing backlog | *"Triage this report into the backlog"* |
+| **`handoff`** | Prepare/resume external-state continuity evidence with freshness checks | *"Write a handoff"* / *"Resume the parser work"* |
+| **`diagnose-session`** | Read-only post-mortem for stuck, failed, or anomalous sessions — collects evidence, detects known failure fingerprints, recommends recovery commands | *"Investigate why this session got stuck"* |
+| **`recover-specs`** | Brownfield spec-gap recovery — code → ratifiable Intent | *"Recover the spec gaps in this repo"* |
+| **`ingest-docs`** | Classify inherited markdown prose into DekSpec artifact slots | *"Ingest legacy document [path]"* |
+| **`project-board`** | Standalone boards, issue intake, duplicate detection and snapshots | *"Add these findings to the parser board"* |
 
 ---
 
 > **Two plugins.** The authoring / orchestration / review machine ships in **`dekspec`**; the optional
-> helper tools — `prj-mgr`, `audit-codebase`, `analyze-module-depth`, `orchestrate-module-deepening`,
-> `brownfield-ingest`, `archeology`, `rotation-handoff`, `coding-session-forensics`, `interview-me`,
-> `debug-testfail`, `diagnose-bug`, `prototype`, `spike`, `write-issue-beads` — ship in **`dektools`**
+> helper tools — `project-board`, `audit-codebase`, `deepen`,
+> `ingest-docs`, `recover-specs`, `handoff`, `diagnose-session`, `interview-me`,
+> `debug`, `prototype`, `spike` — ship in **`dektools`**
 > (ADR-047). Install it with `claude plugin install dektools@dekspec`. Core runs the full
 > spec→code→COMPLETE flow without it, so every DekTools tool is optional and must **degrade
 > gracefully**: DekTools may not be installed, or a tool may not be enabled in its à-la-carte
 > selection. Both are supported configurations, not errors — say so plainly and continue.
 
 ### Pro-Tip 💡
-**Shortest path to a merged change** — the same governed loop at any size:
+**Shortest path to a merged change** — a bounded change is one IB; no parent artifact is required (ADR-056):
 ```bash
-/write-intent "<one-line description>"   # author the Intent; --analyze sizes it
-/orchestrate-coding-session              # agents implement the beads in an isolated worktree
-/land-intent                             # merge the IB-aggregate PR + LOCK the Intent
+/write-ibs "<outcome, rationale, references>"
+dekspec ib propose IB-NNN
+dekspec ib accept IB-NNN
+/orchestrate-coding-session
+/land-intent
 ```
 
-To drive an Intent through its full lifecycle interactively, use the orchestration slash commands:
+Author the IB (or scaffold one with `dekspec ib new <slug>`); `propose` requests the decision (lint-gated); `accept` authorizes execution and takes the acceptance baseline; the coding session executes ready IBs from `dekspec ib ready` in an isolated worktree; landing runs `dekspec delivery check` at the head before the operator-confirmed merge (ADR-058).
+
+The executor's cycle per IB is `dekspec ib context` → `ib start` → investigate → `ib plan` → build → `ib verify` → independent `ib review` → `ib complete` — the only path to `COMPLETE` (ADR-057). Binding obligations are referenced, never copied; `dekspec ib context` delivers their canonical text (ADR-055).
+
+Use an Intent (or a Mission) only when the outcome spans several IBs or needs kill criteria. From specification to delivery:
 ```bash
-/dekspec:spec-intent <INT-NNN>        # specification phase: DRAFT → ready-for-coding
-/dekspec:orchestrate-intent <INT-NNN> # full guided lifecycle walk → LOCKED
+/dekspec:spec-intent <INT-NNN>   # specification: DRAFT → READY (engineer-gated acceptance)
+/dekspec:implement <INT-NNN>     # ready work → integrated, verified COMPLETE, no routine prompts
 ```
 
 **End of Catalog Mode.**

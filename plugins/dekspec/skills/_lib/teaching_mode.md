@@ -35,7 +35,7 @@ When every required section has been filled or explicitly skipped, exit with a s
 - Sections skipped (placeholder text inserted; the engineer can fill via the skill's revise/amend mode).
 - Open Issues filed for any structural-check failures encountered during the ritual.
 
-The artifact is written to disk at the artifact's initial draft status (typically `DRAFT` or `PROPOSED`, depending on the artifact's lifecycle). From there, the engineer reviews with `--review`, audits with `--audit`, and promotes via the artifact's lifecycle modes (`--accept`, `--lock`, etc.).
+The artifact is written to disk at the artifact's initial draft status (typically `DRAFT` or `PROPOSED`, depending on the artifact's lifecycle). From there, the engineer reviews with `--review`, audits with `--audit`, and promotes via the artifact's lifecycle modes (`--accept`, and `--lock` for the kinds that lock).
 
 ## Recommended skill-side template
 

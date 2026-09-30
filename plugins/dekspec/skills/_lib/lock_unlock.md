@@ -1,8 +1,8 @@
 # DekSpec Lock / Unlock Mode — Canonical Substrate
 
 **Status:** AUTHORITATIVE (per the skills-library audit / Dim 3 cluster 4 refactor).
-**Audience:** DekSpec skill authors. Every L0/L1/L2 authoring skill whose artifact carries a `LOCKED` lifecycle state cites this file from its `## Lock Mode` and `## Unlock Mode` sections and inlines a per-skill parameter manifest.
-**Lineage:** Derived by deduplicating the Lock/Unlock prose previously copied across `write-{adr,ae,ic,ws,sp,sv}` SKILL.md files. Pattern extends the mode-dispatcher substrate at [`_lib/mode_dispatcher.md`](mode_dispatcher.md) for the lifecycle-bound `--lock` / `--unlock` flags.
+**Audience:** DekSpec skill authors. Every authoring skill whose artifact carries a `LOCKED` lifecycle state — the decision and contract kinds: ADR, Interface Contract, System Vision, Constitution, Security Profile — cites this file from its `## Lock Mode` and `## Unlock Mode` sections and inlines a per-skill parameter manifest. AE and WS rest at `ACCEPTED` and never lock; IB and Intent terminate at `COMPLETE` (ADR-046, ADR-057).
+**Lineage:** Derived by deduplicating the Lock/Unlock prose previously copied across `write-{adr,ic,sp,sv}` SKILL.md files (AE and WS lost their Lock modes under ADR-046). Pattern extends the mode-dispatcher substrate at [`_lib/mode_dispatcher.md`](mode_dispatcher.md) for the lifecycle-bound `--lock` / `--unlock` flags.
 
 ---
 
@@ -22,10 +22,10 @@ The Lock mode promotes an artifact from its accepted-but-mutable state to its fr
 
 ### Parameters every caller must supply
 
-- **artifact_kind_singular** — the human-readable noun for one instance of this artifact (e.g., `ADR`, `architecture element`, `Working Spec`, `Interface Contract`, `Security Profile`, `System Vision`).
-- **status_before** — the lifecycle status the artifact must be in to lock. Canonical value: `ACCEPTED`. Skills with a non-canonical source status declare it here (e.g., write-intent locks from `MERGED`, not from `ACCEPTED`; that skill does not use this substrate for its Lock step).
+- **artifact_kind_singular** — the human-readable noun for one instance of this artifact (e.g., `ADR`, `Interface Contract`, `Security Profile`, `System Vision`, `Constitution`).
+- **status_before** — the lifecycle status the artifact must be in to lock. Canonical value: `ACCEPTED`. Skills with a non-canonical source status declare it here.
 - **status_after** — the lifecycle status to flip to. Canonical value: `LOCKED`.
-- **pre_lock_audit_ref** — pointer to the audit checklist Step 2 must execute. Typically `§Audit Mode of this skill`, optionally with a skill-specific extension that names additional blocking rules (e.g., "L1-GLOSSARY is BLOCKING at Lock" for write-ae).
+- **pre_lock_audit_ref** — pointer to the audit checklist Step 2 must execute. Typically `§Audit Mode of this skill`, optionally with a skill-specific extension that names additional blocking rules.
 - **artifact_index_path** — the index file whose status column for this artifact must also flip (e.g., `dekspec/adr-index.md`). Skills whose artifact is a singleton with no index row (write-sv, write-constitution) may omit this and say so in the manifest.
 
 ### Step 1: Validate
@@ -60,7 +60,7 @@ Only on explicit `yes`:
 
 Re-run `dekspec validate <path>` (or `dekspec validate` over the singleton if the artifact has no path argument). Surface any validation error and stop — the lock has written but the artifact is structurally broken; the engineer must fix and re-lock.
 
-If validation passes, surface a closing line confirming the new status, the new Modified date, and the index row update (if applicable). Skills may extend this with cascade reminders (e.g., "downstream IBs may need `--resync`"), but the four substrate steps are non-negotiable.
+If validation passes, surface a closing line confirming the new status, the new Modified date, and the index row update (if applicable). Skills may extend this with cascade reminders (e.g., "IBs referencing this contract get the new text at their next `dekspec ib context`; evidence bound to the old text goes stale"), but the four substrate steps are non-negotiable.
 
 ## Unlock — canonical 4-step contract (LOCKED → PROPOSED)
 
@@ -81,7 +81,7 @@ Read the artifact at the path the engineer supplied. Verify the artifact's curre
 
 Ask the engineer: "Why is this <artifact_kind_singular> being unlocked? (This will be recorded verbatim in the Amendment Log.)" Wait for a written reason. Reject empty replies, single-word replies (`"typo"`, `"fix"`, `"because"`), and bare punctuation. Demand at least one full sentence naming the trigger — what is changing and why now. Loop until a substantive reason is given, or abort if the engineer declines to supply one.
 
-Skills with a downstream-impact surface SHOULD also run a quick downstream scan at this step (grep specs / IBs / beads for references to the artifact and list affected items with their current status) and present the impact list alongside the reason prompt. The substrate does not require this — it requires the reason — but skills whose downstream blast radius is non-trivial (write-ws, write-ic, write-ae) are expected to show the engineer what they are about to disturb before asking for confirmation.
+Skills with a downstream-impact surface SHOULD also run a quick downstream scan at this step (grep specs and IBs for references to the artifact and list affected items with their current status) and present the impact list alongside the reason prompt. The substrate does not require this — it requires the reason — but skills whose downstream blast radius is non-trivial (write-ic, write-adr) are expected to show the engineer what they are about to disturb before asking for confirmation.
 
 ### Step 3: Demote and log
 
@@ -94,16 +94,16 @@ After a valid reason is supplied (and any impact list has been shown):
 
 Re-run `dekspec validate <path>` (or the singleton equivalent). Surface any validation error and stop.
 
-If validation passes, surface a closing reminder pointing the engineer at the right follow-on mode for applying the substantive change (typically `--revise` or `--review`), and noting that a fresh `--accept` and `--lock` will be needed when the change is complete. Skills with non-trivial cascade implications (downstream artifacts referencing this one) SHOULD also surface a cascade reminder enumerating the IB-resync / bead-recreation / dependent-artifact-review steps the engineer will need to do after the substantive edit.
+If validation passes, surface a closing reminder pointing the engineer at the right follow-on mode for applying the substantive change (typically `--revise` or `--review`), and noting that a fresh `--accept` and `--lock` will be needed when the change is complete. Skills with non-trivial cascade implications (downstream artifacts referencing this one) SHOULD also surface a cascade reminder: IBs that reference the artifact pick up the new text at their next `dekspec ib context`, their recorded evidence and verdicts go stale (ADR-057), and dependent artifacts may need review.
 
 ## When NOT to use this substrate
 
-This substrate covers the canonical ACCEPTED → LOCKED → PROPOSED cycle for L0/L1/L2 lifecycle artifacts. Skills whose Lock or Unlock semantics diverge fundamentally from that shape should NOT cite this file — they should keep their bespoke prose and document the divergence at the top of their own Lock/Unlock section.
+This substrate covers the canonical ACCEPTED → LOCKED → PROPOSED cycle for the decision and contract kinds. Skills whose Lock or Unlock semantics diverge fundamentally from that shape should NOT cite this file — they should keep their bespoke prose and document the divergence at the top of their own Lock/Unlock section.
 
 Known divergent cases (as of the substrate's first landing):
 
-- **`write-intent` Lock Mode is MERGED → LOCKED, not ACCEPTED → LOCKED.** Intents are locked post-merge on the `main` branch, with a branch-name gate, a verification-block re-equality check, and a Mission-queue append. None of those fit the substrate's parameter slots, so write-intent keeps its bespoke Lock prose. write-intent's **Unlock Mode** (`LOCKED → PROPOSED`) cites this file's §Unlock Step 2 reason-gate but keeps a bespoke status flip and a two-table index move (Archive ↔ Active queue); `--unlock` is the editorial-correction path only — a LOCKED Intent needing a *substantive* change still spawns a successor Intent and marks the original `SUPERSEDED`.
-- **`write-constitution` and `write-mission`** have no Lock or Unlock modes in their lifecycle and therefore do not interact with this substrate. Constitutions live in their own L0 cycle (no LOCKED state today); Missions transition via `--activate` / `--complete` / `--kill` / `--supersede`.
+- **Kinds that never lock.** AE and WS rest at `ACCEPTED` (living references, revised in place with cascade); IB completes only through `dekspec ib complete`; Intent completes through `dekspec intent complete` (`/write-intent --lock` is a retained compatibility alias for that); Mission transitions via `--activate` / `--complete` / `--kill` / `--supersede`. None of these cite this substrate.
+- **`write-constitution`** does not cite this substrate: the Constitution's `ACCEPTED → LOCKED` transition lives outside its eight-mode catalog (see its Accept Mode).
 - **`write-sv` (System Vision)** uses the substrate but declares an "extra-loud warning" Step 1 addendum — the System Vision is the L0 root and locking signals "any change cascades to every dependent artifact." Skill manifests should call this out explicitly.
 
 ## Per-skill migration checklist

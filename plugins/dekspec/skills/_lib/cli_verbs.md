@@ -39,6 +39,9 @@ Under ADR-042 the canonical form is the flat `dekspec <verb>`. The **Deprecated 
 | `dekspec session …` | Session lifecycle (start / end / status / hooks / report). | `dekspec exec session` |
 | `dekspec config …` | Per-repo `.dekspec/config.yaml` get / set. | `dekspec exec config` |
 | `dekspec migrate` | Full upgrade pipeline (verify-vendored → migrate-ir → migrate-artifacts). | (canonical top-level — no alias) |
+| `dekspec ib …` | Execute an Implementation Brief directly (ADR-055–058): `new`, `lint`, `propose`, `accept`, `floor` (the read-only acceptance floor report and its digest, ADR-062), `baseline`, `amend`, `context`, `start`, `plan`, `task`, `attempt`, `verify`, `review`, `gate`, `complete`, `status`, `block`, `unblock`, `ready`, `import-beads`, `adopt`. | (canonical top-level — no alias) |
+| `dekspec delivery …` | Integrated verification (`verify`) and the landing gate (`check [--rerun]`) for a branch's IBs (ADR-058). | (canonical top-level — no alias) |
+| `dekspec intent …` | Intent outcome evidence and completion: `verify`, `review`, `complete`. | (canonical top-level — no alias) |
 | `dekspec library new-provisional …` | Stamp a new provisional incubation folder. | (no flat form yet — stays nested) |
 | `dekspec library cow-stage …` | Copy-on-write staging for artifact-tree edits. | (no flat form yet — stays nested) |
 | `dekspec library author-target …` | Resolve where a Creation-mode artifact lands. | (no flat form yet — stays nested) |

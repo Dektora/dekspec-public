@@ -26,7 +26,7 @@ Use this mode when:
    The CLI scaffolds the folder + skeleton + (by default) a git branch named per kind. Surface its stderr on non-zero exit and STOP.
 4. Read the scaffolded file at `dekspec/provisional/<slug>/INT-provisional-<title-slug>.md` (the CLI prints the path).
 5. **Populate the skeleton with this skill's authoring discipline** — every section the canonical-mode flow would fill in goes here (Motivation, Linked AEs, Components affected, Verification, etc.). The PROVISIONAL banner at the top stays.
-6. **Reject `--lock`** in combination with `--provisional`. LOCKED state requires linkage-walker visibility that provisional artifacts deliberately lack. The hand-promote workflow (see `docs/dekspec-operating-guide.md` §Provisional Promotion) is the canonical path to LOCKED.
+6. **Reject `--decompose` and `--lock`** in combination with `--provisional`. Child IBs cannot name a provisional parent, and completion needs the canonical graph. Hand-promote first (see `docs/dekspec-operating-guide.md` §Provisional Promotion), then accept, decompose and complete in the normal flow.
 7. **`--analyze` and `--review`** remain available in provisional mode — they operate on the provisional file's content without requiring canonical-graph visibility.
 8. Closing step: surface to the engineer the path of the provisional file, the branch (if created), and the next-step hand-promote workflow (see `docs/dekspec-operating-guide.md` §Provisional Promotion).
 

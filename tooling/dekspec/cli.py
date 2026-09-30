@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -233,6 +234,8 @@ def build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.Argument
     # host (claude/codex/antigravity/cursor/copilot/pi) expects. Build-time only:
     # writes files, never executes (ADR-024).
     _add_install_subparser(sub)
+    from .toolkit_cli import register_helpers
+    register_helpers(SubParserWrapper(sub, suppress=True))
 
     # 8. slices — LLM-free structural slice-discovery (ds-mrsu). Thin adapter
     # over constraint_compiler.slice_discovery; all graph/clustering logic
@@ -271,6 +274,16 @@ def build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.Argument
     _add_lock_ready_flat_subparser(sub)
     _add_find_spec_gaps_subparser(sub)
     _add_commands_subparser(sub)
+    # ADR-055–058 — the IB execution path (AE-011): `dekspec ib`, `dekspec
+    # delivery`, `dekspec intent`. Public verbs; the engine lives in
+    # dekspec.execution and this is only its argparse registration.
+    from dekspec.execution.cli import register as _register_execution
+
+    _register_execution(sub)
+    # ADR-059 — `dekspec implement`: the core of `/implement` and its caller contract.
+    from dekspec.implement.cli import register as _register_implement
+
+    _register_implement(sub)
 
     group_parsers = {
         "check": p_check,
@@ -1225,8 +1238,9 @@ def _add_audit_subparser(sub: argparse._SubParsersAction) -> None:
     p_fc = audit_sub.add_parser(
         "failure-classes",
         help=(
-            "Read-only walk over the bead corpus, grouped by failure_class "
-            "(or type, risk-tier), cross-referenced bead → Intent → revert SHA."
+            "Read-only walk over classified failed attempts in the IB execution "
+            "records (and legacy code beads), grouped by failure_class "
+            "(or type, risk-tier), cross-referenced to the IB / Intent / revert SHA."
         ),
     )
     p_fc.add_argument(
@@ -1237,7 +1251,7 @@ def _add_audit_subparser(sub: argparse._SubParsersAction) -> None:
         "--window",
         type=int,
         default=90,
-        help="Window in days for bead updates (default: 90).",
+        help="Window in days (default: 90).",
     )
     p_fc.add_argument(
         "--by",
@@ -1508,8 +1522,9 @@ _audit_severity_order: dict[str, int] = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
 
 
 def cmd_audit_failure_classes(args: argparse.Namespace) -> int:
-    """`dekspec audit failure-classes` — read-only bead-corpus aggregator
-    (INT-126 / ds-99ko). Walks `.beads/issues.jsonl`, groups beads
+    """`dekspec audit failure-classes` — read-only failure-class aggregator
+    (INT-126 / ds-99ko). Walks IB execution records (ADR-056) and the legacy
+    `.beads/issues.jsonl`, groups classified failures
     carrying `failure-class:<class>` labels per the `--by` axis, and
     prints a markdown (default) or JSON report.
     """
@@ -1723,11 +1738,18 @@ def _add_aggregate_subparser(sub: argparse._SubParsersAction) -> None:
 
     p_md = agg_sub.add_parser(
         "agents-md",
-        help="Walk the spec graph and write a project-wide AGENTS.md at repo root.",
+        help="Generate or check the DekSpec-owned region of the instruction file (AGENTS.md).",
         description=(
-            "Aggregates per-artifact agents-md fragments (AE, ADR, WS) into a "
-            "single AGENTS.md. Default status filter: LOCKED,ACCEPTED. Default "
-            "output path: <repo_root>/AGENTS.md. Use --output to override."
+            "Replaces only the DekSpec-owned region of the instruction file — the lines from "
+            "`<!-- dekspec:agents-md begin -->` through `<!-- dekspec:agents-md end -->` — with the "
+            "governing core rendered from the specification graph, and preserves everything else "
+            "byte for byte (ADR-063). A missing or empty file is created containing only the region; "
+            "a file without a region is refused (place the markers), and a recognized legacy layout "
+            "is migrated only with --migrate. The projection's settings are the `agents_md` block "
+            "of .dekspec/config.yaml when declared, else the defaults. --check recomputes the region "
+            "read-only and reports one verdict: current (exit 0), stale (1), absent (1 when required, "
+            "else 0), inapplicable (0) or invalid (1). Generation exits 0 written or already current, "
+            "1 refused (the file is untouched), 2 usage."
         ),
     )
     p_md.add_argument(
@@ -1741,25 +1763,49 @@ def _add_aggregate_subparser(sub: argparse._SubParsersAction) -> None:
     )
     p_md.add_argument(
         "--output",
-        help="Output path (default: <repo_root>/AGENTS.md). Use '-' for stdout.",
+        help=(
+            "Write to this path instead of the projection file (the configured `agents_md.path`, "
+            "default <repo_root>/AGENTS.md); '-' prints the region and writes nothing. Rendering "
+            "anywhere but the projection file is ad hoc and accepts any --status/--include."
+        ),
     )
     p_md.add_argument(
         "--status",
-        default="LOCKED,ACCEPTED",
+        default=None,
         help=(
             "Comma-separated status filter; only artifacts in any of these states "
             "are included. Pass 'all' to include every artifact. "
-            "Default: LOCKED,ACCEPTED."
+            "Default: the projection's settings (LOCKED,ACCEPTED unless configured). "
+            "For the projection file a differing value is a usage error: declare it in configuration."
         ),
     )
     p_md.add_argument(
         "--include",
-        default="CONSTITUTION,SECURITY_PROFILE,VISION,GLOSSARY,AE,ADR,WS,IB,INT,MSN",
+        default=None,
         help=(
             "Comma-separated artifact kinds to include "
-            "(any of CONSTITUTION,SECURITY_PROFILE,VISION,GLOSSARY,AE,ADR,WS,IB,INT,MSN). "
-            "Default: CONSTITUTION,SECURITY_PROFILE,VISION,GLOSSARY,AE,ADR,WS,IB,INT,MSN."
+            "(any of CONSTITUTION,SECURITY_PROFILE,VISION,GLOSSARY,AE,ADR,IC,WS,IB,INT,MSN). "
+            "Default: the projection's settings — the governing core "
+            "CONSTITUTION,SECURITY_PROFILE,VISION,GLOSSARY,AE,ADR,IC,WS unless configured. "
+            "Work items (IB, INT, MSN) are excluded by default (ADR-056): an agent gets its "
+            "IB's obligations from `dekspec ib context IB-NNN`, generated from the same sources."
         ),
+    )
+    p_md.add_argument(
+        "--check",
+        action="store_true",
+        help="Recompute the owned region read-only and report its verdict; never writes.",
+    )
+    p_md.add_argument(
+        "--migrate",
+        action="store_true",
+        help="Migrate a recognized legacy layout (earlier generator output, the historical init "
+             "placeholder or Codex marker) to the owned-region format.",
+    )
+    p_md.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="With --migrate: print the change as a diff and write nothing.",
     )
     p_md.set_defaults(func=cmd_aggregate_agents_md)
 
@@ -1910,287 +1956,76 @@ def _write_snippet(path: str, content: str) -> None:
 
 
 def cmd_aggregate_agents_md(args: argparse.Namespace) -> int:
-    from datetime import datetime, timezone
-    from .constraint_compiler.graph import SpecGraph
+    """Generate or check the DekSpec-owned region of the instruction file (ADR-063)."""
+    from . import agents_projection as proj
 
     repo_root = Path(args.at).resolve() if args.at else Path.cwd()
-    graph = SpecGraph.load(repo_root, dekspec_root=args.dekspec_root)
 
-    status_filter: set[str] | None = None
-    if args.status.lower() != "all":
-        status_filter = {s.strip().upper() for s in args.status.split(",") if s.strip()}
-
-    include_kinds = {k.strip().upper() for k in args.include.split(",") if k.strip()}
-    valid_kinds = {
-        "AE", "ADR", "WS", "IB", "INT", "MSN",
-        "VISION", "GLOSSARY", "CONSTITUTION", "SECURITY_PROFILE",
-    }
-    bad = include_kinds - valid_kinds
-    if bad:
-        print(
-            f"Error: --include contains unknown kinds: {sorted(bad)}. "
-            f"Valid: {sorted(valid_kinds)}.",
-            file=sys.stderr,
-        )
+    def usage(msg: str) -> int:
+        print(f"Error: {msg}", file=sys.stderr)
         return 2
 
-    def passes(ir: dict[str, Any]) -> bool:
-        if status_filter is not None and ir.get("status", "").upper() not in status_filter:
-            return False
-        return True
-
-    aes = sorted([ae for ae in graph.aes() if passes(ae)], key=lambda x: x["id"]) \
-        if "AE" in include_kinds else []
-    adrs = sorted([adr for adr in graph.adrs() if passes(adr)], key=lambda x: x["id"]) \
-        if "ADR" in include_kinds else []
-    wses = sorted([ws for ws in graph.wses() if passes(ws)], key=lambda x: x["id"]) \
-        if "WS" in include_kinds else []
-    ibs = sorted([ib for ib in graph.ibs() if passes(ib)], key=lambda x: x["id"]) \
-        if "IB" in include_kinds else []
-    intents = sorted([i for i in graph.intents() if passes(i)], key=lambda x: x["id"]) \
-        if "INT" in include_kinds else []
-    missions = sorted([m for m in graph.missions() if passes(m)], key=lambda x: x["id"]) \
-        if "MSN" in include_kinds else []
-    vision = graph.vision() if "VISION" in include_kinds else None
-    glossary = graph.glossary() if "GLOSSARY" in include_kinds else None
-    constitution = graph.constitution() if "CONSTITUTION" in include_kinds else None
-    security_profiles = sorted(
-        [sp for sp in graph.security_profiles() if passes(sp)],
-        key=lambda x: x["id"],
-    ) if "SECURITY_PROFILE" in include_kinds else []
-
-    parts: list[str] = []
-    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    parts.append("<!--")
-    parts.append("  AGENTS.md — auto-generated by dekspec aggregate agents-md")
-    parts.append(f"  Source spec graph: {repo_root}/{args.dekspec_root}")
-    parts.append(f"  Status filter: {args.status}")
-    parts.append(f"  Included kinds: {','.join(sorted(include_kinds))}")
-    parts.append(f"  Compiled: {timestamp}")
-    parts.append(f"  Library: dekspec {__version__}")
-    parts.append("")
-    parts.append("  DO NOT EDIT THIS FILE BY HAND. Re-run `dekspec aggregate agents-md`")
-    parts.append("  to regenerate after spec changes. Per-artifact fragments are")
-    parts.append("  delimited by <!-- BEGIN/END dekspec-fragment: <id> --> markers.")
-    parts.append("-->")
-    parts.append("")
-    parts.append("# AGENTS.md")
-    parts.append("")
-    parts.append(
-        f"Compiled context for AI agents working in this repo. "
-        f"{len(aes)} architecture element(s), {len(adrs)} decision record(s), "
-        f"{len(wses)} working spec(s), {len(ibs)} implementation brief(s), "
-        f"{len(intents)} intent(s), {len(missions)} mission(s)."
-        + (f" Glossary: {len(glossary['terms'])} terms." if glossary else "")
-        + (f" Vision: {vision['name']}." if vision else "")
-        + (
-            f" Constitution: {len(constitution['articles'])} article(s)."
-            if constitution
-            else ""
+    if args.check and args.migrate:
+        return usage("--check and --migrate cannot be combined: the check never writes.")
+    if args.dry_run and not args.migrate:
+        return usage("--dry-run previews a migration; use it with --migrate.")
+    if args.check and (args.output or args.status or args.include):
+        return usage(
+            "--check always uses the projection's declared settings; do not pass "
+            "--output, --status or --include with it."
         )
-        + (
-            f" Security profiles: {len(security_profiles)}."
-            if security_profiles
-            else ""
-        )
-    )
-    parts.append("")
 
-    if constitution:
-        parts.append("---")
-        parts.append("")
-        parts.append(f"# Constitution: {constitution['name']}")
-        parts.append("")
-        parts.append(
-            "\n\n".join(agents_md.emit_constitution(constitution))
-        )
-        parts.append("")
+    if args.check:
+        verdict = proj.check(repo_root, args.dekspec_root)
+        stream = sys.stdout if verdict.exit_code == 0 else sys.stderr
+        print(f"agents-md: {verdict.verdict} — {verdict.message}", file=stream)
+        return verdict.exit_code
 
-    if security_profiles:
-        parts.append("---")
-        parts.append("")
-        parts.append("## Security Profile")
-        parts.append("")
-        for sp in security_profiles:
-            parts.append(f"### {sp['id']} — {sp['title']}")
-            parts.append("")
-            # Pre-flatten typed-record arrays into string arrays for the
-            # soft emitter. Per IB-029, emit_security_profile_soft treats
-            # string-array slots as `- <entry>` verbatim; the schema's
-            # typed-record arrays carry the engineer-meaningful identifier
-            # in the `name` field, so we project to strings here.
-            # supply_chain.allowed_sources is already a string array;
-            # owasp_coverage stays dict-shaped (its helper reads
-            # `owasp_id` + `mitigation_strategy` directly).
-            sp_for_emit = {
-                **sp,
-                "allowed_dataflows": [r["name"] for r in sp.get("allowed_dataflows", [])],
-                "secret_stores": [r["name"] for r in sp.get("secret_stores", [])],
-                "authn_methods": [r["name"] for r in sp.get("authn_methods", [])],
-                "sast_tools": [r["name"] for r in sp.get("sast_tools", [])],
-                "dast_tools": [r["name"] for r in sp.get("dast_tools", [])],
-            }
-            rewritten_fragments = [
-                frag.replace("### ", "#### ", 1)
-                for frag in agents_md.emit_security_profile_soft(sp_for_emit)
-            ]
-            parts.append("\n\n".join(rewritten_fragments))
-            parts.append("")
-        parts.append("---")
-        parts.append("")
+    decl = proj.resolve_declaration(repo_root, args.dekspec_root)
+    try:
+        status = proj.parse_status(args.status) if args.status else None
+        include = proj.parse_include(args.include) if args.include else None
+    except proj.ProjectionUsageError as err:
+        return usage(str(err))
 
-    if vision:
-        parts.append("---")
-        parts.append("")
-        parts.append(f"# System Vision: {vision['name']}")
-        parts.append("")
-        if vision.get("preamble"):
-            parts.append(vision["preamble"])
-            parts.append("")
-        if vision.get("what_this_is"):
-            parts.append("## What this is")
-            parts.append("")
-            parts.append(vision["what_this_is"])
-            parts.append("")
-        if vision.get("what_we_are_not_building"):
-            parts.append("## Out of scope (Vision-level)")
-            parts.append("")
-            for entry in vision["what_we_are_not_building"]:
-                parts.append(f"- {entry}")
-            parts.append("")
-
-    if glossary:
-        parts.append("---")
-        parts.append("")
-        parts.append("# Domain Glossary")
-        parts.append("")
-        parts.append(
-            f"Canonical definitions for {len(glossary['terms'])} domain term(s) "
-            f"across {len({t['category'] for t in glossary['terms']})} categor(y/ies). "
-            f"Read this before introducing or interpreting any domain term."
-        )
-        parts.append("")
-        # Group by category
-        by_cat: dict[str, list[dict[str, Any]]] = {}
-        for t in glossary["terms"]:
-            by_cat.setdefault(t["category"], []).append(t)
-        for cat in sorted(by_cat):
-            parts.append(f"## {cat}")
-            parts.append("")
-            for t in by_cat[cat]:
-                term = t["term"]
-                defn = t.get("canonical_definition", "")
-                if defn:
-                    parts.append(f"- **{term}** — {defn}")
-                else:
-                    parts.append(f"- **{term}**")
-            parts.append("")
-
-    if aes:
-        parts.append("---")
-        parts.append("")
-        parts.append("# Architecture Elements")
-        parts.append("")
-        parts.append(
-            "Architectural slices that scope where each rule applies. "
-            "When working in any path matched by an AE's `When working in` globs, "
-            "treat its purpose, responsibilities, and boundaries as binding."
-        )
-        parts.append("")
-        for ae in aes:
-            parts.append(agents_md.emit_ae(ae))
-
-    if adrs:
-        parts.append("---")
-        parts.append("")
-        parts.append("# Architecture Decision Records")
-        parts.append("")
-        parts.append(
-            "Decisions that shape one or more AEs. Honor each ACCEPTED/LOCKED "
-            "decision unless its `Reconsider this decision if` triggers fire — "
-            "in which case stop and surface to the human."
-        )
-        parts.append("")
-        for adr in adrs:
-            parts.append(agents_md.emit_adr(adr))
-
-    if wses:
-        parts.append("---")
-        parts.append("")
-        parts.append("# Working Specs")
-        parts.append("")
-        parts.append(
-            "Behavioral contracts. Business rules and failure behaviors are "
-            "testable assertions; treat them as required when implementing or "
-            "modifying code in scope."
-        )
-        parts.append("")
-        for ws in wses:
-            parts.append(agents_md.emit_ws(ws))
-
-    if ibs:
-        parts.append("---")
-        parts.append("")
-        parts.append("# Implementation Briefs")
-        parts.append("")
-        parts.append(
-            "Per-task implementation contracts. Each IB authorizes a specific "
-            "scope of files-to-modify, lists Done When acceptance criteria, "
-            "and points back at its parent Working Spec + Source AEs. When "
-            "executing an IB, the listed scope is the only scope you are "
-            "authorized to change."
-        )
-        parts.append("")
-        for ib in ibs:
-            parts.append(agents_md.emit_ib(ib))
-
-    if missions:
-        parts.append("---")
-        parts.append("")
-        parts.append("# Missions")
-        parts.append("")
-        parts.append(
-            "Cross-Intent coordination artifacts. Each Mission binds a set of "
-            "Intents to a single user-observable outcome with explicit "
-            "out-of-scope, flag strategy, kill criteria, and a Mission Verification "
-            "predicate that gates COMPLETING → COMPLETE."
-        )
-        parts.append("")
-        for msn in missions:
-            parts.append(agents_md.emit_mission(msn))
-
-    if intents:
-        parts.append("---")
-        parts.append("")
-        parts.append("# Intents")
-        parts.append("")
-        parts.append(
-            "Captured engineer intent — what change is being made and why. "
-            "Each Intent declares its components_affected (diff confinement) "
-            "and a Verification predicate (the TESTPASS gate). Intents under "
-            "a Mission inherit the Mission's autonomy ceiling."
-        )
-        parts.append("")
-        for intent in intents:
-            parts.append(agents_md.emit_intent(intent))
-
-    output = "\n".join(parts)
-    if not output.endswith("\n"):
-        output += "\n"
-
+    projection = repo_root / decl.path
     if args.output == "-":
-        sys.stdout.write(output)
-        return 0
+        target = None
+    elif args.output:
+        target = Path(args.output)
+        if not target.is_absolute():
+            target = Path.cwd() / target
+    else:
+        target = projection
+    is_projection = target is not None and os.path.abspath(target) == os.path.abspath(projection)
 
-    out_path = Path(args.output) if args.output else (repo_root / "AGENTS.md")
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(output, encoding="utf-8")
-    print(
-        f"Wrote AGENTS.md -> {out_path} "
-        f"({len(output)} bytes; {len(aes)} AE, {len(adrs)} ADR, {len(wses)} WS"
-        + (f", Constitution: {len(constitution['articles'])} articles" if constitution else "")
-        + ")"
-    )
+    if is_projection and decl.error:
+        print(f"agents-md: refused — invalid configuration: {decl.error}", file=sys.stderr)
+        return 1
+    base = decl.settings
+    settings = proj.Settings(
+        args.dekspec_root,
+        base.status if status is None and args.status is None else status,
+        base.include if include is None else include,
+    ).normalized()
+    if is_projection and settings != base:
+        return usage(
+            f"--status/--include differ from the projection's settings ({base.describe()}) for "
+            f"{decl.path}. Declare them in .dekspec/config.yaml under `agents_md` (status, include), "
+            "or render ad hoc with --output <other path> or --output -."
+        )
+
+    try:
+        if target is None:
+            sys.stdout.write(proj.render(repo_root, settings).region)
+            return 0
+        summary = proj.generate(
+            repo_root, target, settings, migrate=args.migrate, dry_run=args.dry_run,
+        )
+    except proj.ProjectionRefused as err:
+        print(f"agents-md: refused — {err}", file=sys.stderr)
+        return 1
+    print(f"agents-md: {summary}")
     return 0
 
 
@@ -2820,7 +2655,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
                 "name": "dependencies",
                 "status": "advisory",
                 "summary": (
-                    f"br (beads-rust) not installed — required for the coding "
+                    f"br (beads-rust) not installed — required for the issue / governance "
                     f"loop; repair: {_dep.repair_command()}"
                 ),
                 "findings_count": 1,
@@ -2855,6 +2690,27 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             "summary": f"no dekspec content tree at {dekspec_dir}",
             "findings_count": 0,
         })
+
+    # Section: agents-md projection freshness (ADR-063, IB-138 O-6). The same
+    # read-only check as `dekspec aggregate agents-md --check`; doctor never
+    # regenerates. Only a configuration declaration can escalate past advisory.
+    try:
+        from .agents_projection import check as _agents_md_check
+
+        verdict = _agents_md_check(repo_root, args.dekspec_root)
+        status = verdict.doctor_status
+        if status != "skipped":
+            worst_severity = _worse(worst_severity, status)
+        sections.append({
+            "name": "agents-md",
+            "status": status,
+            "summary": f"{verdict.verdict}: {verdict.message}",
+            "verdict": verdict.verdict,
+            "findings_count": 0 if verdict.verdict in ("current", "inapplicable") else 1,
+        })
+    except Exception as e:
+        sections.append(_errored_section("agents-md", e))
+        worst_severity = _worse(worst_severity, "error")
 
     # Exit-code contract: clean/advisory → 0, warning → 1, critical → 2.
     # `error` (a section raised an unexpected exception / missing runtime
@@ -2939,6 +2795,7 @@ def _remedy_command(section_name: str) -> str:
         "graph parse": "audit linkage  # parse failures surface as LX-PARSE findings",
         "plugin version": "# sync the plugin: `claude plugin update dekspec@dekspec` (cross-platform; no bash required)",
         "dependencies": "dependencies install br",
+        "agents-md": "aggregate agents-md --check",
     }.get(section_name, "doctor --json")
 
 
@@ -3016,7 +2873,9 @@ def _add_validate_subparser(sub: argparse._SubParsersAction) -> None:
         help=(
             "Override filename-based kind inference. Useful when the artifact "
             "lives at a non-conventional path (e.g., a scratch copy in /tmp, "
-            "or when validating a Constitution at a non-`constitution.md` name)."
+            "or when validating a Constitution at a non-`constitution.md` name). "
+            "`contextspec` is retired (ADR-061) and always refused with migration "
+            "instructions."
         ),
     )
     p.add_argument(
@@ -3099,12 +2958,17 @@ def _add_resource_subparser(sub: argparse._SubParsersAction) -> None:
         ),
     )
     p.add_argument(
-        "kind", choices=["template", "doc", "lib"],
+        "kind", choices=["template", "doc", "lib", "role"],
         help="Kind of resource to resolve. `template` reads from "
         "templates/<name>.md; `doc` reads from docs/<name>.md (methodology + "
         "operating-guide family); `lib` reads from the shared skill substrate "
         "plugins/dekspec/skills/_lib/<name>.md — the channel DekTools skills "
-        "use to reach core's _lib across the plugin boundary (ADR-047).",
+        "use to reach core's _lib across the plugin boundary (ADR-047). "
+        "`role` prints the dispatch-ready role layer of an Agent Role "
+        "Specification (ADR-061) — `specifier`, `spec-reviewer`, `implementer`, "
+        "`code-reviewer`, `verifier`, `auditor`, or a retired `CS-NNN` id. Roles "
+        "are internal to DekSpec skills: always the installed library's own, "
+        "never a project file (`--at` does not apply).",
     )
     p.add_argument(
         "name",
@@ -3145,6 +3009,12 @@ def cmd_resource(args: argparse.Namespace) -> int:
     # Templates: strip a `-template` suffix the caller may have included so
     # both `intent` and `intent-template` resolve. The resolver normalizes
     # the `.md` suffix internally.
+    if args.kind == "role":
+        return _emit_role(name, path_only=args.path_only)
+    retired = _RETIRED_RESOURCES.get((args.kind, name.removesuffix(".md").removesuffix("-template")))
+    if retired:
+        print(f"error: {args.kind} {args.name!r} is retired: {retired}", file=sys.stderr)
+        return 1
     repo_root = Path(args.at).resolve() if args.at else Path.cwd()
     if args.kind == "template":
         if not name.endswith("-template"):
@@ -3169,6 +3039,36 @@ def cmd_resource(args: argparse.Namespace) -> int:
         except OSError as exc:
             print(f"error: failed to read {resolved}: {exc}", file=sys.stderr)
             return 1
+    return 0
+
+
+#: Resources a release retired → what replaces them (ADR-061).
+_RETIRED_RESOURCES: dict[tuple[str, str], str] = {
+    ("template", "context-spec"): "Context Specifications are retired (ADR-061); the six Agent Role "
+    "Specifications are library-supplied — read one with `dekspec resource role <role>`. Projects author none.",
+    ("lib", "reviewer_mode"): "the in-process spec-review dispatch is retired (ADR-061); use the spec-reviewer "
+    "dispatch in `dekspec resource lib agent_roles`.",
+}
+
+
+def _emit_role(name: str, *, path_only: bool) -> int:
+    """`dekspec resource role <id>` — the role layer skills place between their
+    governing policy and procedure (ADR-061, IC-019). Resolved only from the
+    installed library: a project cannot supply or override a role."""
+    from .roles import RoleDefinitionError, UnknownRoleError, load_role
+
+    try:
+        if path_only:
+            path = load_role(name).path  # validates: never print a path that cannot be used
+            print(str(path))
+            return 0
+        sys.stdout.write(load_role(name).block())
+    except UnknownRoleError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    except RoleDefinitionError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
     return 0
 
 
@@ -3299,8 +3199,9 @@ def _add_init_subparser(sub: argparse._SubParsersAction) -> None:
         help="Scaffold a new dekspec/ tree in the current repo.",
         description=(
             "Create the conventional dekspec subdirectories, empty index files, "
-            "and a starter AGENTS.md note. Idempotent — existing files are "
-            "preserved unless --force is passed."
+            "and, when none exists, an AGENTS.md with an empty DekSpec-owned region. "
+            "Idempotent — existing files are preserved unless --force is passed; an "
+            "existing AGENTS.md is never overwritten, even with --force."
         ),
     )
     p.add_argument(
@@ -3316,8 +3217,8 @@ def _add_init_subparser(sub: argparse._SubParsersAction) -> None:
         "--force",
         action="store_true",
         help=(
-            "Overwrite existing index files / AGENTS.md placeholder, AND "
-            "overwrite an existing `.dekspec/config.yaml`."
+            "Overwrite existing index files AND an existing `.dekspec/config.yaml`. "
+            "Never overwrites an existing AGENTS.md."
         ),
     )
     p.add_argument(
@@ -3420,7 +3321,7 @@ _INIT_SINGLETON_SYSTEM_VISION = """\
 
 ## Status
 
-TODO
+DRAFT
 
 ## Created
 
@@ -3505,7 +3406,7 @@ _INIT_SINGLETON_CONSTITUTION = """\
 
 ## Status
 
-TODO
+DRAFT
 
 ## Created
 
@@ -3550,21 +3451,18 @@ _Not yet authored — name the project's non-goal boundaries via `/write-constit
 _No amendments yet._
 """
 
+# The instruction file `dekspec init` creates when none exists: host text plus an
+# empty DekSpec-owned region, so the first `dekspec aggregate agents-md` fills
+# the region without a migration (ADR-063). An existing file is never touched.
 _INIT_AGENTS_PLACEHOLDER = """\
-<!--
-  AGENTS.md — placeholder authored by `dekspec init`.
-  Re-generate this file with `dekspec aggregate agents-md` once your
-  spec graph contains LOCKED or ACCEPTED artifacts.
--->
+# Agent instructions
 
-# AGENTS.md
+Guidance for AI agents working in this repository. Write your own instructions
+anywhere outside the DekSpec-owned region below: `dekspec aggregate agents-md`
+replaces only that region, from the specification sources, and keeps the rest.
 
-This file is the compiled context surface for AI agents working in this repo.
-It will be regenerated by `dekspec aggregate agents-md` after artifacts land.
-
-Until then, read the methodology via `dekspec resource doc operating-guide`
-(resolves from the wheel; falls back to `dekspec/dekspec-operating-guide.md`
-if your repo has vendored a customized copy).
+<!-- dekspec:agents-md begin -->
+<!-- dekspec:agents-md end -->
 """
 
 
@@ -3588,10 +3486,11 @@ _INIT_CLAUDE_MD_PLACEHOLDER = """\
 
 ## DekSpec Guardrails
 
-- **Provisional-first authoring.** NEW Intents (INT-NNN) and NEW Missions (MSN-NNN) ALWAYS start under `dekspec/provisional/<slug>/` via `dekspec repo cow-stage <slug>` (or by hand-creating the directory + `INT-provisional-<slug>.md` skeleton). Canonical IDs (INT-NNN / MSN-NNN) are allocated only at hand-promote time, not at draft time. Walk DRAFT → PROPOSED → ACCEPTED in provisional; promote via `dekspec.promote.plan_promotion(incubation_dir, dekspec_dir)` + `apply_promotion(steps, incubation_dir, repo_root)` Python helpers once the family is ACCEPTED. **Missions are exempt from the ACCEPTED requirement (ds-6s7k):** a Mission has no ACCEPTED status (its lifecycle is TODO → ACTIVE → COMPLETING → COMPLETE), so a provisional Mission promotes at its natural `TODO` frame state — do not block Mission promotion on an ACCEPTED it can never reach. This rule prevents collision on the canonical ID space when multiple authors draft concurrently and keeps the canonical tree free of half-baked drafts.
-- **No Specless Edits.** Before making any source-code edit that introduces new capability or modifies existing behavior, halt and check whether a DekSpec artifact (Intent, Mission, ADR, active Implementation Brief under `dekspec/`) should be authored or updated first. If yes, surface 1–3 context-aware artifact-action suggestions to the engineer; do not edit code until the spec context is established or explicitly deferred. Use `/dekspec:spec-mode --on` to toggle this guardrail on, `--off` to defer it for an exploratory session.
+- **Provisional-first authoring.** NEW Intents (INT-NNN) and NEW Missions (MSN-NNN) ALWAYS start under `dekspec/provisional/<slug>/` via `dekspec library cow-stage <slug>` (or by hand-creating the directory + `INT-provisional-<slug>.md` skeleton). Canonical IDs (INT-NNN / MSN-NNN) are allocated only at hand-promote time, not at draft time. Walk DRAFT → PROPOSED → ACCEPTED in provisional; promote via `dekspec.promote.plan_promotion(incubation_dir, dekspec_dir)` + `apply_promotion(steps, incubation_dir, repo_root)` Python helpers once the family is ACCEPTED. **Missions are exempt from the ACCEPTED requirement (ds-6s7k):** a Mission has no ACCEPTED status (its lifecycle is PROPOSED → ACTIVE → COMPLETE), so a provisional Mission promotes at its natural `PROPOSED` frame state — do not block Mission promotion on an ACCEPTED it can never reach. This rule prevents collision on the canonical ID space when multiple authors draft concurrently and keeps the canonical tree free of half-baked drafts.
+- **No Specless Edits.** Before making any source-code edit that introduces new capability or modifies existing behavior, halt and check whether a DekSpec artifact should be authored or updated first. A bounded change needs only an Implementation Brief (`dekspec ib new <slug>`) plus updates to the specs it actually affects; author an Intent, Mission, Working Spec or ADR only when it adds something distinct (ADR-056). If yes, surface 1–3 context-aware artifact-action suggestions to the engineer; do not edit code until the spec context is established or explicitly deferred. Use `/dekspec:spec-mode --on` to toggle this guardrail on, `--off` to defer it for an exploratory session.
 - **Library-side audit is the dogfood gate.** Run `dekspec audit doctor --at .` before any commit that touches `dekspec/` artifacts. CLEAN is the target; ADVISORY (P3-only findings) is tolerated for in-flight provisional work. P0 / P1 / P2 findings must be cleared before merge.
 - **LOCKED artifacts are immutable.** Never edit an artifact whose Status is `LOCKED`. Unlock to `PROPOSED` first via the `--unlock` flag on the artifact's authoring skill, then re-lock via `--lock` after the edit cycle.
+- **Execute IBs directly; complete on evidence.** There are no code beads. Pick up work with `dekspec ib ready`, get the IB's binding obligations from `dekspec ib context IB-NNN` (read anything else you need — it informs, it does not bind), investigate before `dekspec ib plan`, and let `dekspec ib verify` / `dekspec ib complete` decide completion. Never edit an IB's acceptance tests to make them pass; a wrong acceptance condition is an escalation (ADR-055 / ADR-057).
 
 ## Methodology reference
 
@@ -3712,9 +3611,9 @@ def _init_dep_precheck(
         if not do_install and not installed_ok:
             failures.append(
                 "  ✗ br (beads-rust) not found on PATH.\n"
-                "    DekSpec's coding loop and the T-BEAD-FAILURE-CLASS-VALID "
-                "audit rule are bead-aware end-to-end and read "
-                "`.beads/issues.jsonl`.\n"
+                "    DekSpec's issue and governance trackers (ADR-052 "
+                "`.beads-issues/`, `.beads-dekspec/`) and the project boards "
+                "run on it. (Construction no longer uses code beads — ADR-056.)\n"
                 "    Install it — user-scoped, no admin, all platforms "
                 "including native Windows:\n"
                 "      dekspec dependencies install br\n"
@@ -3789,9 +3688,10 @@ def cmd_init(args: argparse.Namespace) -> int:
         p.write_text(content, encoding="utf-8")
         created.append(f"file {p.relative_to(repo_root)}")
 
+    # The instruction file is never overwritten, with or without --force (ADR-063).
     agents = repo_root / "AGENTS.md"
-    if agents.exists() and not args.force:
-        skipped.append(f"file {agents.relative_to(repo_root)}")
+    if agents.exists() or agents.is_symlink():
+        skipped.append(f"file {agents.relative_to(repo_root)} (never overwritten)")
     else:
         agents.write_text(_INIT_AGENTS_PLACEHOLDER, encoding="utf-8")
         created.append(f"file {agents.relative_to(repo_root)}")
@@ -3818,13 +3718,14 @@ def cmd_init(args: argparse.Namespace) -> int:
         for line in created:
             print(f"  + {line}")
     if skipped:
-        print(f"\nSkipped ({len(skipped)}, already present; use --force to overwrite indexes/AGENTS.md):")
+        print(f"\nSkipped ({len(skipped)}, already present; use --force to overwrite indexes — AGENTS.md is never overwritten):")
         for line in skipped:
             print(f"  . {line}")
     next_steps = ["\nNext steps:"] + _init_install_guidance(repo_root) + [
         "  · Draft the L0 singletons: `/write-sv`, `/write-glossary`.",
         "  · Author your first ADR / AE / WS via the matching skill (e.g., `/write-adr`).",
-        "  · Run `dekspec aggregate agents-md` once you have LOCKED + ACCEPTED artifacts.",
+        "  · Run `dekspec aggregate agents-md` once you have LOCKED + ACCEPTED artifacts "
+        "(it fills AGENTS.md's DekSpec-owned region).",
     ]
     if config_warning is not None:
         next_steps.append(
@@ -5035,6 +4936,8 @@ def cmd_sync(args: argparse.Namespace) -> int:
         f"  vendored content: {report.files_written} written, "
         f"{report.files_unchanged} unchanged, {report.files_removed} removed."
     )
+    for kept in report.files_preserved:
+        print(f"  preserved (retired by the library, but modified locally — review, then delete): {kept}")
     if report.version_marker_written:
         print(f"  .dekspec-version: set to {target}.")
     print()
@@ -5264,7 +5167,7 @@ def _add_session_subparser(sub: argparse._SubParsersAction) -> None:
         description=(
             "The `dekspec session` verb family is the control-plane CLI for "
             "the MSN-002 session-lifecycle gate. Subcommands: `start` opens "
-            "a session bound to a bead or Intent ID; `end` closes it; "
+            "a session bound to an IB or Intent ID; `end` closes it; "
             "`status` inspects it (with `--machine-readable` for hook code); "
             "`install-hooks` writes the git-hook gate templates (INT-010 "
             "lands the install behaviour)."
@@ -5276,7 +5179,7 @@ def _add_session_subparser(sub: argparse._SubParsersAction) -> None:
 
     p_start = session_sub.add_parser(
         "start",
-        help="Open a new session bound to a bead or Intent ID.",
+        help="Open a new session bound to an IB or Intent ID (an IB binding enforces its scope at commit).",
         description=(
             "Opens a new session at $XDG_STATE_HOME/dekspec/<repo-hash>/"
             "session.json. The <id> argument is routed by the data plane: "
@@ -5286,7 +5189,7 @@ def _add_session_subparser(sub: argparse._SubParsersAction) -> None:
     )
     p_start.add_argument(
         "id",
-        help="Bead id (e.g. ds-int-009-foo-abc) or Intent id (e.g. INT-009).",
+        help="IB id (e.g. IB-201 — commits are checked against its Scope and Protected Surfaces) or Intent id (e.g. INT-009). A legacy code-bead id resolves to the Intent that lists it.",
     )
     p_start.add_argument(
         "--branch",
@@ -5350,13 +5253,15 @@ def _add_session_subparser(sub: argparse._SubParsersAction) -> None:
 
     p_vibe = session_sub.add_parser(
         "vibecoding-check",
-        help="Classify staged files against the claimed Intent's Components affected.",
+        help="Classify staged files against the session's IB scope (or Intent components); exit 3 on drift.",
         description=(
-            "Classify staged files against the claimed Intent's Components "
-            "affected; exit 3 on off-spec drift (MSN-009). Resolves the active "
-            "session to its parent Intent, reads that Intent's `Components "
-            "affected` globs, and reports which staged files fall outside that "
-            "scope by exact glob match. Exit 0 when every staged file is "
+            "Classify staged files against the bound work's scope; exit 3 on "
+            "off-spec drift (MSN-009). A session bound to an IB (ADR-055/056) "
+            "checks the IB's Scope and Protected Surfaces — a protected surface "
+            "is off-spec even inside an allowed glob; execution records, tracker "
+            "records and the IB's own contract files are always admitted. A "
+            "session bound to an Intent reads its `Components affected` globs. "
+            "Exit 0 when every staged file is "
             "in-scope (or there is nothing to check); exit 3 when at least one "
             "file is off-spec. With --machine-readable, emits a stable JSON "
             "envelope. With --record, additionally appends an off-spec record "
@@ -6124,7 +6029,7 @@ def _add_archeology_subparser(sub: argparse._SubParsersAction) -> None:
         "archeology",
         help="Brownfield spec-gap archeology — find code no LOCKED Intent claims.",
         description=(
-            "The deterministic substrate behind the /dekspec:archeology skill. "
+            "The deterministic substrate behind the /recover-specs DekTools tool. "
             "The `coverage` verb walks the repo, collects every LOCKED Intent's "
             "Components-affected glob set, and reports the files no Intent "
             "claims — the spec-orphaned surfaces a brownfield-recovery workflow "
@@ -6148,6 +6053,11 @@ def _add_archeology_subparser(sub: argparse._SubParsersAction) -> None:
         help="Emit the gap report as a JSON array instead of a Markdown table.",
     )
     p_cov.set_defaults(func=cmd_archeology_coverage)
+    from .toolkit_cli import scan_command
+    p_scan = arch_sub.add_parser("scan", help="Inspect Python API/state and static import callers.")
+    p_scan.add_argument("target")
+    p_scan.add_argument("--at", default=".")
+    p_scan.set_defaults(func=scan_command)
 
     p.set_defaults(func=lambda _args: (p.print_help() or 0))
 
@@ -6578,11 +6488,11 @@ def _render_provisional_skeleton(
             f"# Mission {prov_id}: {title}\n\n"
             f"{banner}\n\n"
             f"**Mission ID:** {prov_id}\n"
-            f"**Status:** TODO\n"
+            f"**Status:** PROPOSED\n"
             f"**Owner:** TODO\n"
             f"**Created:** {today}\n"
             f"**Modified:** {today}\n"
-            f"**Autonomy ceiling:** manual\n\n"
+            f"**Autonomy ceiling:** medium\n\n"
             f"## Near-immutable section\n\n"
             f"### Outcome\n\n_TODO: what is true after this Mission completes._\n\n"
             f"{amendment_log}"
@@ -6812,6 +6722,15 @@ def _add_install_subparser(sub) -> None:
             "config key, not from this flag; nothing is emitted when it is unset."
         ),
     )
+    p.add_argument(
+        "--dektools-only",
+        action="store_true",
+        help=(
+            "Emit only the selected DekTools tools and their support files — no "
+            "core tree and no setup copy. For a host whose plugin system already "
+            "delivers core and setup (ADR-060)."
+        ),
+    )
     p.set_defaults(func=cmd_install)
 
 
@@ -6827,6 +6746,8 @@ def cmd_install(args: argparse.Namespace) -> int:
     # Namespace, which predates this flag.
     override = getattr(args, "dektools_source", None)
     dektools_source = Path(override) if override else source_dir.parent / "dektools"
+    if not override and not dektools_source.is_dir():
+        dektools_source = source_dir / "dektools"
     dektools_tools = dekspec_config.enabled_dektools_tools(target_dir)
     try:
         result = platform_install.emit(
@@ -6835,6 +6756,7 @@ def cmd_install(args: argparse.Namespace) -> int:
             target_dir=target_dir,
             dektools_source=dektools_source,
             dektools_tools=dektools_tools,
+            dektools_only=getattr(args, "dektools_only", False),
         )
     except HarnessUnsupported as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -6849,6 +6771,15 @@ def cmd_install(args: argparse.Namespace) -> int:
         except ValueError:
             shown = path
         print(f"  {shown}")
+    for label, paths in (("removed (retired by the library)", result.removed),
+                         ("kept (retired by the library, but modified locally — review, then delete)",
+                          result.preserved)):
+        for path in paths:
+            try:
+                shown = path.relative_to(target_dir)
+            except ValueError:
+                shown = path
+            print(f"  {label}: {shown}")
     # Honesty guard: for non-claude hosts the skill/command/hook tree is copied
     # from the plugin source. A pip/pipx-installed engine does not carry that
     # source (the plugin is not bundled in the wheel), so only the host marker
