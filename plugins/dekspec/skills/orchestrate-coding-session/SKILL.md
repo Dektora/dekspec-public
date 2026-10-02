@@ -2,13 +2,14 @@
 name: orchestrate-coding-session
 description: Execute accepted Implementation Briefs directly — select ready IBs, dispatch each to a fresh-context sub-agent whose prompt is built from `dekspec ib context`, drive counted attempts to recorded evidence, verify the delivery head, and hand off to review and landing.
 mode: lite
-model: claude-opus-4-7
 reasoning_effort: high
 disable-model-invocation: true
 allowed-tools: Read Bash Agent
 argument-hint: [<IB-NNN> | <INT-NNN> | --confirm-dispatch | --dry-run | --help] [optional engineer guidance]
 related_skills: [write-ibs, write-tests, write-evals, implement, review-pr, land-intent]
 ---
+
+**Model inheritance.** Inherit the engineer's selected host model for authoring, implementation, review and mechanical work alike. DekSpec must not select a concrete model, choose a capability tier or silently substitute a model for a role. Independent review requires separate identities and contexts; it need not use a different model. If host configuration prevents inheritance or the selected model is unavailable, surface the capability/policy conflict without selecting a substitute.
 
 Execute accepted IBs directly (ADR-056): no code beads, no bead claiming. This is the construction phase on its own; to carry ready work all the way through review, integration and completion without further prompts, use `/dekspec:implement` (ADR-059). Its driver renders builder and reviewer prompts in core from the same `dekspec ib context` packet this skill pastes, so both paths hand workers one contract. The IB is the work contract, its execution record (`.dekspec/execution/<IB>/`) holds ownership, plan, attempts, deviations, blockers and evidence, and `dekspec ib …` is the only interface to it. This skill runs the work and produces evidence; it never records a review verdict and never completes an IB.
 
@@ -187,7 +188,7 @@ FOLLOW-UPS: <out-of-scope discoveries, or none>
 
 - **VERIFIED** — merge the builder's branch into the delivery branch (`git merge <branch> --no-edit`). Never auto-resolve a conflict in a file two IBs touched, in an execution record, or in an acceptance asset. Abort that merge (`git merge --abort`) and surface it. Accepting the incoming side is safe only for files no other IB in the session touched.
 - **BLOCKED** — `dekspec ib status IB-NNN` shows the blocker. Surface it with its route. A scope expansion or obligation change needs an IB amendment (`/dekspec:write-ibs`). An invalid acceptance condition needs `dekspec ib amend --reviewer … --reason …` by an independent reviewer. An exhausted, stalled or no-progress run needs an operator decision (`dekspec ib unblock --decision …`). Never unblock, amend or re-dispatch past a blocker on your own.
-- Record out-of-scope discoveries as follow-ups for the operator (`/project-board`, an optional DekTools tool, if they want them tracked). Do not widen any IB to absorb them.
+- Record out-of-scope discoveries as follow-ups for the operator (name `/dekspec:project-board` to them if they want them tracked). Do not widen any IB to absorb them.
 
 Then re-run `dekspec ib ready` and offer another round for newly ready IBs.
 

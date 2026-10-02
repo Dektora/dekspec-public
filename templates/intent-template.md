@@ -139,7 +139,7 @@ The risk tier is **complementary** to Autonomy and Intent type: type classifies 
 
 ### `bug` — Reproduction
 
-[A deterministic, agent-runnable PASS/FAIL repro signal — ideally the one `/debug` (an optional DekTools tool) built while diagnosing (a single shell command whose exit code *is* the signal). Required for `type: bug` *unless* a `### bug — Non-Reproducible Waiver` is supplied instead. One child IB's acceptance names the failing test that proves this Reproduction — the Intent's ADR-029 Outcome Verification test (red-first); the Verification predicate's `bug-reproduction-fixed` check runs that test. The `T-BUG-REPRO-GATE` audit rule fires a P3 advisory on a `≥ACCEPTED` bug Intent that has neither this section nor the waiver below.]
+[A deterministic, agent-runnable PASS/FAIL repro signal — ideally the one `/dekspec:debug` built while diagnosing (a single shell command whose exit code *is* the signal). Required for `type: bug` *unless* a `### bug — Non-Reproducible Waiver` is supplied instead. One child IB's acceptance names the failing test that proves this Reproduction — the Intent's ADR-029 Outcome Verification test (red-first); the Verification predicate's `bug-reproduction-fixed` check runs that test. The `T-BUG-REPRO-GATE` audit rule fires a P3 advisory on a `≥ACCEPTED` bug Intent that has neither this section nor the waiver below.]
 
 ### `bug` — Non-Reproducible Waiver
 

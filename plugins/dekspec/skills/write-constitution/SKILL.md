@@ -2,7 +2,6 @@
 name: write-constitution
 description: Write, audit, review, revise, resync, accept, or dry-run the project's Constitution — the L0 singleton that names a project's non-negotiable operational commitments across eight articles (Project Identity, Technology Stack, Quality Standards, Architecture Principles, Development Workflow, Model Configuration, Boundaries, Amendments). Mode catalog mirrors /write-evals.
 mode: lite
-model: claude-opus-4-7
 reasoning_effort: max
 disable-model-invocation: false
 allowed-tools: Read Write Edit Grep Glob Bash Agent

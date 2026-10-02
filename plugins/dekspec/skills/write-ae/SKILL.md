@@ -2,7 +2,6 @@
 name: write-ae
 description: Create an Architecture Element (AE) for a coherent architectural slice — system, subsystem, container, component, pipeline, data model, cross-cutting concern, platform concern, interface surface, or workflow/process. Use when a key component or cross-cutting behavior needs a vision-level Layer-1 document before working specs are written. Replaced the legacy `write-design-note` skill (DN→AE migration 2026-04-27); the legacy alias was removed 2026-05-09.
 mode: lite
-model: claude-opus-4-7
 reasoning_effort: max
 disable-model-invocation: false
 allowed-tools: Read Write Edit Grep Glob Bash Agent
@@ -59,9 +58,7 @@ See [`_lib/mode_detection_template.md`](../_lib/mode_detection_template.md) for 
 
 ## Interview Rigor (default-on)
 
-This skill **optionally composes the [`interview-me`](../../../dektools/tools/interview-me/SKILL.md) tool** (INT-167 / D13), which ships in the **DekTools** plugin (ADR-047) — it does not re-author the interview prose, and there is no `--grill` flag. When the engineer's input is fuzzy or underspecified and the tool is available, invoke `/interview-me <AE-NNN | description>` so the engineer is interviewed one decision-tree question at a time, with a recommended answer per question, repo-exploration for discoverable answers, glossary + governing ADR/AE citation with conflict-flagging, fuzzy-term sharpening, and scenario-based stress-testing of asserted relationships.
-
-**Degrade gracefully when it is absent.** DekTools may not be installed, or `interview-me` may not be enabled in its à-la-carte selection. Core is self-sufficient by design (ADR-047), so this is a supported configuration, not an error: fall back to asking the engineer the same decisions inline, one at a time, and continue. Never block authoring on a toolkit tool, and never report its absence as a failure.
+This skill **composes the [`interview-me`](../interview-me/SKILL.md) skill** (INT-167 / D13), which ships beside it in this plugin (ADR-064) — it does not re-author the interview prose, and there is no `--grill` flag. When the engineer's input is fuzzy or underspecified, invoke it through the Skill tool (`/dekspec:interview-me <AE-NNN | description>`) so the engineer is interviewed one decision-tree question at a time, with a recommended answer per question, repo-exploration for discoverable answers, glossary + governing ADR/AE citation with conflict-flagging, fuzzy-term sharpening, and scenario-based stress-testing of asserted relationships.
 
 **Trigger (pinned, INT-167 Open Issues):**
 

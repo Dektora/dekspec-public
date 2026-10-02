@@ -2,7 +2,6 @@
 name: write-evals
 description: Write, audit, review, or revise the probabilistic evals an IB's acceptance conditions call for — each eval a `verify: command:` condition whose command enforces its own threshold, its files protected acceptance assets. Must run BEFORE the IB's execution starts.
 mode: lite
-model: claude-opus-4-7
 reasoning_effort: high
 disable-model-invocation: false
 allowed-tools: Read Write Edit Bash

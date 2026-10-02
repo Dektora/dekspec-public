@@ -454,13 +454,23 @@ def write_advisory_report(
     deleted file) — explicit "nothing to do" is clearer than absence.
     """
     target = advisory_report_path(repo_root, dekspec_root)
-    target.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "library_from_version": report.library_from_version,
         "library_to_version": report.library_to_version,
         "generated_at": _now_iso8601(),
         "advisories": [a.to_dict() for a in report.advisories],
     }
+    # Idempotent: a report identical to the one on disk but for its
+    # timestamp is left as it is, so a repeated run changes no file.
+    try:
+        existing = json.loads(target.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        existing = None
+    if isinstance(existing, dict) and {
+        k: v for k, v in existing.items() if k != "generated_at"
+    } == {k: v for k, v in payload.items() if k != "generated_at"}:
+        return target
+    target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     return target
 

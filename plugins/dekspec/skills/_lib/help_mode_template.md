@@ -164,5 +164,5 @@ This substrate's contract should be revisited if:
 - INT-008-multi-mode-skills-dispatcher.md — parent Intent for the multi-mode refactor.
 - AE-006 Skills Library — the AE this substrate lives within.
 
-Optional DekTools skills declaring `interaction: natural-language` use a concise
+Operator tools declaring `interaction: natural-language` use a concise
 Help section instead of this flag/mode manifest. Their helpers still provide CLI help.

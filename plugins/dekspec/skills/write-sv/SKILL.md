@@ -2,7 +2,6 @@
 name: write-sv
 description: Author, review, audit, accept, lock, or deprecate the System Vision (`SYSTEM-VISION`, singleton at `dekspec/system-vision.md`). The System Vision is the L0 root document that defines what this system IS, what it is NOT, who it serves, and why it exists. Every Architecture Element, ADR, Working Spec, and Mission ultimately derives from it. Authored once per system; revised by `--unlock` + edit + `--lock` only when the system's identity itself shifts.
 mode: lite
-model: claude-opus-4-7
 reasoning_effort: max
 disable-model-invocation: false
 allowed-tools: Read Write Edit Grep Glob Bash Agent

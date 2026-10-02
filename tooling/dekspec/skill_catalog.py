@@ -14,11 +14,12 @@ Public API:
 - :data:`SKILLS_SUBDIR` — the repo-relative skills directory.
 - :class:`SkillCatalogError` — raised on a malformed / missing ``SKILL.md``.
 - :class:`SkillEntry` — one parsed skill (``name``, ``mode``, ``path``).
-- :func:`skills_root(repo_root)` — the core ``plugins/dekspec/skills`` directory.
-- :func:`skills_roots(repo_root)` — every plugin's skills directory (ADR-047).
+- :func:`skills_root(repo_root)` — the ``plugins/dekspec/skills`` directory.
+- :func:`skills_roots(repo_root)` — the skills directories that exist (ADR-064:
+  one plugin, so at most one).
 - :func:`load_catalog(repo_root)` — parse every ``SKILL.md`` into entries.
-- :func:`discover_skills(repo_root)` — the default-discovery
-  list, narrowed per the active (or supplied) profile.
+- :func:`discover_skills(repo_root)` — the default-discovery list: every
+  skill, unfiltered (the same entries as :func:`load_catalog`).
 - :func:`resolve_skill(repo_root, name)` — resolve one skill by name,
   profile-blind (the ``--help`` / explicit-invocation escape hatch).
 - :func:`is_resolvable(repo_root, name)` — whether a skill resolves at all.
@@ -46,12 +47,10 @@ __all__ = [
 # skills moved under the Claude Code plugin marketplace layout).
 SKILLS_SUBDIR = Path("plugins") / "dekspec" / "skills"
 
-#: Every shipped plugin that delivers skills. ADR-047 split the surface into
-#: core (`dekspec`) and toolkit (`dektools`); the catalog is the union, because
-#: a consumer enumerating skills wants what is installed, not what happens to
-#: live in one plugin. Order is core-first so a name present in both resolves
-#: to the core copy.
-SKILL_PLUGIN_NAMES: tuple[str, ...] = ("dekspec", "dektools")
+#: Every shipped plugin that delivers skills. ADR-064 folded the operator
+#: tools into the `dekspec` plugin, so every skill — lifecycle skill or helper
+#: tool — lives at ``plugins/dekspec/skills/<name>/``.
+SKILL_PLUGIN_NAMES: tuple[str, ...] = ("dekspec",)
 
 # The valid `mode:` frontmatter values.
 SKILL_MODES: tuple[str, ...] = ("lite", "full")
@@ -71,21 +70,14 @@ class SkillEntry:
 
 
 def skills_root(repo_root: str | Path) -> Path:
-    """Return the ``<repo_root>/plugins/dekspec/skills`` directory path.
-
-    Core only. Use :func:`skills_roots` for the full set across plugins.
-    """
+    """Return the ``<repo_root>/plugins/dekspec/skills`` directory path."""
     return Path(repo_root) / SKILLS_SUBDIR
 
 
 def skills_roots(repo_root: str | Path) -> list[Path]:
-    """Return every plugin skills directory that exists, core first."""
+    """Return every plugin skills directory that exists."""
     base = Path(repo_root) / "plugins"
-    return [
-        d
-        for d in [*(base / name / "skills" for name in SKILL_PLUGIN_NAMES), base / "dektools" / "tools"]
-        if d.is_dir()
-    ]
+    return [d for d in (base / name / "skills" for name in SKILL_PLUGIN_NAMES) if d.is_dir()]
 
 
 def _parse_frontmatter(skill_md: Path) -> dict:
@@ -163,21 +155,19 @@ def load_catalog(repo_root: str | Path) -> list[SkillEntry]:
         for skill_md in sorted(root.glob("*/SKILL.md")):
             entry = _entry_from_skill_md(skill_md)
             if entry.name in seen:
-                continue  # core wins on a cross-plugin name collision
+                continue  # first root wins on a name collision
             seen.add(entry.name)
             entries.append(entry)
     return sorted(entries, key=lambda e: e.name)
 
 
 def discover_skills(repo_root: str | Path) -> list[SkillEntry]:
-    """Return core/bootstrap plus the configured optional toolkit selection.
+    """Return every skill the plugin ships — the full catalog, unfiltered.
 
-    load_catalog enumerates the full distribution for validation and discovery help.
+    Nothing narrows discovery: one lane at full rigor (ADR-050), and every
+    tool ships with the plugin (ADR-064), so this is :func:`load_catalog`.
     """
-    from .dekspec_config import enabled_dektools_tools
-    enabled = set(enabled_dektools_tools(repo_root))
-    return [entry for entry in load_catalog(repo_root)
-            if entry.path.parent.parent.name != "tools" or entry.name in enabled]
+    return load_catalog(repo_root)
 
 
 def resolve_skill(repo_root: str | Path, name: str) -> Optional[SkillEntry]:

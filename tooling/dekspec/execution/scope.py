@@ -9,7 +9,7 @@ Precedence, strongest first:
    (``br`` workspaces), generated spec indexes, the delivery's own IB files
    and acceptance assets, status-only edits of governed specs, and
    ``.dekspec/config.yaml`` changes confined to workflow sections
-   (``integration.base``, ``dektools.enabled``). (The old diff-confinement
+   (``integration.base``). (The old diff-confinement
    admit-set exempted all of ``dekspec/**``; a governing-spec edit is now an
    explicit, in-scope change instead.)
 3. **Allowed scope** — delegated IBs: ``§Scope`` globs, so a new helper file
@@ -499,23 +499,16 @@ def _same_as(repo_root: Path, commit: str | None, path: str, spec_root: str = "d
     return False
 
 
-#: `.dekspec/config.yaml` settings that configure the workflow around an IB —
-#: which branch its delivery integrates into, which optional tools are enabled —
-#: not what its verification or integration gates mean. Every other setting
-#: (`execution:`, and the rest of `integration:` — method, push, the worktree
-#: setup command) stays judged as the IB's own change.
+#: The `.dekspec/config.yaml` setting that configures the workflow around an IB —
+#: which branch its delivery integrates into — not what its verification or
+#: integration gates mean. Every other setting (`execution:`, the rest of
+#: `integration:` — method, push, the worktree setup command — and any other
+#: key) stays judged as the IB's own change.
 _CONFIG_PATH = ".dekspec/config.yaml"
 
 
 def _workflow_view(config: dict) -> dict:
     view = dict(config)
-    toolkit = view.get("dektools")
-    if isinstance(toolkit, dict):
-        toolkit = {k: v for k, v in toolkit.items() if k != "enabled"}
-        if toolkit:
-            view["dektools"] = toolkit
-        else:
-            view.pop("dektools")
     integration = view.get("integration")
     if isinstance(integration, dict):
         integration = {k: v for k, v in integration.items() if k != "base"}

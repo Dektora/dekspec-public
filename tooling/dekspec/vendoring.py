@@ -249,10 +249,9 @@ def resolve_lib(name: str, repo_root: Path | None = None) -> Path | None:
     """Resolve a shared skill-``_lib`` asset by name (e.g. ``fan_out``,
     ``help_mode_template.md``).
 
-    ``_lib`` is the substrate every authoring skill leans on, and per ADR-047
-    it **stays in core** while the DekTools toolkit reuses it. Once the two
-    live in separate plugins a relative ``../_lib/`` link no longer resolves,
-    so toolkit skills reach it through this resolver instead of a path.
+    ``_lib`` is the substrate every skill shares. Most skills reach it through
+    a relative ``../_lib/`` link; a caller that cannot rely on a relative link
+    resolves it by name through this resolver instead.
 
     Resolution order mirrors :func:`resolve_doc`:
 

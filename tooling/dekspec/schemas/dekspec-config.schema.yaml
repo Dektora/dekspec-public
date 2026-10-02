@@ -112,21 +112,17 @@ properties:
 
   dektools:
     description: >-
-      DekTools à-la-carte selection (ADR-047). DekTools installs
-      all-or-nothing at the harness level, so the plugin manages tool
-      selection itself: this key is the persisted per-installation
-      enabled-set, and it travels with the repo. Optional and empty by
-      default — ADR-047 forces nothing on. Removing a name disables that
-      tool's surface; it never deletes user data.
+      Retired by ADR-064: every tool now ships with the dekspec plugin, so
+      there is no tool selection. Accepted for one release so that an older
+      config still validates; `dekspec install` ignores it and prints a
+      notice. The key can be removed.
     type: object
     additionalProperties: false
     properties:
       enabled:
         description: >-
-          Tool names active in this repo. Every name must appear in
-          `plugins/dektools/tool-catalog.json`; unknown names are rejected
-          at write time when the catalog is resolvable. `dekspec install
-          --platform <host>` emits exactly this subset.
+          The retired per-repo tool selection. Accepted for one release and
+          ignored; nothing reads or writes it.
         type: array
         uniqueItems: true
         items:

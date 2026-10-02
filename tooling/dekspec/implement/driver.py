@@ -84,7 +84,6 @@ __all__ = ["DRIVER", "ack", "find_deliveries", "next_step", "status"]
 
 DRIVER = "implement-driver"
 MAX_STRATEGIES = 2
-MAX_REVIEW_FAILURES = 3
 #: Reviewer dispatches in a row that returned without recording a verdict
 #: before the run stops with a blocker instead of dispatching another.
 MAX_SILENT_REVIEWS = 3
@@ -495,6 +494,82 @@ def _attestation_current(eng: Engine, intent: str) -> bool:
     return all(ch.ok for ch in gate.checks if ch.name == "manual-verification-attested")
 
 
+def _change_strategy(ctx: _Ctx, v: _IB, detail: str) -> bool:
+    """Share the two-change budget across construction and review recovery.
+
+    Review can exhaust attempts even though deterministic checks passed. Raise
+    that exhaustion through the engine before granting its existing allowance;
+    never clear another kind of blocker or reset any consumed attempts.
+    """
+    used = ctx.view.strategies.get(v.id, 0)
+    if used >= MAX_STRATEGIES or any(b.get("reason") not in _RECOVERABLE_BLOCKERS for b in v.st.blockers):
+        return False
+    approach = (
+        "Reproduce the failing condition or review finding at its public boundary. Trace the "
+        "observed behavior back to the violated obligation, compare it with the previous diagnosis, "
+        "and repair the demonstrated root cause within Scope instead of repeating the earlier patch."
+        if used == 0 else
+        "Reassess the implementation hypothesis using the accumulated failures and review findings. "
+        "Identify the shared assumption the earlier repairs left intact; choose a different in-scope "
+        "implementation approach that removes it, and verify it against all affected obligations. "
+        "If that requires changing the contract or Scope, record a blocker instead."
+    )
+    note = f"Strategy change {used + 1} of {MAX_STRATEGIES}: {detail}. {approach}"
+    if not v.st.blockers:
+        ctx.engine.block(v.id, DRIVER, "attempts-exhausted", detail)
+    ctx.engine.unblock(v.id, DRIVER, f"implement driver: {note}", extra_attempts=2)
+    ctx.engine.record(ctx.d.run_id).append("strategy.changed", DRIVER, {"ib": v.id, "note": note})
+    _commit(ctx.d.path, f"implement({ctx.d.slug}): strategy change for {v.id}")
+    ctx.view = _view(ctx.engine, ctx.d.run_id)
+    return True
+
+
+def _reconcile_review_blocker(ctx: _Ctx, v: _IB) -> None:
+    """Resolve silence on a verdict, non-convergence only on a validated PASS."""
+    key = f"review:{v.id}"
+    blocker = ctx.view.blockers.get(key)
+    if not blocker:
+        return
+    if blocker.get("kind") == "review-not-recorded":
+        if len(v.st.verdicts) > blocker.get("verdicts", 0):
+            last = v.st.verdicts[-1][1]
+            if last.get("reviewer") not in v.st.builder_identities \
+                    and not verdict_policy_problem(CODE_REVIEWER_ROLE, last):
+                _clear(ctx, key)
+    elif blocker.get("kind") == "review-not-converging":
+        gate = ctx.engine.evaluate_completion(v.id, readonly=True, base=ctx.base_ref)
+        checks = {ch.name: ch.ok for ch in gate.checks}
+        if all(checks.get(name) for name in ("independent-review", "evidence-current", "acceptance-passed")):
+            _clear(ctx, key)
+
+
+def _repair_review(ctx: _Ctx, v: _IB) -> dict[str, Any] | None:
+    """Offer a counted repair for a current FAIL, or record why none remains.
+
+    Reopening, allowance and strategy decisions belong together: a builder must
+    receive active work with a real remaining opportunity, never a completion or
+    a dispatch that exists only to discover exhaustion.
+    """
+    notes = v.st.verdicts[-1][1].get("notes", "")
+    if v.st.completions:
+        problem = _reopen_for_repair(ctx, v.id, f"independent re-review failed: {notes}")
+        if problem:
+            _block(ctx, f"review:{v.id}", "cannot-reopen", f"{v.id}'s re-review failed — {problem}")
+            return None
+        _commit(ctx.d.path, f"implement({ctx.d.slug}): reopen {v.id} to repair its failed re-review")
+        v = _ib(ctx, v.id)
+    allowed = ctx.engine.settings.max_attempts + v.st.extra_attempts
+    if v.st.attempts_used >= allowed:
+        detail = (f"{v.id} used {v.st.attempts_used} of {allowed} attempts and still fails "
+                  f"independent review; last findings: {notes}")
+        if not _change_strategy(ctx, v, detail):
+            _block(ctx, f"review:{v.id}", "review-not-converging",
+                   f"{detail}; exhausted {MAX_STRATEGIES} strategy changes")
+            return None
+        v = _ib(ctx, v.id)
+    return _dispatch_builder(ctx, v, task="repair")
+
+
 def _silent_reviews(ctx: _Ctx, v: _IB) -> int:
     return _silent(ctx, f"review:{v.id}", len(v.st.verdicts))
 
@@ -631,15 +706,7 @@ def _advance(ctx: _Ctx) -> dict[str, Any]:  # noqa: C901 — one decision table,
                     _block(ctx, f"prereq:{ib}", "prerequisite-unavailable", str(exc))
                 _commit(d.path, f"implement({d.slug}): re-probe {ib}")
             elif v.phase == "stuck":
-                used = ctx.view.strategies.get(ib, 0)
-                if used < MAX_STRATEGIES:
-                    note = (f"Strategy change {used + 1} of {MAX_STRATEGIES}: the previous attempts did not converge "
-                            f"({v.detail}). Do not repeat them. Re-investigate the failing condition from scratch, "
-                            "question the implementation hypothesis and your earlier diagnosis, and try a "
-                            "materially different approach within Scope.")
-                    eng.unblock(ib, DRIVER, f"implement driver: {note}", extra_attempts=2)
-                    eng.record(d.run_id).append("strategy.changed", DRIVER, {"ib": ib, "note": note})
-                    _commit(d.path, f"implement({d.slug}): strategy change for {ib}")
+                if _change_strategy(ctx, v, v.detail):
                     progressed = True
                 else:
                     _block(ctx, f"converge:{ib}", "no-convergence",
@@ -774,29 +841,17 @@ def _advance(ctx: _Ctx) -> dict[str, Any]:  # noqa: C901 — one decision table,
         # -- reviews ---------------------------------------------------------------------
         for ib in ctx.ibs:
             v = views[ib]
-            quiet = ctx.view.blockers.get(f"review:{ib}")
-            if quiet and quiet.get("kind") == "review-not-recorded" and len(v.st.verdicts) > quiet.get("verdicts", 0):
-                _clear(ctx, f"review:{ib}")  # a verdict was recorded since: the review can go on
+            _reconcile_review_blocker(ctx, v)
             if v.phase != "review":
                 continue
             verdicts = v.st.verdicts
             last = verdicts[-1][1] if verdicts else None
             if last and last.get("verdict") == "fail" and last.get("fingerprint") == fp \
                     and not verdict_policy_problem(CODE_REVIEWER_ROLE, last):
-                fails = sum(1 for _s, p in verdicts if p.get("verdict") == "fail"
-                            and not verdict_policy_problem(CODE_REVIEWER_ROLE, p))
-                if fails >= MAX_REVIEW_FAILURES:
-                    _block(ctx, f"review:{ib}", "review-not-converging",
-                           f"{ib} failed independent review {fails} times; last findings: {last.get('notes', '')}")
-                    continue
-                if v.st.completions:
-                    problem = _reopen_for_repair(ctx, ib, f"independent re-review failed: {last.get('notes', '')}")
-                    if problem:
-                        _block(ctx, f"review:{ib}", "cannot-reopen", f"{ib}'s re-review failed — {problem}")
-                        continue
-                    _commit(d.path, f"implement({d.slug}): reopen {ib} to repair its failed re-review")
-                    v = _ib(ctx, ib)
-                return _dispatch_builder(ctx, v, task="repair")
+                repair = _repair_review(ctx, v)
+                if repair is not None:
+                    return repair
+                continue
             silent = _silent_reviews(ctx, v)
             if silent >= MAX_SILENT_REVIEWS:
                 _block(ctx, f"review:{ib}", "review-not-recorded",

@@ -1,7 +1,7 @@
 """Archeology — the brownfield spec-gap-detection substrate.
 
-The deterministic Python engine behind the `/recover-specs` DekTools tool and
-the `dekspec archeology coverage` CLI verb (INT-030 / IB-118). It is the
+The deterministic Python engine behind the `recover-specs` skill and the
+`dekspec archeology coverage` CLI verb (INT-030 / IB-118). It is the
 first *recovery-flow* substrate in the library: where the authoring skills
 assume a greenfield drafting context, archeology starts from existing code
 and works back toward a ratifiable Intent.

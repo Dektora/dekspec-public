@@ -63,7 +63,7 @@ When the mantra changes (rare; treated as a Constitution amendment), the table i
 ## The Workflow
 
 ```
-                                    Research (optional DekTools tool)
+                                    Research (helper skill)
   → /recover-specs                  reverse-engineer existing code before specifying
                                     ─────────────────────────────────
                                     Framing (optional — only when it adds something, ADR-056)
@@ -138,8 +138,8 @@ A moved base is merged in (conflicts go to a resolver) and everything re-verifie
 
 **Auxiliary skills** (outside the main pipeline):
 
-- `/recover-specs` — brownfield spec-gap recovery: scan an orphaned code surface, propose a retroactive Intent skeleton, and ratify it through `/write-intent --accept`. An optional DekTools tool (ADR-047).
-- `/ingest-docs` — classify inherited markdown prose (Confluence exports, inherited PRDs, design wikis) into DekSpec artifact slots via `dekspec ingest`. An optional DekTools tool.
+- `/recover-specs` — brownfield spec-gap recovery: scan an orphaned code surface, propose a retroactive Intent skeleton, and ratify it through `/write-intent --accept`. `/write-intent --analyze` composes it for bottom-up archaeology.
+- `/ingest-docs` — classify inherited markdown prose (Confluence exports, inherited PRDs, design wikis) into DekSpec artifact slots via `dekspec ingest`. A helper tool the operator starts as a slash command.
 - `/write-glossary` — extract term candidates and add terms to the domain glossary.
 - `/write-corrections` — log domain corrections, track recurrences, promote at threshold.
 
@@ -417,7 +417,7 @@ Both fields are required, single-purpose, and neither subsumes the other. An Int
 The `/write-intent` skill owns the authoring side of the Intent lifecycle:
 
 - **(no flag)** — Creation Mode. Author a new Intent from the engineer's description (provisional by default, ADR-030); populate Autonomy `medium` (ADR-059) and the type-default Verification.
-- **`--analyze`** — Top-down coverage check, bottom-up archaeology (delegates to `/recover-specs` when that DekTools tool is enabled), 5 hard size caps, type-specific field validation, WS-fan-in per IB, drift checks (audit-v2 D19 / D20), Mission Autonomy ceiling validation. Promotes DRAFT → PROPOSED on a clean run; an over-cap result records a P2 open issue and the Intent stays DRAFT.
+- **`--analyze`** — Top-down coverage check, bottom-up archaeology (delegates to `/recover-specs`), 5 hard size caps, type-specific field validation, WS-fan-in per IB, drift checks (audit-v2 D19 / D20), Mission Autonomy ceiling validation. Promotes DRAFT → PROPOSED on a clean run; an over-cap result records a P2 open issue and the Intent stays DRAFT.
 - **`--accept`** — Engineer-only gate; PROPOSED → ACCEPTED.
 - **`--decompose`** — Writes the Intent's IBs via `/write-ibs` (each with `**Parent:** INT-NNN`); for `type: bug`, the first IB's acceptance names the failing reproduction test. Status stays ACCEPTED. No beads are produced.
 - **Completion** — never a hand edit: `dekspec intent verify` records the outcome evidence and `dekspec intent complete` writes `COMPLETE`.

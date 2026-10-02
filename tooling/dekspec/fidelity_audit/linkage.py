@@ -862,9 +862,15 @@ def _t_ib_execution_contract(graph: SpecGraph) -> list[Finding]:
       - T-IB-CONTRACT-INCOMPLETE (P2): a delegated IB at PROPOSED or later is not
         an executable contract (no Outcome, no Scope, no valid Acceptance, or a
         malformed contract section).
-      - T-IB-OBLIGATION-UNRESOLVED (P1/P2): a delegated IB at ACCEPTED or COMPLETE
-        references an obligation whose home is missing (P1) or superseded /
-        deprecated / unapproved (P2) — its generated context would be stale.
+      - T-IB-OBLIGATION-UNRESOLVED (P1/P2/P3): a delegated IB at ACCEPTED or
+        COMPLETE references an obligation whose home is missing (P1) or
+        unapproved (P2) — its generated context would be stale. A superseded
+        or deprecated home is P2 on an ACCEPTED IB and P3 on a COMPLETE one:
+        a completion is integrated history that is not amended (ADR-057,
+        ADR-064), and a COMPLETE IB generates context again only if it is
+        reopened, which returns it to ACCEPTED and to the P2 grade. The grade
+        changes the report only; dispatch still refuses the reference
+        (`dekspec.execution.references`, ADR-055).
       - T-IB-COMPLETE-WITHOUT-EVIDENCE (P1): a delegated IB is COMPLETE but its
         execution record has no intact completion record — the status was set
         by hand, not by `dekspec ib complete`.
@@ -917,14 +923,25 @@ def _t_ib_execution_contract(graph: SpecGraph) -> list[Finding]:
                 declared_assets=(), hypothesis=(), prerequisites=(), parse_warnings=(), ir=ib,
             )
             for ob in resolve_obligations(repo_root, view, spec_root=spec_root):
-                if ob.problem:
-                    missing = "does not exist" in ob.problem
+                if not ob.problem:
+                    continue
+                if ib["status"] == "COMPLETE" and ob.status in ("SUPERSEDED", "DEPRECATED"):
                     out.append(Finding(
-                        severity=P1 if missing else P2, rule="T-IB-OBLIGATION-UNRESOLVED", artifact_id=ib_id,
-                        message=f"Obligation {ob.id}: {ob.problem}. Point the reference at the obligation's "
-                                "current home (an IB references obligations; it never copies them).",
+                        severity=P3, rule="T-IB-OBLIGATION-UNRESOLVED", artifact_id=ib_id,
+                        message=f"Obligation {ob.id}: {ob.problem}. The IB is COMPLETE, so this is integrated "
+                                "history that is not amended; repoint the reference at the obligation's current "
+                                "home only if the IB is reopened (reopening returns it to ACCEPTED, where this "
+                                "is P2).",
                         fix_kind="semantic",
                     ))
+                    continue
+                missing = "does not exist" in ob.problem
+                out.append(Finding(
+                    severity=P1 if missing else P2, rule="T-IB-OBLIGATION-UNRESOLVED", artifact_id=ib_id,
+                    message=f"Obligation {ob.id}: {ob.problem}. Point the reference at the obligation's "
+                            "current home (an IB references obligations; it never copies them).",
+                    fix_kind="semantic",
+                ))
         if ib.get("status") == "COMPLETE":
             from dekspec.execution.state import fold
 
@@ -5897,6 +5914,10 @@ def _apply_ib_relocation(
 
 # Canonical class defaults per docs/dekspec-skill-flag-defaults.md.
 # Mirrored here so the audit rule does not depend on the docs at runtime.
+# The twelve operator tools follow ADR-064 (c): `interview-me` and
+# `recover-specs` are model-invocable because shipped skills compose them
+# through the Skill tool; the other ten are user-only
+# (`disable-model-invocation: true`) whatever their class.
 _SKILL_CLASS_DEFAULTS: dict[str, dict[str, str]] = {
     # authoring (shallow / lite)
     "write-adr":          {"mode": "lite", "reasoning_effort": "max",  "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Grep Glob Bash Agent"},
@@ -5924,46 +5945,41 @@ _SKILL_CLASS_DEFAULTS: dict[str, dict[str, str]] = {
     # T-SKILL-DEFAULTS-DOC-SYNC now does.
     # recovery
     "recover-specs":              {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Grep Glob Bash"},
-    "ingest-docs":       {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Grep Glob Bash"},
+    "ingest-docs":       {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "true", "allowed-tools": "Read Grep Glob Bash"},
     # architecture (read-mostly source-architecture analysis; spawn Explore/Design-It-Twice sub-agents, propose-only)
-    "audit-codebase": {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Grep Glob Bash Agent"},
-    "security-review":  {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Grep Glob Bash Agent"},
+    "audit-codebase": {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "true", "allowed-tools": "Read Grep Glob Bash Agent"},
+    "security-review":  {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "true", "allowed-tools": "Read Grep Glob Bash Agent"},
     # audit class row retired v0.98.0 (doctor-fidelity inlined into /doctor Stage 2)
     # review (read-only adversarial reviewers; reasoning_effort max, spawn lens sub-agents, no Write/Edit)
     "review-ib":          {"mode": "lite", "reasoning_effort": "max",  "disable-model-invocation": "false", "allowed-tools": "Read Grep Glob Bash Agent"},
     "review-pr":          {"mode": "lite", "reasoning_effort": "max",  "disable-model-invocation": "false", "allowed-tools": "Read Grep Glob Bash Agent"},
     # utility
-    "project-board": {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Bash Grep Glob"},
+    "project-board": {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "true", "allowed-tools": "Read Write Bash Grep Glob"},
     "spec-intent":        {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
     "land-intent":        {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
     "using-dekspec":      {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
     "setup-dekspec":      {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
-    "setup-dektools":     {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
     "interview-me":       {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
-    "debug":           {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
-    "prototype":          {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
+    "debug":           {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "true", "allowed-tools": "Read Write Edit Bash"},
+    "prototype":          {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "true", "allowed-tools": "Read Write Edit Bash"},
     "write-evals":        {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
     "write-tests":        {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
-    "handoff":   {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
+    "handoff":   {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "true", "allowed-tools": "Read Write Edit Bash"},
     # utility (DX/recovery skills ported 2026-06; per-skill tool sets — pr-branch
     # is pure-git, coding-session-forensics is read-only + writes one report, spike runs throwaway
     # experiments. Registered with their actual minimal tool sets.)
     "pr-branch":          {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Bash"},
     "use-worktrees":      {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Bash"},
-    "diagnose-session":          {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Bash Write"},
-    "spike":              {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
+    "diagnose-session":          {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "true", "allowed-tools": "Read Bash Write"},
+    "spike":              {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "true", "allowed-tools": "Read Write Edit Bash"},
     "write-goal-loop-contract":          {"mode": "lite", "reasoning_effort": "high", "disable-model-invocation": "false", "allowed-tools": "Read Write Edit Bash"},
 }
-
-# Default model across all skill classes (CLAUDE.md §Agent-model-policy).
-_SKILL_MODEL_DEFAULT = "claude-opus-4-7"
 
 # Required canonical frontmatter fields on every SKILL.md.
 _SKILL_REQUIRED_FIELDS = (
     "name",
     "description",
     "mode",
-    "model",
     "reasoning_effort",
     "disable-model-invocation",
     "allowed-tools",
@@ -5971,19 +5987,17 @@ _SKILL_REQUIRED_FIELDS = (
 )
 
 
-#: Plugins whose skills the frontmatter rules govern. The toolkit split
-#: (ADR-047) moved ~13 skills out of core; scanning only `dekspec` would
-#: silently drop them from enforcement and report "no findings", which reads
-#: as healthy rather than as unenforced.
-_SKILL_PLUGIN_NAMES = ("dekspec", "dektools")
+#: Plugins whose skills the frontmatter rules govern. ADR-064 folded the
+#: operator tools into the `dekspec` plugin, so every shipped skill lives at
+#: `plugins/dekspec/skills/<skill>/`.
+_SKILL_PLUGIN_NAMES = ("dekspec",)
 
 
 def _read_skill_files(graph: SpecGraph) -> list[Path]:
     """Return every shipped plugin's `skills/<skill>/SKILL.md`.
 
     Empty if no plugin source is present (consumer repo without the plugin
-    tree). Skill frontmatter discipline applies per skill, not per plugin —
-    a skill does not stop being governed by moving between them.
+    tree). Skill frontmatter discipline applies per skill.
     """
     out: list[Path] = []
     for plugin in _SKILL_PLUGIN_NAMES:
@@ -5996,8 +6010,6 @@ def _read_skill_files(graph: SpecGraph) -> list[Path]:
             md = p / "SKILL.md"
             if md.is_file():
                 out.append(md)
-    corpus = graph.repo_root / "plugins/dektools/tools"
-    out.extend(corpus.glob("*/SKILL.md"))
     return sorted(out)
 
 
@@ -6047,12 +6059,13 @@ def _t_skill_frontmatter_normal(graph: SpecGraph) -> list[Finding]:
     frontmatter field set with values matching the class default (per
     docs/dekspec-skill-flag-defaults.md) OR an explicit
     `# override-reason: <text>` comment immediately above the
-    overridden line.
+    overridden non-model line. Model selection is omitted to inherit the
+    engineer-selected host model; a comment never authorizes a model override.
 
     Fires P2 when (a) a required field is missing, (b) a value does
     not match the class default and no override-reason comment is
     present, or (c) the skill name is unknown to the canonical
-    defaults table.
+    defaults table, or (d) a model field is present.
     """
     findings: list[Finding] = []
     for md in _read_skill_files(graph):
@@ -6078,6 +6091,25 @@ def _t_skill_frontmatter_normal(graph: SpecGraph) -> list[Finding]:
                     )
                 )
 
+        # Model policy applies even to unregistered skills and cannot be waived.
+        if "model" in values:
+            findings.append(
+                Finding(
+                    severity="P2",
+                    rule="T-SKILL-FRONTMATTER-NORMAL",
+                    artifact_id=f"skill:{skill}",
+                    message=(
+                        f"Skill `{skill}` selects `model: {values['model']}`. "
+                        "Remove the optional `model` field to inherit the "
+                        "engineer's selected host model. An override-reason "
+                        "comment cannot authorize a model selection. See "
+                        "docs/dekspec-skill-flag-defaults.md."
+                    ),
+                    fix_kind="mechanical",
+                    file_path=rel,
+                )
+            )
+
         # 2. Skill must be in the canonical defaults table.
         if skill not in _SKILL_CLASS_DEFAULTS:
             findings.append(
@@ -6097,13 +6129,8 @@ def _t_skill_frontmatter_normal(graph: SpecGraph) -> list[Finding]:
             )
             continue
 
-        # 3. Values must match the class default OR carry an override-reason.
-        defaults = _SKILL_CLASS_DEFAULTS[skill]
-        # `model` default is global, not class-keyed.
-        expected = dict(defaults)
-        expected["model"] = _SKILL_MODEL_DEFAULT
-
-        for field, want in expected.items():
+        # 3. Non-model values match the class default OR carry an override-reason.
+        for field, want in _SKILL_CLASS_DEFAULTS[skill].items():
             got = values.get(field)
             if got is None:
                 continue  # already flagged above as missing
@@ -6447,20 +6474,17 @@ def _t_skill_defaults_doc_sync(graph: SpecGraph) -> list[Finding]:
     T-SKILL-FRONTMATTER-NORMAL enforces SKILL.md against the code table;
     nothing enforced the code table against the doc that calls itself
     AUTHORITATIVE, so both directions rotted silently (ds-n3prf):
-    `security-review` and `setup-dektools` were registered in code and
-    never documented, while three excised `factory*` keys outlived their
-    skills by four months.
+    two tool keys were registered in code and never documented, while three
+    excised `factory*` keys outlived their skills by four months.
 
     P3 advisory, unlike its P2 siblings: when this rule fires, every
     shipped skill still behaves correctly — only the two mirrors of the
     bookkeeping disagree. It stays out of the ADR-018 P0/P1/P2 doctor
     gate on purpose.
 
-    The two table-vs-table checks run wherever any plugin ships. The
-    "no longer ships" check needs every governed plugin present: under
-    ADR-047 the DekTools toolkit is optional, and in a core-only tree a
-    toolkit key is absent-by-design, not stale. Firing there would give
-    core a dependency on the toolkit, which ADR-047 forbids.
+    All three checks run wherever the plugin's skills ship: since ADR-064
+    every registered skill ships in the one plugin, so a key whose skill
+    is gone is stale.
     """
     skill_files = _read_skill_files(graph)
     if not skill_files:
@@ -6487,10 +6511,6 @@ def _t_skill_defaults_doc_sync(graph: SpecGraph) -> list[Finding]:
 
     shipped = {md.parent.name for md in skill_files}
     registered = set(_SKILL_CLASS_DEFAULTS)
-    all_plugins_present = all(
-        (graph.repo_root / "plugins" / plugin / "skills").is_dir()
-        for plugin in _SKILL_PLUGIN_NAMES
-    )
     findings: list[Finding] = []
 
     for name in sorted(registered - documented):
@@ -6526,8 +6546,7 @@ def _t_skill_defaults_doc_sync(graph: SpecGraph) -> list[Finding]:
             )
         )
 
-    stale = sorted(registered - shipped) if all_plugins_present else []
-    for name in stale:
+    for name in sorted(registered - shipped):
         findings.append(
             Finding(
                 severity="P3",

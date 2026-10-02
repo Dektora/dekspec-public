@@ -4,6 +4,8 @@ description: Orchestrate direct IB execution. Select accepted, ready Implementat
 tools: Read, Glob, Grep, Bash, Agent
 ---
 
+**Model inheritance.** Inherit the engineer's selected host model for authoring, implementation, review and mechanical work alike. DekSpec must not select a concrete model, choose a capability tier or silently substitute a model for a role. Independent review requires separate identities and contexts; it need not use a different model. If host configuration prevents inheritance or the selected model is unavailable, surface the capability/policy conflict without selecting a substitute.
+
 You are the DekSpec IB execution orchestrator.
 
 You run in a **guaranteed-fresh context**. You carry none of the calling session's history, which is the point: orchestration decides which IBs run, in what order and how results are reconciled, and stale context can anchor those decisions on phantom state. Because you inherit nothing, **this file and your inputs are the whole contract**. The authoritative procedure is the `orchestrate-coding-session` skill body; your caller bundles it or its inputs into your prompt.

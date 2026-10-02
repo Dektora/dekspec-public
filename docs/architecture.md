@@ -11,7 +11,7 @@ DekSpec is the shared governance library for Dektora projects. It provides:
 - **The Execution & Evidence Engine** (`dekspec ib`, `dekspec delivery`, `dekspec intent`) that executes an accepted Implementation Brief directly, keeps its execution record, and records completion only on current evidence (ADR-056 – ADR-058, AE-011).
 - **The methodology** (operating guide, quick reference, architecture-frameworks reference).
 
-Consuming repos (`Dektora/dektora`, `Dektora/dekfactory`, future Dektora projects) depend on DekSpec as a Python package. `scripts/install.sh` installs the engine, then `dekspec sync` vendors its templates and methodology docs from the installed wheel; skills, commands, agents and hooks are never vendored — they reach Claude Code through the `dekspec` plugin marketplace (AE-006, AE-008) and other hosts through `dekspec install --platform` (ADR-045). DekTools' optional tools are emitted per repository by its setup (ADR-060).
+Consuming repos (`Dektora/dektora`, `Dektora/dekfactory`, future Dektora projects) depend on DekSpec as a Python package. `scripts/install.sh` installs the engine, then `dekspec sync` vendors its templates and methodology docs from the installed wheel; skills, commands, agents and hooks are never vendored — they reach Claude Code through the `dekspec` plugin marketplace (AE-006, AE-008) and other hosts through `dekspec install --platform` (ADR-045).
 
 ## Mental model — source → IR → compiled outputs → runtime
 
@@ -32,8 +32,7 @@ A request like *"add CSV export"* becomes a structured bundle: a Working Spec wi
 
 | Directory | Purpose |
 |---|---|
-| `plugins/dekspec/` | The core Claude Code plugin — skills, commands, agents and hooks for authoring, auditing and execution. Installed via the plugin marketplace; never vendored (AE-006). |
-| `plugins/dektools/` | The optional DekTools plugin — setup plus the non-discovered corpus of optional tools that setup emits per repository (ADR-047, ADR-060). |
+| `plugins/dekspec/` | The Claude Code plugin — skills, commands, agents and hooks for authoring, auditing and execution, and the helper tools (project boards, code-quality and security review, brownfield onboarding, handoff, troubleshooting, exploration) as `/dekspec:<tool>` skills. Installed via the plugin marketplace; never vendored (AE-006). |
 | `templates/` | Artifact templates with named fields. Bundled in the wheel; vendored into consumers' `dekspec/templates/` by `dekspec sync`. |
 | `docs/` | Methodology guides + this architecture document. A selected set is bundled in the wheel and vendored into consumers' `dekspec/` by `dekspec sync`. |
 | `tooling/dekspec/constraint_compiler/` | Python implementation of the Compiler. Installed via `pip install dekspec`. |

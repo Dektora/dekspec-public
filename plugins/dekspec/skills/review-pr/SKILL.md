@@ -1,7 +1,6 @@
 ---
 name: review-pr
 description: Post-implementation review of a delivery (one branch / worktree / pull request, per ADR-058) at its head. For every IB the delivery carries, judges the diff against that IB's contract, generated context, evidence, deviations and attention items, then records one verdict per IB with `dekspec ib review`. Use after `dekspec delivery verify` and before `dekspec ib complete`; the reviewer must not be a builder of the IB.
-model: claude-opus-4-7
 reasoning_effort: max
 disable-model-invocation: false
 mode: lite

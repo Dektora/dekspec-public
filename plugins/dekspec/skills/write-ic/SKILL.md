@@ -2,7 +2,6 @@
 name: write-ic
 description: Write an Interface Contract for a cross-component boundary. Use when two independently-built components need a formal boundary definition, or when /write-ws identifies a boundary that warrants a contract.
 mode: full
-model: claude-opus-4-7
 reasoning_effort: max
 disable-model-invocation: false
 allowed-tools: Read Write Edit Grep Glob Bash Agent

@@ -21,6 +21,8 @@ Load only the role you are dispatching. Never include all six, and never put rol
 
 ## Composing a dispatch
 
+**Model inheritance (IB-154, D1).** Inherit the engineer's selected host model for authoring, implementation, review and mechanical work alike. DekSpec must not select a concrete model, choose a capability tier or silently substitute a model for a role. Independent review requires separate identities and contexts; it need not use a different model. If host configuration prevents inheritance or the selected model is unavailable, surface the capability/policy conflict without selecting a substitute. Request inheritance at dispatch without a concrete model override; keep the existing reasoning-effort rules.
+
 Every dispatched agent receives four layers, in this order:
 
 1. **Governing policy.** What is authorized and what is not; autonomy ceilings; mandatory gates. (Binding obligations reach the agent in the assignment's generated context, and the precedence rule gives them the policy's force.)

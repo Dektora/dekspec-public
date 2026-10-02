@@ -2,7 +2,6 @@
 name: write-sp
 description: Create, analyze, accept, lock, unlock, revise, supersede, or review a Security Profile (SP-NNN) — the 10th DekSpec IR kind (ADR-011 Option B). A Security Profile captures a project's typed security posture (allowed dataflows, secret stores, authn methods, supply-chain allowed sources, SAST/DAST tools, OWASP coverage). One repo declares a singleton SP-001 (bounded_context absent) or multiple per-bounded-context SPs (e.g., api-gateway, worker).
 mode: lite
-model: claude-opus-4-7
 reasoning_effort: max
 disable-model-invocation: false
 allowed-tools: Read Write Edit Grep Glob Bash Agent

@@ -1,7 +1,6 @@
 ---
 name: review-ib
 description: Pre-authorization review of an Implementation Brief's contract and acceptance floor via the shared math-olympiad orchestration. Use after /write-tests and before `dekspec ib accept` — evidence for the authorization decision, not a status, and required for an IB with `pytest:` conditions or declared assets, whose acceptance tests it oracle-reviews (ADR-062). Checks that content is classified correctly (binding vs acceptance vs hypothesis), obligations are referenced and resolve, acceptance is observable and complete, each new assertion's expectation basis is independent and the floor genuinely red, scope and protected surfaces cohere, and spec impact and slice routing are declared. Findings go to the IB's Open Issues; a passing floor review is recorded as a `Floor reviewed:` Amendment Log row.
-model: claude-opus-4-7
 reasoning_effort: max
 disable-model-invocation: false
 mode: lite

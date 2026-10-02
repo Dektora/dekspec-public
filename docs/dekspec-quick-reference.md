@@ -92,7 +92,7 @@ Progress, attempts, failures, reviews and blockers live in the IB's execution re
 
 | Skill | Purpose |
 |---|---|
-| `/recover-specs` | (DekTools) Brownfield spec-gap recovery — scan code, propose retroactive Intents or IBs |
+| `/recover-specs` | Brownfield spec-gap recovery — scan code, propose retroactive Intents or IBs (composed by `/write-intent --analyze`) |
 | `/write-mission` | Author a near-immutable Mission anchoring a multi-Intent campaign |
 | `/write-ae` | Create an L1 Architecture Element describing an architectural slice |
 | `/write-adr` | Record architectural decisions |
@@ -110,9 +110,9 @@ Progress, attempts, failures, reviews and blockers live in the IB's execution re
 | `/doctor` | AE-aware fidelity audit — canonical for new audits |
 | `/write-glossary` | Extract term candidates and add terms to the domain glossary |
 | `/write-corrections` | Log domain corrections, track recurrences, promote at threshold |
-| `/ingest-docs` | (DekTools) Classify inherited markdown prose into DekSpec artifact slots |
+| `/ingest-docs` | Classify inherited markdown prose into DekSpec artifact slots (helper tool) |
 
-Core skills support `--help`. Optional DekTools skills take natural-language requests; ask what they do for examples and recovery options. Use `/setup-dektools` to inspect or change the enabled set.
+Core skills support `--help`. The helper tools take natural-language requests; the ten user-only ones (`project-board`, `audit-codebase`, `deepen`, `security-review`, `ingest-docs`, `handoff`, `diagnose-session`, `debug`, `prototype`, `spike`) are started by the operator: `/dekspec:<tool>` on Claude Code, or the host-native skill invocation on other hosts, and the authoring skills compose `interview-me` and `recover-specs`. Ask a tool what it does for examples and recovery options.
 
 ---
 

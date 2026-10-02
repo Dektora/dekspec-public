@@ -2,7 +2,6 @@
 name: use-worktrees
 description: Create/enter/clean up a delivery-scoped git worktree (ib/<slug> for a standalone IB, int/<slug> for an Intent, msn/<slug> for a Mission) per ADR-048 and ADR-058 — one worktree = one branch = one pull request = one delivery unit. Bootstrap it, write the statusline active_worktree hint, and remove it on land.
 mode: lite
-model: claude-opus-4-7
 reasoning_effort: high
 # override-reason: pure-git worktree mechanic — runs setup-worktree.sh, authors no spec files
 allowed-tools: Read Bash
@@ -10,7 +9,7 @@ disable-model-invocation: false
 argument-hint: [--help] [--scope ib|intent|mission] [--slug <slug>] [--cleanup]
 ---
 
-Create, enter, and clean up a **delivery-scoped git worktree** — the delivery mechanic of ADR-048 as revised by ADR-058: **one worktree = one branch = one pull request = one delivery unit**. The delivery unit is a single IB, an Intent's IBs, or a Mission cluster; acceptance stays per IB, and verification and review cover the delivery's final head (`dekspec delivery verify`, `dekspec delivery check`). An **Intent** gets its own `int/<slug>` worktree; a **Mission** cluster gets a shared `msn/<slug>` worktree. A standalone IB needs no parent artifact (ADR-056): a small one may skip the worktree (ADR-048 allows it); a larger one gets its own `ib/<slug>` worktree (`--scope ib`). This is a **core** skill — it *is* the delivery mechanic (fails the ADR-047 removability test), not a DekTools convenience.
+Create, enter, and clean up a **delivery-scoped git worktree** — the delivery mechanic of ADR-048 as revised by ADR-058: **one worktree = one branch = one pull request = one delivery unit**. The delivery unit is a single IB, an Intent's IBs, or a Mission cluster; acceptance stays per IB, and verification and review cover the delivery's final head (`dekspec delivery verify`, `dekspec delivery check`). An **Intent** gets its own `int/<slug>` worktree; a **Mission** cluster gets a shared `msn/<slug>` worktree. A standalone IB needs no parent artifact (ADR-056): a small one may skip the worktree (ADR-048 allows it); a larger one gets its own `ib/<slug>` worktree (`--scope ib`). This is a **lifecycle** skill — it *is* the delivery mechanic (it fails the removability test, which ADR-064 keeps as an organizing description), not a helper tool.
 
 > **Structural isolation.** Working an Intent/Mission in its own worktree keeps parallel work from contaminating each other's tree and keeps `main` clean of in-flight cluster work. The one job this skill does that habit doesn't: it **bootstraps** the fresh worktree so an agent dropped into it doesn't fail on missing gitignored state, and it writes the statusline `active_worktree` hint so you can see which worktree is live.
 

@@ -15,7 +15,7 @@ A five-layer **agentic-(software-)engineering toolkit** for AI-augmented teams �
 - **Human oversight** — the engineer authorizes each IB's acceptance contract before construction (`dekspec ib accept`); completion requires an independent review verdict from an identity other than the builder; integration is confirmed by the operator, or by the explicit `/implement` request for that request's own delivery (ADR-059). The No Specless Edits guardrail is advisory instruction for the agent, not a runtime gate.
 - **Observable development** — completes work only on current evidence (every acceptance condition re-run against the exact content reviewed, recorded in the IB's execution record), and feeds what it learns back into the rules.
 
-DekSpec ships as a Python library and CLI installed from its curated public mirror at a release tag, a Claude Code plugin for its skills, and markdown templates and methodology docs vendored into consumer repos. The current version is **v0.126.0**.
+DekSpec ships as a Python library and CLI installed from its curated public mirror at a release tag, a Claude Code plugin for its skills, and markdown templates and methodology docs vendored into consumer repos. The current version is **v0.127.0**.
 
 ## What's here
 
@@ -24,9 +24,8 @@ DekSpec ships as a Python library and CLI installed from its curated public mirr
 | `tooling/dekspec/` | Python package: Constraint Compiler (parsers + 11 IR schemas + emitters), fidelity audit (~80 audit rules across the L-, T-, and D- families), persistence layer (SQLite-indexed run history), and the `dekspec` CLI. |
 | `tooling/dekspec/schemas/` | JSON Schema Draft 2020-12 definitions (YAML) for each artifact type. Shipped as package data; loadable via `importlib.resources`. |
 | `tooling/dekspec/roles/` | The six Agent Role Specifications (ADR-061) — one canonical Markdown file per role, shipped as package data and composed into dispatched agents' instructions. Read one with `dekspec resource role <role>`. |
-| `plugins/dekspec/skills/` | 25 Claude Code skills — **the spec machine** (ADR-047 core). **Authoring:** `/write-sv`, `/write-constitution`, `/write-ae`, `/write-adr`, `/write-ws`, `/write-ic`, `/write-ibs`, `/write-intent`, `/write-mission`, `/write-glossary`, `/write-corrections`, `/write-sp`, `/write-evals`, `/write-tests`. **Lifecycle + orchestration:** `/spec-intent`, `/implement`, `/orchestrate-coding-session`, `/land-intent`, `/review-ib`, `/review-pr`, `/pr-branch`, `/use-worktrees`, `/write-goal-loop-contract`. **Onboarding:** `/using-dekspec`, `/setup-dekspec`. Ships as the `dekspec` plugin through the Claude Code marketplace at `Dektora/dekspec-public`. |
+| `plugins/dekspec/skills/` | 37 Claude Code skills, shipped as the one `dekspec` plugin through the Claude Code marketplace at `Dektora/dekspec-public`. **Authoring:** `/write-sv`, `/write-constitution`, `/write-ae`, `/write-adr`, `/write-ws`, `/write-ic`, `/write-ibs`, `/write-intent`, `/write-mission`, `/write-glossary`, `/write-corrections`, `/write-sp`, `/write-evals`, `/write-tests`. **Lifecycle + orchestration:** `/spec-intent`, `/implement`, `/orchestrate-coding-session`, `/land-intent`, `/review-ib`, `/review-pr`, `/pr-branch`, `/use-worktrees`, `/write-goal-loop-contract`. **Onboarding:** `/using-dekspec`, `/setup-dekspec`. **Helper tools** (operator-started): project boards (`/project-board`), code-quality and security review (`/audit-codebase`, `/deepen`, `/security-review`), brownfield onboarding (`/ingest-docs`), handoff (`/handoff`), troubleshooting (`/diagnose-session`, `/debug`) and exploration (`/prototype`, `/spike`). **Composed by the authoring skills:** `/interview-me` (write-adr, write-ae, write-intent, write-mission) and `/recover-specs` (write-intent's analyze mode). |
 | `plugins/dekspec/commands/` | Slash-command wrappers + CLI mirrors: `/compile`, `/doctor`, `/graph-export`, `/migrate`, `/validate-artifact`, `/man`, `/send-issue` (CLI verb mirrors); plus Skill-wrapper pairs for `/spec-intent`, `/land-intent`, `/pr-branch`, `/use-worktrees`, `/using-dekspec`, `/setup-dekspec`, `/write-glossary`, `/write-corrections`, `/write-goal-loop-contract`. The user-only skills `/implement` and `/orchestrate-coding-session` (`disable-model-invocation: true`) have no wrapper: each skill is its own slash entry. |
-| `plugins/dektools/` | **DekTools** — the optional operator toolkit shipped as a *sibling* plugin (ADR-047): project boards (`/project-board`), code-quality & security review (`/audit-codebase`, `/deepen`, `/security-review`), brownfield onboarding (`/ingest-docs`, `/recover-specs`), handoff (`/handoff`), brainstorming (`/interview-me`), troubleshoot (`/diagnose-session`, `/debug`), explore (`/prototype`, `/spike`), issue-tracker glue (`/project-board`), and the à-la-carte selector (`/setup-dektools`). Installed separately as `dektools@dekspec`; **nothing is on by default**. `tool-catalog.json` is the authoritative roster. See `plugins/dektools/README.md`. |
 | `templates/` | Artifact templates (System Vision, Constitution, ADR, AE, WS, IC, IB, Intent, Mission, Domain Glossary, Security Profile, plus a checklists subdirectory). |
 | `docs/` | Methodology docs: `dekspec-operating-guide.md`, `dekspec-quick-reference.md`, `architecture-frameworks-reference.md`, plus the framework's own `architecture.md`. |
 | `.beads/`, `.beads-dekspec/`, `.beads-issues/` | The project's own `br` trackers (SQLite + JSONL; ADR-052). Governance (`ds-`) and issue (`iss-`) beads are live; the code-bead (`cb-`) workspace is legacy history — construction runs from IBs (ADR-056). |
@@ -232,12 +231,12 @@ Steps 1–3 are host-agnostic. Re-run to upgrade. For `--platform claude`, plugi
 
 CLI only via pipx (isolated venv):
 ```bash
-pipx install "git+https://github.com/Dektora/dekspec-public.git@v0.126.0"
+pipx install "git+https://github.com/Dektora/dekspec-public.git@v0.127.0"
 ```
 
 CLI only into a project venv:
 ```bash
-pip install "git+https://github.com/Dektora/dekspec-public.git@v0.126.0"
+pip install "git+https://github.com/Dektora/dekspec-public.git@v0.127.0"
 ```
 
 Plugin only (in a Claude Code session OR via the `claude` CLI):
@@ -246,42 +245,18 @@ claude plugin marketplace add Dektora/dekspec-public
 claude plugin install dekspec@dekspec
 ```
 
-### DekTools — the optional operator toolkit (second plugin)
+### Helper tools
 
-DekSpec ships **two** plugins from the one marketplace. `dekspec` is the spec machine and is self-sufficient — it runs the whole `author → audit → execute → verify → review → COMPLETE` flow with nothing else installed. **DekTools** (`dektools`) is the optional sibling holding the helper tools you reach for *around* that machine: project boards, code-quality and security review, brownfield onboarding, handoff, troubleshooting, exploration, and issue-tracker glue (**ADR-047**).
+The `dekspec` plugin carries the helper tools you reach for *around* the spec machine, beside the lifecycle skills: project boards, code-quality and security review, brownfield onboarding, handoff, troubleshooting and exploration. All twelve ship with `dekspec@dekspec` on Claude Code and with `dekspec install --platform <host>` on the other hosts; there is nothing extra to install or select. The ten you start yourself are slash commands — `/dekspec:project-board`, `/dekspec:audit-codebase`, `/dekspec:deepen`, `/dekspec:security-review`, `/dekspec:ingest-docs`, `/dekspec:handoff`, `/dekspec:diagnose-session`, `/dekspec:debug`, `/dekspec:prototype`, `/dekspec:spike` — and the model never starts them on its own. `/dekspec:interview-me` and `/dekspec:recover-specs` are composed by the authoring skills. Core `/implement` owns autonomous ready-work execution.
 
-`scripts/install.sh` installs the core plugin only. Add the toolkit deliberately:
-
-```bash
-# DekSpec alone — the default, and a complete system
-claude plugin marketplace add Dektora/dekspec-public
-claude plugin install dekspec@dekspec
-
-# DekSpec + DekTools — add the helpers
-claude plugin install dektools@dekspec
-```
-
-The marketplace plugin registers **setup only**. Say
-`/dektools:setup-dektools enable debugging and handoff`; setup emits the selected
-repository-local skills. With zero optional tools, setup remains discoverable.
-The wheel contains the same corpus for `dekspec install --platform HOST`.
-
-Selection persists in `.dekspec/config.yaml`. Installation tracks owned hashes,
-preserves modified/unowned files and reports repair conflicts. Reload the host
-after selection or plugin changes. Old selections migrate without retaining
-legacy skill aliases. Project-board and several analysis/exploration tools work
-standalone; core-backed capabilities report missing prerequisites explicitly.
-
-See [DekTools installation and tool catalog](plugins/dektools/README.md) for
-purposes, requirements, supported scanners and recovery. Core `/implement` owns
-autonomous ready-work execution; the optional toolkit does not provide a builder.
+Upgrading from v0.126.0, where these tools were a separate plugin (ADR-064): follow the BREAKING upgrading section of the CHANGELOG.
 
 ### Native Windows (PowerShell / cmd)
 
 The `bash <(curl …)` one-liner does **not** run in native Windows PowerShell/cmd (no `bash`, no process substitution). Use the portable `pipx` sequence — identical to the Linux steps:
 
 ```powershell
-py -m pipx install --force "git+https://github.com/Dektora/dekspec-public.git@v0.126.0"
+py -m pipx install --force "git+https://github.com/Dektora/dekspec-public.git@v0.127.0"
 dekspec dependencies install br     # user-scoped, no admin — downloads + checksum-verifies the pinned br
 dekspec sync                        # reconcile vendored content + .dekspec-version
 dekspec install --platform codex    # per-host tree; --platform is on `dekspec install`, NOT on pipx
@@ -442,7 +417,7 @@ CI runs `pytest -q` + `ruff check` on Python 3.11 / 3.12 / 3.13 via GitHub Actio
 
 ## Status
 
-**v0.126.0** is the current release. The Constraint Compiler PoC (v0.2) has matured into an 11-IR, five-layer agentic-engineering toolkit with ~80 audit rules, a namespaced CLI, a public Python API at `dekspec.api`, an Execution & Evidence Engine (`dekspec ib` / `dekspec delivery` / `dekspec intent`; ADR-055 – ADR-058) that executes Implementation Briefs and completes them only on evidence, and end-to-end test coverage. See [`CHANGELOG.md`](CHANGELOG.md) for the per-version detail.
+**v0.127.0** is the current release. The Constraint Compiler PoC (v0.2) has matured into an 11-IR, five-layer agentic-engineering toolkit with ~80 audit rules, a namespaced CLI, a public Python API at `dekspec.api`, an Execution & Evidence Engine (`dekspec ib` / `dekspec delivery` / `dekspec intent`; ADR-055 – ADR-058) that executes Implementation Briefs and completes them only on evidence, and end-to-end test coverage. See [`CHANGELOG.md`](CHANGELOG.md) for the per-version detail.
 
 Open follow-ons:
 - GitLab migration — when DekSpec moves to the self-hosted GitLab instance (per DekFactory ADR-003), the release workflow ports to `.gitlab-ci.yml`. Until then the curated public mirror (`Dektora/dekspec-public`, ADR-034) is the canonical install surface: `pipx install "git+https://github.com/Dektora/dekspec-public.git@vX.Y.Z"`. Public PyPI publication was removed 2026-05-12; the Cloudsmith index was retired 2026-06 (ADR-034).

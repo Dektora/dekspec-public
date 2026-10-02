@@ -2,7 +2,6 @@
 name: using-dekspec
 description: Onboarding entry point for DekSpec — scaffold the artifact tree, toggle the No Specless Edits guardrail, and discover the skill catalog from a single skill. Merges the legacy `spec-mode`, `dekspec-skills`, and `dekspec-init` surfaces (INT-096).
 mode: lite
-model: claude-opus-4-7
 reasoning_effort: high
 disable-model-invocation: false
 allowed-tools: Read Write Edit Bash
@@ -151,7 +150,7 @@ Render the full DekSpec skill catalog. Behavior preserved verbatim from the lega
 
 Welcome to the DekSpec Spec-Driven Development skills catalog. Since authoring skills are designed to be run through interactive AI reasoning, they are not registered as raw shell commands. Instead, you can trigger them simply by asking me in natural language!
 
-> Entries prefixed `/` are deterministic CLI-wrapper commands — they invoke a `dekspec` CLI verb directly with no agentic reasoning. Everything else is a full skill, triggered by natural language.
+> Entries prefixed `/` are deterministic CLI-wrapper commands — they invoke a `dekspec` CLI verb directly with no agentic reasoning. Everything else is a full skill, triggered by natural language — except the ten user-only operator tools, whose trigger column reads "run `/dekspec:<tool>`": you start those yourself with the slash command, because I cannot start them for you (ADR-064).
 
 Use the table below as a quick reference sheet:
 
@@ -193,20 +192,21 @@ Use the table below as a quick reference sheet:
 | **`/validate-artifact`** | Single-artifact schema validation (narrower than `/doctor`) | *"Validate dekspec/intents/INT-105-foo.md"* |
 | **`write-tests`** | Author an IB's acceptance tests before execution (protected by the acceptance baseline) | *"Write acceptance tests for IB-NNN"* |
 | **`write-evals`** | Probabilistic behavior evals, wired as IB acceptance conditions | *"Write evals for IB-NNN"* |
-| **`debug`** | Evidence-driven diagnosis; authorized governed repair through core implementation | *"Diagnose this failure"* / *"Fix the checkout test"* |
+| **`debug`** | Evidence-driven diagnosis; authorized governed repair through core implementation | Run `/dekspec:debug <symptom or failing check>` |
 
 ### 5. Pre-Spec Exploration Skills
 | Skill | Purpose | How to Trigger / Ask |
 |---|---|---|
 | **`interview-me`** | Docs-anchored one-question-at-a-time interview that sharpens fuzzy input into resolved decisions (composed default-on by the high-judgment authoring skills) | *"Interview me on this fuzzy idea"* / *"Grill me on this design"* |
-| **`prototype`** | Pre-spec throwaway-exploration loop — explore a state model (`logic`) or request/response shape (`api`) in disposable `dekspec/.scratch/prototypes/` code, then route the durable findings into `/write-ws` / `/write-ic` / `/write-ae`; no production leak | *"Prototype this design before we spec it"* / *"Sketch this API shape throwaway"* |
-| **`spike`** | Pre-Intent feasibility exploration — a focused throwaway experiment that produces VERIFIED knowledge (VALIDATED / REFUTED / INCONCLUSIVE) before committing to an approach | *"Spike this approach before we commit to an Intent"* |
+| **`prototype`** | Pre-spec throwaway-exploration loop — explore a state model (`logic`) or request/response shape (`api`) in disposable `dekspec/.scratch/prototypes/` code, then route the durable findings into `/write-ws` / `/write-ic` / `/write-ae`; no production leak | Run `/dekspec:prototype <design question>` |
+| **`spike`** | Pre-Intent feasibility exploration — a focused throwaway experiment that produces VERIFIED knowledge (VALIDATED / REFUTED / INCONCLUSIVE) before committing to an approach | Run `/dekspec:spike <hypothesis>` |
 
 ### 6. Codebase Architecture & Quality Skills
 | Skill | Purpose | How to Trigger / Ask |
 |---|---|---|
-| **`audit-codebase`** | Audit source-code architecture quality — deep vs. shallow modules, information hiding, folderization fit (APOSD-grounded) | *"Audit this codebase's architecture"* |
-| **`deepen`** | Multi-pass architectural deepening with retained learning and verified benefits | *"Deepen the parser"* |
+| **`audit-codebase`** | Audit source-code architecture quality — deep vs. shallow modules, information hiding, folderization fit (APOSD-grounded) | Run `/dekspec:audit-codebase <target>` |
+| **`deepen`** | Multi-pass architectural deepening with retained learning and verified benefits | Run `/dekspec:deepen <module>` |
+| **`security-review`** | Scoped security review with a small supported detector set; uses a Security Profile when one exists | Run `/dekspec:security-review <target>` |
 
 ### 7. Onboarding & Config Skills
 | Skill | Purpose | How to Trigger / Ask |
@@ -219,22 +219,17 @@ Use the table below as a quick reference sheet:
 | Skill | Purpose | How to Trigger / Ask |
 |---|---|---|
 | **`write-goal-loop-contract`** | Turn a fuzzy "go do this" into a verifiable goal contract and drive a persistent plan→act→test→review→iterate autonomous run | *"Write a goal contract for this overnight run"* |
-| **`handoff`** | Prepare/resume external-state continuity evidence with freshness checks | *"Write a handoff"* / *"Resume the parser work"* |
-| **`diagnose-session`** | Read-only post-mortem for stuck, failed, or anomalous sessions — collects evidence, detects known failure fingerprints, recommends recovery commands | *"Investigate why this session got stuck"* |
+| **`handoff`** | Prepare/resume external-state continuity evidence with freshness checks | Run `/dekspec:handoff` / `/dekspec:handoff resume the parser work` |
+| **`diagnose-session`** | Read-only post-mortem for stuck, failed, or anomalous sessions — collects evidence, detects known failure fingerprints, recommends recovery commands | Run `/dekspec:diagnose-session <session or run>` |
 | **`recover-specs`** | Brownfield spec-gap recovery — code → ratifiable Intent | *"Recover the spec gaps in this repo"* |
-| **`ingest-docs`** | Classify inherited markdown prose into DekSpec artifact slots | *"Ingest legacy document [path]"* |
-| **`project-board`** | Standalone boards, issue intake, duplicate detection and snapshots | *"Add these findings to the parser board"* |
+| **`ingest-docs`** | Classify inherited markdown prose into DekSpec artifact slots | Run `/dekspec:ingest-docs <path>` |
+| **`project-board`** | Boards, issue intake, duplicate detection and snapshots | Run `/dekspec:project-board <request>` |
 
 ---
 
-> **Two plugins.** The authoring / orchestration / review machine ships in **`dekspec`**; the optional
-> helper tools — `project-board`, `audit-codebase`, `deepen`,
-> `ingest-docs`, `recover-specs`, `handoff`, `diagnose-session`, `interview-me`,
-> `debug`, `prototype`, `spike` — ship in **`dektools`**
-> (ADR-047). Install it with `claude plugin install dektools@dekspec`. Core runs the full
-> spec→code→COMPLETE flow without it, so every DekTools tool is optional and must **degrade
-> gracefully**: DekTools may not be installed, or a tool may not be enabled in its à-la-carte
-> selection. Both are supported configurations, not errors — say so plainly and continue.
+> **One plugin.** Every skill in this catalog — the authoring / orchestration / review machine and the
+> helper tools — ships in the **`dekspec`** plugin (ADR-064). `interview-me` and `recover-specs` are
+> composed by the authoring skills; the other ten tools are user-only, so start them with `/dekspec:<tool>`.
 
 ### Pro-Tip 💡
 **Shortest path to a merged change** — a bounded change is one IB; no parent artifact is required (ADR-056):

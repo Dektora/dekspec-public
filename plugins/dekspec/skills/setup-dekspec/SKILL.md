@@ -2,7 +2,6 @@
 name: setup-dekspec
 description: Initial-configuration front-end for DekSpec — interactively walk an engineer through the per-repo `.dekspec/config.yaml` choices (issue tracker, ephemeral-scratch location, triage-label vocabulary, glossary path, methodology profile), persisting each via `dekspec config set` so it round-trips through `dekspec config get`. Writes agent-config pointers for consumer agents and optionally hands off to the quality/guardrail hook install. Called by `using-dekspec`'s onboarding walkthrough for the configuration step.
 mode: lite
-model: claude-opus-4-7
 reasoning_effort: high
 disable-model-invocation: false
 allowed-tools: Read Write Edit Bash

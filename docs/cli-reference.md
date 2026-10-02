@@ -184,6 +184,10 @@ Generates, or checks, the **DekSpec-owned region** of the instruction file (ADR-
 
 **Legacy layouts** — the whole-file output of earlier versions of this command, the historical `dekspec init` placeholder and the historical `dekspec install --platform codex` marker — are migrated only with `--migrate`; `--migrate --dry-run` prints the change as a diff and writes nothing. Recognition is by exact content shape, tolerating only CRLF/LF and byte-order-mark differences, never by filename. An old generated file's generated extent runs from its header through its last fragment end marker (`<!-- END dekspec-fragment: <id> -->`); content after that marker is kept, after the region. Inside the extent the file must be exactly what the old generator wrote: no other owner's `<!-- owner:block begin|end -->` line outside fenced code anywhere, and, from the first fragment on, nothing outside the fragments but blank lines, `---` separators and the old generator's fixed section headings and introductions. Anything else there — a fleet block, a handwritten sentence (even directly after a section's introduction), a fenced example or a heading the old generator never wrote, between fragments — means the file is not a recognized legacy layout: plain generation, `--migrate` and `--migrate --dry-run` refuse with exit 1 and the file unchanged, naming the first offending line by number, and `--check` reports it `invalid` (`absent` when the projection is configured). Recovery: move that content after the last fragment end marker, where migration keeps it after the region, or place the region markers by hand around the generated content. An old generated file without any fragment end marker is refused as well (place the markers).
 
+**Destination and migration safety.** The configured/default projection must resolve inside the repository, including absolute or parent-relative paths and links in parent directories. Generation and migration previews refuse an escaping destination with exit 1 and preserve existing files, links and absent targets. A safe internal link remains a link while its target is replaced. An explicit, separate regular-file `--output` may be outside the repository; an output path traversing a link that resolves outside may not. File links, directory links and the resolved target of a configured link share the projection's settings restrictions (conflicting options exit 2).
+
+Migration also refuses handwritten text in the legacy prefix's fixed scaffold and a fragment END without its first BEGIN, naming the offending line and recovery. The historical header, title, summary, optional guidance and first separator must appear in their emitted order before any unframed singleton body is recognized. An inserted Constitution, Vision, Security Profile or Glossary heading cannot confer ownership of text in that fixed prefix. Historical singleton bodies retain their fenced quotations and horizontal rules. Generation, migration and previews refuse to replace a region recording a newer renderer revision (exit 1); upgrade DekSpec before retrying. These refusals never change the destination.
+
 **Determinism and settings.** The output has no timestamps, version stamps or machine paths. The region records its projection settings (source root, status filter, included kinds) and a renderer revision that changes only when rendering changes. The projection's settings are the `agents_md` block of `.dekspec/config.yaml` when declared, else the defaults:
 
 ```yaml
@@ -568,7 +572,7 @@ dekspec ib verify [-h] [--at AT] [--dekspec-root DEKSPEC_ROOT] [--actor ACTOR] [
                   [--base BASE] [--dry-run] ib
 ```
 
-Run every acceptance condition and record evidence bound to the current content. Test conditions run through a per-node reporting plugin: a node that is skipped, expected-to-fail, deselected or not collected does **not** pass, and a condition whose file was deleted or renamed fails. Command conditions need exit status `0`. Review conditions are reported as needing a verdict. Also runs the scope and protected-surface check against the base (inside a multi-IB delivery the allowed scope is the union of the co-delivered IBs' scopes and every protected surface applies), checks `**Spec impact:**` specs were actually modified, and checks acceptance integrity (contract, asset and runner-input hashes against the baseline). In-Scope changes the hypothesis and plan did not name are recorded as deviations — no permission needed. A `.dekspec/config.yaml` change confined to the workflow settings (`integration.base`, `dektools.enabled`) is bookkeeping; any other DekSpec state (the `execution:` settings above all) or test-runner configuration is always judged as the IB's change. Evidence records the implementation fingerprint (a content hash of the repository excluding execution records, generated indexes and lifecycle bookkeeping), contract hash, baseline digest and context manifest hash; any later change makes it stale. Applies to `ACCEPTED` (and `COMPLETE`) delegated IBs. Exit `0` only when the overall result is `passed`.
+Run every acceptance condition and record evidence bound to the current content. Test conditions run through a per-node reporting plugin: a node that is skipped, expected-to-fail, deselected or not collected does **not** pass, and a condition whose file was deleted or renamed fails. Command conditions need exit status `0`. Review conditions are reported as needing a verdict. Also runs the scope and protected-surface check against the base (inside a multi-IB delivery the allowed scope is the union of the co-delivered IBs' scopes and every protected surface applies), checks `**Spec impact:**` specs were actually modified, and checks acceptance integrity (contract, asset and runner-input hashes against the baseline). In-Scope changes the hypothesis and plan did not name are recorded as deviations — no permission needed. A `.dekspec/config.yaml` change confined to the workflow setting (`integration.base`) is bookkeeping; any other DekSpec state (the `execution:` settings above all) or test-runner configuration is always judged as the IB's change. Evidence records the implementation fingerprint (a content hash of the repository excluding execution records, generated indexes and lifecycle bookkeeping), contract hash, baseline digest and context manifest hash; any later change makes it stale. Applies to `ACCEPTED` (and `COMPLETE`) delegated IBs. Exit `0` only when the overall result is `passed`.
 
 **Bytecode.** The same rule holds in every acceptance run (`ib verify`, `ib floor`, `delivery check --rerun`, the `/implement` driver):
 - **Reviewed files always run from source, by any path.** Every Python file the implementation fingerprint covers runs from its current source. No bytecode for it is read, in any invalidation mode: not from the repository's `__pycache__`, not from the bytecode cache, and not from pytest's assertion-rewrite cache, even when a file has been planted in one of them. This holds for the file's own path and for every other path that reaches it through the test interpreter's path entries: a symbolic link to it or to a directory holding it (as `flit install --symlink` and setuptools' strict editable mode make), a hard link, or a mount. Before each run those entries are scanned for such paths. Bytecode is neither read nor written at them, nor at the repository's own paths, so a subprocess a test starts cannot read any back. A run does not count when those entries change while it runs, or when it compiled a reviewed file by a path a test made during it (a link in a temporary directory, say). The condition is then run again from source without the cache, and that result is reported.
@@ -909,7 +913,7 @@ Options:
 dekspec implement [-h] <implement-command> ...
 ```
 
-The core of `/dekspec:implement` (ADR-059) and the supported caller contract for optional tools. This section is the complete verb and payload reference; `docs/implement-caller-contract.md` in the DekSpec repository adds the integration guidance for tool authors. Every verb takes the request as its positional words — `INT-041`, `int-041 and int-042`, `the authentication feature` — plus `--at`, `--dekspec-root`, `--actor` (recorded as the requester; default `$DEKSPEC_ACTOR`, then git `user.name`) and `--json`. Exit codes: `0` ok, `1` not ready or refused, `2` usage, `3` blocked.
+The core of `/dekspec:implement` (ADR-059) and the supported caller contract for callers such as the `deepen` and `debug` skills, CI and dashboards. This section is the complete verb and payload reference; `docs/implement-caller-contract.md` in the DekSpec repository adds the integration guidance for tool authors. Every verb takes the request as its positional words — `INT-041`, `int-041 and int-042`, `the authentication feature` — plus `--at`, `--dekspec-root`, `--actor` (recorded as the requester; default `$DEKSPEC_ACTOR`, then git `user.name`) and `--json`. Exit codes: `0` ok, `1` not ready or refused, `2` usage, `3` blocked.
 
 ### implement resolve
 
@@ -948,6 +952,23 @@ Mechanical steps include:
 - `ib complete`, `intent complete`, and merging a moved base;
 - the landing gate (ADR-059 stage 6): `delivery check --rerun`, recorded as `landing.verified` once per binding, that is per content fingerprint and base commit (`base_commit`). It re-executes acceptance and the base's integration command, except where the driver's own passing delivery verification stands at the identical binding. `landing.verified` names the evidence it relied on (`relies_on`) and lists what it executed (`executed`). CI's command-line `delivery check --rerun` always re-executes;
 - integration, a retry of an outstanding push, and checkpoint commits. The first run's entry check is `implement ready`; an existing delivery resumes without it. Exit `3` when blocked, `1` when not ready.
+
+Review failures return their findings to a repair builder. Repairs consume the
+existing attempt allowance; once it is exhausted, the driver records a changed
+strategy and grants more attempts through the existing allowance mechanism.
+Construction and review recovery share the limit of two strategy changes per IB
+(the initial approach is not a change). Each allowance is consumed before another
+change, and each repaired implementation returns through verification and
+independent review. Exhaustion with continued FAIL verdicts leaves a stable
+`review-not-converging` blocker. Repeating the request preserves consumed attempts,
+strategy changes and verdict history.
+
+A historical `review-not-converging` blocker clears only when current passing
+evidence and a valid current independent PASS resolve that IB's review. A
+`review-not-recorded` blocker clears when an independent verdict is recorded;
+FAIL resolves the silence and returns to bounded repair. Neither resolution clears
+unrelated blockers or bypasses verification, review, completion or integration
+gates.
 
 ### implement ack
 
@@ -1062,15 +1083,15 @@ The execution verbs use their own fixed convention: `ib`, `delivery` and `intent
 - [`dekspec-quick-reference.md`](dekspec-quick-reference.md) — skill index + status lifecycle cheatsheet.
 - [`architecture.md`](architecture.md) — IR + parser + emitter mental model.
 
-### Optional-tool deterministic helpers
+### Helper-skill deterministic helpers
 
 `dekspec archeology scan TARGET --at REPO` emits Python AST evidence, not inferred
 requirements. `dekspec handoff` reads continuity evidence; `write --input FILE`
 records the documented JSON shape, redaction and repository identity. New records
 use external state; legacy records remain readable. `dekspec deepen-record`
 maintains multi-pass deepening evidence bound to core (below); it executes no
-agents and defines no readiness policy. Each helper provides `--help`. Public
-toolkit skills accept ordinary requests without flags.
+agents and defines no readiness policy. Each helper provides `--help`. The helper
+skills that call them accept ordinary requests without flags.
 
 #### deepen-record
 

@@ -2,7 +2,6 @@
 name: write-adr
 description: Write an Architectural Decision Record. Use when an undocumented architectural decision exists, the expertise audit flags one, or the Options Architect surfaces an architectural choice.
 mode: lite
-model: claude-opus-4-7
 reasoning_effort: max
 disable-model-invocation: false
 allowed-tools: Read Write Edit Grep Glob Bash Agent
@@ -57,9 +56,7 @@ See [`_lib/mode_detection_template.md`](../_lib/mode_detection_template.md) for 
 
 ## Interview Rigor (default-on)
 
-This skill **optionally composes the [`interview-me`](../../../dektools/tools/interview-me/SKILL.md) tool** (INT-167 / D13), which ships in the **DekTools** plugin (ADR-047) — it does not re-author the interview prose, and there is no `--grill` flag. When the engineer's input is fuzzy or underspecified and the tool is available, invoke `/interview-me <ADR-NNN | description>` so the engineer is interviewed one decision-tree question at a time, with a recommended answer per question, repo-exploration for discoverable answers, glossary + governing ADR/AE citation with conflict-flagging, fuzzy-term sharpening, and scenario-based stress-testing of asserted relationships (especially the chosen-option-vs-alternatives trade-off the ADR asserts).
-
-**Degrade gracefully when it is absent.** DekTools may not be installed, or `interview-me` may not be enabled in its à-la-carte selection. Core is self-sufficient by design (ADR-047), so this is a supported configuration, not an error: fall back to asking the engineer the same decisions inline, one at a time, and continue. Never block authoring on a toolkit tool, and never report its absence as a failure.
+This skill **composes the [`interview-me`](../interview-me/SKILL.md) skill** (INT-167 / D13), which ships beside it in this plugin (ADR-064) — it does not re-author the interview prose, and there is no `--grill` flag. When the engineer's input is fuzzy or underspecified, invoke it through the Skill tool (`/dekspec:interview-me <ADR-NNN | description>`) so the engineer is interviewed one decision-tree question at a time, with a recommended answer per question, repo-exploration for discoverable answers, glossary + governing ADR/AE citation with conflict-flagging, fuzzy-term sharpening, and scenario-based stress-testing of asserted relationships (especially the chosen-option-vs-alternatives trade-off the ADR asserts).
 
 **Trigger (pinned, INT-167 Open Issues):**
 

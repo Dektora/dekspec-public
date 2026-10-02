@@ -11,8 +11,9 @@ v0.2.0 commands:
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
 import json
-import os
 import shutil
 import subprocess
 import sys
@@ -1997,7 +1998,11 @@ def cmd_aggregate_agents_md(args: argparse.Namespace) -> int:
             target = Path.cwd() / target
     else:
         target = projection
-    is_projection = target is not None and os.path.abspath(target) == os.path.abspath(projection)
+    try:
+        is_projection = target is not None and proj.projection_destination(repo_root, target, decl)
+    except proj.ProjectionRefused as err:
+        print(f"agents-md: refused — {err}", file=sys.stderr)
+        return 1
 
     if is_projection and decl.error:
         print(f"agents-md: refused — invalid configuration: {decl.error}", file=sys.stderr)
@@ -2962,8 +2967,7 @@ def _add_resource_subparser(sub: argparse._SubParsersAction) -> None:
         help="Kind of resource to resolve. `template` reads from "
         "templates/<name>.md; `doc` reads from docs/<name>.md (methodology + "
         "operating-guide family); `lib` reads from the shared skill substrate "
-        "plugins/dekspec/skills/_lib/<name>.md — the channel DekTools skills "
-        "use to reach core's _lib across the plugin boundary (ADR-047). "
+        "plugins/dekspec/skills/_lib/<name>.md, the files every skill shares. "
         "`role` prints the dispatch-ready role layer of an Agent Role "
         "Specification (ADR-061) — `specifier`, `spec-reviewer`, `implementer`, "
         "`code-reviewer`, `verifier`, `auditor`, or a retired `CS-NNN` id. Roles "
@@ -4694,10 +4698,39 @@ def _add_dekspec_migrate_pipeline_subparser(sub: argparse._SubParsersAction) -> 
     p.set_defaults(func=cmd_dekspec_migrate_pipeline)
 
 
-def cmd_dekspec_migrate_pipeline(args: argparse.Namespace) -> int:
+_MIGRATION_LABELS = {
+    ("remove", True): "removed",
+    ("remove", False): "would remove",
+    ("adopt", True): "adopted",
+    ("adopt", False): "would adopt",
+    ("keep", True): "kept",
+    ("keep", False): "would keep",
+}
+
+
+def _print_dektools_plan(plan: Any, *, applied: bool, by_install: bool) -> None:
+    """Print one host root's installation-migration result (ADR-064 (d))."""
+    head, *notes = plan.summary(applied=applied, by_install=by_install)
+    print(head)
+    for item in plan.outcomes:
+        line = f"  {_MIGRATION_LABELS[(item.action, applied)]}: {item.path} — {item.description}"
+        if item.review_only:
+            line += f" ({item.next_step})"
+        print(line)
+    for note in notes:
+        print(note)
+
+
+def cmd_dekspec_migrate_pipeline(
+    args: argparse.Namespace, *, stages: list[dict[str, Any]] | None = None,
+) -> int:
     """Run the consolidated migrate pipeline.
 
-    Stage 1 — verify: `cmd_verify_vendored` checks vendored content drift.
+    Stage 0 — installation records: when a host root holds an ownership
+              record an older tool setup wrote, the migration of that tree
+              (ADR-064 (d)); see `migrations.dektools_installations`.
+    Stage 1 — verify: `cmd_verify_vendored` checks vendored content drift
+              (skipped in a repository that is not a vendored consumer).
     Stage 2 — migrate-ir: `cmd_migrate` walks persisted IR JSON under the
               repo state dir.
     Stage 3 — migrate-artifacts: `cmd_migrate_artifacts` walks the
@@ -4709,14 +4742,62 @@ def cmd_dekspec_migrate_pipeline(args: argparse.Namespace) -> int:
     """
     repo_root = Path(args.at).resolve() if args.at else Path.cwd()
     is_json = bool(args.json)
+    json_out = sys.stdout
+    stage_results = stages if stages is not None else []
+    if is_json:
+        # One JSON document on stdout: the stages' human-readable output goes
+        # to stderr, and the per-stage results are printed once at the end.
+        with contextlib.redirect_stdout(sys.stderr):
+            return _migrate_pipeline(args, repo_root, is_json, json_out, stage_results)
+    return _migrate_pipeline(args, repo_root, is_json, json_out, stage_results)
 
-    stage_results: list[dict[str, Any]] = []
+
+def _migrate_pipeline(
+    args: argparse.Namespace, repo_root: Path, is_json: bool, json_out: Any,
+    stage_results: list[dict[str, Any]],
+) -> int:
+    def print_json(stage_results: list[dict[str, Any]]) -> None:
+        print(json.dumps({"stages": stage_results}, indent=2), file=json_out)
+
+    # --- Stage 0: host trees an older tool setup emitted (ADR-064 (d)) ---
+    # Keyed on an ownership record alone — not on --from, --skip-verify or the
+    # version marker — and run before the verify stage can abort the pipeline.
+    from .migrations import dektools_installations
+
+    if dektools_installations.find_records(repo_root):
+        run = dektools_installations.migrate_repository(
+            repo_root, _default_skills_source(),
+            apply=bool(args.apply) and not bool(args.dry_run),
+        )
+        stage_results.append(run.to_dict())
+        if not is_json:
+            print("[migrate stage 0] installation records")
+            for plan, applied in zip(run.plans, run.applied):
+                _print_dektools_plan(plan, applied=applied, by_install=False)
+        if run.refused:
+            if is_json:
+                print_json(stage_results)
+            else:
+                print("  a record was refused; pipeline aborted before host migration writes.",
+                      file=sys.stderr)
+            return 1
 
     # --- Stage 1: verify-vendored ---
+    not_vendored = not any(
+        (repo_root / p).exists()
+        for p in (".dekspec-version", ".dekspec-vendor-manifest", "dekspec/templates")
+    )
     if args.skip_verify:
         stage_results.append({"stage": "verify", "skipped": True, "reason": "--skip-verify"})
         if not is_json:
             print("[migrate stage 1] verify-vendored: skipped (--skip-verify)")
+    elif not_vendored:
+        # The same test doctor applies: with no marker, no vendor manifest and
+        # no vendored templates there is no vendored content to verify.
+        reason = "no .dekspec-version, .dekspec-vendor-manifest, or dekspec/templates/ — not a vendored consumer"
+        stage_results.append({"stage": "verify", "skipped": True, "reason": reason})
+        if not is_json:
+            print(f"[migrate stage 1] verify-vendored: skipped ({reason})")
     else:
         if not is_json:
             print("[migrate stage 1] verify-vendored")
@@ -4726,14 +4807,14 @@ def cmd_dekspec_migrate_pipeline(args: argparse.Namespace) -> int:
         except Exception as e:  # noqa: BLE001
             stage_results.append({"stage": "verify", "exit_code": 2, "error": str(e)})
             if is_json:
-                print(json.dumps({"stages": stage_results}, indent=2))
+                print_json(stage_results)
             else:
                 print(f"  error: verify stage raised {type(e).__name__}: {e}", file=sys.stderr)
             return 2
         stage_results.append({"stage": "verify", "exit_code": rc})
         if rc != 0:
             if is_json:
-                print(json.dumps({"stages": stage_results}, indent=2))
+                print_json(stage_results)
             else:
                 print(f"  verify-vendored exited {rc}; pipeline aborted.", file=sys.stderr)
             return rc
@@ -4760,14 +4841,14 @@ def cmd_dekspec_migrate_pipeline(args: argparse.Namespace) -> int:
         except Exception as e:  # noqa: BLE001
             stage_results.append({"stage": "migrate-ir", "exit_code": 2, "error": str(e)})
             if is_json:
-                print(json.dumps({"stages": stage_results}, indent=2))
+                print_json(stage_results)
             else:
                 print(f"  error: migrate-ir stage raised {type(e).__name__}: {e}", file=sys.stderr)
             return 2
         stage_results.append({"stage": "migrate-ir", "exit_code": rc, "files": len(ir_files)})
         if rc != 0:
             if is_json:
-                print(json.dumps({"stages": stage_results}, indent=2))
+                print_json(stage_results)
             else:
                 print(f"  migrate-ir exited {rc}; pipeline aborted.", file=sys.stderr)
             return rc
@@ -4789,14 +4870,14 @@ def cmd_dekspec_migrate_pipeline(args: argparse.Namespace) -> int:
     except Exception as e:  # noqa: BLE001
         stage_results.append({"stage": "migrate-artifacts", "exit_code": 2, "error": str(e)})
         if is_json:
-            print(json.dumps({"stages": stage_results}, indent=2))
+            print_json(stage_results)
         else:
             print(f"  error: migrate-artifacts stage raised {type(e).__name__}: {e}", file=sys.stderr)
         return 2
     stage_results.append({"stage": "migrate-artifacts", "exit_code": rc})
 
     if is_json:
-        print(json.dumps({"stages": stage_results}, indent=2))
+        print_json(stage_results)
 
     return rc
 
@@ -4916,9 +4997,22 @@ def cmd_sync(args: argparse.Namespace) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
+    # The migrate sub-step also runs on a no-op reconcile and under --json
+    # when a host root holds an installation ownership record (ADR-064 (d));
+    # without one, sync behaves exactly as before.
+    from .migrations.dektools_installations import find_records
+
+    records = not args.dry_run and bool(find_records(repo_root))
+
     if args.json:
-        print(json.dumps(report.to_dict(), indent=2))
-        return 0
+        doc = report.to_dict()
+        refused = False
+        if records:
+            migration = _sync_migrate_step(args, repo_root, baseline, target, as_json=True)
+            doc["migrate"] = migration.report
+            refused = migration.required_refusal
+        print(json.dumps(doc, indent=2))
+        return 1 if refused else 0
 
     mode_label = "DRY RUN \u2014 " if args.dry_run else ""
     print(f"{mode_label}DekSpec library sync \u2014 {repo_root}")
@@ -4930,6 +5024,9 @@ def cmd_sync(args: argparse.Namespace) -> int:
             f"  reconcile: no-op \u2014 already in sync at v{target} "
             "(marker matches installed engine, no vendored drift)."
         )
+        if records:
+            migration = _sync_migrate_step(args, repo_root, baseline, target, as_json=False)
+            return 1 if migration.required_refusal else 0
         return 0
 
     print(
@@ -4951,21 +5048,9 @@ def cmd_sync(args: argparse.Namespace) -> int:
     # Step 2: migrate \u2014 invoke the existing migrate pipeline IN-PROCESS as
     # a SEPARATE sub-step (migrate stays an independently-invocable verb; we
     # do NOT inline its logic). No subprocess: reconcile must not shell out.
-    print("  running migrate pipeline (verify \u2192 migrate-ir \u2192 migrate-artifacts)")
-    migrate_ns = argparse.Namespace(
-        at=str(repo_root) if args.at else None,
-        from_version=baseline,
-        to_version=target,
-        dekspec_root="dekspec",
-        dry_run=False,
-        apply=True,
-        json=False,
-        # Vendoring just refreshed content; verify would only confirm sync.
-        skip_verify=True,
-    )
-    rc = cmd_dekspec_migrate_pipeline(migrate_ns)
-    if rc not in (0, 1):
-        print(f"  warning: migrate pipeline exited {rc}.", file=sys.stderr)
+    migration = _sync_migrate_step(args, repo_root, baseline, target, as_json=False)
+    if migration.required_refusal:
+        return 1
 
     # Step 3: drift report \u2014 read-only verify of vendored content vs the
     # installed engine. Informational; never gates the reconcile exit code.
@@ -4979,6 +5064,50 @@ def cmd_sync(args: argparse.Namespace) -> int:
     print(f"Reconciled to installed engine v{target}.")
     print("  Review and commit the reconcile diff.")
     return 0
+
+
+class _SyncMigrationResult(NamedTuple):
+    required_refusal: bool
+    report: dict[str, Any]
+
+
+def _sync_migrate_step(
+    args: argparse.Namespace, repo_root: Path, baseline: str | None, target: str, *, as_json: bool,
+) -> _SyncMigrationResult:
+    """Sync's migrate sub-step: the `dekspec migrate --apply` pipeline, in-process.
+
+    Consume the pipeline's existing stage results to distinguish required
+    installation refusal from ordinary artifact advisories. Under ``as_json``
+    nest that report in sync's document; otherwise the pipeline prints as usual.
+    """
+    if not as_json:
+        print("  running migrate pipeline (verify \u2192 migrate-ir \u2192 migrate-artifacts)")
+    migrate_ns = argparse.Namespace(
+        at=str(repo_root) if args.at else None,
+        from_version=baseline,
+        to_version=target,
+        dekspec_root="dekspec",
+        dry_run=False,
+        apply=True,
+        json=as_json,
+        # Vendoring just refreshed content; verify would only confirm sync.
+        skip_verify=True,
+    )
+    from .migrations.dektools_installations import STAGE
+
+    stages: list[dict[str, Any]] = []
+    # Suppress the standalone JSON document; sync nests these same results.
+    with contextlib.redirect_stdout(io.StringIO()) if as_json else contextlib.nullcontext():
+        rc = cmd_dekspec_migrate_pipeline(migrate_ns, stages=stages)
+    refused = any(stage["stage"] == STAGE and stage.get("exit_code") == 1 for stage in stages)
+    if not as_json:
+        if refused:
+            print("  Sync failed: required installation migration refused. "
+                  "Vendored content may already have been refreshed; "
+                  "review the reported record and retry.", file=sys.stderr)
+        elif rc not in (0, 1):
+            print(f"  warning: migrate pipeline exited {rc}.", file=sys.stderr)
+    return _SyncMigrationResult(refused, {"stages": stages, "exit_code": rc})
 
 
 def _detect_artifact_kind(filename: str) -> str | None:
@@ -6029,7 +6158,7 @@ def _add_archeology_subparser(sub: argparse._SubParsersAction) -> None:
         "archeology",
         help="Brownfield spec-gap archeology — find code no LOCKED Intent claims.",
         description=(
-            "The deterministic substrate behind the /recover-specs DekTools tool. "
+            "The deterministic substrate behind the `recover-specs` skill. "
             "The `coverage` verb walks the repo, collects every LOCKED Intent's "
             "Components-affected glob set, and reports the files no Intent "
             "claims — the spec-orphaned surfaces a brownfield-recovery workflow "
@@ -6684,6 +6813,16 @@ def _default_skills_source() -> Path:
     return _resolve_skills_source(Path(__file__).resolve(), library_root)
 
 
+class _RemovedInstallFlag(argparse.Action):
+    """A removed `dekspec install` flag: using it is a usage error (exit 2)."""
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        parser.error(
+            f"{option_string} was removed: every tool now ships with the dekspec "
+            f"plugin; run `dekspec install --platform <host>`"
+        )
+
+
 def _add_install_subparser(sub) -> None:
     p = sub.add_parser(
         "install",
@@ -6713,24 +6852,14 @@ def _add_install_subparser(sub) -> None:
             "override the skill/command/hook source."
         ),
     )
-    p.add_argument(
-        "--dektools-source",
-        default=None,
-        help=(
-            "DekTools plugin source dir (default: the `dektools` sibling of "
-            "--source). Which tools are emitted comes from the `dektools.enabled` "
-            "config key, not from this flag; nothing is emitted when it is unset."
-        ),
-    )
-    p.add_argument(
-        "--dektools-only",
-        action="store_true",
-        help=(
-            "Emit only the selected DekTools tools and their support files — no "
-            "core tree and no setup copy. For a host whose plugin system already "
-            "delivers core and setup (ADR-060)."
-        ),
-    )
+    # ADR-064 (g): the two install flags are removed. They stay registered,
+    # hidden, only so that using one fails as a usage error naming the
+    # replacement; a deleted flag would get argparse's generic "unrecognized
+    # arguments" instead.
+    # Consume an optional value only to reject every spelling with the same
+    # replacement guidance, including bare and equals-value forms.
+    for flag in ("--dektools-source", "--dektools-only"):
+        p.add_argument(flag, action=_RemovedInstallFlag, nargs="?", help=argparse.SUPPRESS)
     p.set_defaults(func=cmd_install)
 
 
@@ -6739,28 +6868,40 @@ def cmd_install(args: argparse.Namespace) -> int:
 
     source_dir = Path(args.source) if args.source else _default_skills_source()
     target_dir = Path(args.target)
-    # DekTools a-la-carte (ADR-047): the selection is persisted per-repo, so
-    # the operator sets it once and every later install honors it. Empty by
-    # default, which leaves the output identical to a core-only emit.
-    # getattr: `cmd_install` is also called directly with a hand-built
-    # Namespace, which predates this flag.
-    override = getattr(args, "dektools_source", None)
-    dektools_source = Path(override) if override else source_dir.parent / "dektools"
-    if not override and not dektools_source.is_dir():
-        dektools_source = source_dir / "dektools"
-    dektools_tools = dekspec_config.enabled_dektools_tools(target_dir)
+    if dekspec_config.carries_legacy_tool_selection(target_dir):
+        # ADR-064 (g): accepted for one release, ignored with a notice. The
+        # config is never rewritten (ADR-064 (d)).
+        print(
+            "Notice: `dektools.enabled` in .dekspec/config.yaml is ignored — every "
+            "tool now ships with the dekspec plugin; the key can be removed.",
+            file=sys.stderr,
+        )
+    # ADR-064 (d): a host root holding a v0.126.0 ownership record is
+    # migrated here. Everything is classified, and an untrustworthy record
+    # refused, before the emission writes anything.
+    from .migrations import dektools_installations
+
+    migration = dektools_installations.plan_install(target_dir, args.platform, source_dir)
+    if migration is not None and migration.refused:
+        print(
+            f"Error: refusing to install into {migration.rel_root}: {migration.refused}. "
+            "Nothing was changed.",
+            file=sys.stderr,
+        )
+        return 1
+    preserve = [migration.root / rel for rel in migration.preserve] if migration else []
     try:
         result = platform_install.emit(
             args.platform,
             source_dir=source_dir,
             target_dir=target_dir,
-            dektools_source=dektools_source,
-            dektools_tools=dektools_tools,
-            dektools_only=getattr(args, "dektools_only", False),
+            preserve=preserve,
         )
     except HarnessUnsupported as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
+    if migration is not None:
+        dektools_installations.apply_install(migration, result.written)
     print(
         f"Installed DekSpec for '{result.platform}' into {target_dir} "
         f"({len(result.written)} files):"
@@ -6780,20 +6921,21 @@ def cmd_install(args: argparse.Namespace) -> int:
             except ValueError:
                 shown = path
             print(f"  {label}: {shown}")
-    # Honesty guard: for non-claude hosts the skill/command/hook tree is copied
-    # from the plugin source. A pip/pipx-installed engine does not carry that
-    # source (the plugin is not bundled in the wheel), so only the host marker
-    # gets written — don't let that look like a full install. Also point at the
-    # separate command that actually updates vendored content + .dekspec-version.
+    if migration is not None:
+        _print_dektools_plan(migration, applied=True, by_install=True)
+    # Honesty guard: the skill/command/hook tree is copied from the plugin
+    # source (a source checkout, else the copy bundled in the wheel, ADR-045).
+    # When neither is found, only the host marker gets written — don't let that
+    # look like a full install. Also point at the separate command that
+    # actually updates vendored content + .dekspec-version.
     skills_present = (source_dir / "skills").is_dir()
     if not skills_present:
         print(
             f"\nWarning: only the host marker was written — the plugin "
-            f"skills/commands/hooks tree was NOT found at {source_dir}. A "
-            f"pip/pipx-installed engine does not bundle the plugin content, so "
-            f"`dekspec install --platform {result.platform}` can emit only the "
-            f"marker from it. Point --source at a `plugins/dekspec` checkout to "
-            f"emit the full tree.",
+            f"skills/commands/hooks tree was NOT found at {source_dir}, so "
+            f"`dekspec install --platform {result.platform}` could emit only the "
+            f"marker. Point --source at a `plugins/dekspec` checkout to emit the "
+            f"full tree.",
             file=sys.stderr,
         )
     if result.platform != "claude":

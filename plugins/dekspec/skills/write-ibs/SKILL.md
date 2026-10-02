@@ -2,7 +2,6 @@
 name: write-ibs
 description: Author Implementation Briefs — the smallest governed work contract, executed directly (ADR-056). Use for a bounded change (outcome + rationale + references are enough, no parent needed), to decompose an Intent or a Working Spec into IBs, to audit, review, revise or accept an IB, or to adopt a legacy IB into the delegated authority policy.
 mode: full
-model: claude-opus-4-7
 reasoning_effort: max
 disable-model-invocation: false
 allowed-tools: Read Write Edit Grep Glob Bash Agent

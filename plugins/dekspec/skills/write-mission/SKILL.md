@@ -2,7 +2,6 @@
 name: write-mission
 description: Author, review, audit, activate, complete, kill, or supersede a Mission (MSN-NNN) — the long-horizon container above Intents. Use when work plausibly decomposes into more than one Intent, or requires a feature flag, or shares an outcome / kill criterion / out-of-scope contract across Intents. Phase 2 + Phase 3 P3.5 deliverable.
 mode: full
-model: claude-opus-4-7
 reasoning_effort: max
 disable-model-invocation: false
 allowed-tools: Read Write Edit Grep Glob Bash Agent
@@ -61,9 +60,7 @@ See [`_lib/mode_detection_template.md`](../_lib/mode_detection_template.md) for 
 
 ## Interview Rigor (default-on)
 
-This skill **optionally composes the [`interview-me`](../../../dektools/tools/interview-me/SKILL.md) tool** (INT-167 / D13), which ships in the **DekTools** plugin (ADR-047). It does not re-author the interview prose, and there is no `--grill` flag. When the engineer's input is fuzzy or underspecified and the tool is available, invoke `/interview-me <MSN-NNN | description>` so the engineer is interviewed one decision-tree question at a time, with a recommended answer per question, repo-exploration for discoverable answers, glossary + governing ADR/AE citation with conflict-flagging, fuzzy-term sharpening, and scenario-based stress-testing of asserted relationships.
-
-**Degrade gracefully when it is absent.** DekTools may not be installed, or `interview-me` may not be enabled in its à-la-carte selection. Core is self-sufficient by design (ADR-047), so this is a supported configuration, not an error: fall back to asking the engineer the same decisions inline, one at a time, and continue. Never block authoring on a toolkit tool, and never report its absence as a failure.
+This skill **composes the [`interview-me`](../interview-me/SKILL.md) skill** (INT-167 / D13), which ships beside it in this plugin (ADR-064). It does not re-author the interview prose, and there is no `--grill` flag. When the engineer's input is fuzzy or underspecified, invoke it through the Skill tool (`/dekspec:interview-me <MSN-NNN | description>`) so the engineer is interviewed one decision-tree question at a time, with a recommended answer per question, repo-exploration for discoverable answers, glossary + governing ADR/AE citation with conflict-flagging, fuzzy-term sharpening, and scenario-based stress-testing of asserted relationships.
 
 **Trigger (pinned, INT-167 Open Issues):**
 
@@ -118,7 +115,7 @@ Skill-specific structural checks to surface as Open Issues: T17 (near-immutable 
 
 Creation Mode is the substantive-work path that produces a new Mission file. Per the fan-out architectural pattern (bead `ds-di2`, 2026-05-19), this orchestrator does **not** author the Mission inline in the parent session's context. Instead it bundles all required context and dispatches a fresh-context `dekspec:mission-author` subagent via the `Agent` tool, then validates + saves what the subagent returns.
 
-Rationale: context isolation (no parent-session contamination), indirect quality-test of bundled materials (gaps in the bundle surface as subagent failures, not silent quality drift), natural parallelism across Missions, and per-subagent model selection.
+Rationale: context isolation (no parent-session contamination), indirect quality-test of bundled materials (gaps in the bundle surface as subagent failures, not silent quality drift), natural parallelism across Missions, and inheritance of the engineer-selected host model for every subagent.
 
 ### Step 1: Decision Gate + Context Bundle (orchestrator, parent context)
 
@@ -540,7 +537,7 @@ Pattern: "An engineer can produce artifact X via path Y in under Z minutes, end-
 
 Concrete Mission Verification predicate (as authored in the near-immutable section):
 
-> An engineer can take a brownfield repository with no DekSpec artifacts and produce a LOCKED System Vision + 3 ACCEPTED Architecture Elements via the `/ingest-docs` + `/dekspec:write-sv` + `/dekspec:write-ae` flow in under 90 minutes, with no engineer input beyond the prompts those skills themselves surface.
+> An engineer can take a brownfield repository with no DekSpec artifacts and produce a LOCKED System Vision + 3 ACCEPTED Architecture Elements via the `/dekspec:ingest-docs` + `/dekspec:write-sv` + `/dekspec:write-ae` flow in under 90 minutes, with no engineer input beyond the prompts those skills themselves surface.
 
 - **What this is NOT:** a pytest assertion that the three skills each return exit 0 — that is per-component testing, not Mission-level behavioral verification. The Mission-level assertion is about end-to-end engineer-observable outcome (artifacts on disk, in the correct status, inside a time budget), not about whether each skill's unit tests pass.
 

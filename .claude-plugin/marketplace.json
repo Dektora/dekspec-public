@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "dekspec",
-      "description": "Consumer-facing plugin: slash commands, authoring agents, and audit hooks for DekSpec. Wraps the dekspec CLI and complements vendored content. Install this on every consumer repo.",
+      "description": "Consumer-facing plugin: every DekSpec skill, slash command, authoring agent and audit hook, including the operator tools. Wraps the dekspec CLI and complements vendored content. Install this on every consumer repo.",
       "author": {
         "name": "Dektora"
       },
@@ -17,24 +17,13 @@
         "source": "git-subdir",
         "url": "https://github.com/Dektora/dekspec-public.git",
         "path": "plugins/dekspec",
-        "ref": "v0.126.0"
-      },
-      "homepage": "https://github.com/Dektora/dekspec-public"
-    },
-    {
-      "name": "dektools",
-      "description": "Optional DekSpec operator toolkit (ADR-047): project boards, code-quality/security review, brownfield onboarding, handoff, troubleshooting, issue-tracker glue. \u00c0-la-carte \u2014 nothing on by default. Install alongside dekspec when you want the helpers.",
-      "author": {
-        "name": "Dektora"
-      },
-      "category": "development",
-      "source": {
-        "source": "git-subdir",
-        "url": "https://github.com/Dektora/dekspec-public.git",
-        "path": "plugins/dektools",
-        "ref": "v0.126.0"
+        "ref": "v0.127.0"
       },
       "homepage": "https://github.com/Dektora/dekspec-public"
     }
-  ]
+  ],
+  "renames": {
+    "dektools": null
+  },
+  "forceRemoveDeletedPlugins": true
 }

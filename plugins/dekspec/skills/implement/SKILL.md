@@ -2,13 +2,14 @@
 name: implement
 description: Implement ready, approved work end to end — `/implement INT-041`, `/implement int-041 and int-042`, `/implement the authentication feature`. Resolves the request to approved Intents or IBs, checks readiness, then drives construction, tests, independent review, repairs, integration and verification to completion without asking the engineer to drive, dispatching fresh-context builder and reviewer sub-agents from the core driver's `dekspec implement next` decisions. Use only to carry out an explicit implementation request; to explain how implementation would work, answer directly instead.
 mode: lite
-model: claude-opus-4-7
 reasoning_effort: high
 disable-model-invocation: true
 allowed-tools: Read Bash Agent
 argument-hint: [--help] <INT-NNN | IB-NNN | several ids | feature description> [budget]
 related_skills: [spec-intent, write-ibs, review-pr, land-intent, orchestrate-coding-session]
 ---
+
+**Model inheritance.** Inherit the engineer's selected host model for authoring, implementation, review and mechanical work alike. DekSpec must not select a concrete model, choose a capability tier or silently substitute a model for a role. Independent review requires separate identities and contexts; it need not use a different model. If host configuration prevents inheritance or the selected model is unavailable, surface the capability/policy conflict without selecting a substitute.
 
 **An explicit `/implement` request is the authorization (ADR-059).** It covers construction, tests, independent review, repair within scope and integration of the requested work — and nothing more. Do not ask the engineer to confirm, continue, dispatch or merge on this path. Do not create or approve specifications, weaken an acceptance condition, edit a protected acceptance test, bypass branch protection, deploy, or touch production. The core driver records the authorization and hands every worker the same statement.
 

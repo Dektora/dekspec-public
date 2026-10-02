@@ -2,7 +2,6 @@
 name: write-ws
 description: Write a Working Spec with full expertise audit and serialized role passes. Use when a feature or subsystem needs behavioral contracts before implementation.
 mode: full
-model: claude-opus-4-7
 reasoning_effort: max
 disable-model-invocation: false
 allowed-tools: Read Write Edit Grep Glob Bash Agent

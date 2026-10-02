@@ -2,7 +2,6 @@
 name: land-intent
 description: Land a delivery (one branch / worktree / pull request per ADR-058 — a single IB, an Intent's IBs, or a Mission cluster). Sequences `dekspec delivery verify` → /dekspec:review-pr (one verdict per IB) → `dekspec ib complete` per IB → `dekspec delivery check` at the exact head → operator-confirmed merge (ADR-026: never auto-merges) → post-merge `dekspec intent verify` + `dekspec intent complete` for a parent Intent whose IBs are all complete. The landing-side sibling of /orchestrate-coding-session.
 mode: lite
-model: claude-opus-4-7
 reasoning_effort: high
 disable-model-invocation: false
 allowed-tools: Read Write Edit Bash

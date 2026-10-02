@@ -13,7 +13,7 @@ The `ds-di2` architectural directive (2026-05-19) split every authoring / audit 
 - The architectural-directive citation (`ds-di2`, 2026-05-19) and the rule that substantive-work modes delegate.
 - The orchestrator/subagent role split (parent never drafts, audits partial content, or writes the artifact file).
 - The substantive-vs-inline mode tablature for that skill.
-- The four-bullet rationale (context isolation, indirect quality test, parallelism, per-artifact model selection).
+- The four-bullet rationale (context isolation, indirect quality test, parallelism, host-selected model inheritance).
 - Step 1 ("Bundle context") preamble describing deterministic-order collection.
 - Step 2 ("Dispatch via the seam") preamble + the fenced prompt template skeleton.
 - Step 3 ("Validate + report") preamble + the do-not-silently-retry rule.
@@ -45,7 +45,7 @@ The fan-out is the **default** path for the modes the skill's manifest names und
 
 3. **Natural parallelism.** N artifacts can be drafted by N parallel subagents (e.g., `write-tests --all` fans out one subagent per IB in the batch; `write-ibs` can decompose a Working Spec into multiple IBs in parallel). The orchestrator collects the per-subagent reports and emits a batch summary.
 
-4. **Per-artifact model / effort selection.** Each subagent dispatch can pick the model tier appropriate to the artifact (e.g., heavy Opus for a load-bearing AE, lighter Sonnet for a mechanical IB). The orchestrator carries no such constraint — it is small and mechanical regardless of the artifact's complexity.
+4. **Host-selected model inheritance.** Every subagent inherits the engineer's selected host model, including authoring, implementation, review and mechanical work. Dispatch requests inheritance without a concrete model override or automatic tier fallback. Existing reasoning-effort rules remain in force. Independent review uses separate identities and contexts and need not use a different model. If host configuration prevents inheritance or the selected model is unavailable, surface the capability/policy conflict without choosing a substitute.
 
 ## Canonical three-step skeleton
 
@@ -66,6 +66,8 @@ The skill-side manifest enumerates the bundle items under `bundle_list`. Every e
 
 Dispatch is **host-neutral**: it goes through the harness seam, not directly at any one host's tool. The orchestrator calls `dekspec.harness.run_fanout(tasks, host=<host>, ...)` (equivalently `get_adapter(host).dispatch_subagents(tasks, ...)`), and the resolved adapter realizes the dispatch on whatever host is running — **Claude** realizes it via the `Agent` tool, **Codex** via its multi-agent surface, **Antigravity** via dynamic subagents, **Cursor** via async/nested subagents. The substrate authors describe the dispatch once; the seam guarantees the same result-shape and index-alignment (result[i] ↔ tasks[i]) on every host. On the Claude harness the concrete mechanism below — invoking the `Agent` tool with the three parameters — *is* how the seam realizes a dispatch, so the contract reads identically:
 
+Request inheritance of the engineer's selected host model for each dispatch; omit any concrete model selection. Surface a capability/policy conflict if the host cannot honor inheritance, without substituting another model.
+
 Realize each subagent dispatch (on Claude, via the `Agent` tool) with three required parameters:
 
 - **`subagent_type`** — the value from the skill's manifest. Use the artifact-specific `dekspec:<kind>-author` type if one exists; fall back to `general-purpose` if no dedicated type is registered yet (write-constitution, write-evals, write-sp, write-sv, write-tests currently use `general-purpose`).
@@ -76,6 +78,8 @@ The canonical prompt template (the orchestrator composes the real prompt at runt
 
 ```
 You are <subagent_type> dispatched by /<skill_name> in <mode> mode. Run in fresh context.
+Inherit the engineer-selected host model; do not select a substitute.
+Surface a capability/policy conflict if inheritance is unavailable.
 
 MODE: <Creation | Accept | Revise | ...> (one of the modes from substantive_modes)
 

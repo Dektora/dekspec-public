@@ -2,7 +2,6 @@
 name: write-tests
 description: Write an IB's acceptance tests — the pytest nodes its `## Acceptance` block names — behavior-first, each new assertion with a declared expectation basis, genuinely red (checked with `dekspec ib floor`) before authorization, then hand them to the independent oracle review (/review-ib) that must pass before `dekspec ib accept` baselines them. Use after the IB's Acceptance block is written and before /review-ib and `dekspec ib accept`.
 mode: lite
-model: claude-opus-4-7
 reasoning_effort: high
 allowed-tools: Read Write Edit Bash
 argument-hint: [--help | --teaching | --audit | --revise] [IB-NNN] [notes]

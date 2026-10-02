@@ -2,7 +2,6 @@
 name: pr-branch
 description: Build a clean PR branch by filtering out spec-only commits (Intent/WS/IB/ADR/IC/AE status bumps, index reconciliation, pm STATE/LEDGER) so code reviewers see only the implementation diff, not DekSpec artifact churn. Mixed code+spec commits are cherry-picked with the spec-only paths stripped. Pure git; creates `<branch>-pr` ready to push. Use before opening a code-review PR on a DekSpec-managed repo.
 mode: lite
-model: claude-opus-4-7
 reasoning_effort: high
 disable-model-invocation: false
 allowed-tools: Read Bash

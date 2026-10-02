@@ -73,11 +73,3 @@ def materialize_vendored(project_root: Path, vendored_root: Path) -> None:
         src = plugin_src / sub
         if src.is_dir():
             shutil.copytree(src, dst)
-
-    toolkit_src = project_root / "plugins" / "dektools"
-    toolkit_dst = vendored_root / "dektools"
-    if toolkit_dst.exists():
-        shutil.rmtree(toolkit_dst)
-    if toolkit_src.is_dir():
-        shutil.copytree(toolkit_src, toolkit_dst,
-                        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))

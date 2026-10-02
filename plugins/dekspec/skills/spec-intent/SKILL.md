@@ -2,7 +2,6 @@
 name: spec-intent
 description: Specification phase-executor for an Intent (INT-NNN). Drives an Intent from DRAFT to authorized-for-execution by sequencing the existing authoring skills — /write-intent --analyze / --accept / --decompose plus /write-ibs, /write-tests and /review-ib and, only where they add something distinct, /write-ws, /write-ic, /write-ae, /write-adr — and ends with the Intent ACCEPTED and each of its IBs ACCEPTED (`dekspec ib accept`: authorized, acceptance baseline taken over acceptance tests that were written and oracle-reviewed first). Stops at the coding boundary; never starts execution. The specification-side sibling of /orchestrate-coding-session.
 mode: lite
-model: claude-opus-4-7
 reasoning_effort: high
 disable-model-invocation: false
 allowed-tools: Read Write Edit Bash

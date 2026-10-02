@@ -2,7 +2,6 @@
 name: write-glossary
 description: Own the domain glossary — extract glossary-term candidates from a corpus (proposes only; never auto-writes), add a canonical term directly after a duplicate + synonym check, and compose the glossary row when the corrections pipeline promotes an entry at the recurrence threshold. The glossary half of the terminology pipeline; corrections live in /dekspec:write-corrections.
 mode: lite
-model: claude-opus-4-7
 reasoning_effort: max
 disable-model-invocation: false
 allowed-tools: Read Write Edit Grep Glob Bash Agent

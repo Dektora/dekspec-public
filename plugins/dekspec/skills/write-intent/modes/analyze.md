@@ -74,7 +74,7 @@ If both checks are clean (touched AEs are live, no ADR bans the surface), procee
 
 ### Step 4: Bottom-Up Archaeology
 
-Investigate what exists today on the paths the Intent will touch — public API, internal state, external callers. If the optional `/recover-specs` tool is enabled, use it for each Component listed; otherwise read the code, tests and history directly. Separate observed behavior from inferred rationale, and record the per-layer consequences (AEs, ADRs, WSs, ICs to revise or author) in the Intent's **Layer impact analysis**.
+Investigate what exists today on the paths the Intent will touch — public API, internal state, external callers. Invoke the `recover-specs` skill through the Skill tool (`/dekspec:recover-specs <component>`) for each Component listed; it reads the code, tests and history and returns a provenance-backed gap list. Separate observed behavior from inferred rationale, and record the per-layer consequences (AEs, ADRs, WSs, ICs to revise or author) in the Intent's **Layer impact analysis**.
 
 ### Step 5: Size Assessment
 

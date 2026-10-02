@@ -2,7 +2,6 @@
 name: write-corrections
 description: Manage the terminology corrections log — record a misinterpretation, count its recurrences, walk open entries interactively, audit the log's structural health, and hand an entry that crosses the 3-recurrence threshold to /write-glossary for promotion.
 mode: lite
-model: claude-opus-4-7
 reasoning_effort: max
 disable-model-invocation: false
 allowed-tools: Read Write Edit Grep Glob Bash Agent

@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -159,6 +160,44 @@ def _merge_local(worktree: Path, base: str, settings: IntegrationSettings, head:
     return Integration("merged", f"{base} fast-forwarded to {head[:12]}", head, tree_of(worktree, head))
 
 
+def _push_refusal_detail(base: str, remote: str, output: str) -> str:
+    """Budget the wrapper, first remote message and final Git lines separately.
+
+    A single tail slice lets long paths hide the hook's reason and even the
+    rejection line. Keep the first nonempty remote message mechanically (a
+    banner counts), and give each final Git line its own share of the budget.
+    """
+    wrapper = (f"merged into {base[:256]} locally, but pushing it to {remote[:256]} "
+               "failed (not forced): ")
+    truncated = len(base) > 256 or len(remote) > 256
+    message = ""
+    context: deque[str] = deque(maxlen=3)
+    for line in output.splitlines():
+        line = line.strip()
+        if line.startswith("remote:"):
+            diagnostic = line[len("remote:"):].strip()
+            if diagnostic:
+                if message:
+                    truncated = True
+                else:
+                    message = diagnostic[:512]
+                    truncated |= len(diagnostic) > 512
+        elif line:
+            truncated |= len(context) == context.maxlen
+            context.append(line)
+
+    parts = [f"remote: {message}"] if message else []
+    marker = "\n[truncated]"
+    # Reserve the marker even when unused, and one separator for each Git line.
+    remaining = 4096 - len(wrapper) - len("\n".join(parts)) - len(marker) - len(context)
+    if context:
+        per_line = remaining // len(context)
+        for line in context:
+            truncated |= len(line) > per_line
+            parts.append(line[-per_line:])
+    return wrapper + "\n".join(parts) + (marker if truncated else "")
+
+
 def push_base(worktree: Path, base: str, settings: IntegrationSettings) -> Integration:
     """Push the local base to the configured remote — never forced. Idempotent:
     re-run after an interruption or a rejection until the remote holds it."""
@@ -166,8 +205,7 @@ def push_base(worktree: Path, base: str, settings: IntegrationSettings) -> Integ
     local = _git(worktree, "rev-parse", ref).stdout.strip()
     push = _git(worktree, "push", "-q", settings.remote, f"{ref}:{ref}")
     if push.returncode != 0:
-        return Integration("push-pending", f"merged into {base} locally, but pushing it to {settings.remote} "
-                                           f"failed (not forced): {(push.stderr or push.stdout).strip()[-300:]}",
+        return Integration("push-pending", _push_refusal_detail(base, settings.remote, push.stderr or push.stdout),
                            local, tree_of(worktree, local))
     return Integration("merged", f"{base} pushed to {settings.remote} at {local[:12]}", local, tree_of(worktree, local))
 

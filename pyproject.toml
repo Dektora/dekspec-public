@@ -96,7 +96,7 @@ include = ["dekspec*"]
 # ADR-045 / INT-179: ship the FULL plugin tree (skills incl. _lib, commands,
 # hooks) so `dekspec install --platform` works off a pipx engine on non-Claude
 # hosts — not just the runtime `skills/_lib` helpers.
-"dekspec._vendored" = ["templates/**/*", "docs/**/*", "skills/**/*", "commands/**/*", "hooks/**/*", "dektools/**/*", "dektools/.claude-plugin/*.json"]
+"dekspec._vendored" = ["templates/**/*", "docs/**/*", "skills/**/*", "commands/**/*", "hooks/**/*"]
 
 [tool.setuptools.dynamic]
 version = { attr = "dekspec.__version__" }

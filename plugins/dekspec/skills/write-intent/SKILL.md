@@ -2,7 +2,6 @@
 name: write-intent
 description: "Use to create or operate on a single Intent (INT-NNN) — a committed outcome that spans several Implementation Briefs, captured as a file with its outcome test. Trigger when the engineer wants to: author/capture a committed direction or planned change as an Intent before starting; decompose an Intent into IBs; amend it to change scope, components, or globs; accept, analyze, review, or audit it; complete it (the `--lock` flag, retained for compatibility, runs `dekspec intent complete` once its IBs are complete — ADR-057), sync post-completion, or supersede it. Phrases like \"author the intent for this\", \"decompose INT-x\", \"amend INT-x to add...\", \"complete INT-x now its IBs are done\", or \"capture this as a committed direction\" all apply — even when stated in plain language without flags. This handles ONE Intent operation or transition. Driving an Intent through specification belongs to spec-intent, and implementing a ready Intent end to end belongs to implement. A bounded change that fits one IB needs no Intent (ADR-056) — use /write-ibs."
 mode: lite
-model: claude-opus-4-7
 reasoning_effort: max
 disable-model-invocation: false
 allowed-tools: Read Write Edit Grep Glob Bash Agent
@@ -74,9 +73,7 @@ The former `--testpass` mode is retired (ADR-057): the Verification block is exe
 
 ## Interview Rigor (default-on)
 
-This skill **optionally composes the [`interview-me`](../../../dektools/tools/interview-me/SKILL.md) tool** (INT-167 / D13), which ships in the **DekTools** plugin (ADR-047). It does not re-author the interview prose, and there is no `--grill` flag. When the engineer's input is fuzzy or underspecified and the tool is available, invoke `/interview-me <INT-NNN | description>` so the engineer is interviewed one decision-tree question at a time, with a recommended answer per question, repo-exploration for discoverable answers, glossary + governing ADR/AE citation with conflict-flagging, fuzzy-term sharpening, and scenario-based stress-testing of asserted relationships.
-
-**Degrade gracefully when it is absent.** DekTools may not be installed, or `interview-me` may not be enabled in its à-la-carte selection. Core is self-sufficient by design (ADR-047), so this is a supported configuration, not an error: fall back to asking the engineer the same decisions inline, one at a time, and continue. Never block authoring on a toolkit tool, and never report its absence as a failure.
+This skill **composes the [`interview-me`](../interview-me/SKILL.md) skill** (INT-167 / D13), which ships beside it in this plugin (ADR-064). It does not re-author the interview prose, and there is no `--grill` flag. When the engineer's input is fuzzy or underspecified, invoke it through the Skill tool (`/dekspec:interview-me <INT-NNN | description>`) so the engineer is interviewed one decision-tree question at a time, with a recommended answer per question, repo-exploration for discoverable answers, glossary + governing ADR/AE citation with conflict-flagging, fuzzy-term sharpening, and scenario-based stress-testing of asserted relationships.
 
 **Trigger (pinned, INT-167 Open Issues):**
 

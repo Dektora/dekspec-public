@@ -2,7 +2,6 @@
 name: write-goal-loop-contract
 description: Write effective goal contracts for a long-running autonomous Claude Code run — the persistent plan → act → test → review → iterate loop. Use whenever the user wants to kick off a long-running / overnight / self-paced autonomous run, mentions a "goal loop" or "Ralph loop", asks how to write a goal/agent prompt with a stop condition, or wants a one-paragraph goal contract drafted. Turns a fuzzy "go do this" into a verifiable specification with a stop condition.
 mode: lite
-model: claude-opus-4-7
 reasoning_effort: high
 disable-model-invocation: false
 allowed-tools: Read Write Edit Bash
@@ -234,4 +233,4 @@ At runtime, render the manifest per `_lib/help_mode_template.md` and stop.
 
 - `/dekspec:orchestrate-coding-session` — the native driver when the run is a dekspec construction session.
 - `/dekspec:implement` — drives ready Intents or IBs to integrated, verified completion (a governed alternative to a free-form goal loop, ADR-059).
-- `/prototype` — when the goal is to explore a design shape disposably rather than drive to a verifiable outcome. Ships in **DekTools** (ADR-047), so it is an optional on-ramp: DekTools may not be installed, or `prototype` may not be enabled in its à-la-carte selection. Core is self-sufficient by design — when the tool is absent, say so plainly and carry on with the contract; never report its absence as a failure.
+- `/dekspec:prototype` — when the goal is to explore a design shape disposably rather than drive to a verifiable outcome. It is an operator slash command: name it to the engineer rather than invoking it.

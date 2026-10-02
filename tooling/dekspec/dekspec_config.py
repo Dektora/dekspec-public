@@ -27,12 +27,16 @@ Public API:
 Recognised dotted keys: `schema_version`, `methodology_profile`, `repo.scope`,
 the setup-dekspec fields (INT-174) `issue_tracker`, `ephemeral_scratch_dir`,
 `glossary_path`, `triage_labels.hitl`, `triage_labels.afk`,
-`triage_labels.buckets`, and the DekTools enabled-set (ADR-047)
-`dektools.enabled`.
+`triage_labels.buckets`.
+
+The retired `dektools.enabled` key (ADR-064) is still accepted on load for
+one release, unchanged and unread, so a v0.126.0 config keeps working;
+`carries_legacy_tool_selection(repo_root)` tells `dekspec install` to print
+its notice. It is not a recognised dotted key: `get_key` / `set_key` refuse
+it, and no write drops it.
 """
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 from typing import Any
@@ -49,11 +53,9 @@ __all__ = [
     "DEKSPEC_CONFIG_KEYS",
     "DEKSPEC_CONFIG_KEY_ALIASES",
     "DekspecConfigError",
+    "carries_legacy_tool_selection",
     "config_exists",
     "config_path",
-    "dektools_catalog_path",
-    "enabled_dektools_tools",
-    "known_dektools_tools",
     "get_key",
     "get_profile",
     "load_config",
@@ -80,15 +82,12 @@ DEKSPEC_CONFIG_KEYS: tuple[str, ...] = (
     "triage_labels.hitl",
     "triage_labels.afk",
     "triage_labels.buckets",
-    # DekTools a-la-carte enabled-set (ADR-047). Array-valued: see
-    # `DEKSPEC_CONFIG_ARRAY_KEYS`.
-    "dektools.enabled",
 )
 
 # Dotted keys whose value is a LIST. The CLI hands `set_key` a raw string, so
 # these are split on commas there; the Python API takes a real list either way.
 DEKSPEC_CONFIG_ARRAY_KEYS: frozenset[str] = frozenset(
-    {"dektools.enabled", "triage_labels.buckets"}
+    {"triage_labels.buckets"}
 )
 
 
@@ -142,16 +141,6 @@ def _validate(data: Any, path: Path) -> None:
         )
 
 
-DEKTOOLS_RENAMES = {'prj-mgr': 'project-board', 'write-issue-beads': 'project-board', 'diagnose-bug': 'debug', 'debug-testfail': 'debug', 'analyze-module-depth': 'audit-codebase', 'orchestrate-module-deepening': 'deepen', 'deepen-until-dry': 'deepen', 'brownfield-ingest': 'ingest-docs', 'archeology': 'recover-specs', 'rotation-handoff': 'handoff', 'coding-session-forensics': 'diagnose-session'}
-
-
-def migrate_dektools_names(names: list[str]) -> list[str]:
-    # Setup is always available and never selectable (ADR-060); an older
-    # selector accepted it, so drop it on read and the next write persists that.
-    renamed = (DEKTOOLS_RENAMES.get(n, n) for n in names)
-    return list(dict.fromkeys(n for n in renamed if n != "setup-dektools"))
-
-
 def load_config(repo_root: str | Path) -> dict[str, Any]:
     """Read + schema-validate `.dekspec/config.yaml`; return the parsed dict.
 
@@ -184,12 +173,23 @@ def load_config(repo_root: str | Path) -> dict[str, Any]:
     # retired (it only paired with `executor.kind=dekfactory`).
     raw.pop("executor", None)
     raw.pop("auth", None)
-    toolkit = raw.get("dektools")
-    selection = toolkit.get("enabled") if isinstance(toolkit, dict) else None
-    if isinstance(selection, list) and all(isinstance(n, str) for n in selection):
-        raw["dektools"]["enabled"] = migrate_dektools_names(selection)
     _validate(raw, path)
     return raw
+
+
+def carries_legacy_tool_selection(repo_root: str | Path) -> bool:
+    """Whether the repo's config carries the retired `dektools.enabled` key.
+
+    ADR-064 (g) accepts the key for one release and ignores it with a notice;
+    this answers whether that notice is due. A missing, unparseable or
+    schema-invalid config answers False, so it never fails a caller.
+    """
+    try:
+        config = load_config(repo_root)
+    except DekspecConfigError:
+        return False
+    block = config.get("dektools")
+    return isinstance(block, dict) and "enabled" in block
 
 
 def write_config(
@@ -230,8 +230,6 @@ def get_key(repo_root: str | Path, dotted_key: str) -> Any:
             f"Valid keys: {', '.join(DEKSPEC_CONFIG_KEYS)}"
         )
     config = load_config(repo_root)
-    if dotted_key == "dektools.enabled":
-        return config.get("dektools", {}).get("enabled", [])
     node: Any = config
     for part in dotted_key.split("."):
         if not isinstance(node, dict) or part not in node:
@@ -243,86 +241,13 @@ def get_key(repo_root: str | Path, dotted_key: str) -> Any:
     return node
 
 
-def dektools_catalog_path(start: Path | None = None) -> Path | None:
-    """Locate `plugins/dektools/tool-catalog.json`, or None if unreachable.
-
-    None is the normal answer for a pip/pipx-installed engine: the plugin
-    trees are not bundled in the wheel (AE-008 / ADR-009), so the catalog
-    simply is not there. Callers must treat that as "cannot know", never as
-    "no tools exist".
-    """
-    use_bundled = start is None
-    start = (start or Path(__file__)).resolve()
-    for parent in start.parents:
-        candidate = parent / "plugins" / "dektools" / "tool-catalog.json"
-        if candidate.is_file():
-            return candidate
-    bundled = Path(__file__).parent / "_vendored/dektools/tool-catalog.json"
-    return bundled if use_bundled and bundled.is_file() else None
-
-
-def known_dektools_tools(catalog_path: Path | None = None) -> set[str]:
-    """Tool names declared in the DekTools catalog.
-
-    Returns an empty set when the catalog cannot be found or read — which
-    disables name validation rather than rejecting every name (see
-    `_validate_dektools_selection`).
-    """
-    path = catalog_path or dektools_catalog_path()
-    if path is None:
-        return set()
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return set()
-    return {t["name"] for t in payload.get("tools", []) if "name" in t}
-
-
-def enabled_dektools_tools(repo_root: str | Path) -> list[str]:
-    """The repo's DekTools enabled-set, or `[]` when unset.
-
-    ADR-047 forces nothing on, so absent and empty mean the same thing and
-    neither is an error — unlike `get_key`, which raises on an unset key.
-    """
-    try:
-        config = load_config(repo_root)
-    except DekspecConfigError:
-        return []
-    value = config.get("dektools", {}).get("enabled", [])
-    return list(value) if isinstance(value, list) else []
-
-
-def _validate_dektools_selection(value: Any) -> None:
-    """Reject names absent from the catalog (ADR-047: the catalog is the list
-    of known tools).
-
-    Skipped entirely when the catalog is unresolvable. Refusing every name
-    because the plugin tree is not checked out would make the key unusable on
-    a pip-installed engine, and core must not depend on DekTools being
-    present at all.
-    """
-    if isinstance(value, list) and "setup-dektools" in value:
-        raise DekspecConfigError(
-            "'setup-dektools' is always available and is not selectable (ADR-060)."
-        )
-    known = known_dektools_tools()
-    if not known or not isinstance(value, list):
-        return
-    unknown = [v for v in value if v not in known]
-    if unknown:
-        raise DekspecConfigError(
-            f"{', '.join(repr(u) for u in unknown)} "
-            f"{'is' if len(unknown) == 1 else 'are'} not a DekTools tool. "
-            f"Valid tools: {', '.join(sorted(known - {'setup-dektools'}))}"
-        )
-
-
 def set_key(repo_root: str | Path, dotted_key: str, value: Any) -> Path:
     """Set `dotted_key` to `value`, re-validate, and atomically rewrite.
 
     Raises `DekspecConfigError` if the key is unrecognised, the config file
-    is absent, the value names an unknown DekTools tool, or the resulting
-    document fails schema validation.
+    is absent, or the resulting document fails schema validation. Keys this
+    call does not name — the retired `dektools` block included — are written
+    back as loaded.
     """
     dotted_key = DEKSPEC_CONFIG_KEY_ALIASES.get(dotted_key, dotted_key)
     if dotted_key not in DEKSPEC_CONFIG_KEYS:
@@ -330,8 +255,6 @@ def set_key(repo_root: str | Path, dotted_key: str, value: Any) -> Path:
             f"Unknown config key {dotted_key!r}. "
             f"Valid keys: {', '.join(DEKSPEC_CONFIG_KEYS)}"
         )
-    if dotted_key == "dektools.enabled":
-        _validate_dektools_selection(value)
     config = load_config(repo_root)
     parts = dotted_key.split(".")
     node: dict[str, Any] = config
