@@ -36,6 +36,7 @@ from typing import Any
 from ..constraint_compiler.graph import SpecGraph
 from ..glob_braces import expand_braces as _expand_braces
 from ..severity import P0, P1, P2, P3, Severity
+from ..specification_policy import ReferencePolicy, ReferencePolicyError, load_policy
 
 
 # Audit-side legacy → canonical alias map (ADR-013). Distinct from the
@@ -119,6 +120,10 @@ def audit_linkage(
 
     active_profile = load_profile(profile or "v1")
 
+    try:
+        load_policy(Path(repo_root))
+    except ReferencePolicyError as exc:
+        return [Finding(P1, "LX-PARSE", ".dekspec/config.yaml", str(exc), "semantic")]
     graph = SpecGraph.load(repo_root, dekspec_root=dekspec_root)
     findings: list[Finding] = []
 
@@ -438,7 +443,8 @@ def _t_status_bearing_nonkind(graph: SpecGraph) -> list[Finding]:
     (wrong dir / no kind-prefix, e.g. a code-consumed schema README dropped
     under ``dekspec/schemas/``) is a low-false-positive anomaly worth an
     advisory. Recognized artifacts, prose singletons (System Vision, glossary,
-    Constitution), and provisional incubation folders never fire; non-Status
+    Constitution), templates, shipped reference docs, and provisional incubation
+    folders never fire; non-Status
     prose (indexes, divergences, guidance) never fires. Advisory only — DekSpec
     deliberately allows project-authored prose in the tree.
     """
@@ -446,9 +452,21 @@ def _t_status_bearing_nonkind(graph: SpecGraph) -> list[Finding]:
     dekspec_dir = graph.dekspec_dir
     if dekspec_dir is None or not dekspec_dir.exists():
         return out
+    # Resource examples intentionally carry Status fields. Derive the library
+    # paths from the current shipping manifest, not an arbitrary consumer-owned
+    # manifest entry that could hide a misplaced specification. Vendoring drift
+    # remains independently checked, including missing/modified templates.
+    from ..vendoring import iter_vendored_pairs
+
+    library_resources = {
+        destination.resolve()
+        for _, destination in iter_vendored_pairs(repo_root=dekspec_dir.parent)
+    }
     for p in sorted(dekspec_dir.rglob("*.md")):
         rel = p.relative_to(dekspec_dir)
         parts = rel.parts
+        if parts[0] == "templates" or p.resolve() in library_resources:
+            continue
         # Provisional incubation folders deliberately carry Status — skip.
         if "provisional" in parts:
             continue
@@ -924,6 +942,12 @@ def _t_ib_execution_contract(graph: SpecGraph) -> list[Finding]:
             )
             for ob in resolve_obligations(repo_root, view, spec_root=spec_root):
                 if not ob.problem:
+                    policy = _reference_policy(graph)
+                    if policy.evolving(ob.ref, ob.status):
+                        out.append(Finding(
+                            P3, "T-IB-OBLIGATION-UNRESOLVED", ib_id,
+                            f"Obligation {ob.id}: {policy.notice(ob.ref, ob.status)}", "semantic",
+                        ))
                     continue
                 if ib["status"] == "COMPLETE" and ob.status in ("SUPERSEDED", "DEPRECATED"):
                     out.append(Finding(
@@ -3593,7 +3617,7 @@ def _t_constitution_article_populated(graph: SpecGraph) -> list[Finding]:
     """T-CONSTITUTION-ARTICLE-POPULATED (important): each of the eight
     articles has non-empty content per its kind. Pointer articles need
     non-empty summary + see_also; text articles need non-empty body;
-    ref-array articles need at least one ref entry (Article 4: adr_refs;
+    ref-array articles need prose content or at least one ref entry (Article 4: adr_refs;
     Article 7: at least one of adr_refs OR ae_refs, per WS-005 BR2 lenient
     reading — schema does not enforce minItems on either array).
 
@@ -3623,6 +3647,8 @@ def _t_constitution_article_populated(graph: SpecGraph) -> list[Finding]:
                     missing_parts.append("see_also")
                 empty_reason = f"empty (kind=pointer): {' and '.join(missing_parts)} missing"
         elif kind == "ref-array":
+            if (article.get("body") or "").strip():
+                continue
             adr_refs = article.get("adr_refs") or []
             ae_refs = article.get("ae_refs") or []
             if article_num == 7:
@@ -4803,6 +4829,11 @@ def maturity_band(status: str | None) -> int | None:
     return _MATURITY_BAND.get(token)
 
 
+def _reference_policy(graph: SpecGraph) -> ReferencePolicy:
+    root = getattr(graph, "repo_root", None)
+    return load_policy(Path(root)) if root is not None else ReferencePolicy()
+
+
 def _t_status_auto_fixable(graph: SpecGraph, artifact_id: str) -> tuple[bool, str]:
     """Whether the lagging artifact can be auto-transitioned to `ACCEPTED`.
 
@@ -4830,6 +4861,9 @@ def _t_status_auto_fixable(graph: SpecGraph, artifact_id: str) -> tuple[bool, st
     ir = graph.by_id(artifact_id)
     if ir is None:
         return False, "artifact not in graph"
+    policy = _reference_policy(graph)
+    if policy.evolving(artifact_id, ir.get("status")):
+        return False, policy.notice(artifact_id, ir.get("status"))
     if artifact_id.startswith("WS-"):
         for issue in ir.get("open_issues") or []:
             if issue.get("severity") == "P1":
@@ -4851,6 +4885,7 @@ def _status_dependency_edges(graph: SpecGraph) -> list[tuple[str, str, str]]:
     L1/L3/L4/L5/L7a/L8 rules use:
 
       - Intent -> AE        (L7a — linked_architecture_elements)
+      - Intent -> ADR       (type_specific.adr)
       - ADR    -> AE        (L1  — related_architecture_elements)
       - WS     -> AE        (L3  — related_architecture_elements)
       - IC     -> AE        (L4  — provider_ae / consumer_aes / parties)
@@ -4871,6 +4906,10 @@ def _status_dependency_edges(graph: SpecGraph) -> list[tuple[str, str, str]]:
             ae_id = ref["id"] if isinstance(ref, dict) else ref
             if isinstance(ae_id, str) and ae_id:
                 edges.append((intent["id"], ae_id, "Intent->AE"))
+        # The existing adr-driven Intent field is also a canonical reference.
+        adr_id = (intent.get("type_specific") or {}).get("adr")
+        if isinstance(adr_id, str) and adr_id:
+            edges.append((intent["id"], adr_id, "Intent->ADR"))
         # child-Intent -> Mission
         msn_id = (intent.get("mission") or {}).get("id")
         if isinstance(msn_id, str) and msn_id:
@@ -4933,6 +4972,7 @@ def _t_status_inversion(graph: SpecGraph) -> list[Finding]:
     out-maturing consumers.
     """
     out: list[Finding] = []
+    policy = _reference_policy(graph)
 
     # provider_id -> (provider_status, [(consumer_id, consumer_status, kind)])
     lagging: dict[str, tuple[str, list[tuple[str, str, str]]]] = {}
@@ -4972,6 +5012,13 @@ def _t_status_inversion(graph: SpecGraph) -> list[Finding]:
         # P3 advisory; everything cleanly fixable is gating P2.
         fixable, reason = _t_status_auto_fixable(graph, provider_id)
         severity = P2 if fixable else P3
+        if policy.evolving(provider_id, provider_status):
+            out.append(Finding(
+                P3, "T-STATUS-INVERSION", provider_id,
+                f"{policy.notice(provider_id, provider_status)} Referenced by: {consumer_desc}.",
+                "semantic",
+            ))
+            continue
         if fixable:
             remedy = (
                 "Per the ACCEPTED-capped invariant the provider must be at "
@@ -5035,6 +5082,7 @@ def _t_status_lag(graph: SpecGraph) -> list[Finding]:
     """
     out: list[Finding] = []
     closed = _closed_bead_statuses()
+    policy = _reference_policy(graph)
 
     # Index: child IBs per parent WS (IB.spec.id) and per parent Intent
     # (IB.intent.id) — the spec-graph decomposition edges.
@@ -5098,6 +5146,13 @@ def _t_status_lag(graph: SpecGraph) -> list[Finding]:
         # (a WS with an unresolved P1 blocker) draws a flag-only P3 advisory
         # rather than a gating P2 — the same two-tier split as INVERSION.
         fixable, reason = _t_status_auto_fixable(graph, art_id)
+        if policy.evolving(art_id, status):
+            out.append(Finding(
+                P3, "T-STATUS-LAG", art_id,
+                f"{policy.notice(art_id, status)} Realized work: {'; '.join(signals)}.",
+                "semantic",
+            ))
+            continue
         if fixable:
             severity = P2
             remedy = (
@@ -5489,6 +5544,7 @@ def apply_status_fixes(
     (per-fix result list), `dry_run`.
     """
     graph = SpecGraph.load(repo_root, dekspec_root=dekspec_root)
+    _reference_policy(graph)  # Refuse malformed policy before any write.
     fixes = _propose_t_status_fixes(graph)
     relocations = _propose_ib_relocations(graph)
     details: list[dict[str, Any]] = []
@@ -5549,12 +5605,16 @@ def is_lock_ready(graph: SpecGraph, artifact_id: str) -> tuple[bool, str]:
         ae_ids = graph.aes_of_ic(artifact_id)
         if not ae_ids:
             return False, "IC has no party/consumer AEs populated"
+        policy = _reference_policy(graph)
+        notices = []
         for ae_id in ae_ids:
             ae = graph.by_id(ae_id)
             if not ae:
                 return False, f"referenced AE {ae_id} does not exist in graph"
             ae_band = maturity_band(ae.get("status"))
-            if ae_band is None or ae_band < _STATUS_ACCEPTED_BAND:
+            if policy.evolving(ae_id, ae.get("status")):
+                notices.append(policy.notice(ae_id, ae.get("status")))
+            elif ae_band is None or ae_band < _STATUS_ACCEPTED_BAND:
                 return False, f"referenced AE {ae_id} is below ACCEPTED (band {ae_band})"
 
         ic_findings = [f for f in _l4_ic_ae_links(graph) if f.artifact_id == artifact_id]
@@ -5564,6 +5624,8 @@ def is_lock_ready(graph: SpecGraph, artifact_id: str) -> tuple[bool, str]:
                 f"IC has active L4 linkage findings: {', '.join(f.rule for f in ic_findings)}",
             )
 
+        if notices:
+            return True, "IC references satisfy policy and has no active L4 findings. " + " ".join(notices)
         return True, "IC has all party/consumer AEs >= ACCEPTED and no active L4 findings"
 
     elif artifact_id.startswith("WS-"):
@@ -7126,11 +7188,11 @@ def _l_const_class_lane_intent_exists(graph) -> list[Finding]:
     const = getattr(graph, "constitution", None)
     const_data = const() if callable(const) else const
     rows = (const_data or {}).get("class_lanes") or []
-    if not rows:
-        return out  # no lanes declared yet — silent
+    if "class_lanes" not in (const_data or {}):
+        return out  # no lane policy declared; an explicitly empty table is different
     keys = {(r.get("intent_type"), r.get("risk_tier")) for r in rows}
     for intent in graph.intents():
-        tup = (intent.get("type"), intent.get("risk_tier"))
+        tup = (intent.get("intent_type", intent.get("type")), intent.get("risk_tier"))
         if tup[1] is None:
             continue  # risk_tier optional; skip when absent
         if tup not in keys:

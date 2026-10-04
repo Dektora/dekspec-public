@@ -17,7 +17,7 @@ Write, lock, or unlock an Architectural Decision Record.
 >
 > This skill requires precise architectural reasoning. Prior conversation context can degrade quality by introducing bias and competing patterns.
 >
-> First message → proceed. Prior history → ask "context may affect ADR quality, recommend /clear, continue? (y/n)" + wait.
+> Inline reasoning only (see mode manifest); substantive fan-out skips this check. First message → proceed. Prior history → ask "context may affect ADR quality, recommend /clear, continue? (y/n)" + wait.
 
 **Mode dispatcher pattern:** see [`skills/_lib/mode_dispatcher.md`](../_lib/mode_dispatcher.md) for canonical mode semantics + the universal `--teaching` mode (per ds-int-007 / INT-008).
 
@@ -68,6 +68,8 @@ At interview end, read the hand-off log `dekspec/.scratch/interview-me/<artifact
 
 ## Fan-Out Mode
 
+Bundle source paths rather than parent summaries; preserve engineer guidance verbatim. Keep parsed mode/path fields and labeled orchestrator notes separate. Show the manifest and preserve fan-out/ingest provenance per the shared substrate; existing task authorization suffices for dispatch.
+
 See [`_lib/fan_out.md`](../_lib/fan_out.md) for the canonical ds-di2 orchestrator/subagent contract. Manifest for this skill:
 
 - **subagent_type**: `dekspec:adr-author`
@@ -75,7 +77,7 @@ See [`_lib/fan_out.md`](../_lib/fan_out.md) for the canonical ds-di2 orchestrato
 - **inline_modes**: [`--help`, `--teaching`, `--review`, `--audit`, `--lock`, `--unlock`, `--supersede`]
 - **bundle_list** (Step 1 context):
   1. Template path — `dekspec/templates/adr-template.md` (read verbatim).
-  2. Engineer guidance — raw `$ARGUMENTS` (Creation); existing ADR + notes (`--revise`); existing ADR + audit findings to address (`--accept`).
+  2. Engineer guidance — `$ARGUMENTS` verbatim in every mode; existing ADR and note files as absolute paths; audit findings separately labeled as orchestrator notes.
   3. Related Architecture Elements — run `python ../_lib/scripts/bundle_related.py --keywords "<decision-domain-keywords>" --include ae` (for `--revise` / `--accept`, also `--for <existing-ADR-path> --include ae --backlinks`) to get candidate AE paths whose linkage sections touch the decision's domain. From the returned paths, judge which AEs are relevant; bundle those — paths AND content.
   4. Prior ADRs on the same axis (supersession surface) — run `python ../_lib/scripts/bundle_related.py --keywords "<decision-domain-keywords>" --include adr` to get candidate ADR paths whose linkage sections overlap this decision. From the returned paths, judge which the new ADR may supersede or be superseded by; bundle those (paths AND content); at minimum every ADR in that supersession relationship.
   5. Constraints — relevant Interface Contracts (`dekspec/interface-contracts/`), the System Vision (`dekspec/system-vision.md`), the domain glossary (`dekspec/domain-glossary.md`), and any cross-cutting governance the decision must respect.
@@ -256,7 +258,7 @@ Arguments after the path are the engineer's notes — inline text or a path to a
 
 ### Fan-out (parent → dekspec:adr-author subagent)
 
-Bundle context per §Fan-Out Mode Step 1 — include the **existing ADR contents** and the **engineer's notes** in the `Engineer guidance` block of the prompt, marking the mode as `Revise`. Related AEs, prior ADRs, and constraints are bundled as for Creation Mode.
+Bundle context per §Fan-Out Mode Step 1 — include the **existing ADR path**, the **engineer's notes verbatim**, and separately labeled orchestrator notes, marking the mode as `Revise`. Related AEs, prior ADRs, and constraints are bundled as for Creation Mode.
 
 Dispatch per §Fan-Out Mode Step 2 with `subagent_type: dekspec:adr-author`. The subagent classifies each note, applies the approved changes to the artifact body, updates the **Modified** date, and returns the revised ADR plus a list of any new open issues it logged.
 
@@ -293,7 +295,7 @@ Promotes a PROPOSED ADR to ACCEPTED after every quality check passes. Passing th
 
 ### Step 2: Fan-out final audit (parent → dekspec:adr-author subagent)
 
-Bundle context per §Fan-Out Mode Step 1 — include the **existing ADR contents** and the **full Audit Mode checklist below** in the `Engineer guidance` block of the prompt, marking the mode as `Accept`. Related AEs, prior ADRs (the supersession surface), and constraints are bundled as for Creation Mode.
+Bundle context per §Fan-Out Mode Step 1 — include the **existing ADR path** and the **full Audit Mode checklist below** as the mode contract, preserving engineer guidance separately and verbatim, marking the mode as `Accept`. Related AEs, prior ADRs (the supersession surface), and constraints are bundled as for Creation Mode.
 
 The subagent runs the complete checklist against the artifact, including the always-run supersession check:
 
@@ -441,7 +443,7 @@ Check if the decision falls on the "always a full ADR" list:
 - Wave compression contract
 - Formula DSL namespace
 
-If yes, the dispatched subagent MUST produce a full ADR — no lightweight alternative. Flag this in the `Engineer guidance` block of the prompt.
+If yes, the dispatched subagent MUST produce a full ADR — no lightweight alternative. Flag this in the labeled `ORCHESTRATOR NOTES` block of the prompt.
 
 ### Step 3: Fan-out Draft (parent → dekspec:adr-author subagent)
 

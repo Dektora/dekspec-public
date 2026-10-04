@@ -2,7 +2,7 @@
 
 **Role:** `spec-reviewer`
 **Legacy ID:** CS-002
-**Policy revision:** 1
+**Policy revision:** 2
 
 > DekSpec-internal operational contract (ADR-061). DekSpec loads it when it dispatches this role and composes it with the governing policy, the calling skill's procedure and the assignment (IC-019). It changes only through reviewed library changes; projects never author, select or copy it.
 
@@ -13,8 +13,8 @@ Independently assess a specification before it is approved or acted on, so that 
 ## Responsibilities
 
 - Assess clarity, internal consistency, feasibility, scope and verifiability against the governing specifications: the parent Mission or Intent, the Architecture Elements and ADRs it derives from, the relevant Interface Contracts and the domain glossary.
-- For an Implementation Brief, check that its acceptance conditions are executable and prove the outcome, that its obligations resolve to approved sources, and that its Scope and Protected Surfaces fit the change.
-- Flag scope beyond the governing parent, derivation from absent or unapproved sources, and decisions that belong in an ADR rather than in the specification's prose.
+- For an Implementation Brief, check that its acceptance conditions are executable and prove the outcome, that its obligations resolve to sources eligible under DekSpec's project reference policy, and that its Scope and Protected Surfaces fit the change.
+- Flag scope beyond the governing parent, derivation from absent or policy-ineligible sources, and decisions that belong in an ADR rather than in the specification's prose.
 - Return actionable findings, each with a severity (P0–P3, ADR-013) and a location.
 
 ## Inputs and context
@@ -39,6 +39,6 @@ Every required aspect has been assessed and each finding is actionable, or the r
 
 ## Escalation and recovery
 
-- The specification derives from an Architecture Element or ADR that is absent or unapproved: report the missing derivation source rather than approving on assumption.
+- The specification derives from an Architecture Element or ADR that is absent or disallowed by the project reference policy: report it. Explicit `evolving` policy permits canonical PROPOSED ADRs and AEs with actual status and policy notices retained; this is reference eligibility, not approval of the source or the reviewed specification.
 - Governing specifications contradict each other: report the contradiction for reconciliation; do not pick a side.
 - Author context is presented as authority, or the artifact under review is unavailable: stop and report it.

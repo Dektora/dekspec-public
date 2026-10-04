@@ -71,8 +71,8 @@ _IR_PRECEDENCE: tuple[IRKind, ...] = (
 class Section:
     """One markdown section of an ingested document.
 
-    A section runs from its ATX heading to the next heading of equal-or-higher
-    level. Content before the first heading is a single `Section` with
+    A section runs from its ATX heading to the next heading of any
+    level outside fenced code. Content before the first heading is a single `Section` with
     `level == 0` and an empty `heading`.
     """
 
@@ -90,10 +90,14 @@ class Section:
 
     body: str
     """The section body — everything between this heading and the next heading
-    of equal-or-higher level, excluding the heading line itself."""
+    outside fenced code, excluding the heading line itself."""
 
     order: int
     """Zero-based position of the section in source order."""
+
+    start_line: int = 1
+    end_line: int = 1
+    """Inclusive, one-based source range, including the heading."""
 
 
 @dataclass(frozen=True)
@@ -173,49 +177,34 @@ def section_document(document: str) -> list[Section]:
     `level == 0` and an empty `heading`. The returned list is in source order.
     This function is deterministic.
     """
-    lines = _normalize(document).split("\n")
-
-    # First pass: collect (level, heading_text, body_lines) blocks, with any
-    # pre-heading preamble as a level-0 block.
-    raw_blocks: list[tuple[int, str, list[str]]] = []
-    preamble: list[str] = []
-    current: tuple[int, str, list[str]] | None = None
-    preamble_flushed = False
-
-    for line in lines:
+    lines = _normalize(document).splitlines()
+    starts: list[tuple[int, int, str]] = []
+    fence: str | None = None
+    for index, line in enumerate(lines):
+        fence_match = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", line)
+        if fence_match:
+            marker, tail = fence_match.groups()
+            if fence is None:
+                fence = marker
+            elif marker[0] == fence[0] and len(marker) >= len(fence) and not tail.strip():
+                fence = None
+            continue
+        if fence is not None:
+            continue
         match = _ATX_HEADING_RE.match(line)
         if match:
-            if current is not None:
-                raw_blocks.append(current)
-            elif not preamble_flushed:
-                # Emit the pre-heading preamble as a level-0 section, but only
-                # when it carries non-empty content — a document that opens
-                # directly with a heading produces no empty preamble section.
-                if "".join(preamble).strip():
-                    raw_blocks.append((0, "", preamble))
-                preamble_flushed = True
-            level = len(match.group(1))
-            heading = match.group(2).strip()
-            current = (level, heading, [])
-        else:
-            if current is None:
-                preamble.append(line)
-            else:
-                current[2].append(line)
-
-    if current is not None:
-        raw_blocks.append(current)
-    elif not raw_blocks:
-        # Document with no headings at all — one level-0 preamble section
-        # (even if empty, so `classify` always returns at least one row).
-        raw_blocks.append((0, "", preamble))
-
-    sections: list[Section] = []
-    for order, (level, heading, body_lines) in enumerate(raw_blocks):
-        body = "\n".join(body_lines).strip("\n")
-        sections.append(
-            Section(heading=heading, level=level, body=body, order=order)
-        )
+            starts.append((index, len(match.group(1)), match.group(2).strip()))
+    if not starts or any(line.strip() for line in lines[:starts[0][0]]):
+        starts.insert(0, (0, 0, ""))
+    sections = []
+    for order, (start, level, heading) in enumerate(starts):
+        end = starts[order + 1][0] if order + 1 < len(starts) else len(lines)
+        body_start = start + 1 if level else start
+        sections.append(Section(
+            heading=heading, level=level,
+            body="\n".join(lines[body_start:end]).strip("\n"), order=order,
+            start_line=start + 1, end_line=max(start + 1, end),
+        ))
     return sections
 
 

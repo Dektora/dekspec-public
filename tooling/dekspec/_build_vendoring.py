@@ -27,6 +27,7 @@ VENDORED_DOCS = (
     "cli-reference.md",
     "EXAMPLES.md",
     "amendment-log-types.md",
+    "beads-recovery.md",
 )
 
 # Plugin subtrees vendored whole (ADR-045). `install --platform` repackages

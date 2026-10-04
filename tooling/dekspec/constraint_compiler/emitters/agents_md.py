@@ -651,7 +651,9 @@ def emit_constitution(ir: dict[str, Any]) -> list[str]:
         if kind == "pointer":
             fragments.append(_emit_pointer_article(article, n, title))
         elif kind == "ref-array":
-            if n == 7:
+            if article.get("body"):
+                fragments.append(_emit_text_article(article, n, title))
+            elif n == 7:
                 fragments.append(_emit_boundary_refs_article(article, n, title))
             else:
                 fragments.append(_emit_adr_refs_article(article, n, title))

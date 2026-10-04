@@ -2,6 +2,26 @@
 
 All notable changes to DekSpec are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/); versioning follows [Semantic Versioning](https://semver.org/).
 
+## [v0.128.0] — 2026-10-04
+
+### Fixed
+
+- Document ingest retains separate source sections, unique draft names and per-draft source provenance instead of overwriting or globally combining same-kind material (#165).
+- System Vision parsing preserves supported heading variations and required content; validation rejects missing or empty sections and ambiguous duplicates. Installed Vision authoring resolves shipped guidance and its validator from the resource location (#167, #169).
+- Constitution Articles 4 and 7 preserve authored prose alongside optional typed references through parsing, audit and generated agent context. Reference-only corpora remain compatible. Class Lane policies and amendment logs reach their existing audits without silently converting unknown amendment types to editorial changes (#170, #180, #187).
+- Plain and backticked severity values retain their meaning in public parsers and implementation readiness. Explicit malformed severities fail visibly instead of becoming advisory (#181).
+- Initialization reports the required template sync, pins store prefixes, and avoids creating a retired root code store. Doctor uses bounded operational bead-store probes and reports unavailable or unhealthy stores (#161, #162).
+- Project-board routing honors existing tracked store prefixes, including already-qualified consumers without a DekSpec project setting; contradictory configuration is an actionable error (#179).
+- Authoring fan-out carries exact user guidance without redundant context-clearing interruptions. AE authoring uses the supported contract and permits appropriate architecture diagrams while retaining implementation-code checks. Vendored templates/reference documents no longer trigger misplaced-artifact findings; drift checks remain active, example links resolve, and index headings match their artifact kinds. Audit help accepts its documented loop form (#164, #176, #178, #193, #196).
+
+### Added
+
+- DekSpec-owned `specification.reference_mode` supports `strict` (default) and `evolving` policies. Evolving projects can reference PROPOSED ADRs and AEs across authoring, audits, generated context and readiness while preserving actual statuses, links and backlinks; implementation authorization, evidence and integration safeguards remain separate (#199).
+- Optional `beads.project_prefix` (2–6 lowercase ASCII letters or digits), `dekspec init --project-prefix`, and a setup prompt create project-qualified issue/governance IDs such as `acme-iss-abc` and `acme-ds-xyz` (#163).
+- `dekspec beads` health, initialization, preview-bound reprefixing and interrupted-migration recovery. Reprefixing uses exact known IDs, preserves child/slug IDs and references, verifies rebuilt stores, and retains original database/WAL state under `.br_recovery/`. Unsafe or ambiguous migrations refuse mutation (#163).
+
+**Upgrading.** Existing repositories keep their identities; upgrading does not reprefix them automatically. Run `dekspec sync` after acquiring the new engine and refresh the host installation. To opt into project-qualified IDs, read the shipped bead recovery guide, preview `dekspec beads reprefix --to <project> --json`, then explicitly apply the reviewed plan digest. Keep other store writers stopped during migration/recovery. Explicit invalid severity markers that previously slipped through now require correction. br compatibility qualification and CI use 0.7.4; this does not upgrade an operator's installed br automatically.
+
 ## [v0.127.0] — 2026-10-02
 
 **Retained-tool support safety (IB-162).** During DekTools migration, a retained tool file larger than the existing 1,000,000-byte reference-scanning limit now keeps existing owned, unmodified support and its original pending ownership digests. Preview, tools-only migration (including sync), and full-core installation report incomplete reference knowledge and a manual dependency review action. Over-limit files remain unparsed; fully scanned ordinary inputs retain their existing cleanup behavior.

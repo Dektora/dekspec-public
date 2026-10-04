@@ -400,7 +400,7 @@ class SpecGraph:
           - WS     -> AEs, ADRs      (related_architecture_elements, governing_adrs)
           - IC     -> AEs, ADRs      (provider_ae / consumer_aes / parties, governing_adrs)
           - IB     -> AEs, ADRs, WS  (source_aes, governing_adrs, spec.id)
-          - Intent -> AEs            (linked_architecture_elements)
+          - Intent -> AEs, ADR       (linked_architecture_elements, type_specific.adr)
         """
         ir = self.by_id(artifact_id)
         if ir is None:
@@ -425,6 +425,9 @@ class SpecGraph:
             out.extend(
                 r["id"] for r in ir.get("linked_architecture_elements", []) or []
             )
+            adr = (ir.get("type_specific") or {}).get("adr")
+            if isinstance(adr, str) and adr:
+                out.append(adr)
         return list(dict.fromkeys(out))
 
     @staticmethod

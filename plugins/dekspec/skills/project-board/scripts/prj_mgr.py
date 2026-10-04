@@ -23,6 +23,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from beads_workspace import pm_workspaces, repo_root
+
 
 HERE = Path(__file__).resolve().parent
 PYTHON = sys.executable
@@ -37,7 +39,14 @@ ITEMS_SCRIPT = HERE / "prj_mgr_items.py"
 #: Any PM bead id. `cb-` is included ON PURPOSE so a code bead is recognised
 #: and refused with an explanation, rather than falling through to the
 #: ambiguous branch and being offered up as ingestable text.
-BEAD_ID_RE = re.compile(r"^(iss|ds|cb)-[A-Za-z0-9.-]+$")
+
+
+def _bead_id_pattern() -> re.Pattern:
+    prefixes = {"iss", "ds", "cb"} | {ws.prefix for ws in pm_workspaces(repo_root())}
+    return re.compile(r"^(?:" + "|".join(re.escape(p) for p in sorted(prefixes, key=len, reverse=True)) + r")-[A-Za-z0-9.-]+$")
+
+
+BEAD_ID_RE = _bead_id_pattern()
 
 #: Above this length a single token is prose, not a selector.
 TEXT_LEN = 80

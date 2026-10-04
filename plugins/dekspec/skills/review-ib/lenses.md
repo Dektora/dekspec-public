@@ -33,12 +33,12 @@ All 17 lenses share `severity_rubric: shared` (resolves to `plugins/dekspec/skil
   question: |
     Are binding obligations referenced to their one canonical home (ADR,
     IC, WS, SP, AE, Constitution) rather than copied, and does every
-    reference resolve to an approved, in-force source in the generated
+    reference resolve to an in-force source eligible under DekSpec's project reference policy in the generated
     execution context?
   input_slice: ib.obligations + ib.context + ib.lint
   attack_patterns:
     - an obligation paraphrases or pastes text owned by an ADR, IC or WS instead of referencing it (a second copy that will drift)
-    - "`dekspec ib context` or `dekspec ib lint` reports an unresolved reference, a missing section, or a SUPERSEDED / DEPRECATED / unapproved source"
+    - "`dekspec ib context` or `dekspec ib lint` reports an unresolved reference, a missing section, or a SUPERSEDED / DEPRECATED source or one disallowed by DekSpec's project reference policy"
     - a section reference names a heading that does not exist in the source
     - a `(local)` obligation states something whose canonical home is an existing ADR or IC
     - a decision the IB depends on has no canonical home at all and is neither local nor referenced (underdefined contract)

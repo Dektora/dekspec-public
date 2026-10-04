@@ -1,38 +1,18 @@
 #!/usr/bin/env python3
-"""Resolve the `br` bead workspaces (ADR-052) with zero hard dependencies.
+"""Resolve issue/governance workspaces using only the standard library.
 
-Three bead kinds, three `br` workspaces, distinguished by ID prefix:
-
-    .beads/          cb-*    code beads      -- executor input, bare `br ready`
-    .beads-issues/   iss-*   product issues  -- the repo's own tracking
-    .beads-dekspec/  ds-*    DekSpec work    -- governance items
-
-Per ADR-052 the location is *discoverable*, never hardcoded. Three layers,
-each usable on its own, tried in order:
-
-1. **Convention** -- the sibling directories above, relative to the repo root.
-   Needs nothing installed but `br`. This is the layer that lets a tool with
-   no DekSpec present find the tracker.
-2. **Declaration** -- ``.dekspec/config.yaml`` may name workspace locations
-   under ``issue_tracker``, for repos that put them elsewhere.
-3. **Resolution verb** -- ``dekspec beads workspaces --json``, when the engine
-   is on PATH. The ergonomic path; never required.
-
-This module imports only the standard library, so it works in a repo with no
-DekSpec engine installed. ADR-052 rule 5 requires project-board to work from
-convention alone with no engine present, ADR-064 keeps that as a property of
-the tool, and it is enforced by test.
-
-Pre-migration compatibility: until a repo has been split (ds-x74v), the
-issue and DekSpec kinds still live in the single root workspace. Resolution
-falls back to it rather than reporting "no tracker", so this tool works
-before, during, and after the migration.
+Current stores are .beads-issues/.beads and .beads-dekspec/.beads. Prefix
+precedence is project identity, actual tracked pin, then legacy iss/ds default.
+Contradictory or malformed identities are errors, never empty-board success.
+Root code beads are retired (ADR-056); code resolution and shared-root fallback
+remain solely for reading existing history. No resolver creates a store.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -188,6 +168,69 @@ def _from_verb(root: Path, kind: str) -> Path | None:
     return None
 
 
+def _scalar(text: str, key: str, *, nested: bool = False) -> str | None:
+    """Read the documented scalar YAML subset without an engine dependency.
+
+    Refuse duplicate/complex declarations instead of silently falling back.
+    """
+    matches = re.findall(r"(?m)^" + (r"[ \t]+" if nested else "") + re.escape(key) + r"\s*:\s*(.*?)\s*$", text)
+    if len(matches) > 1:
+        raise ValueError(f"Duplicate prefix setting {key}")
+    if not matches:
+        return None
+    value = re.sub(r"\s+#.*$", "", matches[0]).strip()
+    if value[:1] in {"'", '\"'}:
+        if len(value) < 2 or value[-1] != value[0]:
+            raise ValueError(f"Malformed prefix setting {key}")
+        value = value[1:-1]
+    elif value.lower() in {"null", "~", "true", "false", "yes", "no", "on", "off"} or value[:1] in {"[", "{", "&", "*", "!", "|", ">"} or re.fullmatch(r"[-+]?(?:[0-9][0-9_.eE+-]*|0x[0-9a-fA-F]+)", value):
+        raise ValueError(f"Malformed prefix setting {key}: expected a string")
+    return value
+
+
+def _project(root: Path) -> str | None:
+    path = root / ".dekspec/config.yaml"
+    if not path.exists():
+        return None
+    text = path.read_text(encoding="utf-8")
+    blocks = re.findall(r"(?ms)^beads[ \t]*:[ \t]*([^\n]*)\n((?:[ \t]+[^\n]*\n?|\n)*)", text + "\n")
+    if not blocks:
+        return None
+    if len(blocks) != 1:
+        raise ValueError("Duplicate beads project prefix config")
+    inline, block = blocks[0]
+    if inline.strip() and not inline.lstrip().startswith("#"):
+        match = re.fullmatch(r"\{\s*project_prefix\s*:\s*['\"]?([a-z0-9]{2,6})['\"]?\s*\}\s*(?:#.*)?", inline)
+        value = match[1] if match else None
+    else:
+        value = _scalar(block, "project_prefix", nested=True)
+    if value is None or re.fullmatch(r"[a-z0-9]{2,6}", value) is None:
+        raise ValueError("Malformed beads.project_prefix; expected 2–6 lowercase letters or digits")
+    return value
+
+
+def _identity(root: Path, directory: Path, kind: str, default: str) -> str:
+    project = _project(root) if kind != "code" else None
+    config = directory / ".beads/config.yaml"
+    pin = _scalar(config.read_text(encoding="utf-8"), "issue_prefix") if config.exists() else None
+    if pin is not None and (not pin or len(pin) > 64 or pin.lower() != pin or not pin.isprintable()):
+        raise ValueError(f"Invalid issue_prefix in {config}")
+    expected = f"{project}-{default}" if project else pin or default
+    if project and pin and pin != expected:
+        raise ValueError(f"prefix mismatch: {config} pins {pin}; expected {expected}; run dekspec beads reprefix")
+    export = directory / ".beads/issues.jsonl"
+    # Root fallback can historically mix kinds. Dedicated stores cannot: an
+    # identity mismatch must never produce an apparently successful empty board.
+    if export.exists() and directory.resolve() != root.resolve():
+        for line in export.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            if not isinstance(row.get("id"), str) or not row["id"].startswith(expected + "-"):
+                raise ValueError(f"prefix mismatch in {export}: {row.get('id')}; expected {expected}-")
+    return expected
+
+
 def resolve(kind: str, root: Path | None = None) -> Workspace:
     """Resolve one workspace by kind. Never raises for a missing workspace.
 
@@ -201,22 +244,22 @@ def resolve(kind: str, root: Path | None = None) -> Workspace:
 
     declared = _from_declaration(root, kind)
     if declared is not None and _present(declared):
-        return Workspace(kind, prefix, declared, "declaration")
+        return Workspace(kind, _identity(root, declared, kind, prefix), declared, "declaration")
 
     resolved = _from_verb(root, kind)
     if resolved is not None and _present(resolved):
-        return Workspace(kind, prefix, resolved, "verb")
+        return Workspace(kind, _identity(root, resolved, kind, prefix), resolved, "verb")
 
     conventional = (root / conv_dir).resolve()
     if _present(conventional):
-        return Workspace(kind, prefix, conventional, "convention")
+        return Workspace(kind, _identity(root, conventional, kind, prefix), conventional, "convention")
 
     # Pre-migration: the split has not happened, so every kind still lives in
     # the single root workspace. Report it rather than claiming no tracker.
     if kind != "code" and _present(root):
         return Workspace(kind, prefix, root, "fallback")
 
-    return Workspace(kind, prefix, conventional, "convention")
+    return Workspace(kind, _identity(root, conventional, kind, prefix), conventional, "convention")
 
 
 def resolve_all(root: Path | None = None) -> dict[str, Workspace]:

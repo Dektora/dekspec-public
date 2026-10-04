@@ -10,8 +10,8 @@ Each check is a named rule. The script emits the list of FAILING rule names to
 stdout (one per line) and exits non-zero; empty stdout + exit 0 means the draft
 passed every structural check.
 
-Stdlib-only by design: vendored into consumer repos where the `dekspec` engine
-is not guaranteed importable.
+Uses the installed DekSpec compiler's section matcher so authoring and core
+validation agree. The write-sv skill requires the matching DekSpec installation.
 
 Runnable:   python validate_structure.py path/to/system-vision.md
 Importable: from validate_structure import validate
@@ -25,14 +25,10 @@ import re
 import sys
 from pathlib import Path
 
-# The six load-bearing System Vision sections. The preamble is the text
-# between the H1 and the first H2; the rest are H2 headings.
-_REQUIRED_H2 = (
-    "What This Is",
-    "Who This Is For",
-    "Why This Exists",
-    "What Success Looks Like",
-    "What We Are Not Building",
+from dekspec.constraint_compiler.vision_structure import (
+    REQUIRED_SECTIONS as _REQUIRED_H2,
+    normalize_heading,
+    vision_sections,
 )
 
 _H1_RE = re.compile(r"^#\s+(.+?)\s*$", re.MULTILINE)
@@ -41,14 +37,7 @@ _BAD_H1_PREFIX = "Vision Note:"
 
 def _h2_body(text: str, heading: str) -> str | None:
     """Return the body text under `## <heading>` up to the next H2, or None."""
-    pattern = re.compile(
-        rf"^##\s+{re.escape(heading)}\s*$(.*?)(?=^##\s|\Z)",
-        re.MULTILINE | re.DOTALL,
-    )
-    m = pattern.search(text)
-    if m is None:
-        return None
-    return m.group(1).strip()
+    return vision_sections(text).get(normalize_heading(heading))
 
 
 def _preamble(text: str) -> str:
@@ -94,6 +83,11 @@ def validate(text: str, *, today: str | None = None) -> list[str]:
     """
     today = today or datetime.date.today().isoformat()
     failures: list[str] = []
+
+    try:
+        vision_sections(text)
+    except ValueError:
+        return ["DUPLICATE_HEADING"]
 
     h1 = _H1_RE.search(text)
     if h1 is None:

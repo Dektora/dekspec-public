@@ -180,7 +180,31 @@ Layer 4 — Construction  (code, tests, evidence — produced, not authored)
 | 3 | Implementation Brief (IB) | The smallest governed work contract — outcome, binding obligations (by reference), scope, protected surfaces, acceptance conditions, and a revisable implementation hypothesis. Executed directly (ADR-056). | `dekspec/impl-briefs/` |
 | 4 | Execution record | Append-only, hash-chained log of one IB's run: ownership, plan and tasks, attempts, deviations, blockers, acceptance baselines, evidence, review verdicts, completion. Not a spec artifact — never compiled into IR, projected into `AGENTS.md`, or copied into specs. | `.dekspec/execution/<IB>/record.jsonl` |
 
-There are no code beads. Construction was once decomposed into `br` code beads authored from each IB; ADR-056 retired that tier. An executor may split an IB into internal tasks after investigating, but tasks live in the execution record and carry no authority. The legacy `cb-` workspace stays readable for history, and `dekspec ib import-beads IB-NNN` moves a legacy IB's beads into its execution record. Issue beads (`iss-`) and governance beads (`ds-`) are unaffected — backlog tracking stays in `br`.
+There are no code beads. Construction was once decomposed into `br` code beads authored from each IB; ADR-056 retired that tier. An executor may split an IB into internal tasks after investigating, but tasks live in the execution record and carry no authority. The legacy `cb-` workspace stays readable for history, and `dekspec ib import-beads IB-NNN` moves a legacy IB's beads into its execution record. Issue beads (`<project>-iss-`, legacy `iss-`) and governance beads (`<project>-ds-`, legacy `ds-`) remain backlog records in `br`.
+
+### Project bead identity and first-time setup
+
+For a new project, select a short project prefix distinct from its sibling repositories. It must contain 2–6 lowercase ASCII letters or digits. For example:
+
+```bash
+dekspec init --at /absolute/path/to/project --project-prefix acme
+dekspec sync --at /absolute/path/to/project
+dekspec config get beads.project_prefix --at /absolute/path/to/project
+```
+
+Init creates and pins `.beads-issues/.beads/` as `acme-iss` and `.beads-dekspec/.beads/` as `acme-ds`; IDs retain the existing hash, slug and child suffix. It does not create a root code-bead workspace. Init prints the explicit `sync` handoff: run it before authoring so templates and methodology resources are available. `/setup-dekspec` asks for the project prefix, recommends a valid repo-derived choice, persists it and initializes these two stores rather than running bare `br init` at the repository root.
+
+Existing projects without `beads.project_prefix` keep their tracked store `issue_prefix` pins. Only a store without either setting uses legacy `iss` or `ds`. A contradictory or malformed setting is an error, never an instruction to overwrite the current identity. Track each store's config alongside its JSONL so a database rebuild retains the prefix.
+
+For existing beads, changing the project config is insufficient. Preview the migration, review its full ID/file/rename receipt, then supply that preview's `plan_sha256` to apply:
+
+```bash
+dekspec beads reprefix --at /absolute/path/to/project --to acme --json
+dekspec beads reprefix --at /absolute/path/to/project --to acme \
+  --apply --expect-plan REVIEWED_PLAN_SHA256 --json
+```
+
+The migration rewrites exact known IDs, preserves old DB/WAL state under ignored `.br_recovery/`, and verifies the rebuilt stores. Unknown unexported state, ambiguous references and hash-bound records refuse migration. A changed source invalidates the preview hash. After an interrupted apply, `dekspec beads recover --at /absolute/path/to/project` restores the saved pre-migration state; it does not repair an arbitrary hung database. See [bead migration and recovery](beads-recovery.md) or run `dekspec resource doc beads-recovery` for the complete procedure and lossless-rebuild prerequisites.
 
 **Filename convention (per ADR-012).** L0 singletons — those that are unique per repository (System Vision, Domain Glossary, Terminology Corrections, the Constitution) — use **slug-only filenames** like `system-vision.md`. Layer 1+ artifacts — those authored repeatedly under a counter (AE, ADR, WS, IC, IB, Intent, Mission) — use **`TYPE-NNN-slug.md` filenames** like `AE-001-dekspec.md`. The split reflects cardinality: singletons have no counter dimension, so none appears in the name; L1+ artifacts do, so the counter is load-bearing. Both `dekspec init` and the parser's kind detection honor this rule; the methodology doc §4 has the long-form discussion.
 
@@ -207,9 +231,9 @@ These are complementary, not competing. An Architecture Element describes a slic
 | **Acceptance condition** | the `## Acceptance` block (`AC-n`) | demonstrates it with evidence, and never weakens, skips, deletes or reinterprets it to claim success. An invalid condition is corrected only by recorded amendment (ADR-057). |
 | **Implementation hypothesis** | Implementation Hypothesis | investigates first and revises it within Scope without asking; material departures are recorded as deviations in the execution record, automatically. |
 
-**Context is retrievable; authority is bound.** The implementing agent may read anything — code, ADRs, ICs, WSs, historical Intents, drafts. Reading a rationale is not authority to overturn it: only approved obligations bind. Draft, superseded and historical material informs but never binds, and a binding reference to a superseded, deprecated, missing or unapproved source is an error that blocks `dekspec ib propose`, `accept` and `start` rather than a silent fallback.
+**Context is retrievable; authority is bound.** The implementing agent may read anything — code, ADRs, ICs, WSs, historical Intents, drafts. Reading a rationale is not authority to overturn it: only obligations authorized by the accepted contract bind. DekSpec's `specification.reference_mode` defaults to `strict`; explicit `evolving` also permits canonical PROPOSED ADRs and AEs with actual status and policy provenance. DRAFT, retired, missing and ambiguous sources remain ineligible. This changes reference eligibility, never IB authorization or evidence requirements.
 
-**Escalate only when you must.** The agent stops and escalates when it would have to change a binding obligation or protected surface; change something outside Scope; weaken, reinterpret or replace an acceptance condition; resolve a contradiction the contract does not settle; or proceed without a required prerequisite or authority. An **underdefined contract** — the outcome or an obligation cannot be determined from the approved sources — is an escalation and a visible contract defect. An implementation detail the agent can discover by investigation is not. More implementation freedom never authorizes more product scope.
+**Escalate only when you must.** The agent stops and escalates when it would have to change a binding obligation or protected surface; change something outside Scope; weaken, reinterpret or replace an acceptance condition; resolve a contradiction the contract does not settle; or proceed without a required prerequisite or authority. An **underdefined contract** — the outcome or an obligation cannot be determined from the policy-eligible canonical sources — is an escalation and a visible contract defect. An implementation detail the agent can discover by investigation is not. More implementation freedom never authorizes more product scope.
 
 **One home per fact (ADR-056).** A decision lives in its ADR, an interface contract in its IC, a cross-brief behavioral requirement in its WS, an architecture description in its AE, a project-wide commitment in the Constitution, and an IB-specific acceptance condition in the IB. An IB *references* an obligation — `- **O-1** → ADR-036`, `- **O-2** → IC-012 §Shape` — and states one in full only when the IB is its canonical home (`- **O-3** (local): …`). A shared shape pinned under ADR-054 branch 2 is written once — in an IC, in a WS, or as one IB's local obligation that others reference as `IB-NNN §O-n` — never copied into every consumer.
 
@@ -1722,3 +1746,44 @@ Authoring a Mission:
 - MSN-014 (provisional incubation) — the originating Mission that shipped the provisional/ folder convention.
 - MSN-011 (eradicated 2026-05-30) — the case study; see `docs/workspace/cc_provisional-promotion-guardrails-survey.md` for the full survey.
 - ADR-018 (P0/P1-clean gate) — explains why the new audit rule is P3 advisory (Mission completion gates on P0/P1-clean, so P3 never blocks).
+
+## Referencing evolving specifications
+
+DekSpec owns the project reference policy. Keep canonical ADR/AE references and
+backlinks even when the project deliberately keeps early specifications PROPOSED.
+Do not rename reference sections or promote sources merely to satisfy a check.
+
+The default `strict` mode retains existing source approval requirements. If the
+key is absent, `config get` reports `not set` (exit 2); the effective policy is
+strict, so no configuration change is required. Enable
+`evolving` explicitly when PROPOSED ADRs and AEs should be eligible references:
+
+```bash
+dekspec config set specification.reference_mode evolving
+dekspec config get specification.reference_mode
+```
+
+The tracked `.dekspec/config.yaml` setting is:
+
+```yaml
+specification:
+  reference_mode: evolving
+```
+
+Commit the setting with the specification before starting a run. The policy is
+shared by authoring, parsing/validation consumers, audits, context generation,
+obligation resolution and readiness. An evolving source retains its actual
+PROPOSED status, canonical text and hash, with a visible policy notice. Audit
+status fixes do not promote it merely because its consumers progress.
+
+Reference eligibility is not implementation authorization. The Intent and IB
+still require their own authorization, current acceptance baselines, evidence,
+independent review and integration authority. Changed source or effective policy
+invalidates affected evidence. DRAFT, retired, missing and ambiguous sources
+remain blocked. IC, WS and other artifact approval requirements are unchanged.
+Malformed present policy fails visibly rather than granting permission.
+
+Set `specification.reference_mode` to `strict` (or omit it) to restore the
+original policy. Existing source statuses and links are never rewritten by this
+setting. The initial unreleased AE-only `implement.linked_ae_statuses` candidate
+was replaced before publication; it is not a second policy authority. (#199.)

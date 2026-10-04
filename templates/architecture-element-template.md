@@ -89,7 +89,9 @@ See `dekspec/architecture-frameworks-reference.md` for the full arc42/C4 framewo
 - [What this AE owns / contains / encompasses]
 
 **Outside the boundary (non-goals):**
-- [What this AE explicitly does NOT cover — and why; either it belongs to another AE, or it is intentionally deferred]
+- [Excluded responsibility] — [Why it belongs to another AE or is intentionally deferred]
+
+*Accepted T11 forms:* `- Excluded responsibility — reason.` or `- **Excluded responsibility.** Reason.` Keep the reason on the same bullet line; a bare exclusion without a reason is incomplete.
 
 *Guardrail:* at least one explicit non-goal with a why clause is required.
 
@@ -183,7 +185,7 @@ flowchart TB
 
 ## Amendment Log
 
-*Add an entry for every change made after Locked status, or when unlocking back to Proposed.*
+*Add an entry for every change after acceptance; record substantive revisions returning the AE to PROPOSED. AEs are never locked.*
 
 **Compressed-format policy.** Entries SHOULD follow a one-line-per-entry format. Target: `| YYYY-MM-DD | <Type> | <one-sentence what + reference to delta-doc / commit> | <author> |`. Detailed change narrative belongs in the git commit message — not in the AE body. Historical entries are preserved as-is; the policy applies to new entries going forward.
 

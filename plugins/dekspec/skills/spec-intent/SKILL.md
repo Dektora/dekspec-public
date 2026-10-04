@@ -81,7 +81,7 @@ For every child IB, in this order (ADR-062) — acceptance tests are mandatory, 
 
 A change to the tests or the contract after the review repeats steps 3–4 (a new `Floor reviewed:` row) before the floor is protected — by `dekspec ib accept`, or, once ACCEPTED and before the run starts, by `dekspec ib baseline <IB> --reason "…"` (ADR-057, ADR-062).
 
-Drive any WS or AE you authored to ACCEPTED (they never lock, ADR-046) and any IC or ADR to its terminal status.
+Check `dekspec config get specification.reference_mode`. If the key is absent (the existing getter reports `not set`, exit 2), use the default strict policy; absence is not a setup blocker. A present malformed value remains an error. With the default `strict` policy, referenced foundations must meet their existing approval requirements. With `evolving`, canonical PROPOSED ADRs and AEs may remain evolving: retain their links and actual statuses and surface the policy notice. Never promote them merely to satisfy a downstream reference check. WS/IC requirements and separate Intent/IB authorization, review and verification remain unchanged.
 
 ### Phase 5 — Check readiness, then stop at the coding boundary
 

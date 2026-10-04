@@ -17,7 +17,7 @@ Write the evals that prove an IB's model-output behavior. An eval is an **accept
 >
 > Prior conversation context biases threshold selection and scenario design toward numbers remembered from earlier turns instead of the IB's conditions.
 >
-> First message → proceed. Prior history → ask "context may affect eval quality, recommend /clear, continue? (y/n)" + wait.
+> Inline reasoning only (see mode manifest); substantive fan-out skips this check. First message → proceed. Prior history → ask "context may affect eval quality, recommend /clear, continue? (y/n)" + wait.
 
 **Mode dispatcher pattern:** see [`skills/_lib/mode_dispatcher.md`](../_lib/mode_dispatcher.md) for canonical mode semantics + the universal `--teaching` mode (per ds-int-007 / INT-008).
 
@@ -71,6 +71,8 @@ See [`_lib/mode_detection_template.md`](../_lib/mode_detection_template.md). Def
 **Routing:** substantive work (fan-out via Agent tool): (no flag), `--revise`. Inline: `--help`, `--teaching`, `--audit`, `--review`.
 
 ## Fan-Out Mode
+
+Bundle source paths rather than parent summaries; preserve engineer guidance verbatim. Keep parsed mode/path fields and labeled orchestrator notes separate. Show the manifest and preserve fan-out/ingest provenance per the shared substrate; existing task authorization suffices for dispatch.
 
 See [`_lib/fan_out.md`](../_lib/fan_out.md). Manifest:
 

@@ -1280,6 +1280,7 @@ def next_step(root: Path, request: str, *, actor: str) -> dict[str, Any]:
             d.exists = True
         step = _advance(_ctx(root, d, readiness, settings))
         if step["action"] in ("dispatch", "wait"):
+            step["advisories"] = [m.as_dict() for m in readiness.all_advisories]
             step["pending_deliveries"] = [x.slug for x in deliveries if x is not d]
             return step
         results.append(step)

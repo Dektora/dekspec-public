@@ -96,17 +96,14 @@ DRAFT
 ## Article 4: Architecture Principles
 
 <!--
-  kind: ref-array
-  Article 4 cites Architecture Decision Records that capture the
-  project's load-bearing architecture commitments. Each entry is
-  `- ADR-NNN — [one-line rationale]`. The audit layer
-  L-CONSTITUTION-ARTICLE-4-ADR-REFS verifies each ADR-NNN exists
-  in `dekspec/adrs/`. Do not list every ADR — only the standing
-  commitments worker agents must respect at session-load time.
+  State the project's standing architecture principles in their own right.
+  Existing ADR references are optional elaboration, not a prerequisite to
+  authoring or accepting this L0 Constitution. Do not invent ADRs.
+  Optional reference format: - ADR-001 — One-line rationale.
+  The IR retains authored markdown plus typed adr_refs for linkage audits.
 -->
 
-- ADR-NNN — [one-line rationale stating what this ADR commits the project to, in standing terms]
-- ADR-NNN — [one-line rationale]
+[State the principles every implementation must preserve. Use concrete prose or bullets; a new project needs no ADR to state these commitments.]
 
 ## Article 5: Development Workflow
 
@@ -117,39 +114,31 @@ DRAFT
   pointer, tracker discipline, cross-repo coordination rules.
 -->
 
-[Replace with the project's standing workflow rules. Cover: branching model, commit conventions, release runbook reference, tracker discipline (e.g., `br ready` for queue, in-repo JSONL), cross-repo coordination if applicable.]
+[Replace with the project's standing workflow rules. Cover: branching model, commit conventions, release runbook reference, tracker discipline (e.g., `dekspec ib ready` for accepted implementation work, in-repo JSONL), cross-repo coordination if applicable.]
 
 ## Article 6: Model Configuration
 
 <!--
   kind: text
-  Free-form prose pinning model-tier choices for AI agent work:
-  which capability tier is the default, what tasks may run on a
-  lower tier, what work is forbidden on a lower tier.
+  State how authoring, implementation and review inherit the engineer's
+  selected host model. Independent review uses separate identity/context.
+  Do not hard-code a model or substitute capability tiers.
 -->
 
-[Replace with the project's standing model-tier policy. Example: "Sessions default to the highest-capability model available (Claude Opus tier). Lower-capability models may be used for mechanical tasks (tests, lint), never for authoring under specific protected paths."]
+[State the project's model policy. DekSpec work inherits the engineer-selected host model; separate review identity/context is required without selecting a different model. Surface an unavailable selected model instead of silently substituting.]
 
 ## Article 7: Boundaries
 
 <!--
-  kind: ref-array
-  Article 7 names the project's non-goal boundaries by reference.
-  Two arrays: `adr_refs` (decisions framed as boundaries) and
-  `ae_refs` (Architecture Elements naming their non-goals as
-  aspects). The audit layer L-CONSTITUTION-ARTICLE-7-BOUNDARY-REFS
-  verifies each ADR-NNN / AE-NNN exists.
+  State standing boundaries and prohibited behavior directly. References to
+  existing ADRs/AEs are optional; when present each must resolve.
+  Optional reference formats:
+    - ADR-001 — What this decision forbids or fences off.
+    - AE-001 — The architecture element's boundary aspect.
+  The IR retains authored markdown plus typed adr_refs and ae_refs.
 -->
 
-**Boundary ADRs:**
-
-- ADR-NNN — [one-line rationale stating what this ADR forbids or fences off]
-- ADR-NNN — [one-line rationale]
-
-**Boundary AEs:**
-
-- AE-NNN — [aspect of this Architecture Element that is a boundary, not a feature]
-- AE-NNN — [aspect]
+[State what the project must never do or become. No ADR or AE is required before this Constitution can be accepted.]
 
 ## Article 8: Amendments
 
@@ -176,8 +165,8 @@ DRAFT
   calibration drift across model/corpus boundaries is audit-detectable
   (Fowler R3 + Wu R2 model-drift gap). The Constraint Compiler extracts
   this section into the Constitution IR's `class_lanes` array. Update
-  via `/dekspec:write-constitution --amend --editorial` for class
-  promotion/demotion (engineer-driven; not automated).
+  via `/dekspec:write-constitution --revise` for class
+  promotion/demotion (engineer-driven; not automated). Record lane-policy changes as substantive amendments, with promotion gated → canary → dark and demotion in the reverse direction.
 
   Columns (in order):
     intent_type | risk_tier | lane | budget_cap_tokens | budget_cap_dollars |
@@ -195,5 +184,5 @@ DRAFT
 
 | intent_type | risk_tier | lane | budget_cap_tokens | budget_cap_dollars | max_attempts_per_attempt | max_attempts_per_bead | promotion_threshold_clean_runs | demotion_threshold_reverts | effective_model_snapshot | effective_corpus_volume |
 |---|---|---|---|---|---|---|---|---|---|---|
-| feature | low | dark | 50000 | 0.50 | 3 | 5 | 10 | 2 | claude-opus-4-7 | small-N<100 |
-| feature | high | gated | 200000 | 5.00 | 3 | 5 | 25 | 1 | claude-opus-4-7 | small-N<100 |
+| feature | default | gated | 50000 | 0.50 | 3 | 5 | 10 | 2 | [selected host model snapshot] | small-N<100 |
+| feature | auth | gated | 200000 | 5.00 | 3 | 5 | 25 | 1 | [selected host model snapshot] | small-N<100 |

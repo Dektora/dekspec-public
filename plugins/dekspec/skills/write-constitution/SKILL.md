@@ -11,13 +11,9 @@ related_skills: [write-sv, write-corrections, write-adr, write-ae, write-evals]
 
 > **Vendored asset paths:** Template + doc paths below resolve via `dekspec resource template <name>` / `dekspec resource doc <name>` (wheel-bundled since v0.91.0; consumer-fs override wins when present). See [`_lib/vendored_assets.md`](../_lib/vendored_assets.md) for the full resolution rule.
 
-Write or maintain the project's Constitution — the third L0 singleton (after System Vision and Domain Glossary) that captures standing operational commitments worker agents read at session-load time. The Constitution has exactly eight articles in canonical order: Project Identity (typed pointer to System Vision), Technology Stack, Quality Standards, Architecture Principles (typed `adr_refs`), Development Workflow, Model Configuration, Boundaries (typed `adr_refs` + `ae_refs`), Amendments.
+Write or maintain the project's Constitution — the third L0 singleton (after System Vision and Domain Glossary) that captures standing operational commitments worker agents read at session-load time. The Constitution has exactly eight articles in canonical order: Project Identity (typed pointer to System Vision), Technology Stack, Quality Standards, Architecture Principles (standing prose with optional typed `adr_refs`), Development Workflow, Model Configuration, Boundaries (standing prose with optional typed `adr_refs` + `ae_refs`), Amendments.
 
-> **⛔ CONTEXT CHECK** — see [`_lib/context_check.md`](../_lib/context_check.md)
->
-> This skill writes or maintains a load-bearing L0 singleton that every agent in the repo reads at session-load time. Prior conversation context can degrade Constitution quality — the model may anchor on prior-session tech-stack assumptions or pre-existing prose instead of deriving content from the project's actual standing commitments.
->
-> First message → proceed. Prior history → ask "context may affect Constitution quality, recommend /clear, continue? (y/n)" + wait.
+> **Inline-mode context check** — see [`_lib/context_check.md`](../_lib/context_check.md). This applies only to inline modes. Substantive fan-out modes dispatch a fresh authoring context: skip `/clear`, history approval and contamination markers. Preserve the engineer's guidance verbatim, keep parsed mode/path arguments separate, label parent additions as orchestrator notes, and pass source paths rather than parent summaries. Show the manifest transparently and proceed under existing authorization; no additional pre-dispatch go-ahead is required.
 
 **Mode dispatcher pattern:** see [`skills/_lib/mode_dispatcher.md`](../_lib/mode_dispatcher.md) for canonical mode semantics + the universal `--teaching` mode (per ds-int-007 / INT-008).
 
@@ -67,9 +63,9 @@ See [`_lib/fan_out.md`](../_lib/fan_out.md) for the canonical ds-di2 orchestrato
   6. ADR registry — `dekspec/adrs-index.md` (if present) + full path list of `dekspec/adrs/ADR-*.md` (for Article 4 + Article 7 `adr_refs`). When a principle/boundary domain is named, run `python ../_lib/scripts/bundle_related.py --keywords "<principle-domain-keywords>" --include adr` to surface candidate ADRs whose linkage sections touch that domain; the subagent applies judgment to pick the final `adr_refs`.
   7. Domain glossary — `dekspec/domain-glossary.md` (no undefined Title-Case jargon).
   8. Engineer guidance — `$ARGUMENTS` verbatim (target path, revise notes if any, structured cues).
-  9. Constraints — T-CONSTITUTION (all 8 Articles present, in canonical order, with required structural fields); L-CONSTITUTION (Article 1 `see_also` resolves to system-vision; every `adr_refs` / `ae_refs` resolves to an existing artifact); `Created:` / `Modified:` ISO-8601; Status ∈ `DRAFT | PROPOSED | ACCEPTED`; Article 8 Amendment Log seeded for Creation (Type=Substantive "Initial authoring"), appended for `--revise` (Type=Revise + bump Modified) and `--accept` (Type=Accept + flip Status to ACCEPTED).
+  9. Constraints — T-CONSTITUTION (all 8 Articles present, in canonical order, with required structural fields); L-CONSTITUTION (Article 1 `see_also` resolves to system-vision; every `adr_refs` / `ae_refs` resolves to an existing artifact); `Created:` / `Modified:` ISO-8601; Status ∈ `DRAFT | PROPOSED | ACCEPTED`; Article 8 Amendment Log seeded for Creation (Type=Substantive "Initial authoring"), appended for `--revise` (Type=editorial or substantive according to the change + bump Modified) and `--accept` (Type=substantive, Change naming acceptance + flip Status to ACCEPTED).
 - **expected_output_path**: `dekspec/constitution.md` (singleton) or engineer-overridden from `$ARGUMENTS`.
-- **validation**: `dekspec validate --kind constitution <output-path>`; fallback `dekspec doctor --at <project-root> 2>&1 | grep -E '^\s*\[(T|L)-CONSTITUTION-'` if the `constitution` subcommand is not yet wired. Validation/surface contract: see [`_lib/validate_and_surface.md`](../_lib/validate_and_surface.md) — on non-zero exit, surface verbatim and stop, do not silently retry. Mode-specific post-checks: Creation → 8 Articles present, Article 1 pointer resolves, Amendment Log seeded, Status=DRAFT; Revise → Modified bumped + Type=Revise row + Status unchanged; Accept → Status=ACCEPTED + Type=Accept row + no critical/important findings.
+- **validation**: `dekspec validate --kind constitution <output-path>`; fallback `dekspec doctor --at <project-root> 2>&1 | grep -E '^\s*\[(T|L)-CONSTITUTION-'` if the `constitution` subcommand is not yet wired. Validation/surface contract: see [`_lib/validate_and_surface.md`](../_lib/validate_and_surface.md) — on non-zero exit, surface verbatim and stop, do not silently retry. Mode-specific post-checks: Creation → 8 Articles present, Article 1 pointer resolves, Amendment Log seeded, Status=DRAFT; Revise → Modified bumped + Type=editorial/substantive row + Status unchanged; Accept → Status=ACCEPTED + Type=substantive acceptance row + no critical/important findings.
 
 **End of Fan-Out Mode.**
 
@@ -186,7 +182,7 @@ The skill never calls rule functions or parser internals directly — per ADR-00
 
 **Invocation:** `/write-constitution --resync [path]`
 
-**Purpose.** Re-derive Article 4 (`adr_refs`) and Article 7 (`adr_refs` + `ae_refs`) typed-ref arrays after upstream AE / ADR cross-references evolve. The Constitution cites *load-bearing* references — a curatorial selection, not every ADR / AE in the repo — but when the cited set drifts (an ADR is superseded, an AE is renamed, a new boundary AE lands), Resync proposes deltas.
+**Purpose.** Preserve every standing principle and boundary in its authored order; resync only proposes optional reference updates, never replaces prose with a reference list. Re-derive Article 4 (`adr_refs`) and Article 7 (`adr_refs` + `ae_refs`) typed-ref arrays after upstream AE / ADR cross-references evolve. The Constitution cites *load-bearing* references — a curatorial selection, not every ADR / AE in the repo — but when the cited set drifts (an ADR is superseded, an AE is renamed, a new boundary AE lands), Resync proposes deltas.
 
 **Inputs.**
 
@@ -205,7 +201,7 @@ The skill never calls rule functions or parser internals directly — per ADR-00
 2. For each entry in `broken`, judge whether it is a typo, a deleted artifact, or a not-yet-authored ref — and decide the remediation.
 3. For each newly-LOCKED ADR with `architectural-principle` labels (or new AE marked as a boundary): propose adding to the typed-ref array.
 4. Present a diff; engineer rules `apply` / `skip` per row.
-5. Write back: update typed-ref arrays; bump `Modified`; append Amendment-Log row with Type=Resync.
+5. Write back: update typed-ref arrays; bump `Modified`; append Amendment-Log row with Type=editorial for citation-only maintenance or substantive for a changed commitment.
 
 **Delegation.** `scripts/validate_linkage.py` does the deterministic resolve over `dekspec/adrs/` + `dekspec/architecture-elements/` (no new `dekspec list-aes` / `list-adrs` CLI required per WS-005 Open Issue #5). The skill judges what each broken ref means.
 
@@ -226,7 +222,7 @@ The skill never calls rule functions or parser internals directly — per ADR-00
 
 - Constitution markdown updated per the notes.
 - `Modified:` field bumped to today's date.
-- Amendment-Log row appended with Type=Revise, the one-line change description, and the engineer name.
+- Amendment-Log row appended with Type=editorial for wording-only repair or substantive for a changed commitment, the one-line change description, and the engineer name.
 
 **Workflow.**
 
@@ -253,17 +249,17 @@ The skill never calls rule functions or parser internals directly — per ADR-00
 **Outputs.**
 
 - `Status:` field updated to `ACCEPTED`.
-- Amendment-Log row appended with Type=Accept.
+- Amendment-Log row appended with Type=substantive and Change explicitly naming the acceptance decision.
 - Confirmation message + a reminder that LOCKED requires running this skill again with the `--lock` flag (NOT in IB-006's eight-mode catalog — LOCKED transitions live in a separate workflow per the library's guardrails).
 
 **Workflow.**
 
 1. Run `--audit` on the target. If `critical` or `important` findings remain, refuse with the finding list + a "fix these first" recommendation.
 2. If clean (or `minor`-only), confirm with the engineer.
-3. Flip Status to `ACCEPTED` and bump `Modified:` — read the Constitution's current status, then run `python ../_lib/scripts/artifact_ops.py transition dekspec/constitution.md --from <DRAFT-or-PROPOSED> --to ACCEPTED` (the `--from` is whichever the current status is; surface stderr on non-zero exit and STOP). Do NOT pass `--note` — the Constitution's Amendment Log uses `Type=Accept`, not the script's default `Substantive` row.
-4. Hand-append the Amendment-Log row with `Type=Accept` and a one-line summary of what was reviewed at accept time.
+3. Flip Status to `ACCEPTED` and bump `Modified:` — read the Constitution's current status, then run `python ../_lib/scripts/artifact_ops.py transition dekspec/constitution.md --from <DRAFT-or-PROPOSED> --to ACCEPTED` (the `--from` is whichever the current status is; surface stderr on non-zero exit and STOP). Do NOT pass `--note` here because the next step records the acceptance decision once with its review summary.
+4. Hand-append the Amendment-Log row with `Type=substantive` and a one-line acceptance summary of what was reviewed at accept time.
 
-**Delegation.** Audit invocation matches Audit Mode (above). The status flip + Modified bump are delegated to `artifact_ops.py transition`; the `Type=Accept` Amendment-Log row is authored in-process.
+**Delegation.** Audit invocation matches Audit Mode (above). The status flip + Modified bump are delegated to `artifact_ops.py transition`; the `Type=substantive` acceptance Amendment-Log row is authored in-process.
 
 **End of Accept Mode.**
 
@@ -301,8 +297,8 @@ The skill never calls rule functions or parser internals directly — per ADR-00
     - `[Project Name]` — the project's display name (e.g., `DekSpec`, `Dektora`).
     - `[YYYY-MM-DD]` — today's date for the `Created:` and `Modified:` fields.
     - Article 1 `see_also` target — usually `dekspec/system-vision.md` at the consumer's repo root.
-    - Article 4 placeholder ADR refs (`ADR-NNN` bullets) — the engineer authors the actual citations interactively.
-    - Article 7 placeholder ADR + AE refs — same interactive authoring.
+    - Article 4 standing principles in prose — existing ADR citations are optional; never invent IDs or require ADRs before accepting the Constitution.
+    - Article 7 standing boundaries in prose, with optional citations to existing ADRs/AEs.
 
 **Outputs.**
 
@@ -315,7 +311,7 @@ The skill never calls rule functions or parser internals directly — per ADR-00
 2. Prompt the engineer for each placeholder token; show the placeholder line in context.
 3. Substitute tokens; preserve all template comments + structural scaffolding.
 4. Write to the target path (after overwrite-confirmation if the file exists).
-5. Optionally run `--audit` immediately to confirm the new file parses cleanly + passes T-CONSTITUTION structural checks (it will likely fail L-CONSTITUTION typed-ref checks until the engineer fills in Article 4 / 7 — that's normal; surface as informational, not blocking).
+5. Optionally run `--audit` immediately to confirm the new file parses cleanly + passes T-CONSTITUTION structural checks (prose-only Articles 4 / 7 are valid and need no ADR/AE; any optional citation that is supplied must resolve).
 
 **Delegation.** The Creation mode reads the template via standard `Path.read_text()`; no `dekspec` CLI invocation needed. The optional post-create audit matches Audit Mode (above).
 
@@ -379,7 +375,7 @@ See [`_lib/cow_write_guard.md`](../_lib/cow_write_guard.md) for the canonical co
 - Don't author Article 1 as free prose — it is a typed `{summary, see_also}` pointer to `dekspec/system-vision.md`; validate the pointer shape before accepting engineer input.
 - Don't cite every ADR / AE in the repo under Articles 4 / 7 — the Constitution carries a *curatorial* set of load-bearing refs; over-citing turns Resync into noise and dilutes the boundary contract.
 - Don't flip Status to `ACCEPTED` by hand-editing the field — route the transition through `artifact_ops.py transition` and refuse if any critical/important audit finding remains; bypassing the gate ships an unaudited L0 singleton every agent reads.
-- Don't append a prose-only Amendment-Log entry on a `--revise` / `--accept` / `--resync` / class-lane amendment — stamp the correct typed `Type` row (`Revise` / `Accept` / `Resync` / `editorial`) and bump `Modified`; the audit counts these rows.
+- Don't append a prose-only Amendment-Log entry on a `--revise` / `--accept` / `--resync` / class-lane amendment — stamp the correct typed `Type` row (`editorial` / `substantive` / `unlock`, selected by what changed rather than the command name) and bump `Modified`; the audit counts these rows.
 - Don't direct-`Edit` `dekspec/constitution.md` without first running the CoW guard (`dekspec library cow-stage`) — a pre-ACCEPTED Intent may claim the singleton, and `T-COW-CANONICAL-EDITED` fires on the bypass.
 - Don't combine `--provisional` with `--lock` / `--accept` — the singleton's canonical replacement runs in the hand-promote workflow, not from this skill body.
 - Don't introduce an undefined Title-Case domain term in any Article — check `dekspec/domain-glossary.md` first; the L10 audit fires on undefined jargon.
@@ -389,7 +385,7 @@ See [`_lib/cow_write_guard.md`](../_lib/cow_write_guard.md) for the canonical co
 - [ ] All eight Articles are present, in canonical order (Project Identity → Technology Stack → Quality Standards → Architecture Principles → Development Workflow → Model Configuration → Boundaries → Amendments).
 - [ ] Article 1 `see_also` resolves to `dekspec/system-vision.md`; every Article 4 / 7 `adr_refs` and Article 7 `ae_refs` resolves to an existing on-disk artifact (no broken refs).
 - [ ] `Created:` / `Modified:` are valid ISO-8601; `Modified:` was bumped this run for any substantive mode; `Status ∈ {DRAFT, PROPOSED, ACCEPTED}`.
-- [ ] Article 8 Amendment Log carries the correct typed row for the mode run (`Substantive` initial-authoring on Creation, `Revise` / `Accept` / `Resync` / `editorial` otherwise) with author resolved from `git config user.email`.
+- [ ] Article 8 Amendment Log carries the correct typed row for the mode run (`Substantive` initial-authoring on Creation, `editorial` / `substantive` / `unlock`, selected by what changed rather than the command name otherwise) with author resolved from `git config user.email`.
 - [ ] Validation ran and exited clean: `dekspec validate --kind constitution <path>` (or the `dekspec doctor` Constitution-filtered fallback); for `--accept`, no critical/important findings remain.
 - [ ] Before any canonical edit, the CoW guard (`dekspec library cow-stage dekspec/constitution.md`) was consulted and the edit was routed per its exit code.
 - [ ] If `## Class Lanes` was touched, every `(intent_type, risk_tier)` tuple resolves to exactly one row and `effective_model_snapshot` + `effective_corpus_volume` were re-stamped.
@@ -411,9 +407,11 @@ against the repo root. This deterministically re-derives and renders the cross-a
 
 ### Writeable status
 
-The `## Class Lanes` section is writeable through this skill — engineers populate it at Constitution creation and modify it via `--revise` (the routed editorial-amendment mode) for class promotion / demotion. The table is the Constitution IR's `class_lanes` field; the Constraint Compiler extracts it on every parse. (Note: `--amend` is a write-intent-only mode per `_lib/mode_dispatcher.md`; it is **not** a write-constitution mode — use `--revise`.)
+The `## Class Lanes` section is writeable through this skill — engineers populate it at Constitution creation and modify it via `--revise` (the amendment route; classify a policy change as substantive) for class promotion / demotion. The table is the Constitution IR's `class_lanes` field; the Constraint Compiler extracts it on every parse. (Note: `--amend` is a write-intent-only mode per `_lib/mode_dispatcher.md`; it is **not** a write-constitution mode — use `--revise`.)
 
 ### Schema per row
+
+Use the Intent risk-tier vocabulary: `default`, `schema-migration`, `auth`, `billing`, `concurrency`, `data-residency`, `external-api-surface`. Other authored values remain readable but produce a diagnostic; do not map `low`/`high` or `foundation`/`standard` silently.
 
 Each row binds `(intent_type, risk_tier)` to a `lane` (enum: `dark` | `canary` | `gated`) plus the budget caps, attempt limits, promotion/demotion thresholds, and the calibration-binding fields `effective_model_snapshot` + `effective_corpus_volume`. See `tooling/dekspec/schemas/constitution.schema.yaml::properties.class_lanes` for the load-bearing schema. The per-row attempt limits (`max_attempts_per_attempt`, `max_attempts_per_bead`) are validated but consumed by nothing — a legacy tolerance: execution bounds (attempts, stall and no-progress windows) are execution policy in `.dekspec/config.yaml` `execution:` (ADR-057).
 
@@ -427,9 +425,9 @@ When operational evidence (clean-run streak / revert streak) crosses a promotion
 
 The skill walks the engineer through:
 1. Identifying the (`intent_type`, `risk_tier`) row to amend.
-2. Updating the `lane` field (e.g. `canary` → `gated` on promotion, or `gated` → `canary` on demotion).
+2. Updating the `lane` field (e.g. `gated` → `canary` → `dark` on promotion, or the reverse on demotion).
 3. Re-stamping `effective_model_snapshot` + `effective_corpus_volume` to the current values (the calibration is re-bound to the new operational regime).
-4. Appending a row to the typed `amendment_log` IR field via `--revise`'s Amendment-Log step (Nygard MUST-NOT — no prose-only logs): `{date, type: "Revise", change: "class-lane <old>→<new> for (intent_type, risk_tier)", author: "..."}`.
+4. Appending a row to the typed `amendment_log` IR field via `--revise`'s Amendment-Log step (Nygard MUST-NOT — no prose-only logs): `{date, type: "substantive", change: "class-lane <old>→<new> for (intent_type, risk_tier)", author: "..."}`.
 
 No automation drives the transition. Governance is human work per the dekfactory review synthesis decisions applied at INT-125 authoring.
 

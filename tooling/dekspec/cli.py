@@ -55,7 +55,9 @@ from .constraint_compiler import (
     parse_ws,
     resolve_aes,
 )
+from . import index_ops as _init_index_ops
 from .constraint_compiler import ConstitutionParseError
+from .constraint_compiler.parser import ParseError
 from .constraint_compiler.persistence import (
     open_run,
     repo_fingerprint,
@@ -184,6 +186,7 @@ def build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.Argument
         action="store_true",
         help="Report without applying any fix (the CI-safe path; default is fix-to-convergence).",
     )
+    p_audit.add_argument("--loop", action="store_true", help="Explicitly request the default mechanical fix-to-convergence pass.")
     p_audit.set_defaults(func=cmd_audit)
 
     # 3. exec
@@ -269,6 +272,7 @@ def build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.Argument
     # ADR-044 (user-scoped external binary acquisition).
     _add_init_subparser(sub)
     _add_dependencies_subparser(sub)
+    _add_beads_subparser(sub)
     _add_ingest_subparser(sub)
     _add_sync_subparser(sub)
     _add_regen_indexes_subparser(sub)
@@ -709,7 +713,7 @@ def cmd_compile(args: argparse.Namespace) -> int:
                 ir = parse_constitution(src)
             else:  # glossary
                 ir = parse_glossary(src)
-        except (ICParseError, AEParseError, WSParseError, ADRParseError,
+        except (ParseError, ICParseError, AEParseError, WSParseError, ADRParseError,
                 IBParseError, IntentParseError, MissionParseError,
                 SPParseError,
                 VisionParseError, GlossaryParseError,
@@ -748,7 +752,17 @@ def cmd_compile(args: argparse.Namespace) -> int:
         # Matches the AGENTS.md aggregate's {LOCKED,ACCEPTED} filter.
         # `--treat-as-locked` bypasses entirely.
         status = ir.get("status")
-        if status not in ("LOCKED", "ACCEPTED") and not args.treat_as_locked:
+        from .specification_policy import ReferencePolicyError, load_policy
+        policy_root = next((p for p in src.parents if (p / ".git").exists() or (p / ".dekspec/config.yaml").is_file()), src.parent)
+        try:
+            reference_policy = load_policy(policy_root)
+        except ReferencePolicyError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            run.run.exit_code = 3
+            run.run.errors += 1
+            return 3
+        evolving = reference_policy.evolving(artifact_kind, status)
+        if not reference_policy.allows(artifact_kind, status, settled=("LOCKED", "ACCEPTED")) and not args.treat_as_locked:
             print(
                 f"Error: {ir['id']} status is {status}, not LOCKED or ACCEPTED. "
                 f"Pass --treat-as-locked to bypass (v0.1 PoC scaffold flag).",
@@ -757,6 +771,9 @@ def cmd_compile(args: argparse.Namespace) -> int:
             run.run.exit_code = 3
             run.run.errors += 1
             return 3
+
+        if evolving:
+            print("ADVISORY: " + reference_policy.notice(ir["id"], status), file=sys.stderr)
 
         if not args.emit:
             warning_count = len(ir.get("parse_warnings", []))
@@ -803,6 +820,8 @@ def cmd_compile(args: argparse.Namespace) -> int:
             emitter = "ci_gate"
         elif args.emit == "agents-md":
             output = agents_md.emit(ir)
+            if evolving:
+                output = "**ADVISORY:** " + reference_policy.notice(ir["id"], status) + "\n\n" + output
             emitter = "agents_md"
         else:  # pragma: no cover — argparse choices guard this
             print(f"Unknown --emit value: {args.emit}", file=sys.stderr)
@@ -1208,6 +1227,7 @@ def _add_audit_subparser(sub: argparse._SubParsersAction) -> None:
         default=None,
         help="Load and apply mechanical fixes directly from a JSON file, completely bypassing graph compilation and scanning.",
     )
+    p_link.add_argument("--loop", action="store_true", default=argparse.SUPPRESS, help="Apply mechanical fixes to convergence before reporting linkage findings.")
     p_link.set_defaults(func=cmd_audit_linkage)
 
     p_lock = audit_sub.add_parser(
@@ -1316,6 +1336,17 @@ def cmd_audit_linkage(args: argparse.Namespace) -> int:
     )
 
     repo_root = Path(args.at).resolve() if args.at else Path.cwd()
+    from .specification_policy import ReferencePolicyError, load_policy
+    try:
+        load_policy(repo_root)
+    except ReferencePolicyError as exc:
+        if getattr(args, "json", False):
+            print(json.dumps({"error": "invalid-specification-policy", "detail": str(exc)}))
+        else:
+            print(f"audit linkage: invalid specification policy: {exc}", file=sys.stderr)
+        return 1
+    if getattr(args, "loop", False):
+        _fix_to_convergence(repo_root, args.dekspec_root)
 
     if args.read_fixes:
         from .fidelity_audit.linkage import Fix
@@ -2012,6 +2043,7 @@ def cmd_aggregate_agents_md(args: argparse.Namespace) -> int:
         args.dekspec_root,
         base.status if status is None and args.status is None else status,
         base.include if include is None else include,
+        status_explicit=(base.status_explicit or args.status is not None),
     ).normalized()
     if is_projection and settings != base:
         return usage(
@@ -2670,6 +2702,15 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         sections.append(_errored_section("dependencies", e))
         worst_severity = _worse(worst_severity, "error")
 
+    from . import beads
+    bead_results = beads.health(repo_root)
+    bead_errors = [row for row in bead_results if row["status"] != "healthy"]
+    sections.append({"name": "bead stores", "status": "critical" if bead_errors else "clean",
+                     "summary": json.dumps(bead_results) if bead_results else "0 issue/governance stores present",
+                     "findings_count": len(bead_errors)})
+    if bead_errors:
+        worst_severity = _worse(worst_severity, "critical")
+
     # Section 3: graph parse failures (auto-skip if no dekspec content tree)
     if dekspec_dir.exists():
         try:
@@ -2914,6 +2955,7 @@ def cmd_validate(args: argparse.Namespace) -> int:
     }
     parse_fn = parsers[artifact_kind]
     error_classes = (
+        ParseError,
         ICParseError, AEParseError, WSParseError, ADRParseError,
         IBParseError, IntentParseError, MissionParseError,
         SPParseError,
@@ -2931,6 +2973,17 @@ def cmd_validate(args: argparse.Namespace) -> int:
             print(f"Parse error in {src}:\n{e}", file=sys.stderr)
         return 4
     warnings = ir.get("parse_warnings", [])
+    if artifact_kind == "vision":
+        required = ("preamble", "what_this_is", "who_this_is_for", "why_this_exists",
+                    "what_success_looks_like", "what_we_are_not_building")
+        missing = [key for key in required if not ir.get(key)]
+        if missing:
+            error = "Missing or empty required Vision content: " + ", ".join(missing)
+            if args.json:
+                print(json.dumps({"ok": False, "error": error, "warnings": warnings}))
+            else:
+                print(error, file=sys.stderr)
+            return 4
     if args.json:
         print(json.dumps({
             "ok": True,
@@ -3239,6 +3292,7 @@ def _add_init_subparser(sub: argparse._SubParsersAction) -> None:
         choices=["team", "full"],
         help="Methodology profile for `.dekspec/config.yaml` (non-interactive).",
     )
+    p.add_argument("--project-prefix", help="2–6 lowercase letters/digits; initialize and pin <project>-iss and <project>-ds stores.")
     p.set_defaults(func=cmd_init)
 
 
@@ -3265,6 +3319,12 @@ _INIT_INDEXES = (
     ("interface-contract-index.md", "# Interface Contract Index\n\n*Provider/Consumer wire contracts.*\n\n_None yet — author the first one with `/write-ic`._\n"),
     ("intent-index.md", "# Intent Index\n\n*Captured engineer intent.*\n\n_None yet — author the first one with `/write-intent`._\n"),
     ("mission-index.md", "# Mission Index\n\n*Cross-Intent coordination.*\n\n_None yet — author the first one with `/write-mission`._\n"),
+)
+
+_INIT_INDEXES = tuple(
+    (filename, content + "\n" + getattr(_init_index_ops, f"_{kind}_HEADER") + "\n"
+     + getattr(_init_index_ops, f"_{kind}_SEP") + "\n")
+    for (filename, content), kind in zip(_INIT_INDEXES, ("ADR", "AE", "WS", "IC", "INTENT", "MSN"))
 )
 
 # Audit-profile config files scaffolded under the full profile only. The
@@ -3635,6 +3695,19 @@ def _init_dep_precheck(
 
 
 def cmd_init(args: argparse.Namespace) -> int:
+    from . import beads
+    try:
+        init_root = Path(args.at).resolve() if args.at else Path.cwd()
+        for relative in (".dekspec", ".dekspec/config.yaml", ".beads-issues", ".beads-dekspec"):
+            beads._safe_relative(init_root, relative)
+        if getattr(args, "project_prefix", None) is not None:
+            beads.project_prefix(args.project_prefix)
+            init_root = Path(args.at).resolve() if args.at else Path.cwd()
+            for directory, kind in beads.KINDS.values():
+                beads.store_prefix(init_root / directory / ".beads", kind, args.project_prefix)
+    except beads.BeadsError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 2
     rc = _init_dep_precheck(auto_install=getattr(args, "install_deps", False))
     if rc != 0:
         return rc
@@ -3716,6 +3789,12 @@ def cmd_init(args: argparse.Namespace) -> int:
     if config_rc != 0:
         return config_rc
 
+    try:
+        beads.initialize(repo_root, getattr(args, "project_prefix", None))
+    except beads.BeadsError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
     print(f"Initialized dekspec tree at {dekspec_dir}")
     if created:
         print(f"\nCreated ({len(created)}):")
@@ -3725,7 +3804,7 @@ def cmd_init(args: argparse.Namespace) -> int:
         print(f"\nSkipped ({len(skipped)}, already present; use --force to overwrite indexes — AGENTS.md is never overwritten):")
         for line in skipped:
             print(f"  . {line}")
-    next_steps = ["\nNext steps:"] + _init_install_guidance(repo_root) + [
+    next_steps = ["\nNext steps:", f"  · Before authoring, vendor templates: dekspec sync --at {_shell_quote_args([str(repo_root)])}"] + _init_install_guidance(repo_root) + [
         "  · Draft the L0 singletons: `/write-sv`, `/write-glossary`.",
         "  · Author your first ADR / AE / WS via the matching skill (e.g., `/write-adr`).",
         "  · Run `dekspec aggregate agents-md` once you have LOCKED + ACCEPTED artifacts "
@@ -3811,11 +3890,23 @@ def _init_write_config(
     from . import dekspec_config
 
     cfg_path = dekspec_config.config_path(repo_root)
+    project = getattr(args, "project_prefix", None)
     if cfg_path.exists() and not args.force:
+        if project is not None:
+            from . import beads
+            try:
+                for directory, kind in beads.KINDS.values():
+                    beads.store_prefix(repo_root / directory / ".beads", kind, project)
+                dekspec_config.set_key(repo_root, "beads.project_prefix", project)
+            except (beads.BeadsError, dekspec_config.DekspecConfigError) as e:
+                print(f"Error: {e}", file=sys.stderr)
+                return 2, None
         skipped.append(f"file {cfg_path.relative_to(repo_root)}")
         return 0, None
 
     methodology_flag = getattr(args, "methodology", None)
+    if project is not None and methodology_flag is None:
+        methodology_flag = "full"
 
     if methodology_flag is None and not sys.stdin.isatty():
         msg = (
@@ -3838,6 +3929,8 @@ def _init_write_config(
         "schema_version": dekspec_config.CONFIG_SCHEMA_VERSION,
         "methodology_profile": methodology,
     }
+    if project is not None:
+        config_doc["beads"] = {"project_prefix": project}
     try:
         dekspec_config.write_config(repo_root, config_doc, force=True)
     except dekspec_config.DekspecConfigError as err:
@@ -3848,10 +3941,68 @@ def _init_write_config(
 
 
 # --------------------------------------------------------------------------- #
-# config — get / set keys in `.dekspec/config.yaml`
+# Bead identity and per-repository configuration commands
 # --------------------------------------------------------------------------- #
-# config — get / set keys in `.dekspec/config.yaml`
-# --------------------------------------------------------------------------- #
+
+
+def _add_beads_subparser(sub: argparse._SubParsersAction) -> None:
+    group = sub.add_parser("beads", help="Inspect, initialize and safely migrate project bead identities.")
+    commands = group.add_subparsers(dest="beads_command")
+    for name, description in (("reprefix", "Preview exact ID/file changes; --apply requires the preview hash."),
+                              ("recover", "Roll back an interrupted reprefix from its preserved DB/WAL and files."),
+                              ("init", "Initialize and pin the two issue/governance stores."),
+                              ("health", "Probe disposable store copies; each br command is bounded to 5 seconds.")):
+        parser = commands.add_parser(name, help=description, description=description)
+        parser.add_argument("--at", default=".", help="Repository root (default: current directory).")
+        parser.add_argument("--json", action="store_true", help="Emit the full structured receipt.")
+        if name == "reprefix":
+            parser.add_argument("--to", required=True, help="New 2–6-character project prefix.")
+            parser.add_argument("--apply", action="store_true", help="Apply this exact preview transactionally.")
+            parser.add_argument("--expect-plan", help="Preview plan_sha256; required with --apply.")
+        if name == "init":
+            parser.add_argument("--project-prefix", help="Use this project identity; otherwise use configured/legacy identity.")
+        parser.set_defaults(func=cmd_beads)
+    group.set_defaults(func=cmd_beads, beads_command="health", at=".", json=False)
+
+
+def cmd_beads(args: argparse.Namespace) -> int:
+    from . import beads
+    root = Path(args.at).resolve()
+    try:
+        if args.beads_command == "reprefix":
+            if args.apply and not args.expect_plan:
+                print("error: --apply requires --expect-plan from a reviewed preview")
+                return 2
+            result = (beads.apply_reprefix(root, args.to, args.expect_plan) if args.apply
+                      else beads.plan_reprefix(root, args.to)[0])
+        elif args.beads_command == "recover":
+            result = beads.recover(root)
+        elif args.beads_command == "init":
+            beads.initialize(root, args.project_prefix)
+            result = {"status": "initialized", "stores": 2}
+        else:
+            result = beads.health(root)
+        if args.json:
+            print(json.dumps(result, indent=2))
+        elif isinstance(result, list):
+            print(f"stores: {len(result)}")
+            for row in result:
+                print(f"{row['kind']}: {row['status']} {row.get('detail', row.get('prefix', ''))}")
+        else:
+            print(f"status: {result.get('status', 'preview')}")
+            if "plan_sha256" in result:
+                print(f"plan_sha256: {result['plan_sha256']}")
+                print(f"ids: {len(result['ids'])}")
+                for old, new in list(result["ids"].items())[:20]:
+                    print(f"  {old}: {new}")
+                print(f"files: {len(result['files'])}")
+                for path in result["files"][:20]:
+                    print(f"  {path}")
+                print("help: at most 20 IDs/files shown; use --json for renames and the full receipt; apply with --apply --expect-plan <plan_sha256>")
+        return 1 if isinstance(result, list) and any(r['status'] == 'error' for r in result) else 0
+    except (beads.BeadsError, OSError, ValueError) as e:
+        print(f"error: {e}")
+        return 1
 
 
 def _add_config_subparser(sub: argparse._SubParsersAction) -> None:
@@ -3863,6 +4014,7 @@ def _add_config_subparser(sub: argparse._SubParsersAction) -> None:
             "<key>` prints a value; `dekspec config set <key> <value>` writes "
             "it (atomic, JSON-Schema-validated). Recognised keys: schema_version, "
             "methodology_profile (alias: profile), repo.scope, issue_tracker, "
+            "beads.project_prefix, specification.reference_mode, "
             "ephemeral_scratch_dir, glossary_path, triage_labels.hitl, "
             "triage_labels.afk, triage_labels.buckets."
         ),

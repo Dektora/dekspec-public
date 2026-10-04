@@ -1,72 +1,12 @@
 #!/usr/bin/env python3
-"""Create the `br` bead workspaces for a repo, in one of two modes.
+"""Initialize independently usable issue stores without requiring DekSpec.
 
-Answers "I have neither prj-mgr nor DekSpec -- how do I set up `br`?" Needs only
-`br` on PATH and the Python standard library. Copy it anywhere; it imports
-nothing from this repo.
-
-    --mode independent  (default)  one workspace, issue tracking only
-    --mode dekspec                 three workspaces, DekSpec-integrated
-
-INDEPENDENT MODE (the default) -- one kind, one store:
-
-    .beads/          iss-*   issues          -- bare `br`, no --db, no DekSpec
-
-Most repos want this. The repo tracks issues; there is no coding-agent queue to
-keep separate and no governance layer. Every `br` command works bare, which
-removes the whole "never run a bare mutating br command" discipline the
-three-workspace layout requires. Fewer moving parts is the point.
-
-DEKSPEC MODE -- three kinds, three stores (ADR-052):
-
-    .beads/          cb-*    code beads      -- executor input, bare `br ready`
-    .beads-issues/   iss-*   product issues  -- the repo's own tracking
-    .beads-dekspec/  ds-*    DekSpec work    -- governance items
-
-The root workspace holds *code* beads because `br` auto-discovers it, so bare
-`br ready` returns the next ready coding bead with no flag and no remembered
-discipline (ADR-052 s2). The other kinds are reached with `--db`.
-
-Take dekspec mode when DekSpec is in play, or when a coding agent will run bare
-`br ready` in this repo and must get coding tasks rather than issues.
-
-The equivalent by hand, if you would rather not run a script -- this is the
-whole thing, and each layout is nothing more than this convention:
-
-    # independent mode (default)
-    br init --prefix iss && br config set min_hash_length 5
-
-    # dekspec mode
-    br init --prefix cb && br config set min_hash_length 5
-    mkdir -p .beads-issues  && (cd .beads-issues  && br init --prefix iss && br config set min_hash_length 5)
-    mkdir -p .beads-dekspec && (cd .beads-dekspec && br init --prefix ds  && br config set min_hash_length 5)
-
-CHOOSING, AND CHANGING YOUR MIND
-
-Independent mode is not a subset of dekspec mode -- the two disagree about what
-lives at the root. Independent puts *issues* there; dekspec puts *code* there
-and expects bare `br ready` to be the coding queue. Switching later is a real
-migration (export JSONL, re-init the root, import into the sibling), not a
-second run of this script.
-
-So conflict handling depends on whether you *asked* for a mode:
-
-  * mode DEFAULTED, root already the other layout -> report what is there, exit
-    0. Running bare `--bootstrap` in an established DekSpec repository is a no-op,
-    not an error.
-  * mode EXPLICIT (--mode / --dekspec / --independent) and it conflicts ->
-    refuse, and print the migration.
-
-Rule of thumb: if a coding agent will ever run `br ready` in this repo, choose
-dekspec mode now, even if DekSpec itself is never installed -- the `ds-`
-workspace costs nothing to leave empty and the root stays free for code beads.
-
-Why `min_hash_length 5`: at the default of 3, `br`'s random alphanumeric suffix
-will occasionally mint IDs containing slurs -- observed while authoring
-ADR-052. Bead IDs land in commit messages, branch names, and PR titles, so the
-floor is raised.
-
-Idempotent within a mode: an existing workspace is reported and left untouched.
+Independent mode retains a single root issue store. DekSpec mode creates only
+.beads-issues and .beads-dekspec: ADR-056 retired code
+beads, and existing root history is left untouched. Prefixes come from local
+project configuration or tracked store pins and are always pinned in config.
+Changing an existing identity requires the explicit, previewable migration;
+this bootstrap never deletes or repurposes a store.
 """
 
 from __future__ import annotations
@@ -80,7 +20,6 @@ from pathlib import Path
 #: kind -> (directory relative to repo root, br ID prefix).
 LAYOUTS: dict[str, tuple[tuple[str, str, str], ...]] = {
     "dekspec": (
-        ("code", ".", "cb"),
         ("issue", ".beads-issues", "iss"),
         ("dekspec", ".beads-dekspec", "ds"),
     ),
@@ -91,6 +30,14 @@ MODES = tuple(LAYOUTS)
 DEFAULT_MODE = "independent"
 
 MIN_HASH_LENGTH = 5
+
+
+def _pin_prefix(directory: Path, prefix: str) -> None:
+    import re
+    config = directory / ".beads/config.yaml"
+    text = config.read_text() if config.exists() else ""
+    text = re.sub(r"(?m)^issue_prefix\s*:.*\n?", "", text)
+    config.write_text(text.rstrip("\n") + f"\nissue_prefix: {prefix}\n")
 
 
 def _run(args: list[str], cwd: Path) -> tuple[int, str]:
@@ -119,22 +66,10 @@ def _root_prefix(root: Path) -> str | None:
 def _refuse_mode_switch(root: Path, mode: str, found: str) -> None:
     """Explain a root-prefix conflict and print the migration, then stop."""
     want = LAYOUTS[mode][0][2]
-    other = "independent" if mode == "dekspec" else "dekspec"
     print(
-        f"\nRefusing: the root workspace already exists with prefix `{found}-`, "
-        f"but --mode {mode} expects `{want}-` there.\n"
-        f"\nThis repo looks like it was bootstrapped in {other} mode. The two "
-        f"layouts disagree about\nwhat belongs at the root, so this is a "
-        f"migration, not a re-run.\n"
-        f"\nIf you do want to switch, the move is:\n"
-        f"\n  1. br sync --flush-only                       # root -> .beads/issues.jsonl\n"
-        f"  2. cp .beads/issues.jsonl <target>/.beads/    # target = the store that\n"
-        f"                                                #   should now hold them\n"
-        f"  3. br --db <target>/.beads/beads.db sync --import-only\n"
-        f"  4. verify: counts, `br blocked`, comments\n"
-        f"  5. rm -rf .beads && br init --prefix {want}\n"
-        f"\nIDs are preserved by the import, so existing references keep resolving.\n"
-        f"Back up .beads/ before step 5.",
+        f"Refusing to change existing root prefix {found!r} to {want!r}. "
+        "Preserve the root store. Use a reviewed migration to move issues; "
+        "dekspec beads reprefix previews identity changes in the two kind stores.",
         file=sys.stderr,
     )
 
@@ -156,7 +91,7 @@ def bootstrap(
 
     layout = LAYOUTS[mode]
 
-    found = _root_prefix(root)
+    found = _root_prefix(root) if mode == "independent" else None
     expected_root = layout[0][2]
     if found is not None and found != expected_root:
         if explicit:
@@ -178,6 +113,13 @@ def bootstrap(
         print(f"  Already bootstrapped in {actual} mode. Nothing to do.")
         mode, layout = actual, LAYOUTS[actual]
 
+    from beads_workspace import _identity
+    try:
+        layout = tuple((kind, dirname, _identity(root, (root / dirname).resolve(), kind, prefix))
+                       for kind, dirname, prefix in layout)
+    except ValueError as error:
+        print(f"Error: {error}", file=sys.stderr)
+        return 1
     failures = 0
     for kind, dirname, prefix in layout:
         target = (root / dirname).resolve()
@@ -185,7 +127,9 @@ def bootstrap(
         shown = ".beads" if dirname == "." else f"{dirname}/.beads"
         label = f"{kind:8s} {shown:22s} prefix={prefix}"
 
-        if db.is_file():
+        if db.is_file() or (target / ".beads/issues.jsonl").is_file():
+            if not dry_run:
+                _pin_prefix(target, prefix)
             print(f"  exists   {label}")
             continue
         if dry_run:
@@ -208,6 +152,7 @@ def bootstrap(
                 f"           {out}",
                 file=sys.stderr,
             )
+        _pin_prefix(target, prefix)
         print(f"  created  {label}")
 
     if failures:
@@ -216,13 +161,10 @@ def bootstrap(
     if not dry_run:
         if mode == "dekspec":
             print(
-                "\nDone. Three workspaces, three kinds:\n"
-                "  bare `br ready`                              -> next ready CODE bead\n"
+                "\nDone. Two issue/governance workspaces; existing root history preserved.\n"
                 "  br --db .beads-issues/.beads/beads.db ready   -> product issues\n"
                 "  br --db .beads-dekspec/.beads/beads.db ready  -> DekSpec work\n"
-                "\nNever run a bare mutating `br` command -- it writes the CODE store.\n"
-                "Resolve the target first with beads_workspace.py and pass its --db.\n"
-                "\nCommit all three .beads/issues.jsonl files -- they are the durable record."
+                "Commit both issues.jsonl exports and config.yaml prefix pins."
             )
         else:
             print(

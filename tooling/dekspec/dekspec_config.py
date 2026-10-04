@@ -74,6 +74,8 @@ DEKSPEC_CONFIG_KEYS: tuple[str, ...] = (
     "schema_version",
     "methodology_profile",
     "repo.scope",
+    "beads.project_prefix",
+    "specification.reference_mode",
     # setup-dekspec fields (INT-174). `set_key` auto-vivifies the nested
     # `triage_labels` object, so the dotted sub-keys need no extra machinery.
     "issue_tracker",

@@ -2,7 +2,7 @@
 
 This is the cookbook for using DekSpec's Python API. Each example is self-contained and uses only the public surface at `dekspec.api`. The CLI examples in the README cover the same ground at the shell level; this doc covers the equivalent Python.
 
-For one-line CLI usage, start with [README.md](../README.md). For the framework's mental model, see [architecture.md](architecture.md).
+For one-line CLI usage, run `dekspec --help`. For the framework's mental model, see [architecture.md](architecture.md). Paths under `/path/to/` below are illustrative placeholders: replace them with real files in your project; they are not links to shipped artifacts.
 
 ---
 
@@ -418,7 +418,7 @@ dekspec migrate-ir ~/.local/share/dekspec/<fingerprint>/runs/*/irs/*.ir.json --a
 dekspec migrate-ir path/to/MSN-001.ir.json --to 0.2.0
 ```
 
-The migration registry validates its own chains at startup — if a step is missing between two registered versions, the CLI refuses to run and surfaces the gap. See [`tooling/dekspec/migrations/__init__.py`](../tooling/dekspec/migrations/__init__.py) module docstring for the full authoring procedure (schema-file update + parser-version bump + test).
+The migration registry validates its own chains at startup — if a step is missing between two registered versions, the CLI refuses to run and surfaces the gap. See the installed `dekspec.migrations` module docstring for the full authoring procedure (schema-file update + parser-version bump + test).
 
 ## Apply migrations programmatically
 
@@ -746,7 +746,7 @@ jobs:
         with:
           python-version: "3.13"
       - name: Install dekspec
-        run: pip install git+https://github.com/Dektora/dekspec.git@v0.127.0
+        run: pip install git+https://github.com/Dektora/dekspec.git@v0.128.0
       - name: Vendor dekspec skills + templates
         run: bash scripts/install-dekspec.sh
       - name: Run dekspec doctor
@@ -782,8 +782,8 @@ For long-lived repos, schedule a daily `dekspec audit --json` run that posts a s
 
 ## See also
 
-- [README.md](../README.md) — quick-start + the canonical install + audit-fix workflow.
+- `dekspec --help` — CLI quick-start; the operating guide covers the install and audit workflow.
 - [architecture.md](architecture.md) — source → IR → emitters → runtime mental model.
-- [`tooling/dekspec/api.py`](../tooling/dekspec/api.py) — the public API module itself (read the docstring for the canonical list of exports).
-- [`tooling/dekspec/schemas/`](../tooling/dekspec/schemas/) — JSON Schema definitions for every IR.
-- [CHANGELOG.md](../CHANGELOG.md) — per-version detail.
+- [`tooling/dekspec/api.py`](https://github.com/Dektora/dekspec-public/blob/main/tooling/dekspec/api.py) — the public API module itself (read the docstring for the canonical list of exports).
+- [`tooling/dekspec/schemas/`](https://github.com/Dektora/dekspec-public/tree/main/tooling/dekspec/schemas) — JSON Schema definitions for every IR.
+- [CHANGELOG.md](https://github.com/Dektora/dekspec-public/blob/main/CHANGELOG.md) — per-version detail.

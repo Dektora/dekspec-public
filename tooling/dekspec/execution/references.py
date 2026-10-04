@@ -3,11 +3,12 @@
 An IB never restates an obligation owned by another artifact; it names the
 artifact (and optionally a section). This module fetches the current text
 from that one home, reports its status and a content hash, and refuses to
-treat anything but an approved, in-force source as binding:
+treat anything but a policy-eligible, in-force source as binding:
 
 * missing artifact or section                → error
 * SUPERSEDED / DEPRECATED / KILLED source    → error naming the successor
-* DRAFT / PROPOSED / TODO source             → error (not yet approved)
+* DRAFT / TODO source                        → error (not yet eligible)
+* PROPOSED ADR/AE                            → explicit evolving policy only
 
 The hash covers the extracted text only, so an edit elsewhere in the same
 artifact does not stale the evidence of an IB that never referenced it.
@@ -21,6 +22,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from dekspec.specification_policy import APPROVED_REFERENCE_STATUSES, ReferencePolicy, load_policy
+
 __all__ = [
     "APPROVED_STATUSES",
     "ResolvedObligation",
@@ -30,7 +33,7 @@ __all__ = [
     "resolve_obligations",
 ]
 
-APPROVED_STATUSES = frozenset({"ACCEPTED", "LOCKED", "COMPLETE", "ACTIVE"})
+APPROVED_STATUSES = APPROVED_REFERENCE_STATUSES
 RETIRED_STATUSES = frozenset({"SUPERSEDED", "DEPRECATED", "KILLED"})
 
 _KIND_DIRS: dict[str, tuple[str, bool]] = {
@@ -67,14 +70,19 @@ class ResolvedObligation:
     text: str
     sha256: str
     problem: str | None = None
+    reference_policy: dict[str, str | int] | None = None
+    advisory: str | None = None
 
     @property
     def ok(self) -> bool:
         return self.problem is None
 
     def manifest_entry(self) -> dict[str, Any]:
-        return {"obligation": self.id, "ref": self.ref, "section": self.section,
-                "path": self.path, "status": self.status, "sha256": self.sha256}
+        entry = {"obligation": self.id, "ref": self.ref, "section": self.section,
+                 "path": self.path, "status": self.status, "sha256": self.sha256}
+        if self.reference_policy is not None:
+            entry["reference_policy"] = self.reference_policy
+        return entry
 
 
 class AmbiguousReference(RuntimeError):
@@ -158,7 +166,7 @@ def extract_section(text: str, section: str | None) -> str | None:
     return None
 
 
-def _resolve_one(repo_root: Path, ib_path: Path, ob: dict[str, Any], spec_root: str) -> ResolvedObligation:
+def _resolve_one(repo_root: Path, ib_path: Path, ob: dict[str, Any], spec_root: str, policy: ReferencePolicy) -> ResolvedObligation:
     repo_root = Path(repo_root)
     if ob.get("local"):
         text = ob.get("text", "")
@@ -182,9 +190,9 @@ def _resolve_one(repo_root: Path, ib_path: Path, ob: dict[str, Any], spec_root: 
         hint = f"; reference its successor {succ}" if succ else ""
         return ResolvedObligation(ob["id"], ref, section, note, rel, status, "", _sha(""),
                                   problem=f"{ref} is {status}{hint}")
-    if status not in APPROVED_STATUSES:
+    if not policy.allows(ref, status):
         return ResolvedObligation(ob["id"], ref, section, note, rel, status, "", _sha(""),
-                                  problem=f"{ref} is {status or 'without a status'} — not approved, so it cannot bind")
+                                  problem=f"{ref} is {status or 'without a status'} — not approved or otherwise eligible under specification.reference_mode={policy.mode}, so it cannot bind")
     kind = ref.split("-", 1)[0]
     if kind == "IB" and section and re.fullmatch(r"O-\d+", section.strip()):
         match = {m.group(1): m.group(2) for m in _LOCAL_OBLIGATION.finditer(text)}.get(section.strip())
@@ -197,8 +205,12 @@ def _resolve_one(repo_root: Path, ib_path: Path, ob: dict[str, Any], spec_root: 
     if body is None:
         return ResolvedObligation(ob["id"], ref, section, note, rel, status, "", _sha(""),
                                   problem=f"{ref} has no section matching §{wanted}")
-    return ResolvedObligation(ob["id"], ref, section, note, rel, status, body, _sha(body))
+    evolving = policy.evolving(ref, status)
+    return ResolvedObligation(ob["id"], ref, section, note, rel, status, body, _sha(body),
+                              reference_policy=policy.stamp if evolving else None,
+                              advisory=policy.notice(ref, status) if evolving else None)
 
 
 def resolve_obligations(repo_root: Path, contract: Any, *, spec_root: str = "dekspec") -> list[ResolvedObligation]:
-    return [_resolve_one(repo_root, contract.path, ob, spec_root) for ob in contract.obligations]
+    policy = load_policy(repo_root)
+    return [_resolve_one(repo_root, contract.path, ob, spec_root, policy) for ob in contract.obligations]

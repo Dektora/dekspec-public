@@ -10,7 +10,7 @@ command (IB-098). `run`:
   3. resolves a *staging directory* — `out_dir`, or a fresh
      `./dekspec-ingest-<timestamp>/` — which is NEVER the consumer's live
      `dekspec/` tree (INT-059 OI-4);
-  4. emits one draft DekSpec artifact per confidently-classified section group
+  4. emits one draft DekSpec artifact per confidently-classified section
      into the staging directory, each at status `DRAFT`;
   5. writes the confidence-scored classification report alongside the drafts;
   6. returns an `IngestResult` the CLI formats.
@@ -82,21 +82,18 @@ def _slug(text: str) -> str:
     return slug or "section"
 
 
-def _render_adr_draft(group: list[Classification]) -> tuple[str, str]:
-    """Render one ADR draft from the ADR Context/Decision/Consequences sections.
+def _render_adr_draft(clf: Classification) -> tuple[str, str]:
+    """Render one ADR draft from one source section without inventing associations.
 
     Returns `(filename, markdown)`. The emitted markdown carries the required
     headed sections of an ADR (`Status`, `Context and Decision Drivers`,
     `Decision`, `Consequences`) populated with the matching source bodies, so
     it parses cleanly through `parse_adr`.
     """
-    by_kind = {clf.ir_kind: clf for clf in group}
-    context = by_kind.get(IRKind.ADR_CONTEXT)
-    decision = by_kind.get(IRKind.ADR_DECISION)
-    consequences = by_kind.get(IRKind.ADR_CONSEQUENCES)
-
-    title_src = decision or context or consequences
-    title = title_src.section.heading if title_src else "Ingested decision"
+    context = clf if clf.ir_kind == IRKind.ADR_CONTEXT else None
+    decision = clf if clf.ir_kind == IRKind.ADR_DECISION else None
+    consequences = clf if clf.ir_kind == IRKind.ADR_CONSEQUENCES else None
+    title = clf.section.heading or "Ingested decision"
     filename = f"ADR-{_PLACEHOLDER_ID}-{_slug(title)}.md"
 
     context_body = (
@@ -221,37 +218,44 @@ def _today() -> str:
 
 
 def _plan_artifacts(
-    classifications: list[Classification],
+    classifications: list[Classification], source_path: Path, document: str,
 ) -> list[tuple[str, str, list[int]]]:
-    """Group classifications into draft artifacts.
+    """Emit one draft per classified section, never infer a merge relationship.
 
-    The three ADR slots (Context / Decision / Consequences) coalesce into one
-    ADR draft; each AE-responsibility section becomes its own AE draft; each
-    WS-business-rule section its own WS draft. `UNCLASSIFIED` sections become
-    no artifact (they still appear in the report). Returns a list of
-    `(filename, markdown, [contributing section orders])` — deterministic in
-    source order.
+    Keep an exact source excerpt and location in each artifact so promotion
+    does not depend on retaining the staging report. Section ordinals prevent
+    collisions between repeated headings or headings with identical slugs.
     """
-    adr_group = [
-        clf
-        for clf in classifications
-        if clf.ir_kind
-        in (IRKind.ADR_CONTEXT, IRKind.ADR_DECISION, IRKind.ADR_CONSEQUENCES)
-    ]
     plan: list[tuple[str, str, list[int]]] = []
-
-    if adr_group:
-        filename, md = _render_adr_draft(adr_group)
-        plan.append((filename, md, [clf.section.order for clf in adr_group]))
-
+    source_lines = document.splitlines()
     for clf in classifications:
-        if clf.ir_kind == IRKind.AE_RESPONSIBILITY:
+        if clf.ir_kind in (
+            IRKind.ADR_CONTEXT, IRKind.ADR_DECISION, IRKind.ADR_CONSEQUENCES,
+        ):
+            filename, md = _render_adr_draft(clf)
+        elif clf.ir_kind == IRKind.AE_RESPONSIBILITY:
             filename, md = _render_ae_draft(clf)
-            plan.append((filename, md, [clf.section.order]))
         elif clf.ir_kind == IRKind.WS_BUSINESS_RULE:
             filename, md = _render_ws_draft(clf)
-            plan.append((filename, md, [clf.section.order]))
-
+        else:
+            continue
+        section = clf.section
+        filename = f"{Path(filename).stem}-section-{section.order + 1}.md"
+        excerpt = "\n".join(source_lines[section.start_line - 1:section.end_line])
+        # Indentation keeps quoted source headings out of the artifact
+        # section namespace, including for consumers with older parsers.
+        quoted_excerpt = "\n".join("    " + line for line in excerpt.split("\n"))
+        md += (
+            "\n## Ingest Provenance\n\n"
+            f"Source path: {json.dumps(str(source_path), ensure_ascii=False)}\n\n"
+            f"Source section: {json.dumps(section.heading, ensure_ascii=False)}\n\n"
+            f"Source lines: {section.start_line}–{section.end_line} (inclusive).\n\n"
+            f"Conversion: `{clf.ir_kind.name}` at confidence {clf.confidence:.2f}; "
+            "one source section per draft; no inferred merges. "
+            "Keep this provenance and source excerpt when promoting the draft.\n\n"
+            f"Source excerpt (verbatim, indented four spaces):\n\n{quoted_excerpt}\n"
+        )
+        plan.append((filename, md, [section.order]))
     return plan
 
 
@@ -316,7 +320,7 @@ def run(path: str | Path, out_dir: str | Path | None = None) -> IngestResult:
         staging.mkdir(parents=True)
 
     # --- Emit draft artifacts. ---------------------------------------------
-    plan = _plan_artifacts(classifications)
+    plan = _plan_artifacts(classifications, src, document)
     artifact_files: dict[int, str] = {}
     written: list[str] = []
     for filename, markdown, orders in plan:

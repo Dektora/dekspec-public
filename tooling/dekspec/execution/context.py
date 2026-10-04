@@ -18,6 +18,7 @@ from typing import Any
 
 from dekspec.execution.contract import IBContract
 from dekspec.execution.references import ResolvedObligation, resolve_obligations
+from dekspec.specification_policy import ReferencePolicyError
 
 __all__ = ["ContextPacket", "build_context", "manifest_digest"]
 
@@ -33,7 +34,7 @@ ESCALATE_WHEN = (
     "a change is needed outside Scope (scope expansion)",
     "an acceptance condition looks wrong, unsatisfiable or would need weakening",
     "obligations contradict each other or the existing system in a way the contract does not settle",
-    "the outcome or an obligation cannot be determined from the approved sources (underdefined contract)",
+    "the outcome or an obligation cannot be determined from the policy-eligible canonical sources (underdefined contract)",
     "a required prerequisite or authority is missing",
 )
 
@@ -54,10 +55,11 @@ def manifest_digest(manifest: list[dict[str, Any]]) -> str:
 class ContextPacket:
     contract: IBContract
     obligations: list[ResolvedObligation]
+    policy_error: str | None = None
 
     @property
     def problems(self) -> list[str]:
-        return [f"{o.id}: {o.problem}" for o in self.obligations if o.problem]
+        return ([self.policy_error] if self.policy_error else []) + [f"{o.id}: {o.problem}" for o in self.obligations if o.problem]
 
     @property
     def manifest(self) -> list[dict[str, Any]]:
@@ -69,7 +71,7 @@ class ContextPacket:
 
     def as_dict(self) -> dict[str, Any]:
         c = self.contract
-        return {
+        result = {
             "ib": c.ib_id,
             "path": c.rel_path,
             "status": c.status,
@@ -95,6 +97,11 @@ class ContextPacket:
             "environment_prerequisites": list(c.prerequisites),
             "problems": self.problems,
         }
+        advisories = [{"obligation": o.id, "ref": o.ref, "status": o.status, "detail": o.advisory}
+                      for o in self.obligations if o.advisory]
+        if advisories:
+            result["advisories"] = advisories
+        return result
 
     def render_markdown(self) -> str:
         d = self.as_dict()
@@ -134,6 +141,8 @@ class ContextPacket:
             if o.problem:
                 out += [f"**UNRESOLVED:** {o.problem}", ""]
                 continue
+            if o.advisory:
+                out += [f"**ADVISORY:** {o.advisory}", ""]
             if o.note:
                 out += [f"*Applies here:* {o.note}", ""]
             out += [f"<!-- sha256 {o.sha256} -->", o.text, ""]
@@ -165,4 +174,7 @@ class ContextPacket:
 
 
 def build_context(repo_root: Path, contract: IBContract, *, spec_root: str = "dekspec") -> ContextPacket:
-    return ContextPacket(contract, resolve_obligations(repo_root, contract, spec_root=spec_root))
+    try:
+        return ContextPacket(contract, resolve_obligations(repo_root, contract, spec_root=spec_root))
+    except ReferencePolicyError as exc:
+        return ContextPacket(contract, [], policy_error=str(exc))

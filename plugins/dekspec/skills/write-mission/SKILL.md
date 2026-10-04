@@ -17,7 +17,7 @@ related_skills: [write-intent, spec-intent, write-sv, write-ae]
 >
 > A Mission is rigorous up-front on its near-immutable section and continuously revised on the live section. Prior conversation context can degrade the up-front rigor by anchoring on partial sketches before the outcome is settled.
 >
-> First message → proceed. Prior history → ask "context may affect Mission quality, recommend /clear, continue? (y/n)" + wait.
+> Inline reasoning only (see mode manifest); substantive fan-out skips this check. First message → proceed. Prior history → ask "context may affect Mission quality, recommend /clear, continue? (y/n)" + wait.
 
 **Mode dispatcher pattern:** see [`skills/_lib/mode_dispatcher.md`](../_lib/mode_dispatcher.md) for canonical mode semantics + the universal `--teaching` mode (per ds-int-007 / INT-008).
 
@@ -246,7 +246,7 @@ The subagent runs in a fresh context with **no access to this session's history*
    - The 1–2 most recently `ACTIVE` Missions as style/shape exemplars.
 4. **Draft Intent queue paths** — any Intent files in `dekspec/intents/` whose `Mission:` field is unset but which `$ARGUMENTS` plausibly groups into this Mission, plus any explicit Intent IDs the engineer named. The subagent uses these to populate the live-section Intent queue and to ground the First Intent field.
 5. **Constraints** — from CLAUDE.md, the Constitution (`dekspec/constitution.md` if present), `dekspec/architecture-elements-index.md` (AE corpus grounds what Mission Verification can assert), and `dekspec/dekspec-operating-guide.md` §Missions (lifecycle, Autonomy ceiling semantics, Mission-vs-Intent rigor distinction). Also include CLAUDE.md §Verification Predicate Library — Mission Verification is stronger than Intent Verification (behavioral assertion across the integrated system, not a per-component test sweep).
-6. **Engineer guidance** — the raw `$ARGUMENTS` text plus any parsed structured cues.
+6. **Engineer guidance** — the raw `$ARGUMENTS` text verbatim; parsed structured cues go in separate fields.
 7. **Next MSN-NNN** — run `python ../_lib/scripts/artifact_ops.py next-id mission` (surface stderr on non-zero exit).
 8. **Expected output path** — `dekspec/missions/MSN-NNN-<slug>.md` (slug derived from the Outcome, not from team / project name).
 9. **Validation command** — `dekspec validate dekspec/missions/MSN-NNN-<slug>.md`.

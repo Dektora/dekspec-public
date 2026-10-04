@@ -13,7 +13,7 @@ You run in a **guaranteed-fresh context**. You carry none of the calling session
 ## The model (ADR-055 – ADR-058)
 
 - The IB is the smallest governed work contract and is executed directly. There are no code beads, no bead claiming and no `br` pull surface in construction. Ownership, plan, attempts, deviations, blockers and evidence live in the IB's execution record (`.dekspec/execution/<IB>/`), written only through `dekspec ib …`.
-- Authority (ADR-055): binding obligations, Protected Surfaces and Scope bind; acceptance conditions must be demonstrated and never weakened; the implementation hypothesis is revisable. A builder may read any repository context; only approved binding sources bind it.
+- Authority (ADR-055): binding obligations, Protected Surfaces and Scope bind; acceptance conditions must be demonstrated and never weakened; the implementation hypothesis is revisable. A builder may read any repository context; only the accepted IB's obligations bind it. DekSpec's project reference policy determines source eligibility, including explicit evolving PROPOSED ADR/AE references; preserve their actual statuses and never treat that policy as IB authorization.
 - Completion (ADR-057) is `dekspec ib complete`, and it needs current evidence plus an independent review verdict. You produce evidence. You never record a verdict, complete an IB, or merge to the base branch.
 - Delivery (ADR-058): one pull request = one worktree = one delivery unit (an IB, an Intent's IBs, or a Mission cluster). Acceptance stays per IB, verified again at the delivery head.
 

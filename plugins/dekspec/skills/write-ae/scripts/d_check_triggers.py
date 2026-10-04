@@ -7,8 +7,8 @@ lists — and only the true-vs-false-positive judgment is left to the model. Thi
 script runs that mechanical subset and emits the candidate hits as JSON; the
 skill's Audit Mode still decides which hits are genuine drift.
 
-MECHANIZED here (pure-regex triggers, no section context needed):
-  D1   — fenced code blocks (``` outside the amendment-log table)
+MECHANIZED here (candidate triggers with architectural-view context):
+  D1   — code fences, excluding mermaid/structurizr architectural views
   D2   — math markers: LaTeX `\\(` / `\\[` / `$$`, inline `$...$`
   D3   — function/class names: backticked `name()`, prose `def`/`class`,
          CamelCase regex, ALL_CAPS module-constant regex, library-call
@@ -49,7 +49,11 @@ from pathlib import Path
 # --------------------------------------------------------------------------
 # D1 — fenced code blocks.
 # --------------------------------------------------------------------------
-_FENCE_RE = re.compile(r"^\s*```")
+_FENCE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
+_VIEW_RE = re.compile(
+    r"^(?:###\s+|\*\*)(context|container|component|dynamic|deployment)"
+    r"\s+view(?:\b|\.)(?:.*)$", re.IGNORECASE,
+)
 
 # --------------------------------------------------------------------------
 # D2 — math markers + inline math.
@@ -61,7 +65,7 @@ _INLINE_MATH_RE = re.compile(r"(?<!\$)\$(?!\$)[^$\n]+\$(?!\$)")
 # D3 — function / class / callable names + library-call blacklist.
 # --------------------------------------------------------------------------
 _BACKTICK_CALL_RE = re.compile(r"`[^`\n]*\(\)[^`\n]*`")
-_PROSE_DEFCLASS_RE = re.compile(r"\b(?:async\s+def|def|class)\s+[A-Za-z_]\w*")
+_PROSE_DEFCLASS_RE = re.compile(r"\b(?:(?:async\s+)?def\s+[A-Za-z_]\w*\s*\(|class\s+[A-Za-z_]\w*\s*[:({])")
 _CAMELCASE_RE = re.compile(r"\b[A-Z][a-z]+(?:[A-Z][a-z]+){1,}\b")
 _ALLCAPS_RE = re.compile(r"\b[A-Z][A-Z0-9_]{3,}\b")
 _HF_PATH_RE = re.compile(r"\b[A-Za-z0-9_.]+/[A-Za-z0-9_.]+-[A-Za-z0-9_.]+-\d+bit\b")
@@ -154,7 +158,7 @@ _D15_PHRASES = (
 _HEADER_RE = re.compile(r"^#{2,6}\s+(.*)$")
 
 
-def scan(text: str) -> dict[str, list[dict[str, object]]]:
+def scan(text: str, *, allow_terms: tuple[str, ...] = ()) -> dict[str, list[dict[str, object]]]:
     """Scan AE body text and return mechanical D-check trigger hits.
 
     Return shape: {rule: [{"line": int, "match": str}, ...]}. A rule key is
@@ -166,25 +170,33 @@ def scan(text: str) -> dict[str, list[dict[str, object]]]:
         hits.setdefault(rule, []).append({"line": line, "match": match.strip()})
 
     lines = text.splitlines()
-    in_fence = False
+    fence = ""
     fence_open_line = 0
+    in_view = False
+    domain_terms = set(allow_terms)
 
     for idx, line in enumerate(lines, start=1):
         lower = line.lower()
         stripped = line.strip()
 
-        # D1 — fenced code blocks. Toggle on every fence; flag the opener.
-        if _FENCE_RE.match(line):
-            if not in_fence:
-                in_fence = True
+        # Only diagram languages under a recognized architectural view are
+        # exempt. Matching fence character/length prevents accidental closure.
+        fence_match = _FENCE_RE.match(line)
+        if fence_match:
+            marker, info = fence_match.groups()
+            if not fence:
+                fence = marker
                 fence_open_line = idx
-                add("D1", idx, stripped or "```")
-            else:
-                in_fence = False
+                language = info.strip().lower()
+                if not (in_view and language in {"mermaid", "structurizr"}):
+                    add("D1", idx, stripped)
+            elif marker[0] == fence[0] and len(marker) >= len(fence) and not info.strip():
+                fence = ""
             continue
-        # Inside a fence, skip the other content scans (code is already flagged).
-        if in_fence:
+        if fence:
             continue
+        if re.match(r"^#{1,3}\s", line) or line.startswith("**"):
+            in_view = bool(_VIEW_RE.match(line))
 
         # D2 — math markers + inline math.
         for marker in _MATH_MARKERS:
@@ -200,9 +212,11 @@ def scan(text: str) -> dict[str, list[dict[str, object]]]:
         for m in _PROSE_DEFCLASS_RE.finditer(line):
             add("D3", idx, m.group(0))
         for m in _CAMELCASE_RE.finditer(line):
-            add("D3", idx, m.group(0))
+            if m.group(0) not in domain_terms:
+                add("D3", idx, m.group(0))
         for m in _ALLCAPS_RE.finditer(line):
-            if m.group(0) not in _ALLCAPS_ALLOW:
+            if (m.group(0) not in _ALLCAPS_ALLOW | domain_terms
+                    and ("_" in m.group(0) or re.match(r"\s*=", line[m.end():]))):
                 add("D3", idx, m.group(0))
         for m in _HF_PATH_RE.finditer(line):
             add("D3", idx, m.group(0))
@@ -235,8 +249,8 @@ def scan(text: str) -> dict[str, list[dict[str, object]]]:
                 add("D15", idx, phrase)
 
     # Unterminated fence — flag for the model.
-    if in_fence:
-        add("D1", fence_open_line, "unterminated ``` fence")
+    if fence:
+        add("D1", fence_open_line, f"unterminated {fence} fence")
 
     return hits
 
@@ -247,6 +261,8 @@ def _build_parser() -> argparse.ArgumentParser:
         description="Regex-based D-series trigger scan for /write-ae Audit Mode.",
     )
     p.add_argument("path", help="path to the Architecture Element markdown file")
+    p.add_argument("--allow-term", action="append", default=[],
+                   help="domain/glossary token exempt from name heuristics; repeatable")
     return p
 
 
@@ -258,7 +274,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     text = path.read_text(encoding="utf-8")
-    hits = scan(text)
+    hits = scan(text, allow_terms=tuple(args.allow_term))
     print(json.dumps(hits, indent=2))
     # Exit 0 always: trigger hits are candidate findings, not the verdict —
     # the model judges true-vs-false positive. A non-zero exit would imply a

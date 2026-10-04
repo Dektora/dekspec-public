@@ -24,7 +24,7 @@ related_skills: [write-sv, write-ae, write-constitution, write-adr, write-ws]
 >
 > A Security Profile is a load-bearing declaration of what the project permits at the security layer. Prior conversation context can degrade rigor by anchoring on partial sketches before the engineer has settled the `bounded_context` or the `allowed_dataflows` shape.
 >
-> First message → proceed. Prior history → ask "context may affect SP quality, recommend /clear, continue? (y/n)" + wait.
+> Inline reasoning only (see mode manifest); substantive fan-out skips this check. First message → proceed. Prior history → ask "context may affect SP quality, recommend /clear, continue? (y/n)" + wait.
 
 **Mode dispatcher pattern:** see [`skills/_lib/mode_dispatcher.md`](../_lib/mode_dispatcher.md) for canonical mode semantics + the universal `--teaching` mode.
 
@@ -69,6 +69,8 @@ See [`_lib/mode_detection_template.md`](../_lib/mode_detection_template.md) for 
 - Inline (parent context): `--help`, `--teaching`, `--analyze`, `--review`, `--lock`, `--unlock`, `--supersede`, `--dry-run`
 
 ## Fan-Out Mode
+
+Bundle source paths rather than parent summaries; preserve engineer guidance verbatim. Keep parsed mode/path fields and labeled orchestrator notes separate. Show the manifest and preserve fan-out/ingest provenance per the shared substrate; existing task authorization suffices for dispatch.
 
 See [`_lib/fan_out.md`](../_lib/fan_out.md) for the canonical ds-di2 orchestrator/subagent contract. Manifest for this skill:
 

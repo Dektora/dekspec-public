@@ -28,12 +28,13 @@ from dekspec.constraint_compiler.parser import IntentParseError, parse_intent
 from dekspec.execution.contract import IBContract
 from dekspec.execution.engine import RETIRED_STATUSES, Engine, ExecutionError, IntegrationUnknown, probe_blocker
 from dekspec.execution.intent_gate import intent_children, unintegrated_intent_completion_problem
-from dekspec.execution.references import APPROVED_STATUSES, AmbiguousReference, artifact_path, artifact_status
+from dekspec.execution.references import AmbiguousReference, artifact_path, artifact_status
 from dekspec.execution.references import resolve_obligations
 from dekspec.execution.history import LEGACY_TERMINAL_STATUSES, file_versions
 from dekspec.execution.scope import ScopeError, resolve_base
 from dekspec.execution.settings import _has_pytest, resolve_python
 from dekspec.implement.config import IntegrationSettings, load_integration
+from dekspec.specification_policy import ReferencePolicy, ReferencePolicyError, load_policy
 from dekspec.implement.targets import Target
 
 __all__ = ["AUTONOMOUS_LEVELS", "Missing", "Readiness", "TargetReadiness", "assess", "authoritative_base", "intent_completion"]
@@ -65,11 +66,13 @@ class TargetReadiness:
     outcome: str  # "ready" | "not-ready" | "complete"
     ibs: list[str] = field(default_factory=list)
     missing: list[Missing] = field(default_factory=list)
+    advisories: list[Missing] = field(default_factory=list)
     completion: str | None = None  # provenance of a complete target: "verified" | "historical"
 
     def as_dict(self) -> dict[str, Any]:
         return {"id": self.id, "kind": self.kind, "status": self.status, "outcome": self.outcome,
-                "ibs": self.ibs, "missing": [m.as_dict() for m in self.missing], "completion": self.completion}
+                "ibs": self.ibs, "missing": [m.as_dict() for m in self.missing], "completion": self.completion,
+                "advisories": [m.as_dict() for m in self.advisories]}
 
 
 @dataclass
@@ -91,10 +94,15 @@ class Readiness:
     def all_missing(self) -> list[Missing]:
         return [m for t in self.targets for m in t.missing] + self.missing
 
+    @property
+    def all_advisories(self) -> list[Missing]:
+        return [m for target in self.targets for m in target.advisories]
+
     def as_dict(self) -> dict[str, Any]:
         return {"ready": self.ready, "targets": [t.as_dict() for t in self.targets], "order": self.order,
                 "groups": self.groups, "base": self.base, "integration": self.integration,
-                "missing": [m.as_dict() for m in self.all_missing]}
+                "missing": [m.as_dict() for m in self.all_missing],
+                "advisories": [m.as_dict() for m in self.all_advisories]}
 
 
 def _git(repo_root: Path, *args: str) -> subprocess.CompletedProcess:
@@ -198,9 +206,12 @@ def _check_ib(engine: Engine, c: IBContract, tr: TargetReadiness, selected: set[
     for problem in c.contract_problems():
         add("ib-contract-incomplete", f"{c.ib_id}: {problem}", f"complete the IB with `/write-ibs` ({c.rel_path})")
     for ob in resolve_obligations(engine.repo_root, c, spec_root=engine.spec_root):
+        if ob.advisory:
+            tr.advisories.append(Missing(c.ib_id, "evolving-reference", ob.advisory,
+                "retain the reference and source status; review current text through the authorized IB"))
         if ob.problem:
             add("obligation-unresolved", f"{c.ib_id} {ob.id}: {ob.problem}",
-                "approve the referenced source or point the obligation at its in-force successor")
+                "settle the referenced source, apply the project specification policy, or reference its eligible successor")
     try:
         _rec, _events, st = engine.state(c.ib_id)
     except ExecutionError as exc:
@@ -334,7 +345,8 @@ def _check_floor(c: IBContract, baseline: dict[str, Any], add: Any, root: Path) 
             "on a pass, record it as an Amendment Log row `Floor reviewed: PASS — digest <baseline digest> — …`")
 
 
-def _check_intent(engine: Engine, target: Target, tr: TargetReadiness, spec_root: str) -> list[IBContract]:
+def _check_intent(engine: Engine, target: Target, tr: TargetReadiness, spec_root: str,
+                  reference_policy: ReferencePolicy = ReferencePolicy()) -> list[IBContract]:
     add = lambda code, detail, fix: tr.missing.append(Missing(target.id, code, detail, fix))  # noqa: E731
     if target.provisional:
         add("intent-provisional", f"{target.path} is a provisional draft",
@@ -393,9 +405,25 @@ def _check_intent(engine: Engine, target: Target, tr: TargetReadiness, spec_root
     for ae in ir.get("linked_architecture_elements") or []:
         ref = ae.get("id") if isinstance(ae, dict) else str(ae)
         st = _spec_status(engine.repo_root, ref, spec_root) if ref else None
-        if st not in APPROVED_STATUSES:
+        if not reference_policy.allows(ref or "AE", st):
             add("spec-not-approved", f"{target.id} links {ref}, which is {st or 'missing'}",
-                f"accept {ref} (`/write-ae --accept`) or unlink it")
+                f"accept {ref} (`/write-ae --accept`), restore a missing reference, or explicitly configure "
+                "specification.reference_mode=evolving for PROPOSED ADR/AE references; retain valid architecture links")
+        elif st == "PROPOSED":
+            tr.advisories.append(Missing(target.id, "linked-ae-proposed",
+                f"{target.id}: {reference_policy.notice(ref, st)}",
+                "retain the architecture link and review/accept the AE when the project owner settles it"))
+    adr = (ir.get("type_specific") or {}).get("adr")
+    if adr:
+        st = _spec_status(engine.repo_root, adr, spec_root)
+        if not reference_policy.allows(adr, st):
+            add("spec-not-approved", f"{target.id} references {adr}, which is {st or 'missing'}",
+                "restore an eligible ADR or explicitly configure specification.reference_mode=evolving "
+                "for PROPOSED ADR/AE references; retain the decision link")
+        elif reference_policy.evolving(adr, st):
+            tr.advisories.append(Missing(target.id, "linked-adr-proposed",
+                f"{target.id}: {reference_policy.notice(adr, st)}",
+                "retain the decision link and review/accept the ADR when the project owner settles it"))
     mission = (ir.get("mission") or {}).get("id") if isinstance(ir.get("mission"), dict) else None
     if mission:
         st = _spec_status(engine.repo_root, mission, spec_root)
@@ -664,6 +692,11 @@ def _environment(engine: Engine, integration: IntegrationSettings, contracts: di
 
 def assess(repo_root: Path, targets: list[Target], *, spec_root: str = "dekspec",
            check_environment: bool = True) -> Readiness:
+    try:
+        reference_policy = load_policy(Path(repo_root))
+    except ReferencePolicyError as exc:
+        return Readiness(missing=[Missing("configuration", "invalid-specification-policy", str(exc),
+            "correct specification.reference_mode: strict or evolving; remove the unreleased implement.linked_ae_statuses key")])
     integration = load_integration(Path(repo_root))
     # Completion and dependency provenance are judged against the delivery's base (R5),
     # exactly as the driver integrates into it (a forge method: the remote's copy). An
@@ -677,7 +710,7 @@ def assess(repo_root: Path, targets: list[Target], *, spec_root: str = "dekspec"
     for i, target in enumerate(targets):
         tr = TargetReadiness(target.id, target.kind, target.status, "ready")
         if target.kind == "intent":
-            children = _check_intent(engine, target, tr, spec_root)
+            children = _check_intent(engine, target, tr, spec_root, reference_policy)
         else:
             try:
                 c = engine.contract(target.id)
@@ -719,5 +752,7 @@ def assess(repo_root: Path, targets: list[Target], *, spec_root: str = "dekspec"
     if check_environment and any(t.outcome == "ready" for t in readiness.targets):
         spec_paths = [str(t.path.relative_to(repo_root)) for t in targets if not t.provisional
                       and Path(t.path).is_relative_to(repo_root)] + [c.rel_path for c in contracts.values()]
+        if readiness.all_advisories:
+            spec_paths.append(".dekspec/config.yaml")
         _environment(engine, integration, active, spec_paths, readiness)
     return readiness

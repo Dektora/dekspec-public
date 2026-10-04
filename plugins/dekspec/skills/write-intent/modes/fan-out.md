@@ -3,7 +3,7 @@
 [← back to dispatcher](../SKILL.md)
 
 
-See [`_lib/fan_out.md`](../_lib/fan_out.md) for the canonical ds-di2 orchestrator/subagent contract. Manifest for this skill:
+See [`_lib/fan_out.md`](../../_lib/fan_out.md) for the canonical ds-di2 orchestrator/subagent contract. Bundle source paths rather than parent summaries; preserve engineer guidance verbatim. Keep parsed mode/path fields and labeled orchestrator notes separate. Show the manifest and preserve fan-out/ingest provenance under existing authorization. Manifest for this skill:
 
 - **subagent_type**: `dekspec:intent-author`
 - **substantive_modes**: [Creation (default), `--analyze`, `--accept`]
@@ -16,6 +16,6 @@ See [`_lib/fan_out.md`](../_lib/fan_out.md) for the canonical ds-di2 orchestrato
   5. Engineer guidance — `$ARGUMENTS` verbatim, including structured cues (`type:`, `mission:`, `source:`, `autonomy:`).
   6. Constraints — the rules block at the bottom of this skill (Files canonical D2; Serialization per-Mission advisory per ADR-016; Type drives shape; D19/D20 hard; Linked AE mandatory D12; etc.).
 - **expected_output_path**: `dekspec/intents/INT-NNN-<slug>.md` (Creation) or the input path (`--analyze` / `--accept`; subagent edits in place).
-- **validation**: `dekspec validate --kind intent <output-path>`. Validation/surface contract: see [`_lib/validate_and_surface.md`](../_lib/validate_and_surface.md) — on non-zero exit, surface verbatim and stop, do not silently retry. Mode-specific post-checks: `--analyze` → Coverage Report + Size Assessment populated; `--accept` → Status flipped to ACCEPTED + Amendment Log entry appended; Creation (canonical) → appended to intent-index.
+- **validation**: `dekspec validate --kind intent <output-path>`. Validation/surface contract: see [`_lib/validate_and_surface.md`](../../_lib/validate_and_surface.md) — on non-zero exit, surface verbatim and stop, do not silently retry. Mode-specific post-checks: `--analyze` → Coverage Report + Size Assessment populated; `--accept` → Status flipped to ACCEPTED + Amendment Log entry appended; Creation (canonical) → appended to intent-index.
 
 **End of Fan-Out Mode.**

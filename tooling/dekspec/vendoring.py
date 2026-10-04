@@ -209,6 +209,7 @@ _VENDORED_DOC_NAMES = (
     "cli-reference.md",
     "EXAMPLES.md",
     "amendment-log-types.md",
+    "beads-recovery.md",
 )
 
 

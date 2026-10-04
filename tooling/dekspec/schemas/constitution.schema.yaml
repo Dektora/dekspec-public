@@ -22,8 +22,8 @@ description: >-
   id is CONSTITUTION. The articles array is positional: index N-1 = Article
   N. Eight articles in canonical order — Project Identity (typed pointer),
   Technology Stack (text), Quality Standards (text), Architecture Principles
-  (typed adr_ref array), Development Workflow (text), Model Configuration
-  (text), Boundaries (typed adr_ref + ae_ref arrays), Amendments (text).
+  (standing prose plus optional typed adr_ref array), Development Workflow (text), Model Configuration
+  (text), Boundaries (standing prose plus optional typed adr_ref + ae_ref arrays), Amendments (text).
   Referential resolution of typed refs (see_also, adr_refs, ae_refs) is
   audit-layer (L-CONSTITUTION-*); the schema asserts shape only.
 
@@ -138,6 +138,9 @@ properties:
             const: "ref-array"
           title:
             const: "Architecture Principles"
+          body:
+            description: Authored markdown for a prose-bearing article; includes any typed reference bullets in their original order.
+            type: string
           adr_refs:
             type: array
             items:
@@ -184,6 +187,9 @@ properties:
             const: "ref-array"
           title:
             const: "Boundaries"
+          body:
+            description: Authored markdown for a prose-bearing article; includes any typed reference bullets in their original order.
+            type: string
           adr_refs:
             type: array
             items:
@@ -287,7 +293,8 @@ properties:
           type: string
           format: date
         type:
-          enum: [editorial, unlock, substantive]
+          description: Known values normalize to lowercase; unfamiliar authoring events are preserved with a parse warning.
+          type: string
         change:
           type: string
         author:

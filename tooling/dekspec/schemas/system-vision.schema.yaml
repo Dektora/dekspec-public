@@ -86,6 +86,18 @@ properties:
     items:
       type: string
 
+  amendment_log:
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [date, type, change]
+      properties:
+        date: {type: string}
+        type: {type: string}
+        change: {type: string}
+        author: {type: string}
+
   parse_warnings:
     type: array
     items:

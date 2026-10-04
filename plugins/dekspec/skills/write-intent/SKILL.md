@@ -17,7 +17,7 @@ related_skills: [spec-intent, implement, write-ws, write-ibs, write-mission]
 >
 > This skill writes a contract about a future change. Prior conversation context can degrade quality by anchoring on implementation details before the Intent's scope is set.
 >
-> First message → proceed. Prior history → ask "context may affect Intent quality, recommend /clear, continue? (y/n)" + wait.
+> Inline reasoning only (see mode manifest); substantive fan-out skips this check. First message → proceed. Prior history → ask "context may affect Intent quality, recommend /clear, continue? (y/n)" + wait.
 
 **Mode dispatcher pattern:** see [`skills/_lib/mode_dispatcher.md`](../_lib/mode_dispatcher.md) for canonical mode semantics + the universal `--teaching` mode (per ds-int-007 / INT-008).
 
@@ -42,6 +42,10 @@ When entering Creation Mode or Analyze Mode on an Intent that is **pre-ACCEPTED*
 Skip the banner in Lock / Sync / Audit / Review / Help / Teaching modes — those operate on already-settled artifacts and the CoW guard does not apply.
 
 **Roles (ADR-061).** This skill plays DekSpec's Agent Role Specifications; the engineer never selects one. Authoring, revise and resync modes play the **`specifier`** role, audit modes the **`auditor`** role: run `dekspec resource role specifier` or `dekspec resource role auditor` at the start of the mode and follow it (a delegated `*-author` agent loads `specifier` itself). See [`_lib/mode_dispatcher.md`](../_lib/mode_dispatcher.md) §The role each universal mode plays and [`_lib/agent_roles.md`](../_lib/agent_roles.md).
+
+## Referencing evolving specifications
+
+DekSpec owns the project setting `specification.reference_mode` (`strict` by default). In `evolving` mode, keep canonical links to PROPOSED ADRs and AEs, their backlinks and their actual statuses visible. Do not hide references under substitute headings or promote sources to satisfy an audit. The configured reference policy also applies to downstream obligation resolution and readiness; it does not authorize the Intent or its IBs, approve a completed result, or change unrelated lifecycle gates. Missing, ambiguous, DRAFT and retired sources remain ineligible.
 
 ## Mode Detection
 

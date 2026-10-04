@@ -44,6 +44,16 @@ properties:
       approval gates.
     enum: [team, full]
 
+  beads:
+    description: Project-qualified identity for the two issue/governance stores.
+    type: object
+    additionalProperties: false
+    required: [project_prefix]
+    properties:
+      project_prefix:
+        type: string
+        pattern: '^[a-z0-9]{2,6}$'
+
   ib_folders:
     description: >-
       Optional per-consumer mapping of filesystem folder names relative to
@@ -128,6 +138,19 @@ properties:
         items:
           type: string
           minLength: 1
+
+  specification:
+    description: DekSpec-owned specification-reference policy, consumed by execution clients.
+    type: object
+    additionalProperties: false
+    properties:
+      reference_mode:
+        description: >-
+          Strict preserves existing reference eligibility. Evolving additionally
+          permits PROPOSED ADR/AE sources without promoting their status or
+          relaxing independent IB authorization, evidence or integration gates.
+        type: string
+        enum: [strict, evolving]
 
   execution:
     description: >-

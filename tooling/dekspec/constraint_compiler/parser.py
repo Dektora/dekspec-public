@@ -11,6 +11,7 @@ Public API: parse(path) -> dict
 from __future__ import annotations
 
 import hashlib
+import math
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -19,6 +20,7 @@ from typing import Any
 
 from jsonschema import Draft202012Validator
 
+from .vision_structure import REQUIRED_SECTIONS, normalize_heading, vision_sections
 from .. import __version__ as DEKSPEC_VERSION
 from ..severity import (
     ARTIFACT_SEVERITY_ALIAS_MAP as _SHARED_SEVERITY_ALIAS_MAP,
@@ -398,7 +400,10 @@ def parse(path: str | Path) -> dict[str, Any]:
     if cg:
         ir["consistency_guarantees"] = cg
 
-    issues = _extract_open_issues(ctx.sections.get("Open Issues", ""))
+    try:
+        issues = _extract_open_issues(ctx.sections.get("Open Issues", ""))
+    except ParseError as exc:
+        raise ICParseError(str(exc)) from exc
     if issues is not None:
         ir["open_issues"] = issues
 
@@ -701,6 +706,23 @@ def _extract_consistency(body: str) -> dict[str, list[str]] | None:
     return cg or None
 
 
+def _issue_severity(raw: str, *, allow_gate: bool = False) -> str:
+    """Read a present severity completely; malformed markup is never absence."""
+    labels = "Severity|Gate" if allow_gate else "Severity"
+    match = re.search(rf"\*\*(?:{labels}):\*\*[ \t]*(.*?)(?=\s+[—-]\s+\*\*[A-Za-z]|$)", raw, re.IGNORECASE)
+    if match is None:
+        return "P3"
+    value = match.group(1).strip()
+    if value.startswith("`"):
+        token = re.match(r"`([^`]+)`(?=$|[ \t]*(?:[.(;:—-]))", value)
+        if token is None:
+            raise ParseError(f"Malformed severity {value!r}: expected a closed backticked token")
+        value = token.group(1)
+    elif not value or "`" in value.split("(", 1)[0]:
+        raise ParseError(f"Malformed severity {value!r}: expected a plain or backticked P0, P1, P2 or P3 token")
+    return _normalize_severity_alias(value)
+
+
 def _extract_open_issues(body: str) -> list[dict[str, str]] | None:
     """Returns [] if explicitly 'None.', list of parsed issues otherwise, or
     None if section is absent/empty.
@@ -736,19 +758,9 @@ def _extract_open_issues(body: str) -> list[dict[str, str]] | None:
         # Bind back to the original local name to keep the rest of
         # the extractor body identical to its pre-IB-023 shape.
         raw = raw_text
-        # Heuristic split: "issue text — **Source:** ... — **Severity:** ..."
-        # Char class widened from `[a-z\-_]+` to `[a-z0-9\-_]+` so the
-        # canonical `P0..P3` tokens capture cleanly. Parentheticals
-        # and spaces are NOT in the class — matching the historical
-        # capture semantics for IC / IB / ADR / Intent (which never
-        # historically accepted the `blocking (pre-code)` variant
-        # spelling — that lives on the WS surface only). The WS-side
-        # extractor `_extract_open_issues_ws` keeps the wider class.
-        sev_match = re.search(r"\*\*Severity:\*\*\s*([a-z0-9\-_]+)", raw, re.IGNORECASE)
         src_match = re.search(r"\*\*Source:\*\*\s*([^—\n]+)", raw, re.IGNORECASE)
-        text_only = re.split(r"\s+[—-]\s+\*\*Source:", raw, maxsplit=1)[0].strip()
-        sev_raw = sev_match.group(1) if sev_match else "non_blocking"
-        sev_norm = _normalize_severity_alias(sev_raw)
+        text_only = re.split(r"\s+[—-]\s+\*\*(?:Source|Severity):", raw, maxsplit=1)[0].strip()
+        sev_norm = _issue_severity(raw)
         entry: dict[str, str] = {"text": text_only, "severity": sev_norm}
         if src_match:
             entry["source"] = src_match.group(1).strip()
@@ -1097,7 +1109,10 @@ def parse_ae(path: str | Path) -> dict[str, Any]:
         if body:
             ir[key] = body
 
-    open_qs = _extract_ae_open_questions(ctx.sections.get("Open Questions / Planned Follow-ons", ""))
+    try:
+        open_qs = _extract_ae_open_questions(ctx.sections.get("Open Questions / Planned Follow-ons", ""))
+    except ParseError as exc:
+        raise AEParseError(str(exc)) from exc
     if open_qs:
         ir["open_questions"] = open_qs
 
@@ -1447,13 +1462,19 @@ def _extract_ae_open_questions(body: str) -> list[dict[str, str]]:
     if not body.strip():
         return []
     out: list[dict[str, str]] = []
-    for raw in _OPEN_ISSUE_BULLET.findall(body):
-        raw = raw.strip()
-        sev_match = re.search(r"\*\*Severity:\*\*\s*([a-z\-_]+)", raw, re.IGNORECASE)
+    for match in _OPEN_ISSUE_BULLET_WITH_STATE.finditer(body):
+        if match.group("state").lower() == "x":
+            continue
+        raw = match.group("text").strip()
         src_match = re.search(r"\*\*Source:\*\*\s*([^—\n]+)", raw, re.IGNORECASE)
-        text_only = re.split(r"\s+[—-]\s+\*\*Source:", raw, maxsplit=1)[0].strip()
-        sev = (sev_match.group(1).strip().lower() if sev_match else "non_blocking")
-        sev_norm = "blocking" if "block" in sev and "non" not in sev else "non_blocking"
+        text_only = re.split(r"\s+[—-]\s+\*\*(?:Source|Severity):", raw, maxsplit=1)[0].strip()
+        canonical = _issue_severity(raw)
+        # Keep legacy AE IR spellings for existing authored aliases. Canonical
+        # inputs retain all four distinctions rather than collapse to P3.
+        if re.search(r"\*\*Severity:\*\*[ \t]*`?[ \t]*P[0-3]\b", raw, re.IGNORECASE):
+            sev_norm = canonical
+        else:
+            sev_norm = "blocking" if canonical in {"P0", "P1"} else "non_blocking"
         entry: dict[str, str] = {"text": text_only, "severity": sev_norm}
         if src_match:
             entry["source"] = src_match.group(1).strip()
@@ -1750,7 +1771,10 @@ def parse_ws(path: str | Path) -> dict[str, Any]:
     if failures:
         ir["failure_behavior"] = failures
 
-    issues = _extract_open_issues_ws(ctx.sections.get("Open Issues", ""))
+    try:
+        issues = _extract_open_issues_ws(ctx.sections.get("Open Issues", ""))
+    except ParseError as exc:
+        raise WSParseError(str(exc)) from exc
     if issues is not None:
         ir["open_issues"] = issues
 
@@ -1987,31 +2011,11 @@ def _extract_open_issues_ws(body: str) -> list[dict[str, str]] | None:
         if m.group("state").lower() == "x":
             continue
         raw = m.group("text").strip()
-        # Accept optional surrounding backticks on the severity token —
-        # the WS template seeds Open Issues rows as
-        # `**Severity:** \`P3\`` (markdown code-formatting on the
-        # canonical literal). Without explicit backtick handling the
-        # greedy `\s*` + char-class would backtrack to capture the
-        # single space between `**` and the opening backtick, then
-        # stop at the backtick — yielding `sev_raw=' '` which the
-        # normalizer rejects (bead
-        # `ds-ws-open-issues-severity-backtick-parse-w0ut`). The
-        # `?:[ \t]*` after the opening backtick tolerates pathological
-        # `**Severity:** \` P3 \`` spacing as well. Backticks are then
-        # stripped inside `_normalize_severity_alias`.
-        sev_match = re.search(
-            r"\*\*(?:Severity|Gate):\*\*[ \t]*`?[ \t]*"
-            r"([a-z0-9\-_ \(\)]+?)"
-            r"[ \t]*`?(?:\s+[—\-]|\s*$)",
-            raw,
-            re.IGNORECASE,
-        )
         src_match = re.search(r"\*\*Source:\*\*\s*([^—\n]+)", raw, re.IGNORECASE)
         text_only = re.split(
             r"\s+[—-]\s+\*\*(?:Source|Severity|Gate|Owner|Blocks):", raw, maxsplit=1
         )[0].strip()
-        sev_raw = sev_match.group(1) if sev_match else "non-blocking"
-        sev_norm = _normalize_severity_alias(sev_raw)
+        sev_norm = _issue_severity(raw, allow_gate=True)
         entry: dict[str, str] = {"text": text_only, "severity": sev_norm}
         if src_match:
             entry["source"] = src_match.group(1).strip()
@@ -2228,7 +2232,10 @@ def parse_adr(path: str | Path) -> dict[str, Any]:
     if links:
         ir["links"] = links
 
-    issues = _extract_open_issues(ctx.sections.get("Open Issues", ""))
+    try:
+        issues = _extract_open_issues(ctx.sections.get("Open Issues", ""))
+    except ParseError as exc:
+        raise ADRParseError(str(exc)) from exc
     if issues is not None:
         ir["open_issues"] = issues
 
@@ -2600,7 +2607,10 @@ def parse_ib(path: str | Path) -> dict[str, Any]:
     if dc:
         ir["domain_constraints"] = dc
 
-    issues = _extract_open_issues(ctx.sections.get("Open Issues", ""))
+    try:
+        issues = _extract_open_issues(ctx.sections.get("Open Issues", ""))
+    except ParseError as exc:
+        raise IBParseError(str(exc)) from exc
     if issues:
         ir["open_issues"] = issues
 
@@ -3195,7 +3205,10 @@ def parse_intent(path: str | Path) -> dict[str, Any]:
     if verification:
         ir["verification"] = verification
 
-    issues = _extract_open_issues(ctx.sections.get("Open Issues", ""))
+    try:
+        issues = _extract_open_issues(ctx.sections.get("Open Issues", ""))
+    except ParseError as exc:
+        raise IntentParseError(str(exc)) from exc
     if issues:
         ir["open_issues"] = issues
 
@@ -4101,7 +4114,13 @@ def parse_vision(path: str | Path) -> dict[str, Any]:
     """Parse the singleton system-vision.md into a validated IR."""
     src = Path(path).resolve()
     text = src.read_text(encoding="utf-8")
-    sections = _split_sections(text)
+    try:
+        normalized_sections = vision_sections(text)
+    except ValueError as exc:
+        raise VisionParseError(str(exc)) from exc
+    section_names = (*REQUIRED_SECTIONS, "Status", "Created", "Modified", "Amendment Log")
+    sections = {name: normalized_sections[normalize_heading(name)]
+                for name in section_names if normalize_heading(name) in normalized_sections}
 
     ir: dict[str, Any] = {
         "ir_schema_version": _SV_IR_SCHEMA_VERSION,
@@ -4133,7 +4152,8 @@ def parse_vision(path: str | Path) -> dict[str, Any]:
 
     # Preamble: text between H1 and first H2.
     h1_end = text.find("\n", text.find("# "))
-    first_h2 = text.find("\n## ", h1_end if h1_end != -1 else 0)
+    h2_match = re.search(r"^##[ \t]+", text[h1_end:] if h1_end != -1 else text, re.MULTILINE)
+    first_h2 = (max(h1_end, 0) + h2_match.start()) if h2_match else -1
     if first_h2 != -1:
         preamble = text[h1_end:first_h2].strip()
         if preamble:
@@ -4207,6 +4227,17 @@ def parse_vision(path: str | Path) -> dict[str, Any]:
             ),
             "severity": "warning",
         })
+
+    for heading in REQUIRED_SECTIONS:
+        key = heading.lower().replace(" ", "_")
+        if not ir.get(key) and not any(w["field"] == key for w in warnings):
+            warnings.append({"field": key, "reason": f"Required section '## {heading}' is missing or empty.", "severity": "warning"})
+    try:
+        amendments = _extract_singleton_amendments(sections.get("Amendment Log", ""), warnings)
+    except ConstitutionParseError as exc:
+        raise VisionParseError(str(exc)) from exc
+    if amendments:
+        ir["amendment_log"] = amendments
 
     if warnings:
         ir["parse_warnings"] = warnings
@@ -4346,7 +4377,13 @@ def parse_constitution(path: str | Path) -> dict[str, Any]:
         )
     name = name_match.group(1).strip()
 
-    sections = _split_sections(text)
+    try:
+        normalized_sections = vision_sections(text)
+    except ValueError as exc:
+        raise ConstitutionParseError(str(exc)) from exc
+    section_names = ("Status", "Created", "Modified", "Class Lanes", "Amendment Log", "Article 8: Amendments")
+    sections = {name: normalized_sections[normalize_heading(name)]
+                for name in section_names if normalize_heading(name) in normalized_sections}
     ir: dict[str, Any] = {
         "ir_schema_version": _CONSTITUTION_IR_SCHEMA_VERSION,
         "id": "CONSTITUTION",
@@ -4383,8 +4420,102 @@ def parse_constitution(path: str | Path) -> dict[str, Any]:
         if preamble:
             ir["preamble"] = preamble
 
+    warnings: list[dict[str, str]] = []
+    if "Class Lanes" in sections:
+        ir["class_lanes"] = _extract_class_lanes(sections["Class Lanes"], warnings)
+    log_body = sections.get("Amendment Log", "")
+    article_log = sections.get("Article 8: Amendments", "")
+    amendments = _extract_singleton_amendments(article_log, warnings)
+    amendments.extend(_extract_singleton_amendments(log_body, warnings))
+    if amendments:
+        ir["amendment_log"] = amendments
+    if warnings:
+        ir["parse_warnings"] = warnings
+
     _validate_constitution(ir)
     return ir
+
+
+_CLASS_LANE_COLUMNS = (
+    "intent_type", "risk_tier", "lane", "budget_cap_tokens", "budget_cap_dollars",
+    "max_attempts_per_attempt", "max_attempts_per_bead", "promotion_threshold_clean_runs",
+    "demotion_threshold_reverts", "effective_model_snapshot", "effective_corpus_volume",
+)
+_RISK_TIERS = {"default", "schema-migration", "auth", "billing", "concurrency", "data-residency", "external-api-surface"}
+
+
+def _singleton_table(body: str, columns: tuple[str, ...], *, label: str) -> list[dict[str, str]]:
+    """Read named columns without positional truncation or silent row loss."""
+    visible = re.sub(r"<!--.*?-->", "", body, flags=re.DOTALL)
+    rows: list[dict[str, str]] = []
+    header: list[str] | None = None
+    separator_seen = False
+    for line in visible.splitlines():
+        if not line.strip().startswith("|"):
+            if line.strip():
+                header = None
+                separator_seen = False
+            continue
+        cells = [cell.strip() for cell in re.split(r"(?<!\\)\|", line.strip().strip("|"))]
+        if header is None:
+            header = [cell.strip("`").lower().replace(" ", "_") for cell in cells]
+            if len(set(header)) != len(header) or set(header) - set(columns) or not set(columns) <= set(header):
+                raise ConstitutionParseError(f"{label}: expected exactly these named columns: {', '.join(columns)}; found {header!r}")
+            continue
+        if not separator_seen:
+            if not all(re.fullmatch(r":?-{2,}:?", cell) for cell in cells) or len(cells) != len(header):
+                raise ConstitutionParseError(f"{label}: malformed table separator")
+            separator_seen = True
+            continue
+        if len(cells) != len(header):
+            raise ConstitutionParseError(f"{label}: row has {len(cells)} cells, expected {len(header)}; escape literal pipes as \\|")
+        rows.append(dict(zip(header, cells)))
+    return rows
+
+
+def _extract_class_lanes(body: str, warnings: list[dict[str, str]]) -> list[dict[str, Any]]:
+    rows = _singleton_table(body, _CLASS_LANE_COLUMNS, label="Class Lanes")
+    visible = re.sub(r"<!--.*?-->", "", body, flags=re.DOTALL).strip()
+    if not rows:
+        if visible and not visible.startswith("|"):
+            raise ConstitutionParseError("Class Lanes is present but contains no readable policy rows; use the documented column names.")
+        warnings.append({"field": "class_lanes", "reason": "Class Lanes is declared but contains no policy rows.", "severity": "warning"})
+    result: list[dict[str, Any]] = []
+    for number, row in enumerate(rows, 1):
+        entry: dict[str, Any] = {key: value.strip().strip("`") for key, value in row.items()}
+        missing = set(_CLASS_LANE_COLUMNS) - entry.keys()
+        if missing:
+            raise ConstitutionParseError(f"Class Lanes row {number} is missing columns: {sorted(missing)}")
+        empty = [key for key, value in entry.items() if not value]
+        if empty:
+            raise ConstitutionParseError(f"Class Lanes row {number} has empty values: {empty}")
+        for key in _CLASS_LANE_COLUMNS[3:9]:
+            try:
+                entry[key] = float(entry[key]) if key == "budget_cap_dollars" else int(entry[key])
+                if not math.isfinite(entry[key]):
+                    raise ValueError("not finite")
+            except (ValueError, TypeError, OverflowError) as exc:
+                raise ConstitutionParseError(f"Class Lanes row {number}: {key} must be a finite {'number' if key == 'budget_cap_dollars' else 'integer'}") from exc
+        if entry["risk_tier"] not in _RISK_TIERS:
+            warnings.append({"field": f"class_lanes/{number - 1}/risk_tier", "reason": f"Unrecognized risk tier {entry['risk_tier']!r}; use the Intent risk-tier vocabulary {sorted(_RISK_TIERS)}. Original value preserved.", "severity": "warning"})
+        result.append(entry)
+    return result
+
+
+def _extract_singleton_amendments(body: str, warnings: list[dict[str, str]]) -> list[dict[str, str]]:
+    """Preserve event meaning: an unfamiliar Type is evidence, not editorial."""
+    rows = _singleton_table(body, ("date", "type", "change", "author"), label="Amendment Log")
+    result = []
+    for row in rows:
+        if not all(row.get(key, "").strip() for key in ("date", "type", "change")):
+            warnings.append({"field": "amendment_log", "reason": f"Incomplete amendment row retained: {row!r}", "severity": "warning"})
+        kind = row.get("type", "")
+        if kind.lower() in {"editorial", "unlock", "substantive"}:
+            row["type"] = kind.lower()
+        else:
+            warnings.append({"field": "amendment_log", "reason": f"Unrecognized amendment type {kind!r}; preserved verbatim, not classified as editorial.", "severity": "warning"})
+        result.append(row)
+    return result
 
 
 def _extract_article_blocks(text: str) -> list[tuple[int, str, str]]:
@@ -4453,12 +4584,12 @@ def _parse_ref_array_article(
     body: str, title: str, article_number: int
 ) -> dict[str, Any]:
     """Articles 4 (Architecture Principles) + 7 (Boundaries): extract
-    typed ref bullets. Article 4 has only adr_refs; Article 7 has both
+    optional typed ref bullets and retain any authored prose in body.
+    Article 4 has only adr_refs; Article 7 has both
     adr_refs + ae_refs (parsed by ID prefix). Canonical bullet shape:
     `- (ADR|AE)-NNN — <text>`.
 
-    Bullets that look like `- IDENTIFIER — text` but whose IDENTIFIER
-    fails the strict ID pattern (ADR/AE-NNN) raise
+    Bullets beginning ADR-/AE- that fail the strict ID pattern raise
     ConstitutionParseError — silently skipping them would let
     malformed-ID typos slide and produce empty ref arrays that pass
     schema validation.
@@ -4468,7 +4599,7 @@ def _parse_ref_array_article(
     # a content/lint warning.
     for m in _REF_BULLET_ANY.finditer(body):
         token = m.group(1)
-        if not (
+        if token.startswith(("ADR-", "AE-")) and not (
             re.fullmatch(r"ADR-\d{3,}", token)
             or re.fullmatch(r"AE-\d{3,}", token)
         ):
@@ -4503,6 +4634,8 @@ def _parse_ref_array_article(
         if ref_id.startswith("ADR-"):
             adr_refs.append({"id": ref_id, "rationale": text_val})
         elif ref_id.startswith("AE-"):
+            if article_number == 4:
+                raise ConstitutionParseError("Article 4 typed references must cite ADRs; state an AE-related principle as prose or place a typed AE boundary reference in Article 7.")
             ae_refs.append({"id": ref_id, "aspect": text_val})
     out: dict[str, Any] = {
         "kind": "ref-array",
@@ -4511,6 +4644,11 @@ def _parse_ref_array_article(
     }
     if article_number == 7:
         out["ae_refs"] = ae_refs
+    prose = _REF_BULLET.sub("", body)
+    prose = re.sub(r"^\*\*Boundary (?:ADRs|AEs):\*\*\s*$", "", prose, flags=re.MULTILINE)
+    prose = re.sub(r"<!--.*?-->", "", prose, flags=re.DOTALL).strip()
+    if prose:
+        out["body"] = body.strip()
     return out
 
 
@@ -4562,6 +4700,9 @@ def emit_constitution_markdown(ir: dict[str, Any]) -> str:
             parts.append(f"**Summary:** {article['summary']}\n\n")
             parts.append(f"**See Also:** {article['see_also']}\n")
         elif kind == "ref-array":
+            if article.get("body"):
+                parts.append(f"{article['body']}\n")
+                continue
             adr_refs = article.get("adr_refs", [])
             ae_refs = article.get("ae_refs", [])
             if idx == 7:
@@ -4579,6 +4720,25 @@ def emit_constitution_markdown(ir: dict[str, Any]) -> str:
         else:  # text
             parts.append(f"{article['body']}\n")
 
+    if "class_lanes" in ir:
+        columns = list(_CLASS_LANE_COLUMNS)
+        parts.append("\n## Class Lanes\n\n| " + " | ".join(columns) + " |\n")
+        parts.append("|" + "---|" * len(columns) + "\n")
+        for row in ir["class_lanes"]:
+            parts.append("| " + " | ".join(str(row.get(key, "")) for key in columns) + " |\n")
+    # Article 8 already carries its authored log. Preserve distinct standalone
+    # log rows too without duplicating Article 8 entries.
+    article_rows = _extract_singleton_amendments(ir.get("articles", [{}] * 8)[7].get("body", ""), [])
+    extra_rows = []
+    for row in ir.get("amendment_log", []):
+        if row in article_rows:
+            article_rows.remove(row)  # subtract occurrences, never deduplicate events
+        else:
+            extra_rows.append(row)
+    if extra_rows:
+        parts.append("\n## Amendment Log\n\n| Date | Type | Change | Author |\n|---|---|---|---|\n")
+        for row in extra_rows:
+            parts.append("| " + " | ".join(row.get(key, "") for key in ("date", "type", "change", "author")) + " |\n")
     return "".join(parts)
 
 

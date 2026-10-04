@@ -46,6 +46,9 @@ from __future__ import annotations
 # Library version
 from . import __version__
 
+# Specification policy (owned by DekSpec, consumed by orchestration clients)
+from .specification_policy import ReferencePolicy, ReferencePolicyError, load_policy
+
 # IR schema + parser version constants
 from .constraint_compiler import IR_SCHEMA_VERSION, PARSER_VERSION
 
@@ -159,6 +162,7 @@ from .schemas import (
 )
 
 __all__ = [
+    "ReferencePolicy", "ReferencePolicyError", "load_policy",
     # Versions
     "__version__",
     "IR_SCHEMA_VERSION",

@@ -99,6 +99,8 @@ def cmd_ready(args: argparse.Namespace) -> int:
         return 0
     else:
         text = "NOT READY — missing preparation:\n" + _missing_text(payload["missing"])
+    if payload["advisories"]:
+        text += "\nADVISORY — project architecture policy:\n" + _missing_text(payload["advisories"])
     _print(args, payload, text)
     return 0 if readiness.ready else 1
 
@@ -123,7 +125,10 @@ def cmd_next(args: argparse.Namespace) -> int:
     from dekspec.implement.driver import next_step
 
     step = next_step(_root(args), _request(args), actor=_actor(args))
-    _print(args, step, _action_text(step))
+    text = _action_text(step)
+    if step.get("advisories"):
+        text += "\nADVISORY — project architecture policy:\n" + _missing_text(step["advisories"])
+    _print(args, step, text)
     return {"not-ready": 1, "blocked": 3}.get(step["action"], 0)
 
 

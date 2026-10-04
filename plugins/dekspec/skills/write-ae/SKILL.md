@@ -13,7 +13,7 @@ related_skills: [write-sv, write-adr, write-ws, write-ic, write-intent]
 
 > **Skill rename — DN→AE migration 2026-04-27.** This skill was renamed from the legacy `write-design-note` to `write-ae`. The artifact it produces is an **Architecture Element (AE)**, the post-migration replacement for the legacy Design Note (DN). The mandatory new pieces are: (a) **subtype selection** from the C4-aligned enum (System / Subsystem / Container / Component / Pipeline / Data Model / Cross-Cutting Concern / Platform Concern / Interface Surface / Workflow / Process), (b) a **classifier/router** that refuses to write an AE for ADR/WS/IC/IB-shaped input and redirects to the right skill, and (c) three new audit T-checks (**T10 subtype present**, **T11 boundary defined**, **T12 views present or absence justified**) plus drift checks **D17/D18** that replace the retired D6 NFR exemption (see "AE-specific additions" below).
 >
-> Pre-existing T1–T9 and D1–D16 audit checks are ported from the v1 (DN-era) audit framework; their numeric IDs and severities carry over unchanged. Deep DN→AE language migration throughout the SKILL.md prose was applied 2026-04-27 by bd-mvx0; surface-level references now use AE / Architecture Element vocabulary throughout. The migration banner text "DN-era" remains where it is the correct historical descriptor for the rule set being ported.
+> Pre-existing T1–T12 and D1–D18 audit checks are ported from the v1 (DN-era) audit framework; their numeric IDs and severities carry over unchanged. Deep DN→AE language migration throughout the SKILL.md prose was applied 2026-04-27 by bd-mvx0; surface-level references now use AE / Architecture Element vocabulary throughout. The migration banner text "DN-era" remains where it is the correct historical descriptor for the rule set being ported.
 >
 > For the AE subtype enum, framework reference (arc42 chapter mapping, C4 view types), and routing keyword tables, see `dekspec/architecture-frameworks-reference.md`.
 
@@ -23,7 +23,7 @@ Write, revise, or accept an Architecture Element. An AE is a living reference: i
 >
 > This skill requires clear vision-level thinking about a subsystem or concern. Prior conversation context can degrade quality by introducing implementation-level bias.
 >
-> First message → proceed. Prior history → ask "context may affect AE quality, recommend /clear, continue? (y/n)" + wait.
+> Inline reasoning only (see mode manifest); substantive fan-out skips this check. First message → proceed. Prior history → ask "context may affect AE quality, recommend /clear, continue? (y/n)" + wait.
 
 **Mode dispatcher pattern:** see [`skills/_lib/mode_dispatcher.md`](../_lib/mode_dispatcher.md) for canonical mode semantics + the universal `--teaching` mode (per ds-int-007 / INT-008).
 
@@ -70,6 +70,8 @@ At interview end, read the hand-off log `dekspec/.scratch/interview-me/<artifact
 
 ## Fan-Out Mode
 
+Bundle source paths rather than parent summaries; preserve engineer guidance verbatim. Keep parsed mode/path fields and labeled orchestrator notes separate. Show the manifest and preserve fan-out/ingest provenance per the shared substrate; existing task authorization suffices for dispatch.
+
 See [`_lib/fan_out.md`](../_lib/fan_out.md) for the canonical ds-di2 orchestrator/subagent contract. Manifest for this skill:
 
 - **subagent_type**: `dekspec:ae-author`
@@ -97,7 +99,7 @@ skill_name: "/write-ae"
 one_line:   "Create, audit, review, revise, or accept Architecture Elements (replaced legacy /write-design-note; legacy removed 2026-05-09)"
 modes:
   - { flag: "", args: "<description>", description: "Create a new Architecture Element from the engineer's description. First runs the classifier/router gate (§AE Classifier/Router) — refuses and redirects if the input is ADR/WS/IC/IB-shaped. Then prompts for the mandatory subtype. Runs Step 4a Verification (D1–D14 + T10/T11/T12 + L1) on the draft before Save; refuses to advance to PROPOSED if any check fails without explicit engineer override." }
-  - { flag: "--audit", args: "<AE-path>", description: "Read-only quality check: template (T1–T12), drift (D1–D16 + D17/D18), cross-artifact consistency (L1-ADR, L1-ADR-STALE, L1-AE, L1-GLOSSARY, L1-VISION, L1-WS-EXISTS, L1-ADR-SCOPE), downstream impact (DS1–DS3 advisory)." }
+  - { flag: "--audit", args: "<AE-path>", description: "Read-only quality check: template (T1–T12), drift (D1–D18 + D17/D18), cross-artifact consistency (L1-ADR, L1-ADR-STALE, L1-AE, L1-GLOSSARY, L1-VISION, L1-WS-EXISTS, L1-ADR-SCOPE), downstream impact (DS1–DS3 advisory)." }
   - { flag: "--review", args: "<AE-path>", description: "Walk through open issues interactively. Present each issue with context and a recommendation. Engineer resolves, defers, or dismisses each." }
   - { flag: "--revise", args: "<AE-path> <notes>", description: "Incorporate engineer review notes into the AE. Notes can be inline text or a path to a notes file. Re-runs T+D+L1+DS after applying changes." }
   - { flag: "--accept", args: "<AE-path>", description: "Promote a PROPOSED AE to ACCEPTED (PROPOSED → ACCEPTED). Runs full T+D+L1 final audit; refuses if any T / D / L1-ADR / L1-ADR-STALE / L1-VISION / L1-WS-EXISTS / L1-ADR-SCOPE check fails. L1-GLOSSARY is advisory at Accept (§9 row 1). DS-series is advisory at Accept (§9 row 2)." }
@@ -197,7 +199,7 @@ If the engineer's input clearly maps to one subtype, propose it explicitly and a
 
 _Plays the **`auditor`** role — run `dekspec resource role auditor` first and follow it: deterministic `dekspec validate` / `dekspec audit` output is primary evidence; report findings, change nothing._
 
-Read-only quality check on an existing architecture element. Applies the refined T / D / L1 / DS checklist from `dekspec/audits/dn-audit-process-proposal-2026-04-24.md` §3.
+Read-only quality check against the installed Architecture Element template and the T1–T12 / D1–D18 / L1 / DS checklist below. Historical design-note guidance does not override the current template. Resolve the template with `dekspec resource template architecture-element`; run `dekspec validate <path>` and `dekspec audit linkage --at <repo>` first and report findings for this AE without hiding unrelated findings.
 
 **Schema-vs-linkage division of labor (ds-52p, D-14).** The audit splits into two layers: structural shape (T10 subtype, T13/T15/T16 schema-typed fields) is enforced by `jsonschema` validation *at parse time* — invalid IR shapes never reach the audit. Graph-relational rules (T11/T12 content-presence, D17/D18 prose drift, L1/L6 cross-artifact linkage) run in `linkage.py` against the parsed IR set. When this skill reports a T10 failure, that's actually a schema-validation error surfaced at parse time; when it reports a T11/T12/D17/D18 failure, that's a `linkage.py` rule emitting against the IR graph. Both layers are part of the audit's contract; the split affects only where the check lives in code.
 
@@ -213,14 +215,14 @@ Path to the architecture element.
 4. For each ADR referenced in the AE body, read the ADR once and cache in-context. For each AE referenced, note it (read only if not already in context). For each WS referenced, verify the file exists at `dekspec/working-specs/WS-NNN-*.md` and is past `DRAFT` (unless Open Issues explicitly flags it as pending).
 5. Run the three-series checklist:
 
-**T-series (T1–T9) — Template / Style.** Each item reports pass/fail and cites the offending line range when failed.
+**T-series (T1–T12) — Template / Style.** Each item reports pass/fail and cites the offending line range when failed.
 
 - [ ] **T1** — All template sections are populated — no placeholders, no "TODO" in the body, no empty sections. `Open Questions / Planned Follow-ons` must be present (even if empty or with the sentinel "*None currently contemplated.*"). Optional sections (`Runtime Behavior`, `Data and State`, `Deployment / Operational Shape`) may be omitted if not applicable to the AE's subtype.
 - [ ] **T2** — `Status`, `Subtype`, `Classification`, `Created`, `Modified` are all filled with concrete values. `Subtype` is one of `System | Subsystem | Container | Component | Pipeline | Data Model | Cross-Cutting Concern | Platform Concern | Interface Surface | Workflow / Process`. `Classification` is one of `Core | Supporting | Generic`.
 - [ ] **T3** — Title is noun-phrase, specific, not verb-first (AEs are about *what*, not *what-was-decided*). *Trigger:* title line starting with verb — regex `^# AE-\d+:\s*(Use|Adopt|Select|Require|Implement|Choose|Replace|Migrate|Pin|Add|Remove|Return|Serve|Route|Inject)\b` indicates ADR-shaped title; move to ADR.
 - [ ] **T4** — Document length ≤ 2 pages of rendered markdown (≈ 200–350 lines body excluding amendment log). Flag if body ≥ 350 lines or ≤ 50 lines.
 - [ ] **T5** — `Boundaries and Non-Goals` has at least one explicit exclusion under "Outside the boundary (non-goals)" with a *why* clause. Zero exclusions is a hard fail. Ten-plus exclusions with paragraph-length justifications is a soft fail.
-- [ ] **T6** — `What Success Looks Like` items are observable states. No bare numeric-latency claims without a AE-034 citation (unless the value defines the architecture, per the D6 exemption).
+- [ ] **T6** — `Constraints and Quality Notes` states architectural constraints and links measurable quality targets to their Working Specs. Do not require an obsolete success section or a project-specific AE number.
 - [ ] **T7** — `Relationships and Dependencies` uses the four-part structure (`Consumes:` / `Produces:` / `Depends on:` / `Consumed by:`) **or an explicit variant that covers all four directions** (e.g., Below / Governing ADRs / Interface Contracts / Above / Cross-cutting), with all four populated (use "None" explicitly when empty). Optional `**Indirect governing ADRs:**` sub-bullet may appear — indirect ADRs listed under this sub-bullet are exempt from the L1-ADR-SCOPE 2–8 count.
 - [ ] **T8** — `Amendment Log` follows the compressed one-line-per-entry format (per Δ-SQ-17, 2026-04-22). Multi-paragraph narrative entries added after 2026-04-22 are a fail; historical entries before that date are grandfathered. **Same discipline applies to the `## Modified` field:** a single ISO-8601 date with no parenthetical narrative, no multi-date stack. Narrative about what changed belongs in AL entries (one line each), not in the Modified field. Multi-line / narrative-prefix Modified fields dated after 2026-04-22 fail T8.
 - [ ] **T9** — No `## Key Files` section, no `Key files:` bullet, no raw implementation file paths (`*.py`, `*.ts`, `*.rs`, `services/…`, `api_server/…`, `databases/…`, `src/…`, `model_server/…`). Spec/contract paths in `dekspec/…` are fine. **Meta-reference detection:** path tokens trip regardless of whether they appear backticked, in prose, or in a meta-reference explaining that the paths were moved (e.g. "the `api_server/__init__.py:673` file-path references were migrated" still fails). Reworded paraphrases ("Cortex monolith file-path references") are the correct pattern for talking about moved content.
@@ -235,24 +237,24 @@ Path to the architecture element.
 
 > **Mechanical trigger pre-pass.** Run `scripts/d_check_triggers.py <ae-path>` first; surface stderr on a non-zero exit (exit 2 = file unreadable). It emits JSON `{rule: [{line, match}], ...}` for the pure-regex D-checks — **D1** (fenced blocks), **D2** (math markers / inline math), **D3** (callable + class names, library-call blacklist, CamelCase / ALL_CAPS regex, HuggingFace model paths), **D6** (number-with-unit near a hedge word), **D13** (mirror-phrase list), **D14** (audit-ruler / canonical-process headers), **D15** (single-authoritative-reference overreach phrases). The script reports *candidate* hits only — you still judge each hit true-vs-false positive (e.g. a CamelCase domain term in the glossary allowlist is a false positive). The remaining D-checks (**D4, D5, D7, D8, D9, D10, D11, D12, D16, D17, D18**) need section scoping or genuine judgment and are evaluated by reading the body directly, as below.
 
-- [ ] **D1** — No fenced code blocks in the body. (Amendment Log table is fine.) *Trigger:* any triple-backtick fenced block other than the amendment-log table.
+- [ ] **D1** — No implementation code fences. Exempt `mermaid` or `structurizr` diagrams under a recognized `### <kind> view` heading or `**<kind> view.**` lead-in (context/container/component/dynamic/deployment). Flag unterminated fences even in an allowed view; a Python fence never becomes a diagram merely by placement.
 - [ ] **D2** — No mathematical formulas, derivations, inline math, or invariant narratives. *Trigger:* LaTeX markers, inline `$…$`, prose formulas (`B_k = total_budget × tier_percentage[k]`), invariant narratives ("bfloat16 is a strict subset of float32"; "within each channel, consecutive position IDs should be monotonically increasing").
-- [ ] **D3** — No function / method / class / callable names. Concept shortnames are fine. *Trigger:* any backticked name containing `()`, any prose use of `def` / `async def` / `class`, backticked symbol-style names matching a Python / JS / Rust identifier pattern, library-function references. **Library-call blacklist (grep prefixes):** `torch.`, `numpy.`, `asyncio.`, `psycopg2`, `psycopg3`, `pymupdf4llm.`, `tiktoken.`, `transformers.`, `huggingface_hub.`. **HuggingFace-path pattern:** `<Org>/<model>-<variant>-<bits>` (e.g. `SandboxMountain/Qwen3.5-9B-4bit`) — these model-identity strings belong in config / constants manifest / code, never in a AE body. **CamelCase class-name regex:** `\b[A-Z][a-z]+([A-Z][a-z]+){1,}\b` (catches `ImageUrlBlock`, `ModelEntry`, `ToolDefinition`) with glossary-term allowlist. **ALL_CAPS module-constant regex:** `\b[A-Z][A-Z0-9_]{3,}\b` (catches `INFERENCE_LOCK`, `DATABASE_URL`, `COOCCURRENCE_LAYER`) with glossary-term allowlist.
-- [ ] **D4** — No step-by-step procedures of 3 or more items. *Trigger:* ordered lists with ≥ 3 items in `Key Concepts` or `What This Is`, any `(1) …; (2) …; (3) …;` prose sequence, any "Phase N" heading with sub-mechanics.
+- [ ] **D3** — Flag concrete callable names, code-shaped `def name(` / `class Name:` declarations, library calls and constant identifiers. CamelCase is only a candidate, with glossary/domain terms exempt via repeatable `--allow-term <token>` arguments to the trigger script. Ordinary domain language such as “class code”, acronyms such as NAIC, and regulation identifiers such as R590 are not code merely by spelling.
+- [ ] **D4** — Flag implementation recipes (specific calls, commands, algorithms or rollout tasks) in `Purpose and Scope`, `Responsibilities`, or `Runtime Behavior`. Architectural scenarios and ordered flows are valid for Workflow / Process and Pipeline subtypes; three numbered steps alone are not a defect. Evaluate what the steps specify before recommending a WS or IB.
 - [ ] **D5** — No per-type / per-mode / per-modality dispatch enumerations with mechanics. *Trigger:* dispatch enumerations where at least one branch lists a specific library, call, or transformation.
-- [ ] **D6** — No seed-default configuration values paired with justifying prose, except where the value defines the architecture. *Trigger:* any number with a unit (`s`, `ms`, `MiB`, `GB`, `KB`, `GiB`, `tokens`) paired with 1+ sentence of justification, OR any dimensionless number with rationale. **Hedge-language signal:** numbers preceded or followed by `currently`, `typically`, `roughly`, `~`, `seed default`, `default`, `per ADR-NNN`, `in the near term`, or range language (`tens of`, `hundreds of`, `low thousands`) are high-confidence tunable values — flag these even when the justification is short. The hedge is the tell: architecture-defining values are not hedged. **Exempt: DNs with Category `non-functional requirements`** (§9 row 3).
-- [ ] **D7** — No schema / dtype / kwarg tables. Design-level comparison tables (Option A vs Option B, Consumes/Produces summary) are fine. *Trigger:* column headers match the implementation-specificity list (`dtype`, `shape`, `field`, `kwarg`, `return`, `hidden_dim`, `seq_len`, `bit_depth`, `signature`, `endpoint`, `HTTP status`).
+- [ ] **D6** — No seed-default configuration values paired with justifying prose, except where the value defines the architecture. *Trigger:* any number with a unit (`s`, `ms`, `MiB`, `GB`, `KB`, `GiB`, `tokens`) paired with 1+ sentence of justification, OR any dimensionless number with rationale. **Hedge-language signal:** numbers preceded or followed by `currently`, `typically`, `roughly`, `~`, `seed default`, `default`, `per ADR-NNN`, `in the near term`, or range language (`tens of`, `hundreds of`, `low thousands`) are high-confidence tunable values — flag these even when the justification is short. The hedge is the tell: architecture-defining values are not hedged. Measurable quality targets remain governed by D17; there is no subtype exemption.
+- [ ] **D7** — Flag detailed payload contracts, kwargs, runtime dtypes and implementation signatures. Conceptual data relationships in a Data Model, or an endpoint/producer/consumer inventory in an Interface Surface, are valid architecture. A column named `field` or `endpoint` alone is not drift; detailed request/response guarantees belong in a linked IC.
 - [ ] **D8** — No code-gap punch-lists in `Open Issues` or the body. *Trigger:* Open Issues text references a line number in an implementation file, phrases like "currently in code at …" / "code does X but spec says Y", specific HTTP status mismatches. **Grandfathered: AE-004 and AE-037 pre-2026-04-24 entries (§9 row 5).**
 - [ ] **D9** — No process-narrative in `Amendment Log` or body. *Trigger:* entries longer than ~2 lines after 2026-04-22 grandfathering date, any entry containing phrases like "Expertise audit pass", "autonomy L3 @ 0.85", "Pipeline Sequencing Analyst Pass", "skill-led revision pass".
-- [ ] **D10** — No stale superseded-approach text kept "for history" in the live body. *Trigger (section-scoped regex):* sentences containing `historical`, `previously`, `prior design`, `superseded`, `formerly`, `legacy` in the **positive-framing sections** `Key Concepts` / `What This Is` / `What Success Looks Like`. These words ARE acceptable inside negative exclusion bullets in `What We Are Not Building` ("Not the prior wave-count solver — continuous ratios…"). Scope the grep to the positive-framing sections only; do not flag hits inside `What We Are Not Building` negative-exclusion bullets.
+- [ ] **D10** — No stale superseded-approach text kept "for history" in the live body. *Trigger (section-scoped regex):* sentences containing `historical`, `previously`, `prior design`, `superseded`, `formerly`, `legacy` in the **positive-framing sections** `Responsibilities` / `Purpose and Scope` / `Constraints and Quality Notes`. These words ARE acceptable inside negative exclusion bullets in `Boundaries and Non-Goals` ("Not the prior wave-count solver — continuous ratios…"). Scope the grep to the positive-framing sections only; do not flag hits inside `Boundaries and Non-Goals` negative-exclusion bullets.
 - [ ] **D11** — No motivational restating of the System Vision. *Trigger:* two consecutive paragraphs where neither names the subsystem's distinguishing technical mechanism.
-- [ ] **D12** — No "Expected Operating Range" / capacity table in an L1 vision document. *Trigger:* subsection header matching `Expected Operating Range`, `Capacity`, `Load Profile`, `Scale Assumptions`. **Exempt: DNs with Category `non-functional requirements`** (§9 row 3).
+- [ ] **D12** — No "Expected Operating Range" / capacity table in an L1 vision document. *Trigger:* subsection header matching `Expected Operating Range`, `Capacity`, `Load Profile`, `Scale Assumptions`. Measurable quality targets remain governed by D17; there is no subtype exemption.
 
 - [ ] **D13 — Mirror-for-reader-convenience anti-pattern** (added 2026-04-24 from DN-convergence lessons). Flag any AE body sentence containing the phrases `mirrored here for reader convenience`, `duplicate of`, `repeated here from`, `for completeness`, `exact values mirrored from`, `mirrored from ADR-`, `mirrored from WS-`, `mirrored from DN-`. These are always a signal that a value's authoritative home is elsewhere and the AE is duplicating rather than citing it. The mirror drifts; the citation stays correct. *Precedent:* AE-009 tier-percentage mirror (19.9 / 32.9 / 23.6 / 14.6 / 9.0 %) labeled "mirrored here for reader convenience — ADR-051 is the authoritative home" — dropped during Phase 3 D6 consolidation.
 
-- [ ] **D14 — Audit-ruler / canonical-process framing** (added 2026-04-24 from DN-convergence lessons). Flag any subsection header matching `Canonical Process`, `Audit Ruler`, `Canonical Procedure`, `Canonical Algorithm`, `Reference Implementation`, `Authoritative Specification`, `Authoritative Procedure`. These framings reliably smuggle procedural L2/L3 content into L1 vision documents — a section that can be used as an audit ruler is a *behavioral contract*, which belongs in a Working Spec. DNs describe why the contract matters; WSs *are* the contract. *Precedent:* AE-031 §Canonical Process (Audit Ruler) — a 9-step block extracted to WS-033 during Phase 4.1.
+- [ ] **D14 — Audit-ruler / canonical-process framing** (added 2026-04-24 from DN-convergence lessons). Flag any subsection header matching `Canonical Process`, `Audit Ruler`, `Canonical Procedure`, `Canonical Algorithm`, `Reference Implementation`, `Authoritative Specification`, `Authoritative Procedure`. These framings reliably smuggle procedural L2/L3 content into L1 vision documents — a section that can be used as an audit ruler is a *behavioral contract*, which belongs in a Working Spec. AEs describe why the contract matters; WSs *are* the contract. *Precedent:* AE-031 §Canonical Process (Audit Ruler) — a 9-step block extracted to WS-033 during Phase 4.1.
 
-- [ ] **D15 — Single-authoritative-reference overreach** (added 2026-04-24 from DN-convergence lessons). Flag DN-body phrases claiming contract authority: `single authoritative reference`, `the full contract`, `exhaustive specification`, `the complete definition of`, `the behavioral contract for`, `single source of truth for`, `authoritative specification`, `complete specification`. DNs are authoritative for *vision and principles*; Working Specs are authoritative for *behavior*; Interface Contracts are authoritative for *boundaries*. A DN claiming "authoritative contract" status is almost certainly overstepping. *Precedent:* AE-020 §What This Is opening — "This architecture element is the single authoritative reference for the full dtype contract across all three boundaries" — rewritten during Phase 4.5 with dtype mechanics extracted to IC-014.
+- [ ] **D15 — Single-authoritative-reference overreach** (added 2026-04-24 from DN-convergence lessons). Flag AE-body phrases claiming contract authority: `single authoritative reference`, `the full contract`, `exhaustive specification`, `the complete definition of`, `the behavioral contract for`, `single source of truth for`, `authoritative specification`, `complete specification`. AEs are authoritative for *vision and principles*; Working Specs are authoritative for *behavior*; Interface Contracts are authoritative for *boundaries*. An AE claiming "authoritative contract" status is almost certainly overstepping. *Precedent:* AE-020 §Purpose and Scope opening — "This architecture element is the single authoritative reference for the full dtype contract across all three boundaries" — rewritten during Phase 4.5 with dtype mechanics extracted to IC-014.
 
 - [ ] **D16 — Open Issues classification (spec-coverage-gap vs code-gap)** (added 2026-04-24 from DN-convergence lessons). Each Open Issue is classified by its text shape:
     - **Spec-coverage-gap (acceptable in AE Open Issues):** starts with `WS-NNN is DRAFT`, `IC-NNN is DRAFT`, `ADR for <X> is pending`, `<spec> has not been written yet`, `needs a formal spec`. These are design-level questions about spec completeness.
@@ -262,23 +264,23 @@ Path to the architecture element.
 **AE-specific D-checks (added 2026-04-27 with the DN→AE migration; replace the DN-era D6 NFR exemption per Decision D7):**
 
 - [ ] **D17 — No measurable quality targets in AE** (replaces the DN-era D6 NFR exemption). AEs do not contain measurable quality targets (numeric SLOs, latencies, throughput, capacity, retention, availability) inline. Such content lives in Working Specs, not AEs (per the conversion guide §"Quality / NFR handling" routing rule). The DN-era exemption that allowed AE-034 (`category: non-functional requirements`) to carry inline numeric targets is **retired** under the AE model — measurable targets extract to a WS, and the AE shell describes the architectural framing without numbers. *Trigger:* numeric targets paired with units (`ms`, `s`, `MiB`, `GB`, `tokens`, `req/s`, `%`) appearing in the AE body outside a citation to a WS. **Hard fail.**
-- [ ] **D18 — No decision rationale in AE.** AEs do not contain decision-rationale prose ("we chose X because…", "instead of Y", "the tradeoff is…"). Such content lives in linked ADRs. *Trigger:* sentences containing rationale-marker phrases (`we chose`, `we decided`, `instead of`, `tradeoff`, `consequence of choosing`, `alternative`) in `Purpose and Scope`, `Responsibilities`, `Key Concepts`, or `Constraints and Quality Notes`. **Hard fail.** *Allowed:* citing an ADR by number ("ADR-044 governs the merge strategy") is fine; the rationale text itself stays in the ADR.
+- [ ] **D18 — No decision rationale in AE.** AEs do not contain decision-rationale prose ("we chose X because…", "instead of Y", "the tradeoff is…"). Such content lives in linked ADRs. *Trigger:* sentences containing rationale-marker phrases (`we chose`, `we decided`, `instead of`, `tradeoff`, `consequence of choosing`, `alternative`) in `Purpose and Scope`, `Responsibilities`, `Responsibilities`, or `Constraints and Quality Notes`. **Hard fail.** *Allowed:* citing an ADR by number ("ADR-044 governs the merge strategy") is fine; the rationale text itself stays in the ADR.
 
 **L1-series — Cross-Artifact Consistency.**
 
-- [ ] **L1-ADR** — For each ADR referenced by number, read the ADR and verify either (a) full consistency, or (b) explicit acknowledgment of the deviation **in the AE body (`Key Concepts` or `What We Are Not Building`)** — Amendment Log acknowledgment does not satisfy this check (Q5 resolution, §3.3). Silent contradictions are a fail.
+- [ ] **L1-ADR** — For each ADR referenced by number, read the ADR and verify either (a) full consistency, or (b) explicit acknowledgment of the deviation **in the AE body (`Responsibilities` or `Boundaries and Non-Goals`)** — Amendment Log acknowledgment does not satisfy this check (Q5 resolution, §3.3). Silent contradictions are a fail.
 - [ ] **L1-ADR-STALE** (Q7 resolution) — For each ADR referenced in the AE body, read the ADR's `Status` field. If the referenced ADR is `SUPERSEDED` or `DEPRECATED`, raise a MINOR flag. When SUPERSEDED, the check also reports the replacement ADR from the `*Superseded by:*` field so the fix is one-step. The skill also runs a subject-phrase heuristic: match cited ADR slug against subject keywords in the same sentence (e.g., "tier-percentage formula" near "ADR-042" → flag candidate mis-citation).
-- [ ] **L1-AE** — For each other AE referenced by number, verify the referenced DN exists, is not DEPRECATED, and its claims in the referenced area match.
-- [ ] **L1-GLOSSARY** — Every domain term used in the AE body matches the domain glossary. The AE must not redefine a term, use a deprecated alias, or coin a new term without a glossary entry (composite-term auto-promotion per Q4 policy: if a term appears in ≥2 DNs, flag as "promote via `/write-glossary --add-term`" rather than as an AE defect). **Deprecated-alias sweep:** grep the AE body against the glossary's deprecated-alias list directly (e.g. `API Server` → `Cortex Service`, `chat model server` → `Cooccurrence Service`, `embedding model server` → `Semantic Embedding Service`). A hit on any deprecated alias is a fail regardless of whether the alias is also in current prose. **Advisory (§9 row 1).**
-- [ ] **L1-VISION** — If the DN's scope touches top-level system claims, verify no contradiction with `dekspec/system-vision.md`.
+- [ ] **L1-AE** — For each other AE referenced by number, verify the referenced AE exists, is not DEPRECATED, and its claims in the referenced area match.
+- [ ] **L1-GLOSSARY** — Every domain term used in the AE body matches the domain glossary. The AE must not redefine a term, use a deprecated alias, or coin a new term without a glossary entry (composite-term auto-promotion per Q4 policy: if a term appears in ≥2 AEs, flag as "promote via `/write-glossary --add-term`" rather than as an AE defect). **Deprecated-alias sweep:** grep the AE body against the glossary's deprecated-alias list directly (e.g. `API Server` → `Cortex Service`, `chat model server` → `Cooccurrence Service`, `embedding model server` → `Semantic Embedding Service`). A hit on any deprecated alias is a fail regardless of whether the alias is also in current prose. **Advisory (§9 row 1).**
+- [ ] **L1-VISION** — If the AE's scope touches top-level system claims, verify no contradiction with `dekspec/system-vision.md`.
 - [ ] **L1-WS-EXISTS** — For each WS referenced by number, verify the file exists and is past `DRAFT` (unless Open Issues flags it as pending). Section-name mismatches are ADVISORY. **Stub detection:** if the linked WS is past `DRAFT` but its body is under 50 lines (effectively a stub — content hasn't been written), flag as an ADVISORY "linked WS is a stub — the citation may not point to meaningful content." Precedent: WS-025 Injection Pipeline Orchestration was ~30 lines of pointer-only content.
-- [ ] **L1-ADR-SCOPE** — Scope-discipline check: the AE references between 2 and 8 **direct-body** ADRs. **Direct-body** is defined as: unique ADRs cited anywhere in the AE *minus* the set of ADRs listed under an explicit **Indirect governing ADRs:** sub-bullet of §Relationship to Other Components. Indirect-listed ADRs are fully exempt from the count regardless of where else they appear; the structural check below is what flags dual-citation. Fewer than 2 direct-body ADRs = too narrow. More than 8 direct-body ADRs = too broad — split the AE. **Duplicate-citation count:** report each ADR's citation count separately. Repeated citations (e.g. ADR-005 cited 4×) count once for the scope bound but signal potential consolidation. **Indirect-ADR compliance (structural check):** verify each ADR under **Indirect governing ADRs:** carries a one-line rationale explaining why it is indirect (governing a peer concern rather than this AE's direct scope). An ADR must not appear in both the body and the indirect sub-bullet; dual-citation is a MINOR structural fail — the body citation should be removed, leaving only the indirect listing.
+- [ ] **L1-ADR-SCOPE** — Scope-discipline check: the AE references between 2 and 8 **direct-body** ADRs. **Direct-body** is defined as: unique ADRs cited anywhere in the AE *minus* the set of ADRs listed under an explicit **Indirect governing ADRs:** sub-bullet of §Relationships and Dependencies. Indirect-listed ADRs are fully exempt from the count regardless of where else they appear; the structural check below is what flags dual-citation. Fewer than 2 direct-body ADRs = too narrow. More than 8 direct-body ADRs = too broad — split the AE. **Duplicate-citation count:** report each ADR's citation count separately. Repeated citations (e.g. ADR-005 cited 4×) count once for the scope bound but signal potential consolidation. **Indirect-ADR compliance (structural check):** verify each ADR under **Indirect governing ADRs:** carries a one-line rationale explaining why it is indirect (governing a peer concern rather than this AE's direct scope). An ADR must not appear in both the body and the indirect sub-bullet; dual-citation is a MINOR structural fail — the body citation should be removed, leaving only the indirect listing.
 
 **DS-series (DS1–DS3) — Downstream Impact (advisory, §9 row 2).**
 
 - [ ] **DS1** — Grep all WSs, ICs, and IBs for references to this AE. If any cite a AE section that no longer exists after a revision, flag as a cascade failure.
-- [ ] **DS2** — Grep all downstream artifacts for the DN's distinctive terminology. If a downstream artifact uses the term in a way that contradicts the DN's definition, flag.
-- [ ] **DS3** — If the AE has been modified since the last cascade, verify every downstream artifact's last-modified date is ≥ the DN's last-modified date, OR the DN's amendment log states "no downstream changes needed" for that edit.
+- [ ] **DS2** — Grep all downstream artifacts for the AE's distinctive terminology. If a downstream artifact uses the term in a way that contradicts the AE's definition, flag.
+- [ ] **DS3** — If the AE has been modified since the last cascade, verify every downstream artifact's last-modified date is ≥ the AE's last-modified date, OR the AE's amendment log states "no downstream changes needed" for that edit.
 
 6. Report using the shape defined in proposal §4:
 
@@ -286,12 +288,12 @@ Path to the architecture element.
 AUDIT: [path]
 Status: [current status]
 
-Template/Style (T1–T9):
-  Passed: [N/9]
+Template/Style (T1–T12):
+  Passed: [N/12]
   Failed:
     - T[N] [line range]: [one-line description]
 
-Implementation / Layer drift (D1–D16):
+Implementation / Layer drift (D1–D18):
   - [D[N] — line [range]] [one-line extract]
     → Recommend: [concrete destination per the Extraction-Destination Table — see §Rules "Where does the drifted content go?"]
   - [… or: "None found."]
@@ -311,7 +313,7 @@ Downstream impact (DS1–DS3):
   DS3: [pass / specific stale downstream artifact]
 
 Structural-overlap:
-  [If another DN fully absorbs this AE's territory, flag as merge candidate.]
+  [If another AE fully absorbs this AE's territory, flag as merge candidate.]
 
 Severity (mechanical classification per proposal §14 Starting action step 6):
   [MAJOR / MODERATE / MINOR / CLEAN]
@@ -332,7 +334,7 @@ Arguments: the architecture element path.
 1. Read the architecture element at the provided path
 2. Parse the `## Open Issues` section. Collect all unchecked items (`- [ ]`).
 3. If no unchecked items exist: "No open issues in [path]. Nothing to review." **End of Review Mode.**
-4. Read the artifact's What This Is, Key Concepts, and Relationship to Other Components sections for context.
+4. Read the artifact's Purpose and Scope, Responsibilities, and Relationships and Dependencies sections for context.
 5. Read governing ADRs referenced in the architecture element to check for cross-artifact relevance.
 6. Present a summary:
    ```
@@ -398,9 +400,9 @@ Arguments after the path are the engineer's notes — inline text or a path to a
 1. Read the architecture element
 2. Read the engineer's notes (inline or from file)
 3. Classify each note as:
-   - **Content change** — affects What This Is, Key Concepts, or Relationship to Other Components
-   - **Scope change** — affects What We Are Not Building or What Success Looks Like
-   - **Structural issue** — suggests splitting, merging with another DN, or fundamental rethink
+   - **Content change** — affects Purpose and Scope, Responsibilities, or Relationships and Dependencies
+   - **Scope change** — affects Boundaries and Non-Goals or Constraints and Quality Notes
+   - **Structural issue** — suggests splitting, merging with another AE, or fundamental rethink
 4. Present the revision plan:
    ```
    REVISION PLAN for [path]:
@@ -449,7 +451,7 @@ Run the complete Audit Mode check list. Per §9 resolutions:
 - **L1-GLOSSARY is ADVISORY at Accept** (§9 row 1). L1-GLOSSARY findings are reported but do not block.
 - **DS-series is ADVISORY at Accept** (§9 row 2). DS findings are reported but do not block.
 
-All other checks (T1–T9, D1–D16, L1-ADR, L1-ADR-STALE, L1-AE, L1-VISION, L1-WS-EXISTS, L1-ADR-SCOPE) must pass.
+All other checks (T1–T12, D1–D18, L1-ADR, L1-ADR-STALE, L1-AE, L1-VISION, L1-WS-EXISTS, L1-ADR-SCOPE) must pass.
 
 **Stale-ref sweep (added 2026-04-24 from DN-convergence lessons).** Additionally, for each Open Issue that references a WS, IC, or ADR by ID:
 
@@ -457,7 +459,7 @@ All other checks (T1–T9, D1–D16, L1-ADR, L1-ADR-STALE, L1-AE, L1-VISION, L1-
 - If the Open Issue was opened when the referenced artifact was `DRAFT` but the artifact has since advanced to `PROPOSED` / `ACCEPTED` / `LOCKED`, flag as "stale-ref — close or restate."
 - Flag at blocking severity at Accept — a AE cannot advance to ACCEPTED with stale cross-references in its Open Issues. The engineer's paths are: (a) close the Open Issue with a resolution pointer to the now-advanced artifact, (b) restate the Open Issue against the current state if a new concern remains, or (c) delete if no longer relevant.
 
-Many pre-convergence DNs carried Open Issues of the form "WS-NNN is not written yet" that became stale the moment WS-NNN advanced; this sweep catches those automatically.
+Many pre-convergence AEs carried Open Issues of the form "WS-NNN is not written yet" that became stale the moment WS-NNN advanced; this sweep catches those automatically.
 
 ### Step 3: Report
 
@@ -503,7 +505,7 @@ Engineer's description: $ARGUMENTS
 4. Read the template from `dekspec/templates/architecture-element-template.md`.
 5. Determine the **Subtype** (mandatory per T10) from the C4-aligned enum: `System | Subsystem | Container | Component | Pipeline | Data Model | Cross-Cutting Concern | Platform Concern | Interface Surface | Workflow / Process`. See §AE Subtype Selection above for the full picker rules.
 6. Read `dekspec/architecture-elements-index.md` — determine the next available AE number (highest existing AE-NNN + 1). If an architecture element already exists for this topic, read it and determine if this is an update or a duplicate.
-6a. **ADR-scope pre-count (added 2026-04-24 from DN-convergence lessons).** Before drafting, count the ADRs the engineer's description references or implies. If the count is already <2 or >8, raise the scope issue with the engineer now — surfacing scope issues at engineer-review-of-description time lets the author rethink the DN's boundary before sinking time into a full draft that will fail L1-ADR-SCOPE at Step 4a. Suggested resolutions at this pre-check: (a) merge-candidate into an existing DN if too narrow (<2 ADRs and overlapping parent exists); (b) split into two DNs if too broad (>8 ADRs span multiple concerns); (c) use the `**Indirect governing ADRs:**` separator if several ADRs are peer-concerns rather than direct scope (Q1 exemption — reduces the direct-body count toward the 2–8 range).
+6a. **ADR-scope pre-count (added 2026-04-24 from DN-convergence lessons).** Before drafting, count the ADRs the engineer's description references or implies. If the count is already <2 or >8, raise the scope issue with the engineer now — surfacing scope issues at engineer-review-of-description time lets the author rethink the AE's boundary before sinking time into a full draft that will fail L1-ADR-SCOPE at Step 4a. Suggested resolutions at this pre-check: (a) merge-candidate into an existing AE if too narrow (<2 ADRs and overlapping parent exists); (b) split into two AEs if too broad (>8 ADRs span multiple concerns); (c) use the `**Indirect governing ADRs:**` separator if several ADRs are peer-concerns rather than direct scope (Q1 exemption — reduces the direct-body count toward the 2–8 range).
 7. Draft the architecture element using all template sections (see `architecture-element-template.md` for the canonical shape):
    - **Status:** DRAFT
    - **Subtype:** the determined subtype (mandatory per T10)
@@ -513,21 +515,20 @@ Engineer's description: $ARGUMENTS
    - **Linked Artifacts** — Related ADRs / WSs / ICs / IBs / Owners (use "none" explicitly when empty; mandatory per Numbered Governance Rule 6)
    - **Purpose and Scope** — 1-2 paragraphs: what this architectural slice is, its role in the larger system, why it exists; cite the upstream Mission or Intent it serves where applicable
    - **Responsibilities** — bullet list of architecturally significant load-bearing responsibilities (not exhaustive)
-   - **Boundaries and Non-Goals** — explicit "Inside the boundary" + "Outside the boundary (non-goals)" subsections; ≥1 non-goal with a *why* clause required (T11)
-   - **Key Concepts** — essential ideas; vision-level only (see Rules block below)
+   - **Boundaries and Non-Goals** — explicit "Inside the boundary" + "Outside the boundary (non-goals)" subsections; ≥1 non-goal with a *why* clause required (T11): use `- Excluded responsibility — reason it belongs elsewhere.` or `- **Excluded responsibility.** Reason it belongs elsewhere.`
    - **Relationships and Dependencies** — pre-structured four-sub-bullet (Consumes / Produces / Depends on / Consumed by); optional `**Indirect governing ADRs:**` sub-bullet for peripheral ADRs that don't count against the 2–8 direct-body rule
    - **Views** — C4 view(s) that materially clarify the AE; for structural subtypes, at least one view normally expected (T12) — if absent, justify the absence in this section
    - **Runtime Behavior / Data and State / Deployment / Operational Shape** — optional sections; populate when subtype warrants (Pipeline / Workflow / Container / Data Model / Platform Concern)
    - **Constraints and Quality Notes** — non-measurable architectural constraints; measurable quality targets (latency, throughput, SLOs) live in linked WSs, NOT here (D17)
    - **Open Questions / Planned Follow-ons** — design-level questions only; code-gap items route to the divergence ledger or `br`
    - **Amendment Log** — empty on initial creation
-8. **Step 4a — Verification (D1–D12 drift + L1 consistency).** Run D1–D12 and L1 consistency checks (L1-ADR, L1-ADR-STALE, L1-AE, L1-GLOSSARY, L1-VISION, L1-WS-EXISTS, L1-ADR-SCOPE) against the draft. If any drift is detected, present the engineer with each finding and three options:
+8. **Step 4a — Verification (D1–D18 drift + L1 consistency).** Run D1–D18 and L1 consistency checks (L1-ADR, L1-ADR-STALE, L1-AE, L1-GLOSSARY, L1-VISION, L1-WS-EXISTS, L1-ADR-SCOPE) against the draft. If any drift is detected, present the engineer with each finding and three options:
 
    1. **Rewrite at the vision level** — the content is vision-adjacent, just over-specified. Rewrite to state the principle.
-   2. **Move to target artifact** — the content is mechanics. Route to the recommended destination (WS / IC / WS-019 / AE-034 / divergence ledger). The DN retains a cross-reference.
+   2. **Move to target artifact** — the content is mechanics. Route to the recommended destination (WS / IC / WS-019 / AE-034 / divergence ledger). The AE retains a cross-reference.
    3. **Keep and justify** — edge case where the mechanic IS the vision (e.g., "five relevance tiers" defining the architecture). Requires explicit engineer confirmation.
 
-   Only after every D1–D12 finding is cleared, and every L1 violation is either fixed or explicitly acknowledged per §3.3 rules, may the AE advance to Step 9 (Save).
+   Only after every D1–D18 finding is cleared, and every L1 violation is either fixed or explicitly acknowledged per §3.3 rules, may the AE advance to Step 9 (Save).
 
 9. Present the draft for engineer review.
 10. Set **Status** to PROPOSED, update **Modified** to today's date.
@@ -576,19 +577,19 @@ See [`_lib/cow_write_guard.md`](../_lib/cow_write_guard.md) for the canonical co
 
 - **Log corrections.** When any mode (creation, audit, review, revise) corrects a domain misinterpretation — wrong term usage, confused concepts, contradicted architectural facts — invoke `/write-corrections --log` with the correction details before proceeding. This feeds the glossary promotion pipeline.
 
-- **DNs are about vision and principles — never about mechanics, numbers, or names.** A Architecture Element describes *what the subsystem is, what success looks like, what it is not, its key concepts, and how it relates to other components.* It must not contain:
-  - Code — no fenced code blocks, no inline code-shaped identifiers with parens, no import paths, no library-function names.
+- **AEs are about vision and principles — never about mechanics, numbers, or names.** An Architecture Element describes *what the subsystem is, what success looks like, what it is not, its key concepts, and how it relates to other components.* It must not contain:
+  - Implementation code — no code-shaped identifiers with parens, import paths or library-function names. Mermaid/Structurizr diagrams under architectural view headings are allowed (D1).
   - Mathematical formulas, derivations, inline math, or algorithm-invariant narratives — refer to the formula by its home.
   - Function / method / class / callable names — concept shortnames only.
-  - Step-by-step procedures of 3 or more items — whether numbered, bulleted, "Phase N:" headers, or prose sequences.
+  - Implementation recipes and rollout tasks. Architectural scenarios and ordered Workflow / Process or Pipeline flows are allowed (D4).
   - Per-type dispatch enumerations with mechanics — decision-level categorization only.
-  - Configuration defaults with justifying prose — the constants-management WS (WS-019) owns defaults and rationale; the NFR DN (AE-034) owns numeric targets for all other DNs to cite.
-  - Schema / dtype / kwarg / interface tables — move to an Interface Contract.
+  - Configuration defaults with justifying prose — the relevant Working Spec owns defaults, rationale and measurable targets.
+  - Detailed schema/dtype/kwarg contracts — move to an Interface Contract. Conceptual Data Model relationships and Interface Surface inventories are allowed (D7).
   - Code-gap punch-lists in `Open Issues` — those belong in the divergence ledger or `br`. AE-004 and AE-037 are grandfathered for pre-2026-04-24 entries (§9 row 5).
   - Process narrative in the amendment log or body — audit trails live in git and in the audits directory.
   - Stale superseded-approach prose in the live body — it goes to a one-line Amendment Log summary.
   - Motivational restating of the System Vision — subsystem-specific claims from paragraph one.
-  - "Expected Operating Range" / capacity tables — NFR content lives in AE-034 (all other categories are exempt neither from D6 nor from D12).
+  - "Expected Operating Range" / capacity tables — measurable quality targets live in a linked Working Spec (D17).
 
 - **Where does the drifted content go? — Extraction Default-Home Table** (replaces the prose version; added 2026-04-24 from DN-convergence lessons). When Step 4a Verification surfaces drift, use this table to pick the destination. The drafter consults it during authoring; the skill uses it when recommending a target for an Audit Mode D-series finding.
 
@@ -599,7 +600,7 @@ See [`_lib/cow_write_guard.md`](../_lib/cow_write_guard.md) for the canonical co
     | HTTP / gRPC / cross-process wire-format definition | **IC** |
     | **In-process Python module** with behavior rules (acquire / release / ref-count etc.) | **WS** — **not IC.** ICs are for cross-process / cross-component boundaries; in-process modules are WS-shaped. Lesson from DN-convergence R2 DECISION 1 (IC-013 → WS-042 re-home). |
     | Tunable configuration default with rationale | **WS-019** §Memory Budgets / §Algorithm Defaults |
-    | Numeric capacity / latency / throughput / resource-utilization target | **AE-034** §\<category\> |
+    | Numeric capacity / latency / throughput / resource-utilization target | **WS** §Quality Requirements |
     | Code-vs-oracle structural divergence | **`dekspec/divergences/DIV-NNN-*.md`** |
     | Code-bug (built drifts from spec) | **`br`** issue with type `bug` |
     | Implementation file path in prose | never in AE — file a `br` issue (spec-coverage gap) or a `dekspec/divergences/DIV-NNN-*.md` entry (oracle-vs-built) |
@@ -608,15 +609,15 @@ See [`_lib/cow_write_guard.md`](../_lib/cow_write_guard.md) for the canonical co
 
 - **Writing-time heuristics** (added 2026-04-24 from DN-convergence lessons). These are internalized rules the drafter applies during authoring; they prevent the drift categories that the D-series catches at audit time.
 
-  - **Reader test.** If a reader needs to read code, a WS, or an IC to understand this paragraph, and the concept is algorithmic / schema-level / wire-format / library-coupled, the content belongs elsewhere. A AE must stand alone as a vision document to someone who has never read the codebase or any Working Spec.
+  - **Reader test.** If a reader needs to read code, a WS, or an IC to understand this paragraph, and the concept is algorithmic / schema-level / wire-format / library-coupled, the content belongs elsewhere. An AE must stand alone as a vision document to someone who has never read the codebase or any Working Spec.
 
-  - **Hedge-word test for numerics.** Before writing a numeric value with a unit, ask: is this value TUNABLE (can an operator change it without changing the architecture)? If yes → cite WS-019 or AE-034 §\<category\>, do not inline. If the value DEFINES the architecture (e.g. "five relevance tiers", "two-phase pipeline", "three services"), inline is correct. Hedging words (`currently`, `~`, `roughly`, `seed default`, `per ADR-NNN`) are the tell: architecture-defining values are not hedged.
+  - **Hedge-word test for numerics.** Before writing a numeric value with a unit, ask: is this value TUNABLE (can an operator change it without changing the architecture)? If yes → cite the relevant Working Spec, do not inline. If the value DEFINES the architecture (e.g. "five relevance tiers", "two-phase pipeline", "three services"), inline is correct. Hedging words (`currently`, `~`, `roughly`, `seed default`, `per ADR-NNN`) are the tell: architecture-defining values are not hedged.
 
-  - **Single-authoritative prohibition.** A DN never claims to be "the single authoritative reference" for a contract. WSs are authoritative for *behavior*; ICs are authoritative for *boundaries*; DNs are authoritative for *vision and principles*. If you're tempted to write "this AE is the full / complete / authoritative specification of X", X belongs in a WS or IC, not in this AE.
+  - **Single-authoritative prohibition.** An AE never claims to be "the single authoritative reference" for a contract. WSs are authoritative for *behavior*; ICs are authoritative for *boundaries*; AEs are authoritative for *vision and principles*. If you're tempted to write "this AE is the full / complete / authoritative specification of X", X belongs in a WS or IC, not in this AE.
 
   - **Mirror prohibition.** Never duplicate a value, table, or formula from another artifact "for reader convenience". A citation is always correct; a mirror is always one amendment away from stale. If the detail is important enough to want the reader to see it, the reader can click through.
 
-  - **Audit-ruler prohibition.** If you need to write a section that serves as an audit ruler — "every IB / WS / code audit must conform to this process" — that content is a behavioral contract. It belongs in a Working Spec. DNs do not author audit rulers; they describe why the contract matters.
+  - **Audit-ruler prohibition.** If you need to write a section that serves as an audit ruler — "every IB / WS / code audit must conform to this process" — that content is a behavioral contract. It belongs in a Working Spec. AEs do not author audit rulers; they describe why the contract matters.
 
   - **One-date Modified rule.** The Modified field is a single ISO-8601 date with no parenthetical narrative, no multi-date stack. Narrative about what changed belongs in Amendment Log entries (one line each per Δ-SQ-17). If you find yourself wanting to explain an edit in the Modified field, write it in AL instead.
 
@@ -624,16 +625,16 @@ See [`_lib/cow_write_guard.md`](../_lib/cow_write_guard.md) for the canonical co
 
 - **Common authoring anti-patterns to avoid** (named instincts — recognize them in yourself during drafting):
 
-  - **"Completeness instinct."** The drafter tries to make the AE "comprehensive" and detail creeps vision → algorithm → code. *Counter:* a complete DN is concise; a drifting DN is detailed. Target 1–2 pages; anything beyond 350 body lines is a scope error, not a thoroughness virtue.
-  - **"Authoritative-reference instinct."** The drafter claims "this is the single source of truth for X" and slides into WS/IC territory. *Counter:* DNs are authoritative for vision; WSs for behavior; ICs for boundaries. If X is a contract, it's not this AE's scope.
-  - **"Audit-ruler instinct."** The drafter writes content that other artifacts are supposed to conform to ("every IB / code audit must measure against this process"). *Counter:* audit rulers belong in Working Specs. DNs describe why the ruler matters, not the ruler itself.
+  - **"Completeness instinct."** The drafter tries to make the AE "comprehensive" and detail creeps vision → algorithm → code. *Counter:* a complete AE is concise; a drifting AE is detailed. Target 1–2 pages; anything beyond 350 body lines is a scope error, not a thoroughness virtue.
+  - **"Authoritative-reference instinct."** The drafter claims "this is the single source of truth for X" and slides into WS/IC territory. *Counter:* AEs are authoritative for vision; WSs for behavior; ICs for boundaries. If X is a contract, it's not this AE's scope.
+  - **"Audit-ruler instinct."** The drafter writes content that other artifacts are supposed to conform to ("every IB / code audit must measure against this process"). *Counter:* audit rulers belong in Working Specs. AEs describe why the ruler matters, not the ruler itself.
   - **"Mirror-for-convenience instinct."** The drafter writes "mirrored here for reader convenience" to duplicate a value whose authoritative home is elsewhere. *Counter:* cite, don't mirror. The mirror always drifts.
-  - **"Dev-mode ambition instinct."** The drafter tries to spec an entire feature (DN + WS + IC) in a single document, producing a mega-doc. *Counter:* one DN per subsystem / concern, one WS per behavioral unit, one IC per boundary. If you can't describe the AE without switching into mechanics, you're writing a WS.
+  - **"Dev-mode ambition instinct."** The drafter tries to spec an entire feature (AE + WS + IC) in a single document, producing a mega-doc. *Counter:* one AE per subsystem / concern, one WS per behavioral unit, one IC per boundary. If you can't describe the AE without switching into mechanics, you're writing a WS.
   - **"Process-narrative instinct."** The drafter records how a revision was done ("autonomy L3 @ 0.85", "engineer scope-C pre-approval", "Closes iter-6 fidelity-audit finding I-6"). *Counter:* process metadata belongs in git commit messages and audit-trail docs, not the AE body or Amendment Log. AL entries are one-line descriptions of *what* changed; *how* it was done stays outside the artifact.
 
-- **L1-ADR deviation acknowledgment is strict (Q5 resolution, §3.3).** When an AE describes a state that differs from a referenced ADR's current `§Decision`, the acknowledgment must live in the AE body — specifically `Key Concepts` or `What We Are Not Building` — NOT in the Amendment Log. The Amendment Log is an audit trail; a reader who reads only the current body sections must get the right current state.
+- **L1-ADR deviation acknowledgment is strict (Q5 resolution, §3.3).** When an AE describes a state that differs from a referenced ADR's current `§Decision`, the acknowledgment must live in the AE body — specifically `Responsibilities` or `Boundaries and Non-Goals` — NOT in the Amendment Log. The Amendment Log is an audit trail; a reader who reads only the current body sections must get the right current state.
 
-- **L1-ADR-SCOPE counts direct-body ADRs only (Q1 resolution, §3.3).** The 2–8 ADR scope applies to ADRs cited directly in the AE body text. ADRs listed under an explicit `**Indirect governing ADRs:**` sub-bullet of `§Relationship to Other Components` are exempt from the count. Indirect ADRs must carry a one-line rationale explaining why they are indirect (governing a peer concern rather than this AE's direct scope).
+- **L1-ADR-SCOPE counts direct-body ADRs only (Q1 resolution, §3.3).** The 2–8 ADR scope applies to ADRs cited directly in the AE body text. ADRs listed under an explicit `**Indirect governing ADRs:**` sub-bullet of `§Relationships and Dependencies` are exempt from the count. Indirect ADRs must carry a one-line rationale explaining why they are indirect (governing a peer concern rather than this AE's direct scope).
 
 - **SUPERSEDED / DEPRECATED ADR citations flag L1-ADR-STALE (Q7 resolution).** Cite the replacement, not the superseded ancestor. `/write-ae --audit` grep-checks for this across all referenced ADRs.
 
@@ -645,7 +646,7 @@ See [`_lib/cow_write_guard.md`](../_lib/cow_write_guard.md) for the canonical co
 
 - 1–2 pages maximum — if you need more, split the spec
 
-- **Scope discipline:** A Architecture Element describes a coherent subsystem or cross-cutting concern. If it covers less than two ADRs worth of territory, it is too narrow — the ADRs are sufficient. If it covers more than eight, it is too broad — split it. The count is over direct-body ADRs only.
+- **Scope discipline:** An Architecture Element describes a coherent subsystem or cross-cutting concern. If it covers less than two ADRs worth of territory, it is too narrow — the ADRs are sufficient. If it covers more than eight, it is too broad — split it. The count is over direct-body ADRs only.
 
 - If the architecture element surfaces an undocumented architectural decision, invoke `/write-adr` to create the ADR before completing the architecture element — do not flag it as a stopping point
 

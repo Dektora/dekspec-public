@@ -39,6 +39,7 @@ from typing import Any, TextIO
 import yaml
 
 from .constraint_compiler.emitters import agents_md
+from .specification_policy import ReferencePolicyError, load_policy
 
 #: Changes only in a commit that changes rendered output, never with the library
 #: version (O-12). The digest of the fixed corpus rendered by this revision is
@@ -95,11 +96,12 @@ class Settings:
     dekspec_root: str = "dekspec"
     status: tuple[str, ...] | None = DEFAULT_STATUS  # None = every status
     include: tuple[str, ...] = DEFAULT_INCLUDE
+    status_explicit: bool = False
 
     def normalized(self) -> Settings:
         root = self.dekspec_root.replace("\\", "/").rstrip("/") or "."
         status = None if self.status is None else tuple(sorted({s.upper() for s in self.status}))
-        return Settings(root, status, tuple(sorted({k.upper() for k in self.include})))
+        return Settings(root, status, tuple(sorted({k.upper() for k in self.include})), self.status_explicit)
 
     def describe(self) -> str:
         s = self.normalized()
@@ -177,7 +179,7 @@ def resolve_declaration(repo_root: Path, dekspec_root: str = "dekspec") -> Decla
     return Declaration(
         True,
         str(block.get("path") or DEFAULT_PATH),
-        Settings(dekspec_root, status, include).normalized(),
+        Settings(dekspec_root, status, include, status_explicit="status" in block).normalized(),
         bool(block.get("required", False)),
     )
 
@@ -661,12 +663,20 @@ def render(repo_root: Path, settings: Settings) -> Rendered:
     """Render the owned region from the specification graph (deterministic)."""
     settings = settings.normalized()
     repo_root = repo_root.resolve()
+    try:
+        policy = load_policy(repo_root)
+    except ReferencePolicyError as exc:
+        raise ProjectionRefused(str(exc)) from exc
     graph = _load_graph(repo_root, settings)
     status_filter = None if settings.status is None else set(settings.status)
     include = set(settings.include)
 
     def passes(ir: dict[str, Any]) -> bool:
-        return status_filter is None or str(ir.get("status", "")).upper() in status_filter
+        return (
+            status_filter is None or str(ir.get("status", "")).upper() in status_filter
+            or (not settings.status_explicit and settings.status == tuple(sorted(DEFAULT_STATUS))
+                and policy.evolving(ir.get("id", ""), ir.get("status")))
+        )
 
     def select(kind: str, items) -> list[dict[str, Any]]:
         if kind not in include:
@@ -684,7 +694,9 @@ def render(repo_root: Path, settings: Settings) -> Rendered:
     glossary = graph.glossary() if "GLOSSARY" in include else None
     constitution = graph.constitution() if "CONSTITUTION" in include else None
     security_profiles = select("SECURITY_PROFILE", graph.security_profiles())
-    in_force_adrs = {a["id"] for a in graph.adrs() if passes(a)}
+    in_force_adrs = {a["id"] for a in graph.adrs()
+                     if passes(a) and not policy.evolving(a["id"], a.get("status"))}
+    evolving_sources = any(policy.evolving(a["id"], a.get("status")) for a in aes + adrs)
 
     def src(ir: dict[str, Any] | None, fallback: str) -> str:
         path = ((ir or {}).get("source") or {}).get("path")
@@ -728,8 +740,22 @@ def render(repo_root: Path, settings: Settings) -> Rendered:
             "run `dekspec ib context IB-NNN` — it delivers that IB's binding obligations "
             "from their canonical files, with revisions, acceptance conditions and the "
             "precedence to apply. Anything else in the repository (history, drafts, "
-            "superseded decisions) may be read for information but does not bind.",
+            "superseded decisions) may be read for information but does not bind."
+            if not evolving_sources else
+            "**How to use this file (ADR-055 / ADR-056).** This combines the governing core "
+            "with explicitly labeled PROPOSED ADR/AE reference context. Accepted commitments "
+            "remain binding. An authorized IB may bind obligations from evolving references "
+            "without accepting their lifecycle status. Run `dekspec ib context IB-NNN` for "
+            "canonical obligations, revisions, acceptance conditions and precedence. This "
+            "projection does not authorize implementation.",
             "")
+
+    if evolving_sources:
+        add("header",
+            "**Evolving reference policy.** Labeled PROPOSED ADR/AE fragments are reference "
+            "context, not approved commitments. Their lifecycle status is preserved. "
+            "The governing-core instructions above apply to accepted commitments; "
+            "implementation authorization and acceptance conditions remain unchanged.", "")
 
     # WS-006 BR7: the Constitution comes first after the header.
     if constitution:
@@ -791,18 +817,34 @@ def render(repo_root: Path, settings: Settings) -> Rendered:
             return
         add(title, "---", "", f"# {title}", "", intro, "")
         for ir in items:
-            add(f"{src(ir, ir['id'])} ({ir['id']})", emit(ir).rstrip("\n") + "\n")
+            fragment = emit(ir)
+            if policy.evolving(ir["id"], ir.get("status")):
+                lines = fragment.split("\n")
+                at = next((i for i, ln in enumerate(lines) if ln.startswith("**Status:**")), None)
+                if at is None:
+                    at = next(i for i, ln in enumerate(lines) if ln.startswith("## ")) + 1
+                    lines.insert(at, f"**Status:** {ir.get('status')}")
+                note = (f"**Reference policy:** {policy.notice(ir['id'], ir.get('status'))} "
+                        "Reference context; not an approved commitment.")
+                fragment = "\n".join(lines[:at + 1] + [note] + lines[at + 1:])
+            add(f"{src(ir, ir['id'])} ({ir['id']})", fragment.rstrip("\n") + "\n")
 
     section("Architecture Elements",
-            "Architectural slices that scope where each rule applies. "
-            "When working in any path matched by an AE's `When working in` globs, "
-            "treat its purpose, responsibilities, and boundaries as binding.",
+            ("Architectural slices that scope where each rule applies. "
+             "Accepted elements' purpose, responsibilities and boundaries are binding. "
+             "Labeled PROPOSED elements are evolving reference context; an authorized IB "
+             "may bind their obligations, while their lifecycle remains PROPOSED.")
+            if evolving_sources else
+            ("Architectural slices that scope where each rule applies. "
+             "When working in any path matched by an AE's `When working in` globs, "
+             "treat its purpose, responsibilities, and boundaries as binding."),
             aes, agents_md.emit_ae)
     section("Architecture Decision Records",
             "Decisions that shape one or more AEs. Honor each ACCEPTED/LOCKED "
             "decision unless its `Reconsider this decision if` triggers fire — "
             "in which case stop and surface to the human.",
-            adrs, lambda adr: _with_revisers(agents_md.emit_adr(adr), revisers_of(adr, in_force_adrs)))
+            adrs, lambda adr: (agents_md.emit_adr(adr) if policy.evolving(adr["id"], adr.get("status"))
+                              else _with_revisers(agents_md.emit_adr(adr), revisers_of(adr, in_force_adrs))))
     section("Interface Contracts",
             "Binding cross-component contracts. Preserve them; a change goes through "
             "an unlock-to-version of the contract, never an implementation shortcut.",

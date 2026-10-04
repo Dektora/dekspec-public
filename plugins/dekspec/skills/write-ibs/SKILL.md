@@ -17,7 +17,7 @@ Author Implementation Briefs. An IB is the smallest governed work contract and i
 >
 > This skill decides what binds an implementing agent. Prior conversation context can leak unapproved decisions into an IB as if they were obligations.
 >
-> First message → proceed. Prior history → ask "context may affect IB quality, recommend /clear, continue? (y/n)" + wait.
+> Inline reasoning only (see mode manifest); substantive fan-out skips this check. First message → proceed. Prior history → ask "context may affect IB quality, recommend /clear, continue? (y/n)" + wait.
 
 **Mode dispatcher pattern:** see [`skills/_lib/mode_dispatcher.md`](../_lib/mode_dispatcher.md) for canonical mode semantics + the universal `--teaching` mode (per ds-int-007 / INT-008).
 
@@ -35,7 +35,7 @@ severity vocabulary. Include the failure path and the CLI entry point in Accepta
 The template `dekspec/templates/implementation-brief-template.md` is authoritative for the format; follow it section by section. What the sections mean:
 
 - **Three kinds of content (ADR-055).** *Binding obligations* — `## Obligations`, `## Protected Surfaces`, `## Scope`; the implementing agent preserves them. *Acceptance conditions* — the `## Acceptance` YAML block; the agent demonstrates them and never weakens them. *Implementation hypothesis* — `## Implementation Hypothesis`; a starting guess the agent revises after investigating, within Scope, without asking. Classify by meaning, not by where a sentence used to live.
-- **One home per fact (ADR-056).** An obligation owned by an ADR, IC, WS, AE, SP or the Constitution is *referenced* (`- **O-1** → ADR-036`, `- **O-2** → IC-012 §Shape`), never copied — no Spec Context, no reconciled restatement. Tag an obligation `(local)` only when this IB is its canonical home. `dekspec ib context IB-NNN` delivers the canonical text, its source revision and hash to the implementing agent; a reference to a superseded, deprecated, missing or unapproved source blocks `propose`, `accept` and `start`.
+- **One home per fact (ADR-056).** An obligation owned by an ADR, IC, WS, AE, SP or the Constitution is *referenced* (`- **O-1** → ADR-036`, `- **O-2** → IC-012 §Shape`), never copied — no Spec Context, no reconciled restatement. Tag an obligation `(local)` only when this IB is its canonical home. `dekspec ib context IB-NNN` delivers the canonical text, its source revision and hash to the implementing agent; DekSpec's project reference policy decides source eligibility. The default `strict` policy requires approved sources; `evolving` also permits canonical PROPOSED ADRs and AEs with their actual status and policy notice visible. Missing, ambiguous, DRAFT and retired sources still block `propose`, `accept` and `start`. Referencing an evolving source never authorizes an IB by itself.
 - **No mandatory chain (ADR-056).** `**Parent:**` (INT-, WS- or MSN-NNN) is optional. A bounded change needs only Outcome, Rationale and references. When the change alters architecture or a contract, name the specs in `**Spec impact:**` — verification fails unless the delivery modifies them.
 - **Authority policy.** New IBs say `**Authority policy:** delegated`. An IB without the line, or with `legacy`, keeps the ADR-049 meaning (Files to Modify is an allowlist) until it is adopted (`--adopt`).
 - **Lifecycle (ADR-057).** `DRAFT` → `PROPOSED` (`dekspec ib propose`) → `ACCEPTED` (`dekspec ib accept`, which takes the acceptance baseline) → `COMPLETE` (only `dekspec ib complete`), plus `SUPERSEDED` / `DEPRECATED`. Ownership, plans, attempts, deviations, evidence and verdicts live in the execution record (`.dekspec/execution/IB-NNN/`), never in the IB.
@@ -64,6 +64,8 @@ See [`_lib/mode_detection_template.md`](../_lib/mode_detection_template.md) for 
 - Inline (parent context): `--help`, `--teaching`, `--audit`, `--review`, `--resync`, `--accept`, `--dry-run`
 
 ## Fan-Out Mode
+
+Bundle source paths rather than parent summaries; preserve engineer guidance verbatim. Keep parsed mode/path fields and labeled orchestrator notes separate. Show the manifest and preserve fan-out/ingest provenance per the shared substrate; existing task authorization suffices for dispatch.
 
 See [`_lib/fan_out.md`](../_lib/fan_out.md) for the canonical ds-di2 orchestrator/subagent contract. Manifest for this skill:
 
@@ -164,7 +166,7 @@ When two binding sources contradict each other, or a source contradicts the code
 
 1. `dekspec ib lint IB-NNN` must pass (contract problems + reference resolution); `dekspec validate <path>` must report no errors.
 2. Across the set: no two IBs change the same function without a dependency between them; every shared shape has exactly one home and every consumer references it; the dependency graph is acyclic; with an Intent parent, every Scope lies inside `Components affected:`.
-3. For each IB whose lint is clean and whose references resolve to approved sources, request the decision: `dekspec ib propose IB-NNN` (DRAFT → PROPOSED). An IB referencing a not-yet-approved home stays DRAFT until that home is accepted.
+3. For each IB whose lint is clean and whose references resolve to sources eligible under `specification.reference_mode`, request the decision: `dekspec ib propose IB-NNN` (DRAFT → PROPOSED). A PROPOSED ADR or AE can be referenced under the explicit `evolving` project policy without promoting it. Other ineligible sources must be resolved before proposal; IB acceptance remains a separate authorization.
 4. Report per IB: id, Outcome, Parent, obligations referenced, acceptance conditions (observable / integration / failure), dependencies, lint result, status. Then name what only the engineer can judge — whether the acceptance conditions capture the right behaviors, the protected surfaces and Out of scope match intent, and any engineer-supplied values are correct — and point at `--accept`.
 
 ## Audit Mode
@@ -207,7 +209,7 @@ Present the classified plan, wait for approval, apply it, log new ambiguity as `
 
 ## Resync Mode
 
-IBs hold references, not copies, so an upstream edit reaches them at the next `dekspec ib context` with no resync (and makes prior evidence stale automatically). This mode repairs references that no longer resolve. For each IB: run `dekspec ib lint IB-NNN`; for each reference problem — a superseded or deprecated source, a missing section, an unapproved source — propose the repair (repoint to the successor, fix the section name, or wait for approval) and apply it with the engineer's confirmation. A repointed obligation is a contract change: apply the Revise Mode re-authorization rules. Never paste the source text into the IB to make a reference go away.
+IBs hold references, not copies, so an upstream edit reaches them at the next `dekspec ib context` with no resync (and makes prior evidence stale automatically). This mode repairs references that no longer resolve. For each IB: run `dekspec ib lint IB-NNN`; for each reference problem — a superseded or deprecated source, a missing section, a source disallowed by the project reference policy — propose the repair (repoint to the successor, fix the section name, or wait for approval) and apply it with the engineer's confirmation. A repointed obligation is a contract change: apply the Revise Mode re-authorization rules. Never paste the source text into the IB to make a reference go away.
 
 ## Accept Mode
 

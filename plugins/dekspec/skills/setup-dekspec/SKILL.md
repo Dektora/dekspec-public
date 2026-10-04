@@ -65,13 +65,25 @@ edits an existing config, it does not scaffold one.
    governance work (the `iss-` / `ds-` workspaces); it is **not** the
    construction surface — accepted IBs are executed directly and
    `dekspec ib ready` is the pull surface (ADR-056).
-   - **Then initialize it (`br` only).** Setting the config does *not* create
-     the tracker DB. After persisting `issue_tracker=br`, run `br init` in the
-     repo so `br list` / the issue-tracking flows don't hit `NOT_INITIALIZED`
-     (`dekspec init`/INT-178 acquire the `br` *binary* but never init the DB).
-     It is idempotent — skip if `.beads/` already exists (`br init` on an
-     initialized repo is a no-op). No local init is needed for
-     `github`/`gitlab`/`local`.
+   - **Project prefix (`br` only)** — ask for `beads.project_prefix`.
+     Recommend 2–6 lowercase ASCII letters/digits derived from the repository
+     name (for example `usurance` → `usr`). No hyphens, dots or underscores.
+     Explain that tightly coupled repositories should choose distinct prefixes.
+     Inspect existing stores first: if they contain a different identity, run
+     `dekspec beads reprefix --to <prefix> --at <repo> --json` for a preview;
+     do not change config or rename beads implicitly. Present the preview and
+     obtain authorization for `--apply --expect-plan <plan_sha256>`.
+     For fresh stores, run `dekspec config set beads.project_prefix <prefix>`
+     and confirm with `dekspec config get beads.project_prefix`, then run
+     `dekspec beads init --at <repo>`.
+     This creates `.beads-issues/.beads` and `.beads-dekspec/.beads`, with tracked
+     `issue_prefix: <prefix>-iss` and `<prefix>-ds` pins. Never initialize a root
+     code workspace: never run bare `br init` in the repository root. Preserve
+     any existing legacy root history.
+     No local store initialization is needed for `github`/`gitlab`/`local`.
+   - **Before authoring**, run `dekspec sync --at <repo>` to vendor the installed
+     templates and methodology content. This reconciles locally without network
+     acquisition and reports divergences instead of overwriting authored work.
 2. **Ephemeral-scratch location** — `ephemeral_scratch_dir` (path).
    *Recommended:* `dekspec/.scratch/` (the gitignored, disposable hand-off zone
    landed by INT-165). Where interview logs and skill hand-off notes land.

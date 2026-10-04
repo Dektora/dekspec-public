@@ -18,6 +18,10 @@ boards. A project name shows its status; `--items PROJECT` shows compact tasks;
 Use `--sync PROJECT` after tracker changes to regenerate snapshots. Resolve the
 repo from the user's working directory or explicit target, never the plugin path.
 
+Workspace identity comes from project configuration and tracked store pins, not from a fixed prefix. With `beads.project_prefix`, expect `<project>-iss` and `<project>-ds` and report any contradictory pin. Without that setting, use each existing store's tracked `.beads/config.yaml` `issue_prefix`; already-qualified stores work without installing DekSpec. Fall back to `iss`/`ds` only when neither setting exists. Malformed settings or stored-ID mismatches are errors, not empty boards. Use the resolved identities for routing, filtering and snapshots as well as `--where` output.
+
+Reads do not initialize or migrate stores. When setup is explicitly requested, create only issue and governance stores (`.beads-issues/.beads/` and `.beads-dekspec/.beads/`) and pin their prefixes; do not create a root code-bead store. Preserve any legacy root workspace for history. Prefix migration is a separate, explicitly requested maintenance operation. Projects that also use the optional DekSpec library can consult its bead migration and recovery guide (`dekspec/beads-recovery.md` in a synced consumer, `docs/beads-recovery.md` in the library source) for the reviewed-preview and recovery procedure. The board does not invoke library migration or recovery commands and requires no engine installation. A hung or unreadable database requires preserving DB/WAL and proving export completeness before any rebuild; surface the operational failure without attempting an implicit repair.
+
 For “add these findings”, first read current issues and search for duplicates.
 Group findings by user outcome; preserve reproduction/evidence, acceptance checks,
 priority and dependencies. Merge duplicates or append evidence before creating

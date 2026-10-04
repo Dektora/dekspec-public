@@ -2,7 +2,7 @@
 
 **Role:** `specifier`
 **Legacy ID:** CS-001
-**Policy revision:** 1
+**Policy revision:** 2
 
 > DekSpec-internal operational contract (ADR-061). DekSpec loads it when it dispatches this role and composes it with the governing policy, the calling skill's procedure and the assignment (IC-019). It changes only through reviewed library changes; projects never author, select or copy it.
 
@@ -39,7 +39,7 @@ The artifact validates, its requirements are verifiable, and every unresolved po
 
 ## Escalation and recovery
 
-- A prerequisite Architecture Element or ADR is missing or unapproved: report it; do not author against an unratified foundation.
+- A prerequisite Architecture Element or ADR is missing or disallowed by DekSpec's project reference policy: report it. Under `specification.reference_mode: evolving`, canonical PROPOSED ADRs and AEs are eligible reference sources; retain their actual status and policy notice. Referencing them grants no artifact acceptance or execution authority.
 - Governing specifications contradict each other: surface the contradiction for reconciliation.
 - The request needs an architectural choice nobody has made: propose an ADR first.
 - Validation fails and fixing it would change the requested meaning: report that rather than bending the content.

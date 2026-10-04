@@ -57,6 +57,11 @@ The orchestrator gathers every input the subagent will need, in deterministic or
 
 The skill-side manifest enumerates the bundle items under `bundle_list`. Every entry is either an absolute path the subagent will `Read`, or an inline value (literal text, JSON object, list of paths) the orchestrator pastes into the prompt. The substrate-side rules for bundling:
 
+- **Paths, not parent summaries.** Pass source documents as absolute paths for the worker to read; never substitute the parent's synopsis. Keep mode/path parsing in separate structured fields.
+- **Engineer guidance stays verbatim.** Preserve the engineer's words and referenced notes unchanged. Put all parent-added framing in a separate, labeled `ORCHESTRATOR NOTES` field; it is interpretation, not engineer authority.
+- **Show the manifest before dispatch.** Surface source paths, verbatim guidance, constraints and any orchestrator notes. Continue under the existing task authorization; this transparency adds no new per-dispatch approval. Honor any lifecycle approval the skill already requires.
+- **Record bundle provenance.** Return and retain the source-path manifest and dispatch identity in the artifact's audit trail (or adjacent execution record). Record fan-out authorship; parent-session history alone never warrants a contamination marker on a fresh-context draft.
+- **Keep ingest provenance during promotion.** When a source draft carries `Ingest Provenance`, retain its source path, section/range, conversion note and source excerpt in the promoted artifact or an explicitly linked durable provenance file. The staging report is not a substitute.
 - **Resolve paths to absolute before dispatch.** Subagents should never have to guess `cwd`.
 - **Bundle the template + the methodology references + the related-artifacts paths + the engineer guidance (`$ARGUMENTS` verbatim) + the constraints (as an explicit list the subagent must enforce) + the expected output path + the validation command.** These seven categories cover every fan-out skill; the manifest's `bundle_list` enumerates the per-skill specifics within each category.
 - **Run cheap mechanical preconditions inline before dispatch.** Examples: singleton-precheck (refuse if a singleton artifact already exists at a non-DEPRECATED status); L12 status-gate (refuse to dispatch an IB-decomposition against a non-ACCEPTED Working Spec); ID-allocation (compute the next free `<KIND>-NNN` from the index). If a precondition fails, the orchestrator surfaces the failure to the engineer and does not dispatch.
@@ -92,6 +97,9 @@ RELATED ARTIFACTS (paths):
 
 ENGINEER GUIDANCE ($ARGUMENTS):
   <verbatim>
+
+ORCHESTRATOR NOTES (labeled interpretation, not engineer instructions):
+  <notes or none>
 
 CONSTRAINTS (must hold on output — self-audit before return):
   - <constraint 1 from the skill's Rules block>

@@ -42,7 +42,7 @@ A parent Working Spec or Intent is optional. If the input names neither, the out
    - **Header** — `**Depends on:**`, `**Spec impact:**` (specs the delivery must update when architecture or contracts change), `**Parent:**`.
 3. Run `dekspec ib lint IB-NNN` until clean and `dekspec validate <path>`.
 4. Leave the IB at DRAFT unless your prompt says to request the decision; then `dekspec ib propose IB-NNN` (lint-gated).
-5. Escalate instead of guessing when two binding sources contradict, a source is superseded or unapproved, or the outcome cannot be determined from approved sources — an underdefined contract is a finding (ADR-055).
+5. Escalate instead of guessing when two binding sources contradict, a source is retired or disallowed by the project reference policy, or the outcome cannot be determined from the policy-eligible canonical sources — an underdefined contract is a finding (ADR-055).
 
 ## Quality bar
 

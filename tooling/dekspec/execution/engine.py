@@ -1021,7 +1021,7 @@ class Engine:
                             "no investigation findings — commit a plan with findings (`dekspec ib plan`; "
                             "`direct: true` for a single continuous run)"))
         packet = build_context(self.repo_root, c, spec_root=self.spec_root)
-        checks.append(Check("obligations-resolve", not packet.problems, "; ".join(packet.problems) or "all approved and in force"))
+        checks.append(Check("obligations-resolve", not packet.problems, "; ".join(packet.problems) or "all sources eligible under the project specification policy"))
         current = self.manifest()
         fp = fingerprint_of(current)
         gate.fingerprint = fp

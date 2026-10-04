@@ -286,7 +286,7 @@ properties:
         source:
           type: string
         severity:
-          enum: [blocking, non_blocking]
+          enum: [blocking, non_blocking, P0, P1, P2, P3]
 
   # amendment_log.type vocabulary is Family A minus `supersession`. AEs
   # don't formally supersede each other (a deprecated AE is deleted or

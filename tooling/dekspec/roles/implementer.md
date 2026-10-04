@@ -2,7 +2,7 @@
 
 **Role:** `implementer`
 **Legacy ID:** CS-003
-**Policy revision:** 1
+**Policy revision:** 2
 
 > DekSpec-internal operational contract (ADR-061). DekSpec loads it when it dispatches this role and composes it with the governing policy, the calling skill's procedure and the assignment (IC-019). It changes only through reviewed library changes; projects never author, select or copy it.
 
@@ -53,5 +53,5 @@ The assignment is finished when current evidence from `dekspec ib verify` passes
   - obligations contradict each other or the existing system and the contract does not settle it (`contract-conflict`) — never pick one silently;
   - a declared Environment Prerequisite of the IB is unavailable (`prerequisite-unavailable`) — the engine's own probe checks declared prerequisites when a run starts or resumes; a blocker you record waits for a recorded decision;
   - authority you need is missing, or a prerequisite the IB does not declare is unavailable (`other`, detail "authority missing: …" or "prerequisite missing: …") — only a recorded decision clears it;
-  - the outcome or an obligation cannot be determined from the approved sources (`other`, detail "underdefined contract: …"). A detail you can discover by investigating the repository is not an escalation.
+  - the outcome or an obligation cannot be determined from the policy-eligible canonical source snapshot (including explicitly permitted evolving ADRs/AEs, whose actual statuses remain visible) (`other`, detail "underdefined contract: …"). A detail you can discover by investigating the repository is not an escalation.
 - Make every blocker actionable: what you tried, the evidence, and the decision or change that would unblock it.
