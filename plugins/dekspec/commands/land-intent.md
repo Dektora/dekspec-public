@@ -1,5 +1,5 @@
 ---
-description: Land a delivery — invokes the /land-intent skill. Sequences `dekspec delivery verify` → /dekspec:review-pr (one verdict per IB) → `dekspec ib complete` per IB → `dekspec delivery check` at the exact head → operator-confirmed merge → post-merge `dekspec intent verify` + `dekspec intent complete`. Never auto-merges (ADR-026). The landing-side sibling of /orchestrate-coding-session.
+description: Land a delivery — invokes the /land-intent skill. Sequences `dekspec delivery verify` → /dekbuilder:review-pr (one verdict per IB) → `dekspec ib complete` per IB → `dekspec delivery check` at the exact head → operator-confirmed merge → post-merge `dekspec intent verify` + `dekspec intent complete`. Never auto-merges (ADR-026). The landing-side sibling of /orchestrate-coding-session.
 allowed-tools: Skill
 argument-hint: [--help] <INT-NNN | IB-NNN | branch | PR-#>
 disable-model-invocation: false

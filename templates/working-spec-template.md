@@ -1,5 +1,7 @@
 # Working Spec: [Feature/Component Name]
 
+<!-- Before writing content, read `dekspec resource purpose behavior-spec` for the canonical purpose and routing items. -->
+
 ## Status
 
 DRAFT
@@ -11,7 +13,11 @@ DRAFT
 - **ACCEPTED** — engineer approved; downstream work may exist; substantive changes allowed but must cascade
 - **DEPRECATED** — terminal; retired from any stage when the artifact is no longer needed (redundant with other specs, or planned work abandoned)
 
-*A Working Spec is the home of behavioral requirements that outlive or span Implementation Briefs (ADR-056). It is optional upstream of an IB — author one only when it adds that. IBs reference its sections as obligations (`- **O-n** → WS-NNN §Business Rules`) and `dekspec ib context` delivers the canonical text; nothing here is copied into an IB.*
+<!-- Read `dekspec resource purpose behavior-spec`, especially behavior-spec.holds.rules and behavior-spec.holds.references. -->
+
+*Optional upstream of an IB — author one only when it adds the value specified by the purpose items above (ADR-056).*
+
+*Reference example: `- **O-n** → WS-NNN §Business Rules`; `dekspec ib context` delivers the canonical text.*
 
 ## Created
 
@@ -155,7 +161,7 @@ A consumer that needs domain-specific rows or sections (fixed constraint rows, d
 
 [Issues, questions, contradictions, and concerns. Logged during initial drafting, expertise audit, reviews, or cascades from other artifacts. Resolve via `/write-ws --review`.]
 
-*Scope guardrail (2026-04-24, per ws-audit proposal §12.2).* Spec-coverage gaps and design-level questions only. Code-gap observations — "code does X but spec says Y at `<file>:<line>`" — belong in `dekspec/divergences/DIV-NNN-*.md` or `br`, **not here**. This section is for decisions the WS itself has not yet resolved.
+*Scope guardrail (2026-04-24, per ws-audit proposal §12.2).* Spec-coverage gaps and design-level questions only. Code-gap observations — "code does X but spec says Y at `<file>:<line>`" — belong in `dekspec/divergences/DIV-NNN-*.md` or `br`, **not here**. This section is for decisions the WS itself has not yet resolved. <!-- purpose: behavior-spec.not.code-gap -->
 
 - [ ] [Issue description] — **Source:** [initial draft / expertise audit / review / cascade from \<artifact\>] — **Severity:** [`P0` / `P1` / `P2` / `P3`]
 
@@ -179,7 +185,7 @@ A consumer that needs domain-specific rows or sections (fixed constraint rows, d
 
 ## Eval Hooks
 
-*For every behavior involving model output only. Deterministic behaviors get acceptance conditions in the IB's `## Acceptance` block, not here. An eval that gates an IB is one of its acceptance conditions (a `command:` verification with its own threshold).*
+*For every behavior involving model output only. Deterministic behaviors get acceptance conditions in the IB's `## Acceptance` block, not here. An eval that gates an IB is one of its acceptance conditions (a `command:` verification with its own threshold).* <!-- purpose: behavior-spec.not.acceptance -->
 
 - [Eval name: input scenario → expected output range → pass criterion (e.g., ≥ 80% of cases) → what failure means]
 
@@ -187,7 +193,7 @@ A consumer that needs domain-specific rows or sections (fixed constraint rows, d
 
 *Add an entry for every substantive change made after ACCEPTED (a Working Spec never locks; it is revised with cascade — ADR-046).*
 
-**Compressed-format policy (added convergence-v2 iter-7 Δ-SQ-17, 2026-04-22).** Entries SHOULD follow a one-line-per-entry format. Target: `| YYYY-MM-DD | <Type> | <one-sentence what + reference to delta-doc / commit > | <author> |`. Detailed change narrative belongs in the git commit message — not in the spec body. Historical entries are preserved as-is; the policy applies to **new** entries going forward. An amendment log exceeding ~10 entries per year of spec lifetime is a smell; trim older entries into a pinned-to-tag release note rather than carrying them in the spec.
+**Compressed-format policy (added convergence-v2 iter-7 Δ-SQ-17, 2026-04-22).** Entries SHOULD follow a one-line-per-entry format. Target: `| YYYY-MM-DD | <Type> | <one-sentence what + reference to delta-doc / commit > | <author> |`. Detailed change narrative belongs in the git commit message — not in the spec body. Historical entries are preserved as-is; the policy applies to **new** entries going forward. An amendment log exceeding ~10 entries per year of spec lifetime is a smell; trim older entries into a pinned-to-tag release note rather than carrying them in the spec. <!-- purpose: behavior-spec.not.change-narrative -->
 
 | Date | Type | Change | Author |
 |------|------|--------|--------|

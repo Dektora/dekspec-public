@@ -29,6 +29,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
+import warnings
+
+from .skill_headers import (
+    SkillHeaderError, SkillHeaderWarning, frozen_release_tree,
+    header_problems, other_product_skills, read_header,
+)
 
 
 __all__ = [
@@ -81,46 +87,15 @@ def skills_roots(repo_root: str | Path) -> list[Path]:
 
 
 def _parse_frontmatter(skill_md: Path) -> dict:
-    """Parse the leading ``---``-fenced frontmatter block of ``skill_md``.
-
-    Reads the top-level ``key: value`` pairs of the frontmatter block. A plain
-    line-scan is used rather than a strict YAML parse because Claude Code
-    ``SKILL.md`` frontmatter (e.g. the ``argument-hint:`` line) carries
-    unquoted bracket characters that a strict YAML loader rejects — and IB-114
-    forbids reformatting any existing frontmatter line. Only the simple scalar
-    keys this catalog needs (``name``, ``mode``) are consumed downstream.
-
-    Raises :class:`SkillCatalogError` if the file has no closed frontmatter
-    fence.
-    """
-    text = skill_md.read_text(encoding="utf-8")
-    lines = text.split("\n")
-    if not lines or lines[0].strip() != "---":
-        raise SkillCatalogError(
-            f"{skill_md} has no leading '---' YAML frontmatter fence."
-        )
+    """Read a YAML mapping, translating shared parse errors for catalog callers."""
     try:
-        end = lines.index("---", 1)
-    except ValueError as err:
-        raise SkillCatalogError(
-            f"{skill_md} frontmatter fence is not closed by a second '---'."
-        ) from err
-    data: dict[str, str] = {}
-    for line in lines[1:end]:
-        if not line.strip() or line.lstrip() != line:
-            # Skip blank lines and any indented continuation (nested keys are
-            # not used by the catalog).
-            continue
-        key, sep, value = line.partition(":")
-        if not sep:
-            continue
-        data[key.strip()] = value.strip()
-    return data
+        return read_header(skill_md)[0]
+    except SkillHeaderError as exc:
+        raise SkillCatalogError(str(exc)) from exc
 
 
-def _entry_from_skill_md(skill_md: Path) -> SkillEntry:
+def _entry_from_skill_md(skill_md: Path, frontmatter: dict) -> SkillEntry:
     """Build a :class:`SkillEntry` from one ``SKILL.md`` file."""
-    frontmatter = _parse_frontmatter(skill_md)
     name = frontmatter.get("name") or skill_md.parent.name
     mode = frontmatter.get("mode")
     if mode is None:
@@ -151,9 +126,24 @@ def load_catalog(repo_root: str | Path) -> list[SkillEntry]:
         )
     seen: set[str] = set()
     entries: list[SkillEntry] = []
+    others = other_product_skills()
     for root in roots:
+        frozen = frozen_release_tree(root)
         for skill_md in sorted(root.glob("*/SKILL.md")):
-            entry = _entry_from_skill_md(skill_md)
+            problems = []
+            if not frozen and skill_md.parent.name in others:
+                problems = header_problems(skill_md)
+            if problems:
+                warnings.warn("; ".join(problems), SkillHeaderWarning, stacklevel=2)
+            try:
+                frontmatter = _parse_frontmatter(skill_md)
+            except SkillCatalogError as exc:
+                if not frozen and skill_md.parent.name not in others:
+                    raise
+                if not problems:
+                    warnings.warn(str(exc), SkillHeaderWarning, stacklevel=2)
+                continue
+            entry = _entry_from_skill_md(skill_md, frontmatter)
             if entry.name in seen:
                 continue  # first root wins on a name collision
             seen.add(entry.name)

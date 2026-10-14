@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """DekSpec post-edit audit hook.
 
-Fires on PostToolUse for Edit|Write|MultiEdit. When the edited file lives
+Fires on PostToolUse for Edit|Write|MultiEdit|apply_patch. When the edited file lives
 under `<cwd>/dekspec/` (the artifact tree) or `<cwd>/.claude/skills/`
 (vendored skills), runs `dekspec validate <path>` for fast per-artifact
 feedback. Surfaces validation errors as a non-blocking advisory; never
@@ -34,24 +34,44 @@ def main() -> int:
         # Bad input — never block the tool.
         return 0
 
-    tool_name = payload.get("tool_name", "")
-    if tool_name not in {"Edit", "Write", "MultiEdit"}:
+    if not isinstance(payload, dict):
+        return 0
+    tool_name = payload.get("tool_name")
+    if not isinstance(tool_name, str):
+        return 0
+    if tool_name == "apply_patch":
+        try:
+            from _patch_paths import patch_paths
+        except ImportError:
+            print("[dekspec] Warning: missing _patch_paths.py; DekSpec hook did not run.",
+                  file=sys.stderr)
+            return 0
+        paths = patch_paths(payload)
+    elif tool_name in {"Edit", "Write", "MultiEdit"}:
+        tool_input = payload.get("tool_input") or {}
+        if not isinstance(tool_input, dict):
+            return 0
+        file_path = tool_input.get("file_path")
+        paths = [Path(file_path)] if isinstance(file_path, str) and file_path else []
+    else:
         return 0
 
-    tool_input = payload.get("tool_input", {}) or {}
-    file_path = tool_input.get("file_path") or ""
-    if not file_path:
-        return 0
-
-    path = Path(file_path)
     cwd = Path.cwd().resolve()
+    for path in paths:
+        # A deleted file (or the old end of a move) has nothing to validate.
+        if tool_name == "apply_patch" and not path.is_file():
+            continue
+        _audit(path, cwd)
+    return 0
 
+
+def _audit(path: Path, cwd: Path) -> int:
     # Only act on edits inside this project's dekspec/ artifact tree.
     # Vendored skill edits live under .claude/skills/ but skills don't
     # round-trip through `dekspec validate`, so scope to dekspec/ only.
     try:
         rel = path.resolve().relative_to(cwd)
-    except (ValueError, OSError):
+    except (ValueError, OSError, RuntimeError):
         return 0
     if not str(rel).startswith("dekspec/") and not str(rel).startswith("dekspec\\"):
         return 0

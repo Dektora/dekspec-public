@@ -5,6 +5,8 @@ checklist boxes, and path integrity of an Implementation Brief (IB) markdown fil
 """
 from __future__ import annotations
 
+from dekspec.spec_kinds import BEHAVIOR_SPEC_NAMES as BS
+
 import re
 from pathlib import Path
 from typing import Any
@@ -53,7 +55,7 @@ PLACEHOLDER_PATTERNS = [
     r"\[Issue description\]",
     r"\[initial draft / audit / review / resync / cascade from <artifact>\]",
     r"IC-NNN",
-    r"WS-NNN",
+    rf"(?:{'|'.join(BS.prefixes)})-NNN",
     r"INT-NNN",
     r"AE-NNN",
     r"ADR-NNN",
@@ -164,7 +166,7 @@ def lint_ib(text_or_path: str | Path, workspace_root: Path | None = None) -> lis
                         violations.append({
                             "rule": "SPEC_PATH_INVALID",
                             "severity": "P1",
-                            "message": f"Referenced Working Spec file does not exist: '{spec_path_str}'",
+                            "message": f"Referenced {BS.display_name} file does not exist: '{spec_path_str}'",
                             "line": line_num,
                         })
             elif key == "Intent":

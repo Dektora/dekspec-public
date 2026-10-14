@@ -26,10 +26,12 @@ from pathlib import Path
 # Canonical artifact-directory map. IC lives under dekspec/interface-contracts/
 # (the on-disk dir name diverges from the "interface contract" term — confirmed
 # against tooling/dekspec/package/build.py and migrations/markdown.py).
+BEHAVIOR_KINDS = {"bs": ("behavior-specs", "BS"), "ws": ("working-specs", "WS")}
+
 KIND_DIRS: dict[str, tuple[str, str]] = {
     "adr": ("adrs", "ADR"),
     "ae": ("architecture-elements", "AE"),
-    "ws": ("working-specs", "WS"),
+    **BEHAVIOR_KINDS,
     "ic": ("interface-contracts", "IC"),
     "ib": ("impl-briefs", "IB"),
     "intent": ("intents", "INT"),
@@ -133,6 +135,23 @@ def next_id(kind: str, root: Path | None = None) -> str:
         )
     dirname, prefix = KIND_DIRS[kind]
     repo = _repo_root(root)
+    if kind in BEHAVIOR_KINDS:
+        highest = 0
+        width = 3
+        for folder, _ in BEHAVIOR_KINDS.values():
+            for _, form in BEHAVIOR_KINDS.values():
+                for path in (repo / "dekspec" / folder).glob(form + "-*.md"):
+                    match = re.match(re.escape(form) + r"-(\d{3,})-", path.name)
+                    if match:
+                        highest = max(highest, int(match[1]))
+                        width = max(width, len(match[1]))
+        registry = repo / "dekspec" / "registry.yaml"
+        if registry.exists():
+            forms = "|".join(form for _, form in BEHAVIOR_KINDS.values())
+            for number in re.findall(r"(?m)^\s*(?:-\s*)?id:\s*['\"]?(?:" + forms + r")-(\d{3,})\b", registry.read_text()):
+                highest = max(highest, int(number))
+                width = max(width, len(number))
+        return f"{prefix}-{highest + 1:0{width}d}"
     art_dir = repo / "dekspec" / dirname
     if not art_dir.is_dir():
         raise FileNotFoundError(f"artifact directory not found: {art_dir}")
@@ -1076,7 +1095,9 @@ def _build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", metavar="<subcommand>")
 
     p_next = sub.add_parser("next-id", help="print the next artifact id")
-    p_next.add_argument("kind", choices=sorted(KIND_DIRS))
+    # "bs": IB-207 surface skeleton (ADR-062) — the kind is accepted; its next id
+    # is IB-207's implementation.
+    p_next.add_argument("kind", choices=sorted([*KIND_DIRS, "bs"]))
 
     p_guard = sub.add_parser("status-guard", help="assert an artifact's Status")
     p_guard.add_argument("path", type=Path)

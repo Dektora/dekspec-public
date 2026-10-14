@@ -9,7 +9,7 @@ without having to know a version number.
 Behavior:
   - CLI absent  → print a short guidance block with the pip-from-git install
                   line (no version pin → latest) plus the marketplace one-liner.
-  - CLI present + current → stay silent.
+  - CLI present → disclose unrecorded project rules in DekSpec projects.
   - CLI present + stale (best-effort version compare against the plugin's
     own plugin.json) → print a brief upgrade hint. Never errors on failure.
 
@@ -68,39 +68,64 @@ def main() -> int:
             file=sys.stderr,
         )
 
-    # CLI present and current → stay silent.
+    _project_rules_notice(Path.cwd())
     return 0
 
 
-def _import_handoff_engine(cwd: Path):
-    """Best-effort load of the native rotation-handoff engine.
+def _valid_role_state(data: object, *, record: bool = False) -> bool:
+    """Validate the read-only CLI listing or its persisted disclosure snapshot."""
+    keys = {"release", "roles", "platforms"} if record else {"release", "roles"}
+    if not isinstance(data, dict) or set(data) != keys:
+        return False
+    if not isinstance(data["release"], str) or not data["release"]:
+        return False
+    if not isinstance(data["roles"], dict) or any(
+        not isinstance(role, str) or not role or type(rev) is not int or rev < 1
+        for role, rev in data["roles"].items()
+    ):
+        return False
+    if record:
+        hosts = data["platforms"]
+        if (not isinstance(hosts, list)
+                or any(not isinstance(host, str) or not host for host in hosts)
+                or hosts != sorted(set(hosts))):
+            return False
+    return True
 
-    The handler runs from the plugin tree, not the installed package. Prefer the
-    in-repo source at `<repo>/tooling/dekspec/rotation_handoff.py` (loaded
-    directly from its file, so it works even when a different `dekspec` package
-    is already on sys.path), then fall back to a plain import. Returns the
-    module or None.
-    """
-    src = cwd / "tooling" / "dekspec" / "rotation_handoff.py"
-    if src.is_file():
-        try:
-            import importlib.util
 
-            spec = importlib.util.spec_from_file_location(
-                "dekspec_rotation_handoff_engine", src
-            )
-            if spec and spec.loader:
-                mod = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(mod)
-                return mod
-        except Exception:
-            pass
+def _project_rules_notice(cwd: Path) -> None:
+    """Ask the installed engine for disclosure text and revisions; never write."""
+    if not (cwd / ".dekspec-version").is_file() and not (cwd / "dekspec").is_dir():
+        return
     try:
-        from dekspec import rotation_handoff  # type: ignore
-
-        return rotation_handoff
-    except Exception:
-        return None
+        outputs = []
+        for args in (("lib", "role-project-rules"), ("role", "--list", "--json")):
+            proc = subprocess.run(
+                ["dekspec", "resource", *args], cwd=cwd,
+                capture_output=True, text=True, timeout=8,
+                env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+            )
+            if proc.returncode != 0:
+                return
+            outputs.append(proc.stdout)
+        notice, raw_listing = outputs
+        listing = json.loads(raw_listing)
+        if not _valid_role_state(listing):
+            return
+    except (OSError, UnicodeError, ValueError, subprocess.TimeoutExpired):
+        return
+    try:
+        record = json.loads((cwd / ".dekspec-role-disclosure.json").read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, ValueError):
+        record = None
+    if (_valid_role_state(record, record=True)
+            and record["release"] == listing["release"]
+            and record["roles"] == listing["roles"]):
+        return
+    print(notice, end="", file=sys.stderr)
+    if not notice.endswith("\n"):
+        print(file=sys.stderr)
+    print("[dekspec] Run `dekspec sync` to record this disclosure.", file=sys.stderr)
 
 
 def _resume_from_handoff(cwd: Path) -> None:
@@ -111,12 +136,26 @@ def _resume_from_handoff(cwd: Path) -> None:
     """
     if not (cwd / ".dekspec-version").exists() and not (cwd / "dekspec").is_dir():
         return
-    engine = _import_handoff_engine(cwd)
-    if engine is None:
+    executable = shutil.which("dektools")
+    if executable is None:
         return
     try:
-        record = engine.read_latest_handoff(cwd)
-    except Exception:
+        proc = subprocess.run(
+            [executable, "handoff", "read", "--at", str(cwd)],
+            capture_output=True,
+            text=True,
+            timeout=8,
+        )
+        if proc.returncode != 0:
+            return
+        payload = json.loads(proc.stdout)
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        return
+    if not isinstance(payload, dict):
+        return
+    record = payload.get("record")
+    stale = payload.get("stale")
+    if not isinstance(stale, list) or any(not isinstance(reason, str) for reason in stale):
         return
     if not isinstance(record, dict):
         return
@@ -124,8 +163,6 @@ def _resume_from_handoff(cwd: Path) -> None:
     next_action = str(record.get("next_safest_action") or "").strip()
     if not objective and not next_action:
         return
-    freshness = getattr(engine, "handoff_freshness", None)
-    stale = freshness(cwd, record) if freshness else ["identity unknown"]
     if stale:
         print("[dekspec] prior handoff needs revalidation: " + "; ".join(stale), file=sys.stderr)
     print("[dekspec] resuming from prior session handoff:", file=sys.stderr)

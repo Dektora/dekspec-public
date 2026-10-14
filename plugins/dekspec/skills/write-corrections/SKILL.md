@@ -5,7 +5,7 @@ mode: lite
 reasoning_effort: max
 disable-model-invocation: false
 allowed-tools: Read Write Edit Grep Glob Bash Agent
-argument-hint: [--provisional <slug>] [--help | --teaching | --log | --review | --audit] [correction text]
+argument-hint: "[--provisional <slug>] [--help | --teaching | --log | --review | --audit] [correction text]"
 related_skills: [write-glossary, write-adr, write-ae, write-ic, write-ws, write-ibs]
 ---
 

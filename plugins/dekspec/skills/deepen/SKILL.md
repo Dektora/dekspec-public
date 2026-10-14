@@ -15,8 +15,8 @@ single refactoring pass or a target interface/LOC ratio.
 
 ## Authority
 
-The engine commands this tool may name are exactly `dekspec implement
-resolve|ready|next|ack|status`, `dekspec deepen-record` (any action), the
+The engine commands this tool may name are exactly `dekbuilder implement
+resolve|ready|next|ack|status`, `dektools deepen-record` (any action), the
 read-only `dekspec ib status`, `dekspec ib context`, `dekspec resource doc`, `dekspec resource role`
 and `--help` probes. It never authorizes, approves, amends, unblocks, starts,
 plans, verifies, reviews or completes a specification or a run, never changes an
@@ -33,25 +33,25 @@ is no second agent runtime.
 2. Select one coherent improvement with a concrete architectural benefit and
    behavioral checks. An idea merely “worth exploring” needs investigation first.
 3. It needs an approved executable contract. Resolve it with
-   `dekspec implement resolve "REQUEST" --json` and save the resolved target ID
+   `dekbuilder implement resolve "REQUEST" --json` and save the resolved target ID
    (TARGET: one IB or one Intent). If resolution is ambiguous or not found,
    preserve the candidates and problems rather than guessing. A candidate with no
    approved contract is missing preparation: save it as unfinished work, report
    it and point to `/dekspec:write-intent`, `/dekspec:spec-intent` or
    `/dekspec:write-ibs`; this tool does not author or approve one, and does not
    impose an obsolete Mission→Intent→WS→IB chain.
-4. Read `dekspec implement status "TARGET" --json`. If any delivery lists
+4. Read `dekbuilder implement status "TARGET" --json`. If any delivery lists
    `outstanding_dispatches`, report them (id, role, IB). Call `next` only when
    the engineer's request is an explicit resume of that delivery; otherwise stop
    and say how to resume (repeat the request as an explicit resume, or run
-   `/dekspec:implement TARGET`), because core reissues those dispatches and a
+   `/dekbuilder:implement TARGET`), because core reissues those dispatches and a
    session still running them would duplicate the work.
-5. Begin the pass before delegating: `dekspec deepen-record begin --at REPO
+5. Begin the pass before delegating: `dektools deepen-record begin --at REPO
    --scope SCOPE --input PASS.json` with a stable `pass_id`, the candidate ID and
    `targets: [TARGET]`. The pass is now pending; the helper reads its input
    revision from the base itself. Also keep the candidate, authorized scope and
    pending target in the pass's durable notes.
-6. For a new run, call `dekspec implement ready "TARGET" --json`. If it is not
+6. For a new run, call `dekbuilder implement ready "TARGET" --json`. If it is not
    ready, report every `missing` item exactly as returned — `target`, `code`,
    `detail` and `fix` — including `intent-autonomy` and
    `mission-autonomy-ceiling`, which are the engineer's explicit restrictions.
@@ -60,16 +60,16 @@ is no second agent runtime.
    appended as `not-ready` when core's status reports that, otherwise abandoned
    with the missing preparation as its reason — and stop. A started delivery
    resumes without a new readiness gate.
-7. Delegate to core `/implement`. The core `/dekspec:implement` skill is
+7. Delegate to core `/implement`. The core `/dekbuilder:implement` skill is
    user-invoked, so you cannot invoke it. When this host can dispatch
    fresh-context agents (the Agent tool in Claude Code), drive core's loop
-   exactly as that skill does: run `dekspec implement next "TARGET" --json` and
+   exactly as that skill does: run `dekbuilder implement next "TARGET" --json` and
    act on its `action`, then call `next` again with the same TARGET until it is
    `done`, `blocked` or `not-ready`.
 
    | `action` | What you do |
    |---|---|
-   | `dispatch` | Launch one fresh-context agent (Agent tool, general-purpose) whose prompt is `prompt`, verbatim, with nothing added or removed. When it returns, run `dekspec implement ack "TARGET" --dispatch <id> --summary "<its final report>"`, then call `next`. |
+   | `dispatch` | Launch one fresh-context agent (Agent tool, general-purpose) whose prompt is `prompt`, verbatim, with nothing added or removed. When it returns, run `dekbuilder implement ack "TARGET" --dispatch <id> --summary "<its final report>"`, then call `next`. |
    | `wait` | Wait `seconds` with the host's timer (in Claude Code, a background `sleep`), then call `next`. |
    | `done` | Core's terminal result: go to step 8. |
    | `blocked` (exit code 3) | Core's terminal result. Report each target's outcome and each blocker's `kind`, `detail` and `fix` as returned (where a blocker carries no `fix`, the decision or change that would resolve it); go to step 8. |
@@ -83,7 +83,7 @@ is no second agent runtime.
    integration and completion.
 
    When the host cannot dispatch fresh-context agents, ask the engineer to run
-   `/dekspec:implement TARGET` and stop. The pass stays pending (the run reads
+   `/dekbuilder:implement TARGET` and stop. The pass stays pending (the run reads
    `interrupted`) until core reaches a terminal result.
 8. Only `done` with `result.outcome` `complete` counts as implemented. A
    passing worktree, an open pull request, a head someone else merged, or a
@@ -95,7 +95,7 @@ is no second agent runtime.
    never from the base's records. Verify behavior AND the intended architectural
    improvement on that integrated revision; passing tests alone do not prove the
    architectural benefit. A callback fixture is not live integration proof.
-9. Append the outcome after core's terminal result: `dekspec deepen-record append
+9. Append the outcome after core's terminal result: `dektools deepen-record append
    --at REPO --scope SCOPE --input PASS.json` with the same `pass_id` and targets,
    `completed` (the count of changes), evidence (core's result and run, the
    integrated revision and tree, your behavioral and architectural checks),
@@ -117,7 +117,7 @@ silently.
 
 ## Run record and stopping
 
-Maintain the run's external-state record through `dekspec deepen-record`, all
+Maintain the run's external-state record through `dektools deepen-record`, all
 with `--at REPO` and `--scope SCOPE`: `status`, `start`, then per pass `begin`
 and `append` (or `abandon`). Consult its `--help` for the pass schema.
 `--max-passes` is an agent control, not a user-facing skill flag. For a new
@@ -132,7 +132,7 @@ convergence, stalled progress/oscillation, budget exhaustion, a real blocker, or
 an interrupted pass. A dry pass cannot converge while implementation or earlier
 opportunities remain unfinished.
 
-On resume, read `dekspec deepen-record status` and core status before proposing
+On resume, read `dektools deepen-record status` and core status before proposing
 another candidate; a pending pass is `interrupted` — finish it through core's
 terminal result first (step 4 applies to its outstanding dispatches). An
 interrupted pass cannot count as dry. Fresh contexts receive this bounded record.

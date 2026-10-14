@@ -14,6 +14,7 @@ from typing import Any
 
 from dekspec.constraint_compiler.parser import IntentParseError, parse_intent
 from dekspec.execution import acceptance as acc
+from dekspec.execution import snapshots
 from dekspec.execution.artifact_edit import set_status
 from dekspec.execution.contract import AcceptanceCondition, ContractError, load_contract
 from dekspec.execution.engine import (
@@ -26,7 +27,7 @@ from dekspec.execution.engine import (
     verdict_policy_problem,
     verdict_role_stamp,
 )
-from dekspec.execution.fingerprint import current_commit
+from dekspec.execution.fingerprint import current_commit, fingerprint_of, manifest_changes
 from dekspec.execution.state import fold
 
 __all__ = ["intent_children", "intent_complete", "unintegrated_intent_completion_problem", "intent_evaluate", "intent_reopen",
@@ -103,9 +104,11 @@ def intent_verify(engine: Engine, ref: str, actor: str, *, record: bool = True) 
     results = [acc.run_condition(engine.repo_root, c, python=engine.python,
                                  timeout=engine.settings.command_timeout) for c in conds]
     overall = "passed" if all(r["status"] in ("passed", "needs-review") for r in results) else "failed"
-    payload = {"kind": "intent", "fingerprint": engine.fingerprint(), "commit": current_commit(engine.repo_root),
+    manifest = engine.manifest()
+    payload = {"kind": "intent", "fingerprint": fingerprint_of(manifest), "commit": current_commit(engine.repo_root),
                "results": results, "overall": overall}
     if record:
+        snapshots.save(engine.repo_root, ir["id"], manifest)
         engine.record(ir["id"]).append("evidence.recorded", actor, payload)
     return payload
 
@@ -125,7 +128,8 @@ def intent_review(engine: Engine, ref: str, reviewer: str, verdict: str, notes: 
     if reviewer in _builders(engine, intent_children(engine, ir["id"])):
         raise ExecutionError(f"{reviewer} built one of {ir['id']}'s IBs; the verdict must be independent")
     role = verdict_role_stamp(VERIFIER_ROLE, policy_revision)
-    payload = {"verdict": verdict, "reviewer": reviewer, "fingerprint": engine.fingerprint(),
+    fp = snapshots.save(engine.repo_root, ir["id"], engine.manifest())
+    payload = {"verdict": verdict, "reviewer": reviewer, "fingerprint": fp,
                "commit": current_commit(engine.repo_root), "notes": notes, "agent_role": role}
     engine.record(ir["id"]).append("verdict.recorded", reviewer, payload)
     return payload
@@ -168,6 +172,18 @@ def unintegrated_intent_completion_problem(engine: Engine, ref: str) -> str | No
     return problem
 
 
+def _changed_paths_detail(engine: Engine, intent_id: str, fingerprint: str,
+                          manifest: dict[str, str]) -> str:
+    """Explain stale content without trusting a missing or damaged snapshot."""
+    try:
+        before = snapshots.load(engine.repo_root, intent_id, fingerprint)
+    except (OSError, ValueError, TypeError):
+        before = None  # invalid encoding or entry hashes are unusable snapshots too
+    if before is None:
+        return "changed paths cannot be named; run `dekspec intent verify` again"
+    return "changed paths: " + ", ".join(manifest_changes(before, manifest))
+
+
 def intent_evaluate(engine: Engine, ref: str) -> GateResult:
     _path, ir = _intent(engine, ref)
     gate = GateResult(ib=ir["id"])
@@ -180,7 +196,8 @@ def intent_evaluate(engine: Engine, ref: str) -> GateResult:
                                    else f"{len(children)} IB(s) complete")))
     rec = engine.record(ir["id"])
     st = fold(rec.events())
-    fp = engine.fingerprint()
+    manifest = engine.manifest()
+    fp = fingerprint_of(manifest)
     gate.fingerprint = fp
     latest = st.latest_evidence("intent")
     if latest is None:
@@ -191,7 +208,9 @@ def intent_evaluate(engine: Engine, ref: str) -> GateResult:
     ok = ev["fingerprint"] == fp and ev["overall"] == "passed"
     gate.checks.append(Check("outcome-evidence", ok,
                              f"evidence #{seq} current and passing" if ok else
-                             ("stale — content changed since verification" if ev["fingerprint"] != fp
+                             ("stale — content changed since verification; "
+                              + _changed_paths_detail(engine, ir["id"], ev["fingerprint"], manifest)
+                              if ev["fingerprint"] != fp
                               else "verification failed: " + "; ".join(
                                   f"{r['id']} {r['status']}" for r in ev["results"] if r["status"] == "failed"))))
     if any(r["status"] == "needs-review" for r in ev["results"]):
@@ -205,7 +224,8 @@ def intent_evaluate(engine: Engine, ref: str) -> GateResult:
         elif verdict["verdict"] != "pass":
             why = f"the latest attestation is a FAIL ({verdict.get('notes', '')[:200]})"
         elif verdict["fingerprint"] != fp:
-            why = "the attestation is for other content — the content changed since it was recorded"
+            why = ("the attestation is for other content — the content changed since it was recorded; "
+                   + _changed_paths_detail(engine, ir["id"], verdict["fingerprint"], manifest))
         elif verdict["reviewer"] in builders:
             why = f"{verdict['reviewer']} built one of its IBs"
         else:

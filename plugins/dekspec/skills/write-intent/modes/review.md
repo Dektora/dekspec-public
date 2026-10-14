@@ -26,7 +26,7 @@ For each `yes, revise` response, run the Edit tool to apply the engineer's state
 
 ### Step 2.5: Spec-reviewer dispatch
 
-This hook attaches at the validate/exit boundary — after the Step 2 section walkthrough and before the Step 3 re-validate. It ADDS an independent spec-reviewer pass alongside the walkthrough; it does NOT replace it. Run the shared spec-reviewer dispatch in [`_lib/agent_roles.md`](../../_lib/agent_roles.md) §Spec-reviewer dispatch for this Intent: `dekspec resource role spec-reviewer`, one fresh-context sub-agent composed policy → role → procedure → assignment (the Intent at `<Intent-path>` and its governing sources), and its findings presented at their severity (default P2) alongside the Step 2 walkthrough sections. If it did not run, say so — never present your own review as the spec-reviewer's.
+This hook attaches at the validate/exit boundary — after the Step 2 section walkthrough and before the Step 3 re-validate. It ADDS an independent spec-reviewer pass alongside the walkthrough; it does NOT replace it. Run the shared spec-reviewer dispatch in [`_lib/agent_roles.md`](../../_lib/agent_roles.md) §Spec-reviewer dispatch for this Intent: `dekspec resource role spec-reviewer`, one fresh-context sub-agent composed policy → role → procedure → assignment (the Intent at `<Intent-path>`, its governing sources, its `## Behavior placement` table and the path of every artifact it names; resolve homes as WS-033 §Home forms defines them, passing the working name from BR 9 instead of a path for a home marked `(new)`), and its findings presented at their severity (default P2) alongside the Step 2 walkthrough sections. If it did not run, say so — never present your own review as the spec-reviewer's.
 
 ### Step 3: Re-run schema validation
 

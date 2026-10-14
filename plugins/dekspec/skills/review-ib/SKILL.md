@@ -6,7 +6,7 @@ disable-model-invocation: false
 mode: lite
 # override-reason: Edit writes surfaced findings into the reviewed IB's Open Issues and a passing floor review into its Amendment Log — the review's only outputs now that REVIEW_IB is not a status (ADR-057, ADR-062)
 allowed-tools: Read Grep Glob Bash Agent Edit
-argument-hint: [--help] <IB-ID>
+argument-hint: "[--help] <IB-ID>"
 ---
 
 ## Help Mode

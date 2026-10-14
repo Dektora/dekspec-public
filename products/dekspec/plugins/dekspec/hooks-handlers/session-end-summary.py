@@ -1,0 +1,208 @@
+#!/usr/bin/env python3
+"""DekSpec session-end summary + rotation-handoff emit hook.
+
+Fires on Stop, SessionEnd, and PreCompact (INT-176 — PreCompact + SessionEnd
+are registered so compaction-driven rotations are captured; the Stop hook fires
+per-response and misses compaction).
+
+Two responsibilities:
+
+  1. Surface (Stop-style summary): runs `dekspec doctor --at . --json`
+     and prints a one-line summary if vendoring drift or graph-level audit
+     findings are worth surfacing. Stays silent when clean.
+  2. Rotation-handoff emit (INT-176 / κ): writes a structured, secret-redacted
+     handoff record to `dekspec/.scratch/rotation-handoff/` so a rotated or
+     compacted session resumes from a DekSpec-authored record (zero dependency
+     on `claude-mem`). Artifacts are referenced by path, not copied.
+
+Never blocks. The summary half skips when the dekspec CLI is not on PATH; both
+halves skip when run outside a dekspec repo (no `.dekspec-version` marker AND
+no `dekspec/` artifact directory). The handoff emit is best-effort — any
+failure is swallowed so it never crashes the parent lifecycle event.
+
+Environment overrides:
+    DEKSPEC_HOOK_DISABLE=1            Skip the hook entirely.
+    DEKSPEC_HOOK_SUMMARY_TIMEOUT=N    doctor subprocess timeout in seconds (default: 8).
+    DEKSPEC_HANDOFF_KEEP=N            Handoff records retained in .scratch/ (default: 10).
+"""
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+
+def main() -> int:
+    if os.environ.get("DEKSPEC_HOOK_DISABLE") == "1":
+        return 0
+
+    cwd = Path.cwd().resolve()
+    if not (cwd / ".dekspec-version").exists() and not (cwd / "dekspec").is_dir():
+        # Not a dekspec consumer repo. Stay silent.
+        return 0
+
+    # Rotation-handoff emit runs whether or not the CLI is on PATH — it imports
+    # the engine directly and is fully best-effort.
+    _emit_handoff(cwd)
+
+    # The doctor summary half needs the CLI on PATH.
+    if shutil.which("dekspec") is None:
+        return 0
+
+    try:
+        timeout = int(os.environ.get("DEKSPEC_HOOK_SUMMARY_TIMEOUT", "8"))
+    except ValueError:
+        timeout = 8
+
+    payload = _run_doctor(cwd, timeout)
+    if payload is None:
+        return 0
+
+    messages: list[str] = []
+
+    drift_count = _drift_count(payload)
+    if drift_count > 0:
+        messages.append(
+            f"vendored content drift: {drift_count} finding(s) "
+            "— run `dekspec doctor --json` for detail"
+        )
+
+    critical, important, minor = _audit_counts(payload)
+    if critical + important > 0:
+        messages.append(
+            f"doctor findings: critical={critical} important={important} minor={minor} "
+            "— run `dekspec doctor` or `/dekspec:doctor` for detail"
+        )
+
+    if not messages:
+        return 0
+
+    print("[dekspec] session-end summary:", file=sys.stderr)
+    for msg in messages:
+        print(f"  - {msg}", file=sys.stderr)
+    return 0
+
+
+def _import_handoff_engine(cwd: Path):
+    """Optional external Tools transport; absence never affects Spec bookkeeping."""
+    executable = shutil.which("dektools")
+    if executable is None:
+        return None
+    from types import SimpleNamespace
+
+    def write_handoff(root, record):
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", encoding="utf-8") as payload:
+            json.dump(record, payload)
+            payload.flush()
+            subprocess.run([executable, "handoff", "write", "--at", str(root), "--input", payload.name],
+                           capture_output=True, timeout=8, check=True)
+    return SimpleNamespace(write_handoff=write_handoff)
+
+
+def _record_has_signal(record: dict) -> bool:
+    """True if the assembled record carries any real content.
+
+    Guards ds-1lcy: the hook has no transcript access, so it can only populate
+    fields the ``DEKSPEC_HANDOFF_*`` env hints supply. When nothing supplies
+    them every fire assembles an all-blank record, and — under bounded
+    retention (``DEKSPEC_HANDOFF_KEEP``, default 10) — a run of blank hook fires
+    silently EVICTS a populated record a manual ``--write`` created. Writing
+    only signal-bearing records prevents that eviction.
+    """
+    for value in record.values():
+        if isinstance(value, str) and value.strip():
+            return True
+        if isinstance(value, (list, tuple)) and any(value):
+            return True
+    return False
+
+
+def _emit_handoff(cwd: Path) -> None:
+    """Write a structured, secret-redacted handoff record to .scratch/.
+
+    Best-effort: the captured session state is assembled from environment hints,
+    the engine applies redaction + by-path references + retention, and any
+    failure is swallowed so the parent lifecycle event is never disturbed.
+
+    Skips the write entirely when the assembled record has no signal (ds-1lcy):
+    the hook cannot read the transcript, so an unhinted fire would otherwise
+    write an all-blank record that evicts a real one under retention. A
+    populated record therefore requires the ``DEKSPEC_HANDOFF_*`` env hints or a
+    manual ``/dekspec:handoff``.
+    """
+    engine = _import_handoff_engine(cwd)
+    if engine is None:
+        return
+    record = {
+        "objective": os.environ.get("DEKSPEC_HANDOFF_OBJECTIVE", ""),
+        "artifacts_touched": [],
+        "decisions": [],
+        "open_questions": [],
+        "commands_run": [],
+        "test_status": "",
+        "files_changed": [],
+        "next_safest_action": os.environ.get("DEKSPEC_HANDOFF_NEXT_ACTION", ""),
+    }
+    if not _record_has_signal(record):
+        return
+    try:
+        engine.write_handoff(cwd, record)
+    except Exception:
+        return
+
+
+def _run_doctor(cwd: Path, timeout: int) -> dict | None:
+    """Run `dekspec doctor --json`. Return parsed payload, or None on error/no-data."""
+    try:
+        proc = subprocess.run(
+            ["dekspec", "audit", "doctor", "--at", str(cwd), "--json"],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+    if not proc.stdout.strip():
+        return None
+    try:
+        payload = json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _drift_count(payload: dict) -> int:
+    """Extract verify-vendored section finding count from doctor JSON."""
+    sections = payload.get("sections") if isinstance(payload, dict) else None
+    if not isinstance(sections, list):
+        return 0
+    for section in sections:
+        if not isinstance(section, dict):
+            continue
+        if section.get("name") == "verify-vendored":
+            return int(section.get("findings_count") or 0)
+    return 0
+
+
+def _audit_counts(payload: dict) -> tuple[int, int, int]:
+    """Extract (critical, important, minor) finding counts from doctor JSON.
+
+    Defensive: doctor JSON shape varies across versions; return zeros on any
+    structural mismatch so the hook never crashes the parent Stop event.
+    """
+    audit = payload.get("audit_linkage") if isinstance(payload, dict) else None
+    if not isinstance(audit, dict):
+        return 0, 0, 0
+    return (
+        int(audit.get("critical") or 0),
+        int(audit.get("important") or 0),
+        int(audit.get("minor") or 0),
+    )
+
+
+if __name__ == "__main__":
+    sys.exit(main())

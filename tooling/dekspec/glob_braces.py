@@ -17,7 +17,11 @@ from __future__ import annotations
 
 import re
 
-__all__ = ["expand_braces"]
+__all__ = ["EXPANSION_LIMIT", "expand_braces"]
+
+#: Surface skeleton (ADR-062) for IB-191 O-8: the shared brace-expansion
+#: limit. Neutral until IB-191 sets it and makes `expand_braces` enforce it.
+EXPANSION_LIMIT: int | None = None
 
 _BRACE = re.compile(r"\{([^{}]*)\}")
 

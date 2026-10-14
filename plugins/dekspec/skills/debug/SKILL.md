@@ -33,7 +33,7 @@ repair of source is governed work and goes through core.
 
 ## Authority
 
-The engine commands this tool may name are exactly `dekspec implement
+The engine commands this tool may name are exactly `dekbuilder implement
 resolve|ready|next|ack|status`, the read-only `dekspec ib status` and
 `dekspec ib context`, `dekspec resource doc` and `--help` probes. It never
 authorizes, approves, amends, unblocks, starts, plans, verifies, reviews or
@@ -47,37 +47,37 @@ Core's caller contract is the `implement` section of
 `dekspec resource doc cli-reference`; `resolve`, `ready`, `next`, `ack` and
 `status` are the authority. In the target repository:
 
-1. Probe `dekspec implement --help`. If it is unavailable, save the diagnosis and
+1. Probe `dekbuilder implement --help`. If it is unavailable, save the diagnosis and
    report that repair needs a core release with implementation support.
-2. Resolve with `dekspec implement resolve "REQUEST" --json`. Save the resolved
+2. Resolve with `dekbuilder implement resolve "REQUEST" --json`. Save the resolved
    target IDs (TARGETS) with the diagnosis so a continuation uses the same
    request. If resolution is ambiguous or not found, preserve the candidates and
    problems instead of guessing. A repair with no approved executable contract
    is missing preparation: report it and point to `/dekspec:spec-intent` or
    `/dekspec:write-ibs`; do not author or approve one on this path.
-3. Read `dekspec implement status "TARGETS" --json`. If any delivery lists
+3. Read `dekbuilder implement status "TARGETS" --json`. If any delivery lists
    `outstanding_dispatches`, report them (id, role, IB). Call `next` only when
    the engineer's request is an explicit resume of that delivery; otherwise stop
    and say how to resume (repeat the request as an explicit resume, or run
-   `/dekspec:implement TARGETS`), because core reissues those dispatches and a
+   `/dekbuilder:implement TARGETS`), because core reissues those dispatches and a
    session still running them would duplicate the work. A started delivery
    resumes without a new readiness gate.
-4. For a new run, call `dekspec implement ready "TARGETS" --json`. If it is not
+4. For a new run, call `dekbuilder implement ready "TARGETS" --json`. If it is not
    ready, report every `missing` item exactly as returned — `target`, `code`,
    `detail` and `fix` — including `intent-autonomy` and
    `mission-autonomy-ceiling`, which are the engineer's explicit restrictions,
    and stop. Readiness is a predicate, not a READY status; never change autonomy
    or author, accept or approve anything to clear it.
-5. Drive core. The core `/dekspec:implement` skill is user-invoked, so you cannot
+5. Drive core. The core `/dekbuilder:implement` skill is user-invoked, so you cannot
    invoke it. When this host can dispatch fresh-context agents (the Agent tool in
    Claude Code), drive core's loop exactly as that skill does: run
-   `dekspec implement next "TARGETS" --json` and act on its `action`, then call
+   `dekbuilder implement next "TARGETS" --json` and act on its `action`, then call
    `next` again with the same TARGETS until it is `done`, `blocked` or
    `not-ready`.
 
    | `action` | What you do |
    |---|---|
-   | `dispatch` | Launch one fresh-context agent (Agent tool, general-purpose) whose prompt is `prompt`, verbatim, with nothing added or removed. When it returns, run `dekspec implement ack "TARGETS" --dispatch <id> --summary "<its final report>"`, then call `next`. |
+   | `dispatch` | Launch one fresh-context agent (Agent tool, general-purpose) whose prompt is `prompt`, verbatim, with nothing added or removed. When it returns, run `dekbuilder implement ack "TARGETS" --dispatch <id> --summary "<its final report>"`, then call `next`. |
    | `wait` | Wait `seconds` with the host's timer (in Claude Code, a background `sleep`), then call `next`. |
    | `done` | Stop and report the result (step 6). |
    | `blocked` (exit code 3) | Stop. Report each target's outcome and each blocker's `kind`, `detail` and `fix` as returned (where a blocker carries no `fix`, the decision or change that would resolve it). |
@@ -92,7 +92,7 @@ Core's caller contract is the `implement` section of
    ready work starts.
 
    When the host cannot dispatch fresh-context agents, ask the engineer to run
-   `/dekspec:implement TARGETS` and stop; their explicit request is the
+   `/dekbuilder:implement TARGETS` and stop; their explicit request is the
    authorization.
 6. Only `done` with `result.outcome` `complete` is a fix. A passing worktree, an
    open pull request, a head someone else merged, or a delivery whose `state` is

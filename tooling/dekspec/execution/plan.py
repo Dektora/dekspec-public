@@ -170,7 +170,7 @@ def validate_plan(
             errors.append(f"{tid} was retired in an earlier revision; use a new id")
 
     deviations: list[str] = []
-    if contract.is_delegated:
+    if contract.is_executable:
         planned_hypothesis = {p for h in contract.hypothesis for p in re.findall(r"`([^`]+)`", h)}
         for t in tasks.values():
             for f in t["files"]:

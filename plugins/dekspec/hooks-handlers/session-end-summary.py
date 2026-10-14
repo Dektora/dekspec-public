@@ -87,34 +87,20 @@ def main() -> int:
 
 
 def _import_handoff_engine(cwd: Path):
-    """Best-effort load of the native rotation-handoff engine.
-
-    The handlers run from the plugin tree, not the installed package. Prefer the
-    in-repo source at `<repo>/tooling/dekspec/rotation_handoff.py` (loaded
-    directly from its file, so it works even when a different `dekspec` package
-    is already on sys.path), then fall back to a plain import. Returns the
-    module or None.
-    """
-    src = cwd / "tooling" / "dekspec" / "rotation_handoff.py"
-    if src.is_file():
-        try:
-            import importlib.util
-
-            spec = importlib.util.spec_from_file_location(
-                "dekspec_rotation_handoff_engine", src
-            )
-            if spec and spec.loader:
-                mod = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(mod)
-                return mod
-        except Exception:
-            pass
-    try:
-        from dekspec import rotation_handoff  # type: ignore
-
-        return rotation_handoff
-    except Exception:
+    """Optional external Tools transport; absence never affects Spec bookkeeping."""
+    executable = shutil.which("dektools")
+    if executable is None:
         return None
+    from types import SimpleNamespace
+
+    def write_handoff(root, record):
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", encoding="utf-8") as payload:
+            json.dump(record, payload)
+            payload.flush()
+            subprocess.run([executable, "handoff", "write", "--at", str(root), "--input", payload.name],
+                           capture_output=True, timeout=8, check=True)
+    return SimpleNamespace(write_handoff=write_handoff)
 
 
 def _record_has_signal(record: dict) -> bool:

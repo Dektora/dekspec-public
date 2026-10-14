@@ -51,6 +51,8 @@ to keep concerns clean).
 """
 from __future__ import annotations
 
+from dekspec.spec_kinds import BEHAVIOR_SPEC_NAMES as BS
+
 import json
 import sqlite3
 from datetime import datetime, timezone
@@ -76,10 +78,11 @@ def init_schema(conn: sqlite3.Connection) -> None:
     if current >= INDEX_SCHEMA_VERSION:
         return
 
+    scripts = []
     # v1 — compile-run side. CREATE IF NOT EXISTS so an existing v1 DB
     # is left untouched and only the v2 additive tables below land.
     if current < 1:
-        conn.executescript("""
+        scripts.append("""
             CREATE TABLE IF NOT EXISTS runs (
                 run_id          TEXT PRIMARY KEY,
                 timestamp       TEXT NOT NULL,
@@ -125,7 +128,7 @@ def init_schema(conn: sqlite3.Connection) -> None:
 
     # v2 — execution-lifecycle side. Additive; never alters v1 tables.
     if current < 2:
-        conn.executescript("""
+        scripts.append("""
             CREATE TABLE IF NOT EXISTS execution_attempts (
                 id                          INTEGER PRIMARY KEY AUTOINCREMENT,
                 intent_id                   TEXT NOT NULL,
@@ -182,8 +185,14 @@ def init_schema(conn: sqlite3.Connection) -> None:
             CREATE INDEX IF NOT EXISTS idx_merge_first_pass ON merge_outcomes(first_pass_success);
         """)
 
-    conn.execute(f"PRAGMA user_version = {INDEX_SCHEMA_VERSION}")
-    conn.commit()
+    # executescript commits any pending transaction first, as before. Put all
+    # additive DDL and the version stamp in one durable, atomic transaction.
+    try:
+        conn.executescript("BEGIN IMMEDIATE;\n" + "\n".join(scripts)
+                           + f"\nPRAGMA user_version = {INDEX_SCHEMA_VERSION};\nCOMMIT;")
+    except BaseException:
+        conn.rollback()
+        raise
 
 
 def _kind_from_artifact_id(artifact_id: str) -> str:
@@ -194,7 +203,7 @@ def _kind_from_artifact_id(artifact_id: str) -> str:
     if artifact_id == "CONSTITUTION":
         return "constitution"
     for prefix, kind in (
-        ("ADR-", "adr"), ("AE-", "ae"), ("WS-", "ws"),
+        ("ADR-", "adr"), ("AE-", "ae"), *((p, BS.old_id_prefixes[0].lower()) for p in BS.id_starts),
         ("IC-", "ic"), ("IB-", "ib"),
         ("INT-", "intent"), ("MSN-", "mission"),
         ("SP-", "sp"),

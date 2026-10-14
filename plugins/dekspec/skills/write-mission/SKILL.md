@@ -5,13 +5,17 @@ mode: full
 reasoning_effort: max
 disable-model-invocation: false
 allowed-tools: Read Write Edit Grep Glob Bash Agent
-argument-hint: [--canonical] [--provisional <slug>] [--help | --teaching | --audit | --review | --approve | --activate | --complete | --kill | --supersede] [description or path to Mission]
+argument-hint: "[--canonical] [--provisional <slug>] [--help | --teaching | --audit | --review | --approve | --activate | --complete | --kill | --supersede] [description or path to Mission]"
 related_skills: [write-intent, spec-intent, write-sv, write-ae]
 ---
 
+<!-- Before writing content, read `dekspec resource purpose mission` for the canonical purpose and routing items. See [_lib/artifact_purpose.md](../_lib/artifact_purpose.md). -->
+
+Before writing content, read this type’s purpose entry using the command above; follow the [artifact purpose guide](../_lib/artifact_purpose.md).
+
 > **Vendored asset paths:** Template + doc paths below resolve via `dekspec resource template <name>` / `dekspec resource doc <name>` (wheel-bundled since v0.91.0; consumer-fs override wins when present). See [`_lib/vendored_assets.md`](../_lib/vendored_assets.md) for the full resolution rule.
 
-> **Scope of this skill (Phase 2).** A Mission (`MSN-NNN`) holds an ordered queue of Intents that share an outcome, a feature flag, a release boundary, or a kill criterion. Most work in Phase 1 did not need a Mission; single-Intent work skips this skill entirely. A Mission is created when *any* of: the work plausibly decomposes into more than one Intent at first sketch; a feature flag will guard partial state during rollout; multiple Intents need to share an outcome / out-of-scope contract / kill criterion; the work spans more than ~1 week of execution.
+> **Scope of this skill (Phase 2).** Read `dekspec resource purpose mission`, especially `mission.holds.outcome`, `mission.holds.creation-triggers` and `mission.not.single-intent`, before writing content.
 
 > **⛔ CONTEXT CHECK** — see [`_lib/context_check.md`](../_lib/context_check.md)
 >
@@ -121,15 +125,11 @@ Rationale: context isolation (no parent-session contamination), indirect quality
 
 #### 1a. Decision Gate — is a Mission required?
 
-A Mission is created when **any** of:
+Apply `mission.holds.creation-triggers` from `dekspec resource purpose mission`. Examples of those triggers: ≥ 2 Intents at first sketch, a rollout flag, a shared out-of-scope contract or kill criterion, or more than ~1 week of work.
 
-- Work plausibly decomposes into more than one Intent at first sketch (≥ 2 Intents)
-- A feature flag will guard partial state during rollout
-- Multiple Intents need to share an outcome, an out-of-scope contract, or a kill criterion
-- Work spans more than ~1 week of execution
-- **Convert-from-oversized entry:** an existing DRAFT Intent whose `--analyze` size assessment exceeded the caps (the P2 "re-split before acceptance" finding — OVERSIZED is no longer a status, ADR-057) has a natural decomposition that is an umbrella over N capability surfaces (CONVERT-TO-MISSION path per `_lib/oversized_splitting.md`). The Mission inherits the over-cap Intent's content; the Intent file is deleted (no SUPERSEDED shell). Recognized when the engineer's description begins with `from-oversized: <INT-NNN-path>` or when `/write-intent --analyze` dispatches the CONVERT-TO-MISSION branch directly.
+**Convert-from-oversized entry:** an existing DRAFT Intent whose `--analyze` size assessment exceeded the caps (the P2 "re-split before acceptance" finding — OVERSIZED is no longer a status, ADR-057) has a natural decomposition that is an umbrella over N capability surfaces (CONVERT-TO-MISSION path per `_lib/oversized_splitting.md`). The Mission inherits the over-cap Intent's content; the Intent file is deleted (no SUPERSEDED shell). Recognized when the engineer's description begins with `from-oversized: <INT-NNN-path>` or when `/write-intent --analyze` dispatches the CONVERT-TO-MISSION branch directly.
 
-If **none** of the above hold, refuse with: "Single-Intent work skips the Mission layer. Run `/write-intent <description>` directly. The Mission rigor is overhead for work that fits in one Intent."
+If neither a purpose-record trigger nor the convert-from-oversized entry applies, refuse with: "Single-Intent work skips the Mission layer. Run `/write-intent <description>` directly. The Mission rigor is overhead for work that fits in one Intent."
 
 #### 1a.0. Provisional-vs-canonical routing — the hard default (ADR-030)
 

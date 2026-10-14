@@ -61,3 +61,20 @@ methodology_profile: full
 #   status: [LOCKED, ACCEPTED]
 #   include: [CONSTITUTION, SECURITY_PROFILE, VISION, GLOSSARY, AE, ADR, IC, WS]
 #   required: true
+
+# Optional declared brief identities (ADR-078). Paths are repository-relative.
+# named_briefs:
+#   - id: IB-AMP
+#     path: .amp/briefs/IB-AMP.md
+
+# Optional pointers to project rules; these do not configure role dispatches.
+# Each value is a repository-relative path (no .. segments or backslashes),
+# or "none: <reason>". Use one folder/index when a kind spans several files.
+# Paths need not exist and their contents are not read as role policy.
+# roles:
+#   project_rules:
+#     gates: docs/project-rules/gates.md
+#     write_paths: docs/project-rules/write-paths.md
+#     credentials: "none: no per-role credential rules yet"
+#     review_concerns: docs/project-rules/review.md
+#     models: "none: waiting for ADR-067 project mapping"

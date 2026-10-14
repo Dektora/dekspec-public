@@ -43,6 +43,7 @@ from dekspec.execution.history import record_ids_in_history, record_versions
 from dekspec.execution.record import EXECUTION_DIRNAME, parse_record_text
 from dekspec.execution.scope import ScopeError, resolve_base
 from dekspec.execution.settings import load_settings_at
+from dekspec.execution.ranges import Attribution, resolve_ranges
 
 __all__ = ["DeliveryResult", "delivery_check", "delivery_verify", "discover_delivery_ibs"]
 
@@ -57,6 +58,9 @@ class DeliveryResult:
     #: and ``"integration"`` — and what it executed itself (O-4, IB-146).
     relied_on: dict[str, Any] = field(default_factory=dict)
     executed: list[str] = field(default_factory=list)
+    ranges: list[dict[str, Any]] = field(default_factory=list)
+    kind: str = "none"
+    intent: str | None = None
 
     @property
     def ok(self) -> bool:
@@ -64,7 +68,8 @@ class DeliveryResult:
 
     def as_dict(self) -> dict[str, Any]:
         return {"ok": self.ok, "ibs": self.ibs, "checks": [c.as_dict() for c in self.checks],
-                "gates": [g.as_dict() for g in self.gates]}
+                "gates": [g.as_dict() for g in self.gates], "ranges": self.ranges,
+                "kind": self.kind, "intent": self.intent}
 
 
 def discover_delivery_ibs(engine: Engine, base: str | None = None) -> list[str]:
@@ -126,8 +131,10 @@ def delivery_verify(engine: Engine, ibs: list[str], actor: str, *, base: str | N
         raise ExecutionError("no active IBs to verify in this delivery")
     try:
         base_commit: str | None = resolve_base(engine.repo_root, base)
+        attribution = resolve_ranges(engine, base)
     except ScopeError:
         base_commit = None
+        attribution = Attribution("")
     per_ib: dict[str, dict[str, Any]] = {}
     relies_on: dict[str, dict[str, Any]] = {}
     executed: dict[str, dict[str, Any]] = {}
@@ -148,8 +155,15 @@ def delivery_verify(engine: Engine, ibs: list[str], actor: str, *, base: str | N
     if integration and engine.fingerprint() != fp:
         integration.update(status="failed", tail="the integration command changed the repository content; "
                                                   "its result cannot be bound to what was tested")
+    if attribution.ranges:
+        after_ranges = resolve_ranges(engine, base)
+        if after_ranges.binding != attribution.binding:
+            attribution.problems.append("range provenance changed during delivery verification; restore and re-verify the final candidate")
+        attribution.problems.extend(p for p in after_ranges.problems if p not in attribution.problems)
     summary = {
         "kind": "delivery",
+        "ranges": attribution.ranges,
+        "attribution_problems": attribution.problems,
         "ibs": ibs,
         "fingerprint": fp,
         "commit": current_commit(engine.repo_root),
@@ -158,6 +172,7 @@ def delivery_verify(engine: Engine, ibs: list[str], actor: str, *, base: str | N
         "executed": executed,
         "integration": integration,
         "overall": "passed" if all(e["overall"] == "passed" for e in per_ib.values())
+        and not attribution.problems
         and (integration is None or integration["status"] == "passed") else "failed",
     }
     for ib in ibs:
@@ -340,6 +355,7 @@ def _retirement_check(engine: Engine, ib: str, base_commit: str, active: list[st
     work — inside or outside the retired Scope, or on a protected surface —
     cannot land it."""
     from dekspec.diff_confinement import matches_any_glob
+    from dekspec.execution.lifecycle_bookkeeping import bookkeeping_paths, is_protection_bookkeeping
     from dekspec.execution.scope import (_bookkeeping_only, _is_lifecycle, _never_pre_run, _protected_hits,
                                          changed_files, predates_run)
 
@@ -363,10 +379,14 @@ def _retirement_check(engine: Engine, ib: str, base_commit: str, active: list[st
     # are judged like its code: unchanged since the anchor, or left by its run.
     ib_files = {engine.contract(i).rel_path for i in delivered} | {
         a for o in owners for a in o.acceptance_asset_paths()}
+    covered = bookkeeping_paths(engine.repo_root, [engine.contract(i) for i in delivered], base_commit,
+                                spec_root=engine.spec_root)
     notes: list[str] = []
     left: list[str] = []
     for change in changed_files(engine.repo_root, base_commit):
         paths = [p for p in (change.path, change.old_path) if p]
+        if is_protection_bookkeeping(engine.repo_root, change, covered, base_commit):
+            continue
         hits = [(s, h) for s in c.protected if (h := _protected_hits(engine.repo_root, base_commit, change, s, notes))]
         if hits:
             if not any(all(_explicitly_owns(o, p, s) for s, _h in hits for p in paths) and not any(
@@ -404,6 +424,8 @@ def delivery_check(engine: Engine, ibs: list[str] | None = None, *, base: str | 
     the IB's acceptance, and the integration command for the base's exact
     command, are not executed again; ``relied_on`` names that evidence and
     ``executed`` lists what the gate executed itself."""
+    from dekspec.execution.briefless import judge_change
+
     base = base or engine.base
     try:
         base_commit = resolve_base(engine.repo_root, base)
@@ -411,47 +433,35 @@ def delivery_check(engine: Engine, ibs: list[str] | None = None, *, base: str | 
             # CI: the delivery must not choose its own verification policy.
             engine = Engine(engine.repo_root, spec_root=engine.spec_root, base=base,
                             settings=load_settings_at(engine.repo_root, base_commit, spec_root=engine.spec_root))
-        discovered = discover_delivery_ibs(engine, base)
-        anomalies = engine.delivery_anomalies(base)
     except ScopeError as exc:
         result = DeliveryResult(ibs=[])
         result.checks.append(Check("base-resolvable", False, str(exc)))
         return result
-    try:
-        selected = [engine.contract(ib).ib_id for ib in ibs] if ibs else []
-    except ExecutionError as exc:
-        result = DeliveryResult(ibs=[])
-        result.checks.append(Check("ib-selection", False, str(exc)))
+    result = judge_change(engine, base=base, ibs=ibs)
+    if result.kind != "briefs":
         return result
-    # A landing decision covers every delivered IB: an explicit selection can
-    # add IBs, never hide one (a partial check is a diagnostic, not READY).
-    evaluated = sorted(set(selected) | set(discovered))
-    result = DeliveryResult(ibs=evaluated)
-    result.checks.append(Check("ib-file-integrity", not anomalies, "; ".join(anomalies) or "no refused IB-file changes"))
-    result.checks.extend(_record_history_checks(engine, base_commit))
-    omitted = sorted(set(discovered) - set(selected)) if selected else []
-    if omitted:
-        result.checks.append(Check("delivery-coverage", False,
-                                   f"the selection omits delivered IB(s) {', '.join(omitted)}; they were evaluated "
-                                   "anyway, and a partial selection never lands"))
-    ibs = evaluated
-    if not ibs:
-        result.checks.append(Check("governed-ibs", True, "this change delivers no delegated IB"))
-        return result
+    ibs = result.ibs
+    attribution = resolve_ranges(engine, base)
 
-    base_ref = base or "main"
-    proc = subprocess.run(["git", "merge-base", "--is-ancestor", base_ref, "HEAD"], cwd=str(engine.repo_root),
-                          capture_output=True)
-    if proc.returncode not in (0, 1):
-        proc = subprocess.run(["git", "merge-base", "--is-ancestor", f"origin/{base_ref}", "HEAD"],
-                              cwd=str(engine.repo_root), capture_output=True)
-    current = proc.returncode == 0
-    result.checks.append(Check(
-        "branch-current-with-base", current,
-        f"{base_ref} is an ancestor of HEAD" if current
-        else f"{base_ref} has moved past this branch — rebase or merge it, then re-verify"))
+    lean = any(engine.contract(ib).is_lean for ib in ibs)
+    if lean:
+        result.checks.append(Check(
+            "lean-single-brief", len(ibs) == 1,
+            "one lean brief" if len(ibs) == 1 else "a lean delivery must hold exactly one brief"))
+    else:
+        base_ref = base or "main"
+        proc = subprocess.run(["git", "merge-base", "--is-ancestor", base_ref, "HEAD"], cwd=str(engine.repo_root),
+                              capture_output=True)
+        if proc.returncode not in (0, 1):
+            proc = subprocess.run(["git", "merge-base", "--is-ancestor", f"origin/{base_ref}", "HEAD"],
+                                  cwd=str(engine.repo_root), capture_output=True)
+        current = proc.returncode == 0
+        result.checks.append(Check(
+            "branch-current-with-base", current,
+            f"{base_ref} is an ancestor of HEAD" if current
+            else f"{base_ref} has moved past this branch — rebase or merge it, then re-verify"))
 
-    fp = engine.fingerprint()
+    fp = engine.fingerprint() if not lean else ""
     retired = [ib for ib in ibs if engine.contract(ib).status in RETIRED_STATUSES]
     active = [ib for ib in ibs if ib not in retired]
     for ib in retired:
@@ -462,7 +472,7 @@ def delivery_check(engine: Engine, ibs: list[str] | None = None, *, base: str | 
         except ExecutionError as exc:
             gate = GateResult(ib=ib, checks=[Check("loadable", False, str(exc))])
         result.gates.append(gate)
-        standing = _standing(engine, ib, reuse_actor, active, fp, base_commit, base) if rerun else None
+        standing = _standing(engine, ib, reuse_actor, active, fp, base_commit, base) if rerun and not lean else None
         if standing is not None:
             delivery, own = standing
             result.relied_on[ib] = {"delivery": _ref(ib, delivery), "evidence": _ref(ib, own)}
@@ -483,53 +493,62 @@ def delivery_check(engine: Engine, ibs: list[str] | None = None, *, base: str | 
                                        + ("" if fresh["overall"] == "passed" else " — " + "; ".join(
                                            _failure_reasons(fresh)))))
 
-    policy = _integration_policy(engine, base_commit)
-    relied = _standing_integration(engine, reuse_actor, active, fp, base_commit, base, policy) \
-        if policy and rerun else None
-    if relied is not None:
-        ident, delivery = relied
-        result.relied_on["integration"] = _ref(ident, delivery)
-        result.checks.append(Check(
-            "integrated-verification", True,
-            f"not re-executed: {reuse_actor}'s own passing delivery verification {ident}#{delivery.seq} ran the "
-            f"base's integration command at this binding ({policy})"))
-    elif policy and rerun:
-        # CI executes the base's integration command itself; a recorded
-        # success is not evidence of what happens now.
-        result.executed.append("integration")
-        ran = _integration(engine, policy)
-        changed = engine.fingerprint() != fp
-        ok = ran is not None and ran["status"] == "passed" and not changed
-        result.checks.append(Check(
-            "integrated-verification", ok,
-            f"integration command re-executed at this head: passed ({policy})" if ok else
-            ("the integration command changed the repository content" if changed else
-             f"integration command re-executed at this head: exit {ran['exit_code']} ({policy})"
-             + (f" — {ran['tail'][-300:]}" if ran and ran.get("tail") else ""))))
-    elif policy and active:
-        latest = None
-        for ib in active:
-            _rec, _ev, st = engine.state(engine.contract(ib).ib_id)
-            ev = st.latest_evidence("delivery")
-            if ev and (latest is None or ev[1]["fingerprint"] == fp):
-                latest = ev[1]
-        integration = (latest or {}).get("integration") or {}
-        problems = []
-        if not latest:
-            problems.append("no `dekspec delivery verify` evidence")
-        else:
-            if latest["fingerprint"] != fp:
-                problems.append("the delivery verification predates this head")
-            if not set(active) <= set(latest.get("ibs", [])):
-                problems.append("the delivery verification does not cover every IB")
-            if integration.get("command") != policy:
-                problems.append(f"the integration command recorded ({integration.get('command') or 'none'}) is "
-                                f"not the base's ({policy})")
-            elif integration.get("status") != "passed":
-                problems.append("the integration command failed")
-            if latest["overall"] != "passed":
-                problems.append("the delivery verification failed")
-        result.checks.append(Check("integrated-verification", not problems,
-                                   "delivery verification current at this head, integration passed" if not problems
-                                   else "; ".join(problems)))
+    if not lean:
+        policy = _integration_policy(engine, base_commit)
+        relied = _standing_integration(engine, reuse_actor, active, fp, base_commit, base, policy) \
+            if policy and rerun else None
+        if relied is not None:
+            ident, delivery = relied
+            result.relied_on["integration"] = _ref(ident, delivery)
+            result.checks.append(Check(
+                "integrated-verification", True,
+                f"not re-executed: {reuse_actor}'s own passing delivery verification {ident}#{delivery.seq} ran the "
+                f"base's integration command at this binding ({policy})"))
+        elif policy and rerun:
+            # CI executes the base's integration command itself; a recorded
+            # success is not evidence of what happens now.
+            result.executed.append("integration")
+            ran = _integration(engine, policy)
+            changed = engine.fingerprint() != fp
+            ok = ran is not None and ran["status"] == "passed" and not changed
+            result.checks.append(Check(
+                "integrated-verification", ok,
+                f"integration command re-executed at this head: passed ({policy})" if ok else
+                ("the integration command changed the repository content" if changed else
+                 f"integration command re-executed at this head: exit {ran['exit_code']} ({policy})"
+                 + (f" — {ran['tail'][-300:]}" if ran and ran.get("tail") else ""))))
+        elif policy and active:
+            latest = None
+            for ib in active:
+                _rec, _ev, st = engine.state(engine.contract(ib).ib_id)
+                ev = st.latest_evidence("delivery")
+                if ev and (latest is None or ev[1]["fingerprint"] == fp):
+                    latest = ev[1]
+            integration = (latest or {}).get("integration") or {}
+            problems = []
+            if not latest:
+                problems.append("no `dekspec delivery verify` evidence")
+            else:
+                if latest["fingerprint"] != fp:
+                    problems.append("the delivery verification predates this head")
+                if not set(active) <= set(latest.get("ibs", [])):
+                    problems.append("the delivery verification does not cover every IB")
+                if integration.get("command") != policy:
+                    problems.append(f"the integration command recorded ({integration.get('command') or 'none'}) is "
+                                    f"not the base's ({policy})")
+                elif integration.get("status") != "passed":
+                    problems.append("the integration command failed")
+                if latest["overall"] != "passed":
+                    problems.append("the delivery verification failed")
+            result.checks.append(Check("integrated-verification", not problems,
+                                       "delivery verification current at this head, integration passed" if not problems
+                                       else "; ".join(problems)))
+    if attribution.ranges:
+        after_ranges = resolve_ranges(engine, base)
+        if after_ranges.binding != attribution.binding:
+            result.checks.append(Check("delivery-ranges-current", False,
+                                       "range provenance changed during the check; restore and re-verify the final candidate"))
+        new_problems = [p for p in after_ranges.problems if p not in attribution.problems]
+        if new_problems:
+            result.checks.append(Check("delivery-ranges-valid", False, "; ".join(new_problems)))
     return result

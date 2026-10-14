@@ -33,6 +33,8 @@ from typing import Any
 
 import yaml
 
+from dekspec.spec_kinds import canonical_rule_id
+
 
 class ProfileNotFoundError(KeyError):
     """Raised when a requested profile name has no matching manifest."""
@@ -66,11 +68,11 @@ class AuditProfile:
 
     def has_rule(self, rule_code: str) -> bool:
         """Convenience predicate for runtime rule gating."""
-        return rule_code in self.rules
+        return canonical_rule_id(rule_code) in self.rules
 
     def param(self, rule_code: str, key: str, default: Any = None) -> Any:
         """Read a parameter for `rule_code`. Falls back to `default` if unset."""
-        return self.parameters.get(rule_code, {}).get(key, default)
+        return self.parameters.get(canonical_rule_id(rule_code), {}).get(key, default)
 
     def gate(self, kind: str, transition: str) -> dict[str, Any] | None:
         """Return the approval gate for `(kind, transition)`, or None if the
@@ -147,22 +149,30 @@ def load_profile(name: str = "v1") -> AuditProfile:
             raise ProfileLoadError(
                 f"profile {prof_name!r} has malformed `rules:` (expected list of strings)"
             )
-        rules.update(raw_rules)
+        rules.update(canonical_rule_id(rule) for rule in raw_rules)
         # Optional `remove:` key — for future use; reserved + accepted but currently unused.
         for to_remove in raw.get("remove", []) or []:
-            rules.discard(to_remove)
+            rules.discard(canonical_rule_id(to_remove))
         raw_params = raw.get("parameters", {}) or {}
         if not isinstance(raw_params, dict):
             raise ProfileLoadError(
                 f"profile {prof_name!r} has malformed `parameters:` (expected mapping)"
             )
+        parameter_ids: dict[str, str] = {}
         for rule_code, rule_params in raw_params.items():
+            canonical = canonical_rule_id(rule_code)
+            if canonical in parameter_ids:
+                raise ProfileLoadError(
+                    f"profile {prof_name!r} parameters name both "
+                    f"{parameter_ids[canonical]!r} and {rule_code!r} for the same rule"
+                )
+            parameter_ids[canonical] = rule_code
             if not isinstance(rule_params, dict):
                 raise ProfileLoadError(
                     f"profile {prof_name!r} parameters for {rule_code!r} "
                     f"must be a mapping, got {type(rule_params).__name__}"
                 )
-            params.setdefault(rule_code, {}).update(rule_params)
+            params.setdefault(canonical, {}).update(rule_params)
         # Optional `approval_gates:` block (INT-021) — composed per
         # artifact-kind, per-transition. Leaves override parents at the
         # (kind, transition) granularity.

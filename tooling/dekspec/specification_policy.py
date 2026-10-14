@@ -9,6 +9,9 @@ own a second readiness-specific version of it.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
+import hashlib
+import pickle
 from pathlib import Path
 from typing import Collection
 
@@ -60,7 +63,25 @@ def load_policy(repo_root: Path) -> ReferencePolicy:
     if not path.is_file():
         return ReferencePolicy()
     try:
-        source = path.read_text(encoding='utf-8')
+        content = path.read_bytes()
+    except OSError as exc:
+        raise ReferencePolicyError(f'Cannot read specification policy in {path}: {exc}') from exc
+    # Keep the existing schema loader's lifecycle; include its current content
+    # so a replaced or modified schema cannot reuse an earlier policy decision.
+    try:
+        schema = load_schema('dekspec_config')['properties']['specification']
+        schema_digest = hashlib.sha256(pickle.dumps(schema)).digest()
+    except Exception:
+        return _policy_from_bytes.__wrapped__(str(path), content, b'')
+    # Bound retained policy inputs as well as entry count (at most 32 MiB).
+    parse_policy = _policy_from_bytes if len(content) <= 256 * 1024 else _policy_from_bytes.__wrapped__
+    return parse_policy(str(path), content, schema_digest)
+
+
+@lru_cache(maxsize=128)
+def _policy_from_bytes(path: str, content: bytes, schema_digest: bytes) -> ReferencePolicy:
+    source = content.decode('utf-8').replace('\r\n', '\n').replace('\r', '\n')
+    try:
         raw = yaml.safe_load(source)
         node = yaml.compose(source)
     except (OSError, yaml.YAMLError) as exc:

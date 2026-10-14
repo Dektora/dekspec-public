@@ -118,6 +118,9 @@ def _resolve_library_root(here: Path, env_override: str | None) -> Path:
     source_root = here.parent.parent
     if (source_root / "templates").is_dir():
         return source_root
+    product_root = here.parent.parent.parent
+    if (product_root / "templates").is_dir():
+        return product_root
     vendored = here / "_vendored"
     if (vendored / "templates").is_dir():
         return vendored
@@ -260,6 +263,7 @@ def resolve_lib(name: str, repo_root: Path | None = None) -> Path | None:
          or a consumer that vendored the plugin tree.
       2. ``<library_root>/skills/_lib/<name>`` — the wheel ``_vendored/``
          copy materialized by ADR-045 / INT-179.
+      3. ``<library_root>/plugins/dekspec/skills/_lib/<name>`` — product source.
 
     Returns the first hit as an absolute :class:`Path`, or ``None``.
     Sub-paths are accepted (``handlers/x.md``) so nested assets resolve.
@@ -273,6 +277,9 @@ def resolve_lib(name: str, repo_root: Path | None = None) -> Path | None:
     vendored = library_root() / "skills" / "_lib" / name
     if vendored.is_file():
         return vendored.resolve()
+    source = library_root() / "plugins" / "dekspec" / "skills" / "_lib" / name
+    if source.is_file():
+        return source.resolve()
     return None
 
 def resolve_doc(name: str, repo_root: Path | None = None) -> Path | None:

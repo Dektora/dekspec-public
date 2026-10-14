@@ -15,11 +15,13 @@ link or flipping a mode is a change. The manifest is stored with each verdict
 exactly which paths changed since a review — independent of git history,
 spaces or encodings in paths, or uncommitted work.
 
-Exactly four normalisations, each because the change carries no behavior and
+Exactly five normalisations, each because the change carries no behavior and
 would otherwise make completion impossible to record:
 
-* ``.dekspec/execution/**`` is excluded — recording evidence must not
-  invalidate the evidence it records.
+* Execution record files and their snapshots are excluded — recording
+  evidence must not invalidate the evidence it records. Stray files count.
+* Tracker record files are excluded by :func:`is_tracker_record`, shared
+  with the scope lifecycle check. Other files in tracker folders count.
 * Untracked interpreter/tool caches (``__pycache__/``, ``.pytest_cache/`` …)
   are excluded — running the checks creates them. Tracked files are never
   excluded, and acceptance runs point bytecode caches outside the repository.
@@ -48,7 +50,9 @@ __all__ = [
     "current_commit",
     "fingerprint_of",
     "implementation_fingerprint",
+    "is_tracker_record",
     "manifest_changes",
+    "named_entries",
     "normalize_governed_markdown",
     "worktree_dirty",
 ]
@@ -57,6 +61,13 @@ _VOLATILE_SECTIONS = {"status", "modified", "amendment log"}
 _H2 = re.compile(r"^##\s+(.+?)\s*$")
 _STATUS_META = re.compile(r"^\*\*Status:\*\*.*$")
 _CACHE_DIRS = {"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
+_TRACKER_SUFFIXES = {"jsonl", "json", "yaml", "yml", "toml", "md", "db", "gitignore", "lock"}
+
+
+def is_tracker_record(path: str) -> bool:
+    """Whether a repository-relative path is a lifecycle `br` tracker record."""
+    return (path.split("/", 1)[0] in (".beads", ".beads-issues", ".beads-dekspec")
+            and path.rsplit(".", 1)[-1] in _TRACKER_SUFFIXES)
 
 
 class FingerprintError(RuntimeError):
@@ -139,7 +150,8 @@ def content_manifest(
     for rel in sorted(tracked | untracked):
         # Only the records themselves are excluded: anything else placed under the
         # execution directory is content, bound by evidence like any other file.
-        if is_record_file(rel) or matches_any_glob(rel, excludes) or _is_index(rel, spec_root):
+        if (is_record_file(rel) or is_tracker_record(rel)
+                or matches_any_glob(rel, excludes) or _is_index(rel, spec_root)):
             continue
         if rel not in tracked and _is_cache(rel):
             continue
@@ -187,3 +199,39 @@ def worktree_dirty(repo_root: Path) -> bool:
         if not path.startswith(EXECUTION_DIRNAME + "/"):
             return True
     return False
+
+
+def named_entries(repo_root, paths, *, spec_root="dekspec", head=None):
+    """Entry hashes for named repository paths, omitting absent files.
+
+    Read working files by default, or immutable git objects at ``head``.
+    File kind, executable mode and governed markdown use the manifest rule.
+    An unreadable revision or content raises FingerprintError; no files change.
+    """
+    root = Path(repo_root)
+    wanted = set(paths)
+    try:
+        if head is None:
+            return {rel: entry for rel in sorted(wanted)
+                    if (entry := _entry(root, rel, spec_root)) is not None}
+        commit = _git(root, "rev-parse", "--verify", "--end-of-options", f"{head}^{{commit}}").strip()
+        entries = {}
+        for row in _git(root, "ls-tree", "-r", "-z", commit).split("\0"):
+            if not row:
+                continue
+            metadata, rel = row.split("\t", 1)
+            mode, kind, oid = metadata.split()
+            if rel not in wanted or kind != "blob":
+                continue
+            proc = subprocess.run(["git", "cat-file", "blob", oid], cwd=root, capture_output=True)
+            if proc.returncode:
+                raise FingerprintError(f"cannot read {rel} at {commit}: {proc.stderr.decode(errors='replace')}")
+            content = proc.stdout
+            link = mode == "120000"
+            if not link and rel.startswith(spec_root + "/") and rel.endswith(".md"):
+                content = normalize_governed_markdown(content.decode("utf-8", errors="replace")).encode("utf-8")
+            executable = b"x" if link or int(mode, 8) & stat.S_IXUSR else b"-"
+            entries[rel] = hashlib.sha256((b"l" if link else b"f") + executable + b"\0" + content).hexdigest()
+        return dict(sorted(entries.items()))
+    except OSError as exc:
+        raise FingerprintError(f"cannot read named entries: {exc}") from exc

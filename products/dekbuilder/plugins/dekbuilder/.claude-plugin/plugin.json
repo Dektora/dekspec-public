@@ -1,0 +1,5 @@
+{
+  "name": "dekbuilder",
+  "version": "0.129.0",
+  "description": "Governed in-host construction; consumes installed Spec S0 and canonical Spec policy resources."
+}

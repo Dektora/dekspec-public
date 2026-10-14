@@ -1,3 +1,5 @@
+<!-- Before writing content, read `dekspec resource purpose constitution` for the canonical purpose and routing items. -->
+
 # Constitution: [Project Name]
 
 [One-paragraph preamble. What this Constitution covers, when it applies, and how it relates to the System Vision. 2-4 sentences. Extracted into `preamble` in the IR.]

@@ -4,7 +4,7 @@
 # command.
 #
 # Usage:
-#   bash scripts/install.sh [VERSION] [--platform <host>]
+#   bash scripts/install.sh [VERSION] [--platform <host>] [--with-dektools]
 #
 # Where VERSION is a semver tag (e.g., v0.95.0) or "latest" (default), and
 # <host> is one of: claude (default), codex, antigravity, cursor, copilot, pi.
@@ -20,7 +20,15 @@
 #   1. Resolve the target ref (highest mirror tag for `latest`; explicit
 #      version arg short-circuits the resolve).
 #   2. CLI:     pipx install "git+https://github.com/<MIRROR_REPO>.git@<REF>"
-#               (transitive deps resolve from PyPI).
+#               (transitive deps resolve from PyPI), then DekBuilder from the
+#               same tag into the same environment:
+#               pipx inject dekspec --include-apps
+#                 "dekbuilder @ git+…@<REF>#subdirectory=products/dekbuilder"
+#               DekBuilder pins the DekSpec of its own release exactly, so it is
+#               installed beside that DekSpec and never from a package index.
+#               With --with-dektools, DekTools the same way
+#               (#subdirectory=products/dektools). Never install either by bare
+#               name: a `dektools` on PyPI belongs to someone else.
 #   3. Content: dekspec sync  (reconcile-only — vendoring-from-wheel +
 #               migrate + breaking-guard + drift, against the just-installed
 #               engine; no network, no pip, no plugin shell).
@@ -111,6 +119,7 @@ resolve_latest_tag() {
 # Order-independent; VERSION defaults to "latest", platform to "claude".
 VERSION="latest"
 PLATFORM="claude"
+WITH_DEKTOOLS=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --platform)
@@ -118,8 +127,10 @@ while [[ $# -gt 0 ]]; do
       PLATFORM="$2"; shift 2 ;;
     --platform=*)
       PLATFORM="${1#*=}"; shift ;;
+    --with-dektools)
+      WITH_DEKTOOLS=1; shift ;;
     -h|--help)
-      echo "Usage: bash scripts/install.sh [VERSION] [--platform <host>]"
+      echo "Usage: bash scripts/install.sh [VERSION] [--platform <host>] [--with-dektools]"
       echo "  host: ${SUPPORTED_PLATFORMS// /, }"
       exit 0 ;;
     -*)
@@ -184,6 +195,13 @@ fi
 
 echo "=== 1/3 CLI (pipx → pip-from-git, public mirror) ==="
 pipx install --force "git+${MIRROR_GIT_URL}@${REF}"
+# DekBuilder (construction: `dekbuilder implement`, `dekbuilder wave`) from the
+# same tag, into the same environment, so its exact `dekspec==` pin is met by
+# the DekSpec just installed.
+pipx inject --force --include-apps dekspec "dekbuilder @ git+${MIRROR_GIT_URL}@${REF}#subdirectory=products/dekbuilder"
+if [[ -n "$WITH_DEKTOOLS" ]]; then
+  pipx inject --force --include-apps dekspec "dektools @ git+${MIRROR_GIT_URL}@${REF}#subdirectory=products/dektools"
+fi
 echo
 
 echo "=== 2/3 Content (dekspec sync — reconcile against the installed engine) ==="
@@ -209,28 +227,20 @@ else
   # Emit the per-host skill/command/hook tree into the cwd (INT-147). Writes
   # files only — never executes. The host picks the tree up natively.
   #
-  # The plugin source (skills/commands/hooks) is NOT bundled in the wheel
-  # (ADR-009 — it ships to Claude via the marketplace), so the just-installed
-  # engine has no local plugin tree to emit from. Fetch the plugin from the
-  # mirror at the SAME ref and pass it as --source. Shallow, blob-filtered,
-  # sparse to just `plugins/` for speed; cleaned up on exit.
-  PLUGIN_SRC="$(mktemp -d)"
-  trap 'rm -rf "$PLUGIN_SRC"' EXIT
-  echo "Fetching plugin source from ${MIRROR_REPO}@${REF}…"
-  git -c advice.detachedHead=false clone --quiet --depth 1 --branch "$REF" \
-    --filter=blob:none --sparse "$MIRROR_GIT_URL" "$PLUGIN_SRC/repo"
-  git -C "$PLUGIN_SRC/repo" sparse-checkout set plugins/dekspec >/dev/null
-  PLUGIN_DIR="$PLUGIN_SRC/repo/plugins/dekspec"
-  if [[ ! -d "$PLUGIN_DIR" ]]; then
-    echo "Error: plugin tree not found at ${MIRROR_REPO}@${REF} (plugins/dekspec)." >&2
-    exit 1
-  fi
-  dekspec install --platform "$PLATFORM" --source "$PLUGIN_DIR"
+  # The engine wheel bundles DekSpec's own plugin tree, hook handlers included
+  # (ADR-045), so no source is fetched. The mirror's plugins/dekspec also holds
+  # DekBuilder's skills, whose headers this installer refuses; it is the
+  # Claude Code plugin, not an install source for other hosts.
+  dekspec install --platform "$PLATFORM"
 fi
 echo
 
 echo "=== Verification ==="
 echo "CLI version:    $(dekspec --version)"
+echo "DekBuilder:     $(dekbuilder --version 2>/dev/null || echo 'not on PATH')"
+if [[ -n "$WITH_DEKTOOLS" ]]; then
+  echo "DekTools:       $(dektools --version 2>/dev/null || echo 'not on PATH')"
+fi
 if [[ "$PLATFORM" == "claude" ]]; then
   echo "Plugin install: see \`claude plugin list\`"
 else

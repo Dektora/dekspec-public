@@ -5,9 +5,13 @@ mode: lite
 reasoning_effort: max
 disable-model-invocation: false
 allowed-tools: Read Write Edit Grep Glob Bash Agent
-argument-hint: [--provisional <slug>] [--help | --teaching | --audit | --extract | --add-term] [term details or corpus path]
+argument-hint: "[--provisional <slug>] [--help | --teaching | --audit | --extract | --add-term] [term details or corpus path]"
 related_skills: [write-corrections, doctor, interview-me, setup-dekspec]
 ---
+
+<!-- Before writing content, read `dekspec resource purpose domain-glossary` for the canonical purpose and routing items. See [_lib/artifact_purpose.md](../_lib/artifact_purpose.md). -->
+
+Before writing content, read this type’s purpose entry using the command above; follow the [artifact purpose guide](../_lib/artifact_purpose.md).
 
 Own `dekspec/domain-glossary.md` — the project's canonical vocabulary. This skill captures
 candidate terms from a corpus, adds terms directly, and composes the glossary row when the

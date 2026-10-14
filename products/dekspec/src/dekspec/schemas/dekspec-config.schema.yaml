@@ -1,0 +1,321 @@
+# DekSpec per-repo config — JSON Schema (Draft 2020-12)
+#
+# `.dekspec/config.yaml` is the per-repo, committed declaration of the
+# methodology profile. Per ADR-024 (no-factory in-process-only execution
+# model, 2026-05-28), DekSpec runs exclusively in-process inside whichever
+# coding CLI is loaded; there is no executor abstraction and no out-of-
+# process dispatch surface in this library.
+#
+#   - `methodology_profile` — how much DekSpec ceremony the repo applies:
+#     `full` (the default lane at full rigor — ADR-050; the default carries no
+#     user-facing lane name and this value is its legacy spelling), or `team`
+#     (the default plus the INT-021 approval gates).
+#
+# Written by `dekspec init` (single-question Q&A) and edited per-key by
+# `dekspec config get` / `dekspec config set`. Validated at load time by
+# `tooling/dekspec/dekspec_config.py`.
+#
+# ADR-006 — `additionalProperties: false` at every object level.
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://dekspec.dektora/schemas/v0.1/dekspec-config.schema.json"
+title: DekSpec repo config
+description: >-
+  Per-repo committed config declaring the methodology profile. One file
+  per consumer repo at `.dekspec/config.yaml`.
+
+type: object
+additionalProperties: false
+required:
+  - schema_version
+  - methodology_profile
+
+properties:
+  pattern_dialect:
+    description: Repository patterns use ADR-068; permanent after conversion or empty initialization.
+    const: folder-local
+
+  named_briefs:
+    description: Declared brief identities; grammar is judged by brief_identity (WS-038).
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [id, path]
+      properties:
+        id: {type: string, minLength: 1}
+        path: {type: string, minLength: 1}
+
+  roles:
+    description: Project-rule pointers only; no role policy or model mapping is loaded from them.
+    type: object
+    additionalProperties: false
+    properties:
+      project_rules:
+        type: object
+        additionalProperties: false
+        minProperties: 1
+        properties:
+          gates:
+            $ref: "#/$defs/project_rule_pointer"
+          write_paths:
+            $ref: "#/$defs/project_rule_pointer"
+          credentials:
+            $ref: "#/$defs/project_rule_pointer"
+          review_concerns:
+            $ref: "#/$defs/project_rule_pointer"
+          models:
+            $ref: "#/$defs/project_rule_pointer"
+
+  schema_version:
+    description: 'Config file format version. Today: 0.1.0.'
+    type: string
+    pattern: "^\\d+\\.\\d+\\.\\d+$"
+
+  methodology_profile:
+    description: >-
+      How much DekSpec ceremony the repo applies. `full` — the default lane
+      at full rigor (ADR-050); it carries no user-facing lane name and this
+      value is its legacy spelling. `team` — the default plus the INT-021
+      approval gates.
+    enum: [team, full]
+
+  beads:
+    description: Project-qualified identity for the two issue/governance stores.
+    type: object
+    additionalProperties: false
+    required: [project_prefix]
+    properties:
+      project_prefix:
+        type: string
+        pattern: '^[a-z0-9]{2,6}$'
+
+  ib_folders:
+    description: >-
+      Optional per-consumer mapping of filesystem folder names relative to
+      the dekspec/impl-briefs/ directory to the maturity bands they contain.
+    type: object
+    additionalProperties:
+      type: array
+      items:
+        type: integer
+        minimum: 0
+        maximum: 5
+
+  repo:
+    description: >-
+      Optional repository metadata. The `scope` sub-field names the
+      GitHub/GitLab namespace+repo the consumer represents (e.g.
+      `Dektora/dektora`).
+    type: object
+    additionalProperties: false
+    properties:
+      scope:
+        description: >-
+          The GitHub/GitLab `<owner>/<repo>` slug the dispatching repo
+          maps to on the target forge (e.g. `Dektora/dektora`).
+        type: string
+        minLength: 1
+
+  index_url:
+    description: >-
+      Optional override for the Python simple-index that `dekspec`
+      version-discovery (`repo upgrade` / `scripts/install.sh` "latest")
+      queries for published wheels. Per ADR-031 the resolution precedence is
+      `index_url` (this field) > `PIP_INDEX_URL` / `PIP_EXTRA_INDEX_URL`
+      (standard pip pointers) > the Cloudsmith public-read default. dekspec is
+      not on PyPI, so the default is Cloudsmith; set this only to point at a
+      mirror or a re-hosted index.
+    type: string
+    minLength: 1
+
+  # --- setup-dekspec fields (INT-174) ------------------------------------- #
+  # All four are OPTIONAL (absent from `required`) so configs written before
+  # INT-174 still validate under `additionalProperties: false` (ADR-006).
+  # Front-ended by the `setup-dekspec` skill via `dekspec config get/set`.
+
+  issue_tracker:
+    description: >-
+      Which issue tracker this repo uses, consumed by the bead/issue-authoring
+      flows. `br` — the in-repo beads-rust tracker; `github` / `gitlab` — the
+      remote forge issue tracker; `local` — a local/offline tracker.
+    enum: [br, github, gitlab, local]
+
+  ephemeral_scratch_dir:
+    description: >-
+      Where ephemeral skill output (interview logs, hand-off notes) lands,
+      relative to the repo root. Defaults to `dekspec/.scratch/` (the
+      gitignored disposable hand-off zone landed by INT-165).
+    type: string
+    minLength: 1
+
+  glossary_path:
+    description: >-
+      Path (relative to the repo root) to the domain glossary the authoring
+      and interview skills cite. Defaults to `dekspec/domain-glossary.md`.
+    type: string
+    minLength: 1
+
+  specification:
+    description: DekSpec-owned specification-reference policy, consumed by execution clients.
+    type: object
+    additionalProperties: false
+    properties:
+      reference_mode:
+        description: >-
+          Strict preserves existing reference eligibility. Evolving additionally
+          permits PROPOSED ADR/AE sources without promoting their status or
+          relaxing independent IB authorization, evidence or integration gates.
+        type: string
+        enum: [strict, evolving]
+
+  execution:
+    description: >-
+      Execution policy for IB runs (ADR-057) — adaptable, model- and
+      repo-dependent numbers, not governing obligations. Every key is
+      optional; defaults live in `dekspec.execution.settings`.
+    type: object
+    additionalProperties: false
+    properties:
+      lean:
+        description: Enable lean construction (off by default).
+        type: boolean
+        default: false
+      max_attempts:
+        description: 'Attempts per IB run before it blocks (counted across restarts). Default 3.'
+        type: integer
+        minimum: 1
+      stall_minutes:
+        description: 'An attempt with no heartbeat for this long is closed as stalled and blocks. Default 60.'
+        type: integer
+        minimum: 1
+      no_progress_attempts:
+        description: 'Consecutive attempts with no newly satisfied condition that return to already-seen content before the run blocks. Default 2.'
+        type: integer
+        minimum: 1
+      integration_command:
+        description: 'Repository-wide integration check `dekspec delivery verify` runs at the delivery head (e.g. `python -m pytest -q`).'
+        type: string
+        minLength: 1
+      command_timeout:
+        description: 'Timeout in seconds for each acceptance command or test run. Default 1800.'
+        type: integer
+        minimum: 1
+      python:
+        description: 'Interpreter that runs acceptance test nodes. Default: the first of the repo `.venv`, `python3`/`python` on PATH, and the interpreter running dekspec that can import pytest. An interpreter that is part of the repository content (tracked or unignored) is refused.'
+        type: string
+        minLength: 1
+      fingerprint_exclude:
+        description: 'Extra globs excluded from the implementation fingerprint (for generated files a check writes).'
+        type: array
+        items:
+          type: string
+          minLength: 1
+
+  integration:
+    description: >-
+      How `/implement` integrates a verified delivery (ADR-059). Every key is
+      optional; defaults live in `dekspec.implement.config`.
+    type: object
+    additionalProperties: false
+    properties:
+      parallel_briefs:
+        description: Maximum concurrent briefs in a lean wave.
+        type: integer
+        minimum: 1
+      method:
+        description: '`merge` (default) fast-forwards the base branch to the verified head; `github` lands it through a pull request with `gh`, after its required checks, never with an administrator override.'
+        enum: [merge, github]
+      base:
+        description: 'Base branch to integrate into. Default: `main`, else `master`.'
+        type: string
+        minLength: 1
+      remote:
+        description: 'Remote for `push` and the `github` method. Default `origin`.'
+        type: string
+        minLength: 1
+      push:
+        description: '`merge` only: also push the updated base branch. Default false.'
+        type: boolean
+      worktree_setup:
+        description: 'Shell command run once in each new delivery worktree (for example, create its virtual environment).'
+        type: string
+        minLength: 1
+  agents_md:
+    description: >-
+      Declares this repository's AGENTS.md projection (ADR-063): the
+      DekSpec-owned region of the instruction file that `dekspec aggregate
+      agents-md` generates and `--check` / `dekspec doctor` verify. Declaring
+      it makes the doctor gate fail on a stale, absent (when required) or
+      invalid projection. The settings here are the projection's settings;
+      the check and doctor always use them, never the file's header.
+    type: object
+    additionalProperties: false
+    properties:
+      path:
+        description: 'Instruction file, relative to the repository root. Default `AGENTS.md`.'
+        type: string
+        minLength: 1
+      status:
+        description: 'Status filter: a list of statuses, a comma-separated string, or `all`. Default LOCKED, ACCEPTED.'
+        oneOf:
+          - type: string
+            minLength: 1
+          - type: array
+            minItems: 1
+            items:
+              type: string
+              minLength: 1
+      include:
+        description: 'Projected kinds (CONSTITUTION, SECURITY_PROFILE, VISION, GLOSSARY, AE, ADR, IC, WS, IB, INT, MSN): a list or a comma-separated string. Default: the governing core, CONSTITUTION through WS.'
+        oneOf:
+          - type: string
+            minLength: 1
+          - type: array
+            minItems: 1
+            items:
+              type: string
+              minLength: 1
+      required:
+        description: 'When true, a missing projection (no file, an empty file or no region) fails the check. Default false.'
+        type: boolean
+
+  triage_labels:
+    description: >-
+      The triage-label vocabulary the issue/bead-authoring flows consume.
+      `hitl` / `afk` name the human-in-the-loop vs autonomous labels; `buckets`
+      is the ordered list of triage-bucket labels.
+    type: object
+    additionalProperties: false
+    properties:
+      hitl:
+        description: 'Label marking an item that needs a human in the loop.'
+        type: string
+        minLength: 1
+      afk:
+        description: 'Label marking an item safe to run autonomously (away-from-keyboard).'
+        type: string
+        minLength: 1
+      buckets:
+        description: 'Ordered list of triage-bucket label names.'
+        type: array
+        items:
+          type: string
+          minLength: 1
+
+$defs:
+  project_rule_pointer:
+    description: >-
+      A repository path (existence is not checked), or "none: " and a reason.
+    type: string
+    oneOf:
+      - pattern: '^none: [\s\S]*\S[\s\S]*$'
+      - allOf:
+          - pattern: '^\S(?:[\s\S]*\S)?(?![\s\S])'
+          - not:
+              anyOf:
+                - pattern: '^none(?::|$)'
+                - pattern: '^/'
+                - pattern: '^[A-Za-z]:'
+                - pattern: '\\'
+                - pattern: '(^|/)\.\.(/|$)'

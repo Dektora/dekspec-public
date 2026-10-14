@@ -24,7 +24,7 @@ from setuptools.command.build_py import build_py
 _PROJECT_ROOT = Path(__file__).resolve().parent
 # Make the package importable at build time so we can reuse the vendoring
 # helper (the package sources live under tooling/ per pyproject packages.find).
-sys.path.insert(0, str(_PROJECT_ROOT / "tooling"))
+sys.path.insert(0, str(_PROJECT_ROOT / "products" / "dekspec" / "src"))
 
 
 class VendoringBuildPy(build_py):
@@ -36,7 +36,7 @@ class VendoringBuildPy(build_py):
         from dekspec._build_vendoring import materialize_vendored
 
         materialize_vendored(
-            _PROJECT_ROOT, _PROJECT_ROOT / "tooling" / "dekspec" / "_vendored"
+            _PROJECT_ROOT / "products" / "dekspec", _PROJECT_ROOT / "products" / "dekspec" / "src" / "dekspec" / "_vendored"
         )
         super().run()
 

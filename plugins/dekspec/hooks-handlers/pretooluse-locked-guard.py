@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """DekSpec PreToolUse LOCKED-artifact write guard (ds-k24i).
 
-Fires on PreToolUse for Edit|Write|MultiEdit. BLOCKS the tool call when the
+Fires on PreToolUse for Edit|Write|MultiEdit|apply_patch. BLOCKS the tool call when the
 target is a `LOCKED` DekSpec artifact under `<cwd>/dekspec/`. LOCKED immutability
 is otherwise honor-system (a post-edit audit fires only AFTER the fact and never
 blocks); this hook mechanically refuses the write at tool-call time.
@@ -91,19 +91,40 @@ def main() -> int:
         # Bad input — never block on a parse failure.
         return 0
 
-    if payload.get("tool_name") not in {"Edit", "Write", "MultiEdit"}:
+    if not isinstance(payload, dict):
+        return 0
+    tool_name = payload.get("tool_name")
+    if not isinstance(tool_name, str):
+        return 0
+    if tool_name == "apply_patch":
+        try:
+            from _patch_paths import patch_paths
+        except ImportError:
+            print("[dekspec] Warning: missing _patch_paths.py; DekSpec hook did not run.",
+                  file=sys.stderr)
+            return 0
+        paths = patch_paths(payload)
+    elif tool_name in {"Edit", "Write", "MultiEdit"}:
+        tool_input = payload.get("tool_input") or {}
+        if not isinstance(tool_input, dict):
+            return 0
+        file_path = tool_input.get("file_path")
+        paths = [Path(file_path)] if isinstance(file_path, str) and file_path else []
+    else:
         return 0
 
-    tool_input = payload.get("tool_input") or {}
-    file_path = tool_input.get("file_path") or ""
-    if not file_path:
-        return 0
-
-    path = Path(file_path)
     cwd = Path.cwd().resolve()
+    denied = False
+    for path in paths:
+        if _guard(path, cwd) == 2:
+            denied = True
+    return 2 if denied else 0
+
+
+def _guard(path: Path, cwd: Path) -> int:
     try:
         rel = path.resolve().relative_to(cwd)
-    except (ValueError, OSError):
+    except (ValueError, OSError, RuntimeError):
         return 0
 
     rel_str = str(rel).replace("\\", "/")

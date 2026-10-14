@@ -1,0 +1,2 @@
+recursive-include plugins *
+include AGENTS.md CHANGELOG.md

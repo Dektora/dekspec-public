@@ -22,6 +22,8 @@ reviews the drafts against the report and copies the keepers into the real
 """
 from __future__ import annotations
 
+from dekspec.spec_kinds import BEHAVIOR_SPEC_NAMES as BS
+
 import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -187,10 +189,10 @@ def _render_ws_draft(clf: Classification) -> tuple[str, str]:
     parses cleanly through `parse_ws`.
     """
     title = clf.section.heading or "Ingested behavior"
-    filename = f"WS-{_PLACEHOLDER_ID}-{_slug(title)}.md"
+    filename = f"{BS.id_prefix}-{_PLACEHOLDER_ID}-{_slug(title)}.md"
     body = clf.section.body.strip() or "[Ingested draft — section body was empty.]"
 
-    md = f"""# Working Spec: {title}
+    md = f"""# {BS.heading}: {title}
 
 ## Status
 

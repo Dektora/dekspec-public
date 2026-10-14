@@ -1,12 +1,14 @@
 # INT-NNN: [Verb-first title]
 
+<!-- Before writing content, read `dekspec resource purpose intent` for the canonical purpose and routing items. -->
+
 <!--
 SECTIONS BELOW: which ones flow into the Intent IR vs which are "author scratch pad"
 ====================================================================================
 Canonical sections (extracted by parser, schema-validated, available to emitters):
   Status · Intent type · Autonomy · Branch · Mission · Source · Superseded-By ·
   Created · Modified · Linked Architecture Elements · Motivation ·
-  Desired Outcome · Type-specific required fields · Components affected ·
+  Desired Outcome · Behavior placement · Type-specific required fields · Components affected ·
   Verification · Open Issues · Amendment Log
 
 Author scratch pad (rendered for /write-intent's --analyze / --decompose
@@ -19,9 +21,8 @@ coverage + size; --decompose lists the child IBs; --sync walks
 Post-implementation sync at COMPLETE). They do not affect audit findings,
 contract-test generation, or AGENTS.md output.
 
-An Intent records decisions, not activity (ADR-057). Execution history —
-IB progress, attempts, failures, evidence, verdicts — lives in execution
-records under `.dekspec/execution/`, never in this file. The former
+Read `dekspec resource purpose intent`, especially intent.holds.decisions
+and intent.not.execution-history, before writing content (ADR-057). The former
 `TESTFAIL records` section and bead rows are retired.
 -->
 
@@ -84,7 +85,7 @@ The risk tier is **complementary** to Autonomy and Intent type: type classifies 
 
 [ MSN-NNN or "none" ]
 
-*Optional.* Populated only when this Intent belongs to a Mission. When set, the parent Mission's Intent queue MUST list this Intent and the Intent's Autonomy MUST NOT exceed the Mission's Autonomy ceiling (audit-v2 L8).
+*Optional.* Populated only when this Intent belongs to a Mission. When set, the parent Mission's Intent queue MUST list this Intent and the Intent's Autonomy MUST NOT exceed the Mission's Autonomy ceiling (audit-v2 L8). <!-- purpose: intent.not.parent-mission -->
 
 ## Source
 
@@ -117,7 +118,7 @@ The risk tier is **complementary** to Autonomy and Intent type: type classifies 
 
 [Why this change is needed. 1-3 paragraphs. **Problem-first, user-grounded:** open by naming the concrete *problem* and the *user or persona* who feels it — what breaks for whom, today, without this — before any task or solution. A motivation that names only the task to do or the solution to build, without first establishing the problem and who hurts, is incomplete (INT-168 / D5). Then state the underlying gap and the cost of not changing.]
 
-*Stay at the motivation level.* Decision rationale (why option A over option B) belongs in an ADR, not here (audit-v2 D20). Measurable targets (latency, throughput, capacity, coverage thresholds) belong in a Working Spec, not here (audit-v2 D19).
+*Stay at the motivation level.* Decision rationale (why option A over option B) belongs in an ADR, not here (audit-v2 D20). Measurable targets (latency, throughput, capacity, coverage thresholds) belong in a Working Spec, not here (audit-v2 D19). <!-- purpose: intent.not.decision-rationale --> <!-- purpose: intent.not.measurable-targets -->
 
 ## Desired Outcome
 
@@ -128,6 +129,22 @@ The risk tier is **complementary** to Autonomy and Intent type: type classifies 
 *Optional — expected only when this Intent has **no** parent Mission (i.e. `Mission:` is `none`).* List what this Intent will deliberately **not** do: the boundary that stops scope creep on a standalone Intent. When a parent Mission **is** named, delete this section — the Mission's `Out-of-scope` contract owns non-goals and duplicating them here is discouraged. A Mission-less Intent that omits this section draws the P3-advisory `T-INT-NON-GOALS-MISSING` audit finding (INT-168 / D6) — advisory only, never a blocker, and silent on already-COMPLETE Intents.
 
 - [What this Intent will not do / not touch — and, where useful, where that work lives instead.]
+
+## Behavior placement
+
+*Required. Record one row per rule set this Intent adds or changes, with one home and a reason.*
+
+| Rule set | Home | Trigger | Reason |
+| --- | --- | --- | --- |
+| [Rule set] | [Home] | [Trigger] | [Reason] |
+
+*Home forms: `BS-NNN` for an existing Behavior Specification; `BS (new): <working name>` for a new one; `IC-NNN §<section>` for boundary facts only; `AE-NNN` for an Architecture Element; `local (brief N)` before decomposition, or `local (IB-NNN)` / `IB-NNN` after the brief has an id; `none` with a reason. NNN is three or more digits; a candidate brief N is one or more digits. A new working name ends at the first comma or opening parenthesis; subsequent notes are ignored.*
+
+*Both `BS-NNN` and `WS-NNN` are read as Behavior Specification ids, retaining the id as written.* <!-- dekspec:names-both-forms -->
+
+*Trigger forms: a comma-separated list of `T1`, `T2`, `T3`, `T4`, or `none` alone. See ADR-076 §Decision for the definitions: T1 spans briefs; T2 outlives the Intent; T3 guards silent failures together with T1 or T2; T4 prevents component behavior drifting into an Interface Contract.*
+
+*Example when no rule set changes: `| No rule set changes | none | none | This Intent changes documentation only |`. Put this one row in the table instead of its placeholders. Example of a new home: `BS (new): Commit protocol`.*
 
 ## Type-specific required fields
 
@@ -178,6 +195,8 @@ The risk tier is **complementary** to Autonomy and Intent type: type classifies 
 
 ## Components affected
 
+Patterns are anchored at the repository root. `*`, `?` and `[...]` stay within one folder and never match `/`; `**` matches any depth, including none. A trailing `/` names a folder and covers everything inside it. Unlike `.gitignore`, all patterns are root-anchored, there is no negation (a leading `!` is literal), and brace groups such as `{a,b}` expand. Use `docs/*.md` for Markdown files directly in `docs`, `docs/**/*.md` for any depth, and `**/build/` for build folders at any depth.
+
 [File-glob list of paths this Intent's changes are confined to. Required (audit-v2 T15). Every child IB's Scope lies inside this list; widening it is an `--amend`. Per-IB scope and protected surfaces are checked by `dekspec ib verify`. Each glob must resolve to existing paths in the repo (audit-v2 L7).]
 
 **Grammar (ds-352d): one backticked glob per bullet.** Write each path as its own bullet with the glob in backticks — `` - `src/**` ``. Grouped, labeled, or bare-path bullets (`- Backend: src/**, pyproject.toml`) are **not** recognized and now fail `dekspec validate` up front. A trailing prose description after the glob is fine (`` - `src/**` — the service layer ``).
@@ -207,9 +226,11 @@ The risk tier is **complementary** to Autonomy and Intent type: type classifies 
 | Implementation Briefs                   | ≤ 3   | [N]      | [PASS / OVER-CAP] |
 | Components affected                     | ≤ 3   | [N]      | [PASS / OVER-CAP] |
 | New L1 artifacts (AEs)                  | ≤ 1   | [N]      | [PASS / OVER-CAP] |
-| New + revised L2 artifacts (WSes + ICs) | ≤ 3   | [N]      | [PASS / OVER-CAP] |
+| New + revised L2 concerns (Behavior Specifications + Interface Contracts) | ≤ 3   | [N]      | [PASS / OVER-CAP] |
 | Coverage gaps                           | ≤ 2   | [N]      | [PASS / OVER-CAP] |
 
+
+*The L2 cap counts distinct concerns. A cohesion split that moves existing rules into a new artifact and adds no behavior does not raise the count (ADR-076).*
 
 ## Layer impact analysis
 
@@ -219,9 +240,11 @@ The risk tier is **complementary** to Autonomy and Intent type: type classifies 
 | Layer                         | Artifact                                                    | Action                |
 | ----------------------------- | ----------------------------------------------------------- | --------------------- |
 | L1 (Architecture & Decisions) | [AE-NNN, ADR-NNN, Domain Glossary, Terminology corrections] | [revise / new / none] |
-| L2 (Specification)            | [WS-NNN, IC-NNN]                                            | [revise / new / none] |
+| L2 (Specification)            | [BS-NNN, IC-NNN]                                            | [revise / new / none] |
 | L3 (Implementation Briefs)    | [IB-NNN — title (Parent: this Intent)]                      | [new / none]          |
 
+
+*The L2 row lists the Behavior Specifications and Interface Contracts to write or revise by reference to the Behavior placement table above.*
 
 ## Verification
 
@@ -261,7 +284,7 @@ verification:
 
 **Severity key:** `P0` = production-incident / cost-runaway reserve. `P1` = critical / blocking — prevents promotion. `P2` = important / approval-blocking. `P3` = advisory / tracked-only — does not gate progress. Historical aliases (parser accepts indefinitely per ADR-013): `blocking` → `P1`; `non_blocking` → `P3`; `critical` → `P1`; `important` / `warning` → `P2`; `minor` / `info` → `P3`. See `docs/dekspec-methodology.md#severity-vocabulary` for the full ladder + alias map.
 
-*Scope: design-level only.* Code-gap observations belong in `dekspec/divergences/` or `br`, not here.
+*Scope: design-level only.* Code-gap observations belong in `dekspec/divergences/` or `br`, not here. <!-- purpose: intent.not.code-gap -->
 
 ## Post-implementation sync
 
@@ -274,7 +297,7 @@ verification:
 
 *Add an entry for every substantive change (a COMPLETE Intent is a historical record — corrections are logged here; substantive rework spawns a successor Intent).*
 
-**Compressed-format policy.** Entries SHOULD follow a one-line-per-entry format. Target: `| YYYY-MM-DD | <Type> | <one-sentence what + reference to delta-doc / commit> | <author> |`. Detailed change narrative belongs in the git commit message — not in the Intent body.
+**Compressed-format policy.** Entries SHOULD follow a one-line-per-entry format. Target: `| YYYY-MM-DD | <Type> | <one-sentence what + reference to delta-doc / commit> | <author> |`. Detailed change narrative belongs in the git commit message — not in the Intent body. <!-- purpose: intent.not.change-narrative -->
 
 
 | Date       | Type                             | Change                                            | Author          |

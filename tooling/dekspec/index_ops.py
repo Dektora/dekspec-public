@@ -13,6 +13,8 @@ merge-conflict gap).
 
 from __future__ import annotations
 
+from dekspec.spec_kinds import BEHAVIOR_SPEC_NAMES as BS
+
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -333,11 +335,14 @@ _MSN_ARCHIVE_SEP = "|---|---|---|---|---|---|"
 def _find_kind_filename(kind: str, artifact_id: str, dekspec_dir: Path) -> str | None:
     """Find canonical filename for any IR kind. Returns path relative
     to dekspec/."""
+    if kind in BS.prefixes:
+        paths = BS.paths(dekspec_dir, artifact_id)
+        return str(paths[0].relative_to(dekspec_dir)) if paths else None
     dirs = {
         "MSN": "missions",
         "ADR": "adrs",
         "AE": "architecture-elements",
-        "WS": "working-specs",
+
         "IC": "interface-contracts",
     }
     sub = dirs.get(kind)
@@ -386,7 +391,7 @@ def _split_at_heading(content: str, heading: str) -> tuple[str, str | None]:
 
 
 def _id_key_factory(kind: str):
-    pat = re.compile(rf"^{kind}-(\d+)")
+    pat = re.compile(rf"^(?:{'|'.join(BS.prefixes) if kind in BS.prefixes else kind})-(\d+)")
 
     def key(ir: dict[str, Any]) -> tuple[int, str]:
         m = pat.match(ir.get("id", "") or "")
@@ -461,20 +466,23 @@ def _regen_single_table_index(
     repo_root = repo_root.resolve()
     dekspec_dir = repo_root / dekspec_root
     index_path = dekspec_dir / index_filename
-    if not index_path.exists():
+    if not index_path.exists() and kind not in BS.prefixes:
         return IndexResult(path=index_path, changed=False, rows_emitted=0)
     graph = SpecGraph.load(repo_root, dekspec_root=dekspec_root)
     key_fn = _id_key_factory(kind)
     irs = sorted(
-        (ir for ir in graph.irs_by_id.values() if ir.get("id", "").startswith(f"{kind}-")),
+        (ir for ir in graph.irs_by_id.values() if ir.get("id", "").startswith(BS.id_starts if kind in BS.prefixes else (f"{kind}-",))),
         key=key_fn,
     )
     rows = [format_row(ir, dekspec_dir) for ir in irs]
-    content = index_path.read_text(encoding="utf-8")
+    if not rows and not index_path.exists():
+        return IndexResult(path=index_path, changed=False, rows_emitted=0)
+    content = index_path.read_text(encoding="utf-8") if index_path.exists() else f"# {BS.display_name} Index\n\n"
     new_content = _replace_table_in_section(content, header, separator, rows)
     if new_content == content:
         return IndexResult(path=index_path, changed=False, rows_emitted=len(rows))
     if not dry_run:
+        index_path.parent.mkdir(parents=True, exist_ok=True)
         index_path.write_text(new_content, encoding="utf-8")
     return IndexResult(path=index_path, changed=True, rows_emitted=len(rows))
 
@@ -540,14 +548,14 @@ def _format_ws_row(ir: dict[str, Any], dekspec_dir: Path) -> str:
     aes = _format_aes(ir.get("related_architecture_elements") or [])
     created = ir.get("created") or ""
     modified = ir.get("modified") or ""
-    rel = _find_kind_filename("WS", wid, dekspec_dir)
+    rel = _find_kind_filename(BS.id_prefix, wid, dekspec_dir)
     id_cell = f"[{wid}]({rel})" if rel else wid
     return f"| {id_cell} | {title} | {status} | {aes} | {created} | {modified} |"
 
 
 def regen_ws_index(repo_root, dekspec_root="dekspec", dry_run=False):
     return _regen_single_table_index(
-        repo_root, dekspec_root, dry_run, "working-spec-index.md", "WS",
+        repo_root, dekspec_root, dry_run, BS.index_path(Path(repo_root) / dekspec_root).name, BS.id_prefix,
         _WS_HEADER, _WS_SEP, _format_ws_row,
     )
 

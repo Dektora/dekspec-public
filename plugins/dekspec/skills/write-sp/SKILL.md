@@ -5,9 +5,13 @@ mode: lite
 reasoning_effort: max
 disable-model-invocation: false
 allowed-tools: Read Write Edit Grep Glob Bash Agent
-argument-hint: [--provisional <slug>] [--help | --teaching | --create | --analyze | --accept | --approve | --lock | --unlock | --revise | --supersede | --review] [description or path to SP]
+argument-hint: "[--provisional <slug>] [--help | --teaching | --create | --analyze | --accept | --approve | --lock | --unlock | --revise | --supersede | --review] [description or path to SP]"
 related_skills: [write-sv, write-ae, write-constitution, write-adr, write-ws]
 ---
+
+<!-- Before writing content, read `dekspec resource purpose security-profile` for the canonical purpose and routing items. See [_lib/artifact_purpose.md](../_lib/artifact_purpose.md). -->
+
+Before writing content, read this type’s purpose entry using the command above; follow the [artifact purpose guide](../_lib/artifact_purpose.md).
 
 > **Scope of this skill.** A Security Profile (`SP-NNN`) is the data plane
 > for MSN-003's three-layer compilation (soft / mid / hard) of security
@@ -22,7 +26,7 @@ related_skills: [write-sv, write-ae, write-constitution, write-adr, write-ws]
 
 > **⛔ CONTEXT CHECK** — see [`_lib/context_check.md`](../_lib/context_check.md)
 >
-> A Security Profile is a load-bearing declaration of what the project permits at the security layer. Prior conversation context can degrade rigor by anchoring on partial sketches before the engineer has settled the `bounded_context` or the `allowed_dataflows` shape.
+> Apply `security-profile.holds.posture` from `dekspec resource purpose security-profile`. Prior conversation context can degrade rigor by anchoring on partial sketches before the engineer has settled the `bounded_context` or the `allowed_dataflows` shape.
 >
 > Inline reasoning only (see mode manifest); substantive fan-out skips this check. First message → proceed. Prior history → ask "context may affect SP quality, recommend /clear, continue? (y/n)" + wait.
 

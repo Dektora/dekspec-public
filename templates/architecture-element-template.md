@@ -1,5 +1,7 @@
 # AE-NNN: [Name]
 
+<!-- Before writing content, read `dekspec resource purpose architecture-element` for the canonical purpose and routing items. -->
+
 ## Status
 
 DRAFT
@@ -89,7 +91,7 @@ See `dekspec/architecture-frameworks-reference.md` for the full arc42/C4 framewo
 - [What this AE owns / contains / encompasses]
 
 **Outside the boundary (non-goals):**
-- [Excluded responsibility] — [Why it belongs to another AE or is intentionally deferred]
+- [Excluded responsibility] — [Explain why another AE owns it, or why it is intentionally deferred]
 
 *Accepted T11 forms:* `- Excluded responsibility — reason.` or `- **Excluded responsibility.** Reason.` Keep the reason on the same bullet line; a bare exclusion without a reason is incomplete.
 
@@ -169,9 +171,9 @@ flowchart TB
 
 ## Constraints and Quality Notes
 
-[Constraints that shape this AE without being measurable requirements. Examples: must remain stateless, must run on a specific OS family, must coexist with X. **Measurable quality requirements (latency, throughput, capacity, SLOs) belong in Working Specs, not here** — link them via the Linked Artifacts section above.]
+[Constraints that shape this AE without being measurable requirements. Examples: must remain stateless, must run on a specific OS family, must coexist with X. **Measurable quality requirements (latency, throughput, capacity, SLOs) belong in Working Specs, not here** — link them via the Linked Artifacts section above.] <!-- purpose: architecture-element.not.measurable-targets -->
 
-*Routing rule (per the conversion guide):* if you find yourself writing numbers (p95 latency, throughput targets, retention targets), the content belongs in a WS, not in an AE.
+*Routing rule (per the conversion guide):* if you find yourself writing numbers (p95 latency, throughput targets, retention targets), the content belongs in a WS, not in an AE. <!-- purpose: architecture-element.not.measurable-targets -->
 
 ## Open Questions / Planned Follow-ons
 
@@ -181,13 +183,13 @@ flowchart TB
 
 **Severity key:** `P0` = production-incident / cost-runaway reserve. `P1` = critical / blocking — must resolve before downstream work. `P2` = important / approval-blocking. `P3` = advisory / tracked-only — does not gate progress. Historical aliases (parser accepts indefinitely per ADR-013): `blocking` → `P1`; `non_blocking` → `P3`; `critical` → `P1`; `important` / `warning` → `P2`; `minor` / `info` → `P3`. See `docs/dekspec-methodology.md#severity-vocabulary` for the full ladder + alias map.
 
-*Scope:* design-level questions only. Code-gap observations belong in `dekspec/divergences/DIV-NNN-*.md` or `br`, not here.
+*Scope:* design-level questions only. Code-gap observations belong in `dekspec/divergences/DIV-NNN-*.md` or `br`, not here. <!-- purpose: architecture-element.not.code-gap -->
 
 ## Amendment Log
 
 *Add an entry for every change after acceptance; record substantive revisions returning the AE to PROPOSED. AEs are never locked.*
 
-**Compressed-format policy.** Entries SHOULD follow a one-line-per-entry format. Target: `| YYYY-MM-DD | <Type> | <one-sentence what + reference to delta-doc / commit> | <author> |`. Detailed change narrative belongs in the git commit message — not in the AE body. Historical entries are preserved as-is; the policy applies to new entries going forward.
+**Compressed-format policy.** Entries SHOULD follow a one-line-per-entry format. Target: `| YYYY-MM-DD | <Type> | <one-sentence what + reference to delta-doc / commit> | <author> |`. Detailed change narrative belongs in the git commit message — not in the AE body. Historical entries are preserved as-is; the policy applies to new entries going forward. <!-- purpose: architecture-element.not.change-narrative -->
 
 | Date | Type | Change | Author |
 |------|------|--------|--------|

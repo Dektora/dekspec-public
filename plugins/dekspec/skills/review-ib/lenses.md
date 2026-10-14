@@ -89,7 +89,7 @@ All 17 lenses share `severity_rubric: shared` (resolves to `plugins/dekspec/skil
     Does every acceptance condition state an observable behavior and name
     exactly one verification (test nodes, a command, or an independent
     review judgment), with each mandatory property separately verifiable?
-  input_slice: ib.acceptance
+  input_slice: ib.acceptance + ib.obligations + acceptance.test_sources
   attack_patterns:
     - a condition uses subjective verbs (works correctly, looks good) with no observable outcome
     - one condition bundles several mandatory properties so a partial implementation could pass it
@@ -187,7 +187,7 @@ Per ADR-062 §Two checks before the baseline. A finding in the first four patter
     components, if any), and do the Protected Surfaces name what must not
     change — remembering that a protected surface beats every scope
     allowance?
-  input_slice: ib.outcome + ib.scope + ib.protected_surfaces + parent.components_affected
+  input_slice: ib.outcome + ib.scope + ib.protected_surfaces + parent.components_affected + ib.context + acceptance.surface_skeleton
   attack_patterns:
     - a Scope glob reaches well beyond what the Outcome needs, or outside the parent Intent's components
     - the Outcome cannot be achieved without changing a file outside Scope or on a Protected Surface
@@ -333,7 +333,7 @@ Depth is judgement, not a checkable predicate — surface the smell at ≥80 onl
     (exit 0 = available) and a Required flag, so `dekspec ib start` can
     block truthfully (prerequisite-unavailable) instead of starting work
     that cannot pass?
-  input_slice: ib.acceptance + ib.environment_prerequisites
+  input_slice: ib.acceptance + ib.environment_prerequisites + acceptance.test_sources
   attack_patterns:
     - an acceptance condition needs a live service but no environment prerequisite declares it
     - a declared probe is prose or a file reference, not a runnable shell command

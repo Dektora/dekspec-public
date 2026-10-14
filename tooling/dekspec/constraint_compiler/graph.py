@@ -25,6 +25,8 @@ Public API: SpecGraph.load(repo_root, dekspec_root='dekspec') -> SpecGraph
 
 from __future__ import annotations
 
+from dekspec.spec_kinds import BEHAVIOR_SPEC_NAMES as BS
+
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -164,7 +166,8 @@ class SpecGraph:
         loaders = [
             (dekspec_dir / "adrs", "ADR-*.md", "adr", parse_adr, ADRParseError, False),
             (dekspec_dir / "architecture-elements", "AE-*.md", "ae", parse_ae, AEParseError, False),
-            (dekspec_dir / "working-specs", "WS-*.md", "ws", parse_ws, WSParseError, False),
+            *((dekspec_dir / folder, prefix + "-*.md", "ws", parse_ws, WSParseError, False)
+              for folder in BS.folders for prefix in BS.prefixes),
             (dekspec_dir / "security-profiles", "SP-*.md", "sp", parse_security_profile, SPParseError, False),
             (dekspec_dir / "interface-contracts", "IC-*.md", "ic", parse, ICParseError, False),
             (dekspec_dir / "impl-briefs", "IB-*.md", "ib", parse_ib, IBParseError, True),
@@ -234,6 +237,15 @@ class SpecGraph:
                     )
                 )
 
+        identities: dict[str, dict[str, Any]] = {}
+        for ir in graph.bses():
+            identity = BS.to_new_id(ir["id"])
+            if identity in identities:
+                other = identities[identity]["source"]["path"]
+                path = ir["source"]["path"]
+                graph.failures.append(ParseFailure(path, "ws", "AmbiguousReference",
+                    f"{identity} matches multiple files: {other}, {path}"))
+            identities[identity] = ir
         return graph
 
     # ----------------------------------------------------------------------- #
@@ -249,8 +261,10 @@ class SpecGraph:
     def aes(self) -> Iterator[dict[str, Any]]:
         return (ir for ir in self.irs_by_id.values() if ir["id"].startswith("AE-"))
 
-    def wses(self) -> Iterator[dict[str, Any]]:
-        return (ir for ir in self.irs_by_id.values() if ir["id"].startswith("WS-"))
+    def bses(self) -> Iterator[dict[str, Any]]:
+        return (ir for ir in self.irs_by_id.values() if ir["id"].startswith(BS.id_starts))
+
+    wses = bses
 
     def ics(self) -> Iterator[dict[str, Any]]:
         return (ir for ir in self.irs_by_id.values() if ir["id"].startswith("IC-"))
@@ -287,6 +301,9 @@ class SpecGraph:
     # ----------------------------------------------------------------------- #
 
     def by_id(self, artifact_id: str) -> dict[str, Any] | None:
+        if artifact_id.startswith(BS.id_starts):
+            wanted = BS.to_new_id(artifact_id)
+            return next((ir for ir in self.bses() if BS.to_new_id(ir["id"]) == wanted), None)
         # Fast path: direct hit (works for globally-unique kinds).
         direct = self.irs_by_id.get(artifact_id)
         if direct is not None:
@@ -302,6 +319,8 @@ class SpecGraph:
         return None
 
     def has(self, artifact_id: str) -> bool:
+        if artifact_id.startswith(BS.id_starts):
+            return self.by_id(artifact_id) is not None
         if artifact_id in self.irs_by_id:
             return True
         if artifact_id.startswith("IB-"):
@@ -317,7 +336,8 @@ class SpecGraph:
         this over :py:meth:`by_id` when the calling context already
         knows the parent WS.
         """
-        return self.irs_by_id.get(f"{spec_id}:{ib_id}")
+        return next((ir for ir in self.ibs() if ir["id"] == ib_id and
+                     BS.to_new_id((ir.get("spec") or {}).get("id", "")) == BS.to_new_id(spec_id)), None)
 
     def aes_of_adr(self, adr_id: str) -> list[str]:
         """AE-NNN ids referenced by ADR.related_architecture_elements."""
@@ -408,7 +428,7 @@ class SpecGraph:
         out: list[str] = []
         if artifact_id.startswith("ADR-"):
             out.extend(self.aes_of_adr(artifact_id))
-        elif artifact_id.startswith("WS-"):
+        elif artifact_id.startswith(BS.id_starts):
             out.extend(self.aes_of_ws(artifact_id))
             out.extend(self._adrs_of(ir))
         elif artifact_id.startswith("IC-"):
@@ -428,14 +448,14 @@ class SpecGraph:
             adr = (ir.get("type_specific") or {}).get("adr")
             if isinstance(adr, str) and adr:
                 out.append(adr)
-        return list(dict.fromkeys(out))
+        return list(dict.fromkeys((self.by_id(ref) or {}).get("id", ref) for ref in out))
 
     @staticmethod
     def _related_bucket_for(referrer_id: str) -> str | None:
         """Which ``related_*`` bucket a referrer ID lands in, by kind."""
         if referrer_id.startswith("ADR-"):
             return "related_adrs"
-        if referrer_id.startswith("WS-"):
+        if referrer_id.startswith(BS.id_starts):
             return "related_wss"
         if referrer_id.startswith("IC-"):
             return "related_ics"
@@ -565,7 +585,7 @@ class SpecGraph:
             return []
         if artifact_id.startswith("IC-"):
             ae_ids = self.aes_of_ic(artifact_id)
-        elif artifact_id.startswith("WS-"):
+        elif artifact_id.startswith(BS.id_starts):
             ae_ids = self.aes_of_ws(artifact_id)
         else:
             return []

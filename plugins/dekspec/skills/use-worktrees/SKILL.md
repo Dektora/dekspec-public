@@ -15,7 +15,7 @@ Create, enter, and clean up a **delivery-scoped git worktree** — the delivery 
 
 ## Help Mode
 
-See [`_lib/help_mode_template.md`](../_lib/help_mode_template.md) for the canonical Help rendering contract. Manifest for this skill:
+See `dekspec resource lib help_mode_template.md` (Spec-owned `_lib/help_mode_template.md`) for the canonical Help rendering contract. Manifest for this skill:
 
 ```yaml
 skill_name: "/use-worktrees"
@@ -36,7 +36,7 @@ extra_sections:
       - "Starting a standalone IB large enough to isolate -> --scope ib"
       - "Starting an Intent's delivery -> --scope intent"
       - "Starting a Mission cluster (shared branch of related Intents) -> --scope mission"
-      - "On land, after /dekspec:land-intent's operator-confirmed merge -> --cleanup"
+      - "On land, after /dekbuilder:land-intent's operator-confirmed merge -> --cleanup"
 ```
 
 At runtime, render the manifest per `_lib/help_mode_template.md` and stop.
@@ -62,7 +62,7 @@ Both `--scope` and `--slug` are required for the create and cleanup branches; if
    bash "$(dirname "$0")/scripts/setup-worktree.sh" --cleanup --scope <scope> --slug <slug>
    ```
 4. **Surface the script's output verbatim** — the worktree path, the branch, the statusline-hint path, and the DekSpec-adapted bootstrap checklist (copy `.env`-class files; run this worktree's code via `PYTHONPATH=tooling python3 -m dekspec.cli …` because the editable `dekspec` on PATH pins to the primary checkout; rebuild `_vendored` if you touched templates/docs/plugins; hydrate the `br` tracker workspaces by running `br` once in each — never hand-copy a DB).
-5. **On create**, `cd` into the new worktree before doing task work. **On land**, run `--cleanup` only after `/dekspec:land-intent` has passed `dekspec delivery check` and the operator-confirmed merge is done — and warn that uncommitted work (including uncommitted execution records) in a removed worktree is gone.
+5. **On create**, `cd` into the new worktree before doing task work. **On land**, run `--cleanup` only after `/dekbuilder:land-intent` has passed `dekspec delivery check` and the operator-confirmed merge is done — and warn that uncommitted work (including uncommitted execution records) in a removed worktree is gone.
 
 ## Notes
 

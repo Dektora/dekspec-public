@@ -25,6 +25,8 @@ Outcome).
 """
 from __future__ import annotations
 
+from dekspec.spec_kinds import BEHAVIOR_SPEC_NAMES as BS
+
 from typing import Any
 
 from ..constraint_compiler.graph import SpecGraph
@@ -43,7 +45,7 @@ SPEC_REVIEW_SEVERITY: Severity = P2
 def _governing_aes(graph: SpecGraph, artifact: dict[str, Any]) -> list[str]:
     """Return the AE ids an in-scope spec artifact declares it derives from."""
     artifact_id = artifact.get("id", "")
-    if artifact_id.startswith("WS-"):
+    if artifact_id.startswith(BS.id_starts):
         return graph.aes_of_ws(artifact_id)
     if artifact_id.startswith("IC-"):
         return graph.aes_of_ic(artifact_id)

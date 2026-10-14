@@ -68,7 +68,7 @@ These run in addition to D1–D16. **The DN-era D6 NFR exemption is retired** �
 > dekspec audit linkage --json --write-fixes scratch/fixes-cache.json
 > ```
 >
-> Roll the emitted findings into the audit report under their `rule` tag (`LINK-WS-AE-EXISTS`, `LINK-INT-COMPONENTS-RESOLVE`, `LINK-INT-CMD-RESOLVE`, …). The prose definitions below remain the authoritative human-readable spec of each rule; the CLI is the execution surface. In `--library-self-audit` mode, run with `--at .` against the library repo root.
+> Roll the emitted findings into the audit report under their `rule` tag (`LINK-BS-AE-EXISTS`, `LINK-INT-COMPONENTS-RESOLVE`, `LINK-INT-CMD-RESOLVE`, …). The prose definitions below remain the authoritative human-readable spec of each rule; the CLI is the execution surface. In `--library-self-audit` mode, run with `--at .` against the library repo root.
 
 - [ ] **LINK-ADR-AE — ADR → AE linkage.** Every ADR's `## Related Architecture Elements` section lists at least one AE-NNN, AND each listed AE exists in `dekspec/architecture-elements/`. Missing section, empty list, or broken AE reference = **HARD FAIL** (advisory at Audit; blocking at Lock for the ADR).
 - [ ] **L3 — WS → AE linkage.** Every WS's `## Related Architecture Elements` section lists at least one AE-NNN, AND each listed AE exists. Missing or broken = **HARD FAIL** at Lock.
@@ -111,7 +111,7 @@ These run on Intent prose only.
 
 ## Decision drift checks (corpus-level sweep)
 
-> **Mechanically enforced by the CLI.** D19 and D20 above are implemented as `D19-INT-NUMERIC-NO-WS-CITE` and `D20-INT-RATIONALE-NO-ADR-CITE` in `tooling/dekspec/fidelity_audit/linkage.py` and run as part of `dekspec audit linkage --json`. Surface the CLI findings as ADVISORY.
+> **Mechanically enforced by the CLI.** D19 and D20 above are implemented as `D19-INT-NUMERIC-NO-BS-CITE` and `D20-INT-RATIONALE-NO-ADR-CITE` in `tooling/dekspec/fidelity_audit/linkage.py` and run as part of `dekspec audit linkage --json`. Surface the CLI findings as ADVISORY.
 
 - [ ] **D19-CORPUS.** Across all Intents in `dekspec/intents/` (Active queue + Archive), surface any Intent body that contains inline numeric targets (per D19 trigger pattern) that haven't been moved to a WS. Surface as ADVISORY.
 - [ ] **D20-CORPUS.** Across all Intents, surface any Intent body that contains rationale prose (per D20 trigger pattern). ADVISORY.

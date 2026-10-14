@@ -1,17 +1,8 @@
-"""The IB as a work contract (ADR-055 / ADR-056).
-
-Wraps the Constraint Compiler's IB IR — the single parsing path — in the
-view the execution engine needs: which content is binding, what acceptance
-requires, which surfaces are protected, and a *contract hash* over exactly
-the binding and acceptance content. The implementation hypothesis, open
-issues and lifecycle bookkeeping are deliberately outside the hash: revising
-a guess, or recording completion, must not invalidate evidence.
-
-Legacy IBs (authored under ADR-049) keep their restrictive meaning here:
-Files to Modify is the allowed scope (exact paths, not globs), Do Not Touch
-is protected, and there is no executable acceptance contract — a legacy IB
-must be adopted before it can complete through the evidence gate.
-"""
+"""Hides policy, binding and switch rules; load_contract(root, ref) returns IBContract with is_lean/is_executable, risk, design_intent and contract_hash().
+contract_problems(*, settings=None) returns all named structural problems; optional ExecutionSettings adds execution-policy problems, including "lean is switched off", without hiding structural faults or changing other policies.
+Only this question combines policy and switch; callers never parse either, and may supply base-loaded settings or omit settings for configuration-free reads; queries have no effects.
+Missing/unknown policy becomes legacy with a warning; lean defects are problems, while unreadable briefs remain ContractError.
+Alternatives: raw IR/caller checks, policy subclasses or a separate enabled predicate; the existing contract view wins by answering structure and execution together without new types or caller policy."""
 
 from __future__ import annotations
 
@@ -22,6 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from dekspec.brief_identity import BriefIdentityError, resolve_brief
 from dekspec.constraint_compiler.parser import IBParseError, parse_ib
 
 __all__ = [
@@ -33,7 +25,6 @@ __all__ = [
     "pytest_node_file",
 ]
 
-_IB_ID = re.compile(r"^IB-\d{3,}$")
 _TABLE_ROW = re.compile(r"^\|(.+)\|\s*$")
 
 
@@ -50,6 +41,7 @@ class AcceptanceCondition:
     command: str | None = None
     review: str | None = None
     timeout: int | None = None
+    test_files: tuple[str, ...] | None = None
 
     @classmethod
     def from_ir(cls, raw: dict[str, Any]) -> AcceptanceCondition:
@@ -59,7 +51,8 @@ class AcceptanceCondition:
                        timeout=raw.get("timeout"))
         if "command" in verify:
             return cls(raw["id"], raw["condition"], "command", command=verify["command"],
-                       timeout=raw.get("timeout"))
+                       timeout=raw.get("timeout"),
+                       test_files=tuple(verify["test_files"]) if "test_files" in verify else None)
         return cls(raw["id"], raw["condition"], "review", review=verify["review"])
 
     def as_dict(self) -> dict[str, Any]:
@@ -68,6 +61,8 @@ class AcceptanceCondition:
             out["nodes"] = list(self.nodes)
         if self.command:
             out["command"] = self.command
+        if self.test_files is not None:
+            out["test_files"] = list(self.test_files)
         if self.review:
             out["review"] = self.review
         return out
@@ -104,15 +99,36 @@ class IBContract:
     def is_delegated(self) -> bool:
         return self.authority_policy == "delegated"
 
+    @property
+    def is_lean(self) -> bool:
+        """Whether this contract uses lean authority."""
+        return self.authority_policy == "lean"
+
+    @property
+    def is_executable(self) -> bool:
+        """Whether this contract uses an executable authority policy."""
+        return self.is_delegated or self.is_lean
+
+    @property
+    def risk(self) -> str | None:
+        """The lean Risk line, absent when not supplied."""
+        return self.ir.get("risk")
+
+    @property
+    def design_intent(self) -> str:
+        """Lean Design intent text, unchanged."""
+        return self.ir.get("design_intent", "")
+
     def acceptance_asset_paths(self) -> list[str]:
         files = {pytest_node_file(n) for c in self.acceptance for n in c.nodes}
         files.update(self.declared_assets)
+        files.update(p for c in self.acceptance for p in (c.test_files or ()))
         return sorted(files)
 
     def binding_view(self) -> dict[str, Any]:
         """The content whose change is a contract change (hashed)."""
         ir = self.ir
-        if self.is_delegated:
+        if self.is_executable:
             keys = ("authority_policy", "outcome", "scope", "out_of_scope", "obligations",
                     "protected_surfaces", "acceptance", "acceptance_assets", "depends_on",
                     "spec_impact")
@@ -120,8 +136,10 @@ class IBContract:
             keys = ("authority_policy", "goal", "files_to_modify", "do_not_touch",
                     "constraints_and_decisions", "domain_constraints", "done_when",
                     "out_of_scope", "depends_on")
+        if self.is_lean:
+            keys += ("risk", "design_intent")
         view = {k: ir.get(k) for k in keys if ir.get(k) not in (None, [], "")}
-        if not self.is_delegated and self.protected:
+        if not self.is_executable and self.protected:
             view["protected"] = list(self.protected)
         return view
 
@@ -129,10 +147,10 @@ class IBContract:
         blob = json.dumps(self.binding_view(), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
         return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
-    def contract_problems(self) -> list[str]:
+    def contract_problems(self, *, settings=None) -> list[str]:
         """Why this IB cannot be executed under the delegated policy (empty = usable)."""
         problems: list[str] = []
-        if not self.is_delegated:
+        if not self.is_executable:
             problems.append(
                 "legacy authority policy — adopt the IB (ADR-055) before evidence-backed execution"
             )
@@ -143,6 +161,23 @@ class IBContract:
             problems.append("§Scope names no allowed globs")
         if not self.acceptance:
             problems.append("§Acceptance has no valid acceptance conditions")
+        if self.is_lean:
+            if settings is not None and not settings.lean:
+                problems.append("lean is switched off")
+            if self.risk != "normal":
+                problems.append("Risk must be normal; high, missing and unknown Risk are not supported")
+            if not self.design_intent.strip():
+                problems.append("§Design intent is missing or blank")
+            if not any(c.kind == "pytest" for c in self.acceptance):
+                problems.append("lean acceptance needs a pytest condition")
+            integration = " ".join((settings.integration_command or "").split()) if settings else ""
+            for condition in self.acceptance:
+                for node in condition.nodes:
+                    if not pytest_node_file(node).endswith(".py"):
+                        problems.append(f"{condition.id}: pytest node must name a .py file: {node}")
+                command = " ".join((condition.command or "").split())
+                if command and ("check-product.py" in command or (integration and integration in command)):
+                    problems.append(f"{condition.id}: whole-suite command is not a lean acceptance condition")
         for w in self.parse_warnings:
             if w.get("severity") == "warning":
                 problems.append(f"{w.get('field')}: {w.get('reason')}")
@@ -174,21 +209,10 @@ def _legacy_protected(text: str) -> list[str]:
 def find_ib_path(repo_root: Path, ref: str, *, spec_root: str = "dekspec") -> Path:
     """Resolve an IB id or path. Ambiguous ids (duplicated across Working
     Specs in legacy trees) must be given as a path."""
-    candidate = Path(ref)
-    if not candidate.is_absolute():
-        candidate = Path(repo_root) / ref
-    if candidate.suffix == ".md" and candidate.is_file():
-        return candidate.resolve()
-    if not _IB_ID.match(ref):
-        raise ContractError(f"{ref!r} is neither an IB id (IB-NNN) nor an existing IB file")
-    base = Path(repo_root) / spec_root / "impl-briefs"
-    matches = sorted(base.rglob(f"{ref}-*.md")) if base.is_dir() else []
-    if not matches:
-        raise ContractError(f"no IB file for {ref} under {base}")
-    if len(matches) > 1:
-        listing = ", ".join(str(m.relative_to(repo_root)) for m in matches)
-        raise ContractError(f"{ref} is ambiguous ({listing}); pass the IB path instead")
-    return matches[0].resolve()
+    try:
+        return resolve_brief(repo_root, ref, spec_root=spec_root).path
+    except BriefIdentityError as exc:
+        raise ContractError(str(exc)) from exc
 
 
 def load_contract(repo_root: Path, ref: str, *, spec_root: str = "dekspec") -> IBContract:
@@ -199,7 +223,7 @@ def load_contract(repo_root: Path, ref: str, *, spec_root: str = "dekspec") -> I
     except IBParseError as exc:
         raise ContractError(f"{path.name}: {exc}") from exc
     text = path.read_text(encoding="utf-8")
-    delegated = ir.get("authority_policy") == "delegated"
+    delegated = ir.get("authority_policy") in ("delegated", "lean")
     if delegated:
         scope = tuple(s["glob"] for s in ir.get("scope", []))
         protected = tuple(s["surface"] for s in ir.get("protected_surfaces", []))

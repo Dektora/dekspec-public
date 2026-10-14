@@ -22,11 +22,12 @@ single-engineer / small-team scale).
 
 from __future__ import annotations
 
-import glob as _glob
 import re
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
+
+from dekspec.diff_confinement import matches_any_glob
 
 from .constraint_compiler.graph import SpecGraph
 
@@ -82,7 +83,7 @@ def is_path_claimed(repo_root: Path, target_path: str | Path) -> Claim | None:
     if not target.is_absolute():
         target = repo_root / target
     try:
-        rel = str(target.resolve().relative_to(repo_root))
+        rel = target.relative_to(repo_root).as_posix()
     except ValueError:
         return None
 
@@ -95,25 +96,21 @@ def is_path_claimed(repo_root: Path, target_path: str | Path) -> Claim | None:
             pat = entry.get("glob") if isinstance(entry, dict) else str(entry)
             if not pat:
                 continue
-            for m in _glob.glob(str(repo_root / pat), recursive=True):
-                try:
-                    if Path(m).resolve().relative_to(repo_root) == Path(rel):
-                        # Match. Find this Intent's incubation slug if
-                        # any; if absent fall back to its filename slug.
-                        slug = _intent_incubation_slug(intent_id, repo_root)
-                        if slug is None:
-                            # Resolve Intent file path to derive slug.
-                            intents_dir = repo_root / "dekspec" / "intents"
-                            for ip in intents_dir.glob(f"{intent_id}-*.md"):
-                                slug = _intent_slug_from_filename(ip)
-                                break
-                        return Claim(
-                            intent_id=intent_id,
-                            glob_pattern=pat,
-                            incubation_slug=slug,
-                        )
-                except ValueError:
-                    continue
+            if target.exists() and matches_any_glob(rel, [pat]):
+                # Match. Find this Intent's incubation slug if
+                # any; if absent fall back to its filename slug.
+                slug = _intent_incubation_slug(intent_id, repo_root)
+                if slug is None:
+                    # Resolve Intent file path to derive slug.
+                    intents_dir = repo_root / "dekspec" / "intents"
+                    for ip in intents_dir.glob(f"{intent_id}-*.md"):
+                        slug = _intent_slug_from_filename(ip)
+                        break
+                return Claim(
+                    intent_id=intent_id,
+                    glob_pattern=pat,
+                    incubation_slug=slug,
+                )
     return None
 
 

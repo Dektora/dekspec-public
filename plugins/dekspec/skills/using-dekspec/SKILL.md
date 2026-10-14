@@ -5,7 +5,7 @@ mode: lite
 reasoning_effort: high
 disable-model-invocation: false
 allowed-tools: Read Write Edit Bash
-argument-hint: [--init [--at PATH] [--force] [--methodology full|team]] [--spec-mode --on|--off|--status] [--catalog] [--help]
+argument-hint: "[--init [--at PATH] [--force] [--methodology full|team]] [--spec-mode --on|--off|--status] [--catalog] [--help]"
 ---
 
 A single onboarding skill that walks an engineer through getting DekSpec live in a repo: scaffold the artifact tree, decide whether to enable the "No Specless Edits" guardrail, and discover the full skill catalog.
@@ -53,7 +53,7 @@ Guided tour for an engineer adopting DekSpec in a fresh repo. Touches all three 
    (`@main` → latest; pin a release with `@vX.Y.Z`. Engine is acquired from the curated public mirror, ADR-034). Re-run this walkthrough once the CLI resolves.
 1. **Scaffold check.** Run `ls dekspec/ 2>/dev/null`. If the tree exists, report "DekSpec artifact tree present — skipping scaffold." Else, ask: "Run `dekspec init` here? [Y/n]" and, on yes, run Init Mode against the cwd. On no, surface the manual command and continue.
 2. **Spec-mode decision.** Run the Status sub-flow from Spec-Mode Mode. If `NOT INSTALLED` or `DISABLED`, ask: "Enable the 'No Specless Edits' guardrail in CLAUDE.md? [Y/n] (recommended for repos with active spec work)". On yes, run the On sub-flow. On no, leave as-is and continue.
-3. **Configuration.** `using-dekspec` does not own per-repo config — it *calls* `setup-dekspec` for it. Ask: "Configure the per-repo `.dekspec/config.yaml` choices now (issue tracker, scratch dir, triage labels, glossary path, methodology profile)? [Y/n]". On yes, invoke `/dekspec:setup-dekspec --at .` (the configuration front-end); on no, surface the command and continue.
+3. **Configuration.** First show [role-project-rules](../_lib/role-project-rules.md) unchanged, as resolved by `dekspec resource lib role-project-rules --at <repo>` (or read the adjacent fragment). If it cannot be loaded, report the failure and name `dekspec resource lib role-project-rules`; never paraphrase or reconstruct it. Showing the notice here never creates, changes or deletes `.dekspec-role-disclosure.json`. Explain that `/dekspec:setup-dekspec` records where the project keeps its rules; the notice is shown even if the engineer declines configuration. `using-dekspec` does not own per-repo config — it *calls* `setup-dekspec` for it. Ask: "Configure the per-repo `.dekspec/config.yaml` choices now (issue tracker, scratch dir, triage labels, glossary path, methodology profile)? [Y/n]". On yes, invoke `/dekspec:setup-dekspec --at .` (the configuration front-end); on no, surface the command and continue.
 4. **Catalog summary.** Render the **Quick reference** subset from Catalog Mode (categories + the single most-used skill per category, not the full table). End with one-liner: "Run `/dekspec:using-dekspec --catalog` for the full table; ask in natural language to trigger any skill."
 
 Close with a one-line "Next step" recommendation matched to the engineer's state: if the scaffold was fresh, point at the **Shortest path** — `/write-intent "<change>"` to capture the first governed change — or, for vision-first work, `/write-ae` for the first Architecture Element. (A fresh scaffold has no AE yet, so don't pin a new user to `/write-ae` by default.) If spec-mode was just enabled, remind that future code-changing requests will be gated on a spec artifact existing.
@@ -211,8 +211,8 @@ Use the table below as a quick reference sheet:
 ### 7. Onboarding & Config Skills
 | Skill | Purpose | How to Trigger / Ask |
 |---|---|---|
-| **`using-dekspec`** | This skill — onboarding + spec-mode + catalog | *"Get me started with DekSpec"* |
-| **`setup-dekspec`** | Per-repo config front-end — interactively set issue tracker, scratch dir, triage labels, glossary path, methodology profile (round-trips through `dekspec config`) | *"Configure DekSpec for this repo"* / *"Set up the .dekspec config"* |
+| **`using-dekspec`** | This skill — onboarding + spec-mode + catalog; shows [role-project-rules](../_lib/role-project-rules.md), with operating-guide section **Project rules for the built-in roles** (`dekspec resource doc operating-guide`) | *"Get me started with DekSpec"* |
+| **`setup-dekspec`** | Per-repo config front-end — interactively set issue tracker, scratch dir, triage labels, glossary path, methodology profile (round-trips through `dekspec config`); shows [role-project-rules](../_lib/role-project-rules.md) and records where the project keeps its rules for the built-in roles; see operating-guide section **Project rules for the built-in roles** (`dekspec resource doc operating-guide`) | *"Configure DekSpec for this repo"* / *"Set up the .dekspec config"* |
 | **`/migrate`** | Upgrade pipeline (vendored drift → IR → artifacts) | *"Migrate our DekSpec artifacts"* |
 
 ### 8. Utility & Helper Skills

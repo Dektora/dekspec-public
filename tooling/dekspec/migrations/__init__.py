@@ -74,6 +74,8 @@ Plus: bump the schema `const: "0.2.0"`, update the parser to emit
 """
 from __future__ import annotations
 
+from dekspec.spec_kinds import BEHAVIOR_SPEC_NAMES as BS
+
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -122,6 +124,13 @@ class Migration:
     description: str = ""
 
 
+def _migration_kind(artifact_type: str) -> str:
+    """Share the existing migration chain across both names of the kind."""
+    if artifact_type in (BS.ir_kind, *BS.old_ir_kinds):
+        return BS.old_ir_kinds[0]
+    return artifact_type
+
+
 class Registry:
     """Compose Migration steps into chains."""
 
@@ -135,7 +144,8 @@ class Registry:
         """Add a migration step. Raises if a step for the same
         (artifact_type, from_version) is already registered (chain must
         be linear)."""
-        key = (migration.artifact_type, migration.from_version)
+        artifact_type = _migration_kind(migration.artifact_type)
+        key = (artifact_type, migration.from_version)
         if key in self._steps:
             existing = self._steps[key]
             raise ValueError(
@@ -145,14 +155,14 @@ class Registry:
             )
         self._steps[key] = migration
         # The latest target is the highest to_version observed so far.
-        current = self._latest_target.get(migration.artifact_type)
+        current = self._latest_target.get(artifact_type)
         if current is None or _semver_tuple(migration.to_version) > _semver_tuple(current):
-            self._latest_target[migration.artifact_type] = migration.to_version
+            self._latest_target[artifact_type] = migration.to_version
 
     def target_version_for(self, artifact_type: str, default: str) -> str:
         """Return the latest known target version for an artifact type,
         or `default` if no migrations have been registered."""
-        return self._latest_target.get(artifact_type, default)
+        return self._latest_target.get(_migration_kind(artifact_type), default)
 
     def chain(
         self, artifact_type: str, from_version: str, to_version: str
@@ -168,6 +178,7 @@ class Registry:
                 f"Refusing to downgrade {artifact_type} IR: "
                 f"requested {from_version} → {to_version}"
             )
+        artifact_type = _migration_kind(artifact_type)
         steps: list[Migration] = []
         current = from_version
         while current != to_version:
@@ -227,7 +238,7 @@ class Registry:
         problems: list[str] = []
         per_artifact: dict[str, list[Migration]] = {}
         for m in self._steps.values():
-            per_artifact.setdefault(m.artifact_type, []).append(m)
+            per_artifact.setdefault(_migration_kind(m.artifact_type), []).append(m)
         for artifact_type, steps in per_artifact.items():
             from_versions = {s.from_version for s in steps}
             to_versions = {s.to_version for s in steps}
@@ -259,7 +270,7 @@ def _artifact_type_from_id(artifact_id: str) -> str:
     prefix_map = {
         "ADR-": "adr",
         "AE-": "architecture_element",
-        "WS-": "working_spec",
+        **{p + "-": BS.old_ir_kinds[0] for p in BS.prefixes},
         "IC-": "interface_contract",
         "IB-": "implementation_brief",
         "INT-": "intent",
@@ -275,7 +286,7 @@ def _artifact_type_from_id(artifact_id: str) -> str:
             return name
     raise MigrationError(
         f"Cannot infer artifact_type from id {artifact_id!r}; "
-        f"expected ADR-/AE-/WS-/IC-/IB-/INT-/MSN-/SP- prefix or singleton id "
+        f"expected ADR-/AE-/{BS.id_prefix}-/IC-/IB-/INT-/MSN-/SP- prefix or singleton id "
         f"(DOMAIN-GLOSSARY / SYSTEM-VISION / CONSTITUTION)."
     )
 
@@ -336,3 +347,13 @@ from . import terminology_corrections_rename as _terminology_corrections_rename 
 from . import disciplined_delegation as _disciplined_delegation  # noqa: E402, F401
 from . import lifecycle_decisions as _lifecycle_decisions  # noqa: E402, F401
 from . import agent_role_specifications as _agent_role_specifications  # noqa: E402, F401
+
+
+def _behavior_spec_ir(ir: dict[str, Any]) -> dict[str, Any]:
+    return {**ir, "ir_schema_version": "0.4.0"}
+
+
+default_registry.register(Migration(
+    BS.old_ir_kinds[0], "0.3.0", "0.4.0", _behavior_spec_ir,
+    "ADR-075: Behavior Specification kind with old input still read",
+))

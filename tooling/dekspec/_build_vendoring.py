@@ -32,7 +32,7 @@ VENDORED_DOCS = (
 
 # Plugin subtrees vendored whole (ADR-045). `install --platform` repackages
 # these for each non-Claude host; Claude keeps using the marketplace plugin.
-_PLUGIN_SUBTREES = ("skills", "commands", "hooks")
+_PLUGIN_SUBTREES = ("skills", "commands", "hooks", "hooks-handlers")
 
 
 def materialize_vendored(project_root: Path, vendored_root: Path) -> None:
@@ -64,7 +64,7 @@ def materialize_vendored(project_root: Path, vendored_root: Path) -> None:
             shutil.copy2(src, docs_dst / doc_name)
 
     # Plugin tree (ADR-045): the FULL skills/ (including _lib), commands/, and
-    # hooks/ — so `install --platform` off a pipx engine emits a complete
+    # hooks/ and hooks-handlers/ — so `install --platform` off a pipx engine emits a complete
     # per-host tree, not just the marker.
     plugin_src = project_root / "plugins" / "dekspec"
     for sub in _PLUGIN_SUBTREES:
@@ -74,3 +74,13 @@ def materialize_vendored(project_root: Path, vendored_root: Path) -> None:
         src = plugin_src / sub
         if src.is_dir():
             shutil.copytree(src, dst)
+
+
+def materialize_checked(project_root: Path, vendored_root: Path) -> None:
+    """Vendor the project, refusing any invalid header in the copied skill tree."""
+    from .skill_headers import SkillHeaderError, tree_problems
+
+    materialize_vendored(project_root, vendored_root)
+    problems = tree_problems(Path(vendored_root) / "skills")
+    if problems:
+        raise SkillHeaderError("\n".join(problems))

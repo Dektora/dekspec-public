@@ -5,9 +5,13 @@ mode: lite
 reasoning_effort: max
 disable-model-invocation: false
 allowed-tools: Read Write Edit Grep Glob Bash Agent
-argument-hint: [--provisional <slug>] [--help | --teaching | --audit | --review | --accept | --approve | --lock | --unlock | --revise | --supersede | --amend] [description or path to ADR]
+argument-hint: "[--provisional <slug>] [--help | --teaching | --audit | --review | --accept | --approve | --lock | --unlock | --revise | --supersede | --amend] [description or path to ADR]"
 related_skills: [write-ae, write-sv, write-ws, write-ic, write-intent]
 ---
+
+<!-- Before writing content, read `dekspec resource purpose adr` for the canonical purpose and routing items. See [_lib/artifact_purpose.md](../_lib/artifact_purpose.md). -->
+
+Before writing content, read this type’s purpose entry using the command above; follow the [artifact purpose guide](../_lib/artifact_purpose.md).
 
 > **Vendored asset paths:** Template + doc paths below resolve via `dekspec resource template <name>` / `dekspec resource doc <name>` (wheel-bundled since v0.91.0; consumer-fs override wins when present). See [`_lib/vendored_assets.md`](../_lib/vendored_assets.md) for the full resolution rule.
 
@@ -535,7 +539,7 @@ See [`_lib/cow_write_guard.md`](../_lib/cow_write_guard.md) for the canonical co
 - Options Considered section is optional — include only when genuine alternatives were evaluated
 - All architectural decisions get an ADR. One mechanism, one artifact.
 - The template (`dekspec/templates/adr-template.md`) must be completely filled out. Every section, every placeholder. If information is missing, ask the engineer before proceeding — do not guess or leave blanks.
-- **Write at the architectural level, not the code level.** ADRs capture concepts, intent, constraints, and high-level patterns. Use code only to extract meaning and verify the architectural narrative. Do not include function signatures, line numbers, config key names, variable names, or code-level edge cases — those belong in the code itself, not in ADRs, Working Specs, or Implementation Briefs. An ADR should be understandable by someone who has never read the codebase.
+- **Write at the architectural level.** Apply `adr.holds.choice` and `adr.not.code-detail` from `dekspec resource purpose adr`. Use code to extract meaning and verify the narrative; check that a reader unfamiliar with the codebase can understand the choice. When following linked specifications, also apply `behavior-spec.not.code-detail` and `implementation-brief.not.code-detail` from their purpose entries.
 
 ## Output
 
@@ -558,7 +562,7 @@ python ../_lib/scripts/artifact_ops.py approve <ADR-path> --target-status <STATU
 
 - Don't edit an ACCEPTED or LOCKED ADR in place to change the decision — write a new ADR via `--supersede` and let the old one stand as history; in-place mutation breaks the supersession audit and the decision audit trail.
 - Don't draft ADR prose in the parent context — Creation, `--accept`, and `--revise` are substantive-work modes that MUST fan out to the `dekspec:adr-author` subagent; parent-authored prose carries the orchestration context's bias the §Context Check exists to exclude.
-- Don't drop code-level detail into the body — no function signatures, line numbers, config key names, or variable names; an ADR captures the architectural decision and must read cleanly to someone who has never opened the codebase.
+- Apply `adr.not.code-detail` from `dekspec resource purpose adr` when checking the body.
 - Don't skip the supersession check on `--audit` / `--accept` — it runs regardless of every other result; a "clean" audit that never grepped the overlapping-domain ADRs is a false pass.
 - Don't claim a canonical ADR-NNN id for long-lived exploration — use `--provisional <slug>` so the id is allocated only at hand-promote, and never pair `--lock` with `--provisional` (the skill rejects it).
 - Don't let the parent flip Status to ACCEPTED while any check fails or supersession is flagged — there is no partial acceptance; STOP, leave the index untouched, and report the failures.

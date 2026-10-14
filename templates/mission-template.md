@@ -1,5 +1,7 @@
 # Mission MSN-NNN: [Verb-first title]
 
+<!-- Before writing content, read `dekspec resource purpose mission` for the canonical purpose and routing items. -->
+
 **Mission ID:** MSN-NNN
 **Status:** PROPOSED | ACTIVE | COMPLETE | KILLED | SUPERSEDED
 **Owner:** [single human accountable]
@@ -111,7 +113,7 @@ INT-NNN — [title]
 
 ### Discovered prerequisites
 
-[Coverage gaps surfaced during child Intent `--analyze` runs that retroactively belong to the Mission. These are gaps that the Mission as a whole must close before its Verification predicate can evaluate true — even if no single child Intent owns them.]
+[Coverage gaps surfaced during child Intent `--analyze` runs that must be closed at Mission scope. These are gaps that the Mission as a whole must close before its Verification predicate can evaluate true — even if no single child Intent owns them.]
 
 - [prerequisite 1] — **Source:** [child Intent that surfaced it] — **Resolution:** [Intent number or "deferred to follow-on"]
 
@@ -142,3 +144,7 @@ COMPLETE: [N] / Estimated total: [M] / Sketches: [K]
 | Date | Type | Change | Author |
 |------|------|--------|--------|
 | YYYY-MM-DD | Activate / Review / Complete / Kill / Supersede | <one-sentence summary + delta / commit reference> | [name or agent] |
+
+## File patterns
+
+Patterns are anchored at the repository root. `*`, `?` and `[...]` stay within one folder and never match `/`; `**` matches any depth, including none. A trailing `/` names a folder and covers everything inside it. Unlike `.gitignore`, all patterns are root-anchored, there is no negation (a leading `!` is literal), and brace groups such as `{a,b}` expand. Use `docs/*.md` for Markdown files directly in `docs`, `docs/**/*.md` for any depth, and `**/build/` for build folders at any depth.

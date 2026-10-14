@@ -419,10 +419,15 @@ def _plan(repo: Path, host: str, root: Path, source_dir: Path | None, *, install
     for rel in listed_unowned:
         if os.path.lexists(root / rel) and rel not in files and not emitted_as_is(rel):
             unowned.add(rel)
-    for d in sorted(f"skills/{c}" for c in copies):
+    # A product split can retire emission paths without retiring operator
+    # content at those paths. Scan known legacy directories on the original
+    # record, then only pending copies on subsequent runs, so adopted output
+    # is never reclassified as operator content.
+    scan_copies = copies.keys() if rewritten else _COPY_NAMES
+    for d in sorted(f"skills/{c}" for c in scan_copies):
         for path in _walk_files(root / d):
             rel = path.relative_to(root).as_posix()
-            if rel not in files:
+            if rel not in files and not emitted_as_is(rel):
                 unowned.add(rel)
     for rel in SUPPORT_FILES:
         if rel not in files and os.path.lexists(root / rel):

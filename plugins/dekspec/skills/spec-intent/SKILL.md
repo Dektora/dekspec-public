@@ -1,17 +1,17 @@
 ---
 name: spec-intent
-description: Specification phase-executor for an Intent (INT-NNN). Drives an Intent from DRAFT to authorized-for-execution by sequencing the existing authoring skills — /write-intent --analyze / --accept / --decompose plus /write-ibs, /write-tests and /review-ib and, only where they add something distinct, /write-ws, /write-ic, /write-ae, /write-adr — and ends with the Intent ACCEPTED and each of its IBs ACCEPTED (`dekspec ib accept`: authorized, acceptance baseline taken over acceptance tests that were written and oracle-reviewed first). Stops at the coding boundary; never starts execution. The specification-side sibling of /orchestrate-coding-session.
+description: "Specification phase-executor for an Intent (INT-NNN). Drives an Intent from DRAFT to authorized-for-execution by sequencing the existing authoring skills — /write-intent --analyze / --accept / --decompose plus /write-ibs, /write-tests and /review-ib and, only where they add something distinct, /write-ws, /write-ic, /write-ae, /write-adr — and ends with the Intent ACCEPTED and each of its IBs ACCEPTED (`dekspec ib accept`: authorized, acceptance baseline taken over acceptance tests that were written and oracle-reviewed first). Stops at the coding boundary; never starts execution. The specification-side sibling of /dekbuilder:orchestrate-coding-session."
 mode: lite
 reasoning_effort: high
 disable-model-invocation: false
 allowed-tools: Read Write Edit Bash
-argument-hint: [--help] <INT-NNN | path/ID of Intent>
+argument-hint: "[--help] <INT-NNN | path/ID of Intent>"
 related_skills: [write-intent, write-ws, write-ibs, review-ib, write-tests, implement, orchestrate-coding-session]
 ---
 
 > **Vendored asset paths (INT-097):** Paths below like `dekspec/...` reference the consumer-vendored layout. Pip-only installs resolve via `dekspec resource ...`. See [`_lib/vendored_assets.md`](../_lib/vendored_assets.md).
 
-Specification phase-executor for an Intent — the specification-side counterpart to `/orchestrate-coding-session` (execution) and `/dekspec:land-intent` (landing). It sequences the existing authoring skills and engine verbs; it reimplements none of them, and it **stops at the coding boundary**.
+Specification phase-executor for an Intent — the specification-side counterpart to `/dekbuilder:orchestrate-coding-session` (execution) and `/dekbuilder:land-intent` (landing). It sequences the existing authoring skills and engine verbs; it reimplements none of them, and it **stops at the coding boundary**.
 
 Use it when an Intent earns its place — an outcome spanning several IBs (ADR-056 §4). A bounded change needs no Intent: author one IB (`dekspec ib new <slug>` or `/write-ibs`) and authorize it directly.
 
@@ -63,6 +63,8 @@ It emits `{kind, path, intent_id, status, is_provisional}`. Use the resolved **p
 
 ### Phase 2 — Accept (engineer-gated)
 
+Run the spec-reviewer dispatch defined by `/write-intent --review` Step 2.5 in [`write-intent/modes/review.md`](../write-intent/modes/review.md) on the Intent before asking the engineer to accept. Its assignment includes the Intent, its governing sources, its `## Behavior placement` table and the path of every artifact it names; resolve homes as WS-033 §Home forms defines them, passing the working name from BR 9 instead of a path for a home marked `(new)`. Present the findings with the analysis: the review informs the decision and never makes it. If the dispatch cannot run, report "independent spec review not run" with the reason; never present your own review as the spec-reviewer's.
+
 Present the analyzed Intent and run `/write-intent --accept <intent>` only on the engineer's approval. `spec-intent` never auto-accepts. PROPOSED → ACCEPTED.
 
 ### Phase 3 — Decompose into IBs; update only the specs the change affects
@@ -85,14 +87,19 @@ Check `dekspec config get specification.reference_mode`. If the key is absent (t
 
 ### Phase 5 — Check readiness, then stop at the coding boundary
 
-Evaluate the READY predicate — the same one `/implement` checks at entry (ADR-059):
+Phases 1–4 use Spec alone. Assess execution readiness through the existing public Builder CLI when available; it consumes the same Spec-owned READY predicate that `/dekbuilder:implement` checks at entry (ADR-059). Replace `INT-NNN` below with the accepted Intent's ID:
 
 ```bash
-dekspec implement ready <INT-NNN>
+if command -v dekbuilder >/dev/null 2>&1; then
+    dekbuilder implement ready INT-NNN
+else
+    printf '%s\n' 'UNASSESSED — Deck Builder unavailable; execution readiness was not evaluated.'
+fi
 ```
 
-- **READY** — report it, with the IB order and the delivery the run would use. The next step is `/dekspec:implement <INT-NNN>`, which carries the work through construction, review, integration and completion without further prompts. The manual alternative is `/orchestrate-coding-session` then `/dekspec:land-intent`.
+- **READY** — report it, with the IB order and the delivery the run would use. The next step is `/dekbuilder:implement <INT-NNN>`, which carries the work through construction, review, integration and completion without further prompts. The manual alternative is `/dekbuilder:orchestrate-coding-session` then `/dekbuilder:land-intent`.
 - **NOT READY** — report each missing item and its fix exactly as returned, for example an IB edited after `accept`, a blocking Open Issue, autonomy `manual`, an unresolved obligation or a missing prerequisite. Resolve the ones that are specification work here with the engineer. Never approve on their behalf.
+- **UNASSESSED** — if Builder is absent or its command fails without a readiness assessment, report the actual unavailable/error diagnostic and stop. The Spec authorization results remain valid; execution readiness has not been established. Do not acquire Builder automatically or invent READY.
 
 **This skill stops at the coding boundary: it does not start execution** — no `dekspec ib start`, no dispatch.
 
@@ -103,7 +110,7 @@ dekspec implement ready <INT-NNN>
 - Don't cross the coding boundary — never run `dekspec ib start` or write implementation code.
 - Don't author empty or duplicative parent artifacts — a WS, IC or ADR exists only when it owns a fact no IB should copy (ADR-056).
 - Don't re-baseline after execution starts — then only `dekspec ib amend` with an independent reviewer changes the contract.
-- Don't authorize an IB whose acceptance tests are missing, unreviewed, or reviewed at a different floor digest — `/implement` readiness refuses it, and the builder never writes them.
+- Don't authorize an IB whose acceptance tests are missing, unreviewed, or reviewed at a different floor digest — `/dekbuilder:implement` readiness refuses it, and the builder never writes them.
 
 ## Verification Checklist
 
@@ -112,7 +119,7 @@ dekspec implement ready <INT-NNN>
 - [ ] Every child IB passed `dekspec ib lint` and was proposed; its acceptance tests were then written (`/dekspec:write-tests`, genuine red on `dekspec ib floor`) and oracle-reviewed with `/dekspec:review-ib` (a `Floor reviewed:` row names the floor digest); only then was it accepted with `dekspec ib accept`.
 - [ ] Any pre-start change to the tests was re-reviewed (a new row) and re-protected with `dekspec ib baseline` before execution.
 - [ ] The Intent is ACCEPTED; no execution was started and no implementation code was written.
-- [ ] `dekspec implement ready` was evaluated and its READY / missing-preparation result reported, with `/dekspec:implement <intent>` named as the next step when READY.
+- [ ] When Builder was available, `dekbuilder implement ready` was evaluated and its READY / missing-preparation result reported, with `/dekbuilder:implement <intent>` named as the next step when READY; otherwise readiness was reported UNASSESSED with the actual diagnostic and no automatic acquisition.
 
 ## Closing Step
 

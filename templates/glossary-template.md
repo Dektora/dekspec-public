@@ -1,6 +1,8 @@
 # Domain Glossary
 
-Canonical definitions for every domain term used across this system's artifacts. This is the singleton document at `dekspec/domain-glossary.md`. It is authored continuously — every time `/write-glossary` adds a term, or the recurrence pipeline auto-promotes a logged correction (`/write-corrections`) past the threshold, a row lands here.
+<!-- Before writing content, read `dekspec resource purpose domain-glossary` for the canonical purpose and routing items. -->
+
+This is the singleton document at `dekspec/domain-glossary.md`. It is authored continuously — every time `/write-glossary` adds a term, or the recurrence pipeline auto-promotes a logged correction (`/write-corrections`) past the threshold, a row lands here.
 
 Read this document before introducing any new domain term in an artifact. If a term you need is missing, run `/write-glossary` to add it.
 

@@ -5,13 +5,17 @@ mode: full
 reasoning_effort: max
 disable-model-invocation: false
 allowed-tools: Read Write Edit Grep Glob Bash Agent
-argument-hint: [--provisional <slug>] [--help | --teaching | --audit | --review | --revise | --resync | --accept | --adopt | --dry-run] [description of the change, Intent / Working Spec path, or IB path] [engineer notes or path to notes file]
+argument-hint: "[--provisional <slug>] [--help | --teaching | --audit | --review | --revise | --resync | --accept | --adopt | --dry-run] [description of the change, Intent / Working Spec path, or IB path] [engineer notes or path to notes file]"
 related_skills: [write-intent, write-ws, write-ic, write-tests, review-ib, orchestrate-coding-session]
 ---
 
+<!-- Before writing content, read `dekspec resource purpose implementation-brief` for the canonical purpose and routing items. See [_lib/artifact_purpose.md](../_lib/artifact_purpose.md). -->
+
+Before writing content, read this type’s purpose entry using the command above; follow the [artifact purpose guide](../_lib/artifact_purpose.md).
+
 > **Vendored asset paths:** Template + doc paths below resolve via `dekspec resource template <name>` / `dekspec resource doc <name>` (wheel-bundled since v0.91.0; consumer-fs override wins when present). See [`_lib/vendored_assets.md`](../_lib/vendored_assets.md) for the full resolution rule.
 
-Author Implementation Briefs. An IB is the smallest governed work contract and is executed directly — there are no code beads (ADR-056). One IB carries a bounded change; an Intent or a Working Spec that spans more than one IB is decomposed into several.
+Author Implementation Briefs using `implementation-brief.holds.contract` and `implementation-brief.holds.outcome` from the purpose entry. Execute each IB directly, without code beads (ADR-056). Decompose an Intent or Behavior Specification spanning several briefs into several IBs.
 
 > **⛔ CONTEXT CHECK** — see [`_lib/context_check.md`](../_lib/context_check.md)
 >
@@ -126,7 +130,7 @@ Skill-specific checks to surface as Open Issues: every `dekspec ib lint IB-NNN` 
 
 - **A description of a bounded change** (no parent). Enough when it yields an Outcome, a Rationale and the references that govern it. Ask for what is missing; do not invent it.
 - **An Intent** — must be `ACCEPTED`. Each IB gets `**Parent:** INT-NNN`, and its Scope lies inside the Intent's `Components affected:`. Together the IBs deliver the Intent's Desired Outcome (the Intent's Verification is the cross-IB proof, run by `dekspec intent verify`).
-- **A Working Spec** — the IBs reference its sections (`→ WS-NNN §Section`); `**Parent:** WS-NNN` when the WS is the reason the IB exists. **L12 gate:** run `dekspec validate <ws-path> --json`; if the WS is `ACCEPTED` and carries any unresolved `P1` open issue (`blocking_pre_ib` per ADR-013 / LINK-WS-BLOCKING-PRE-IB-CLEAN), refuse and name each issue. A WS at DRAFT/PROPOSED cannot be referenced as binding (it is not approved) — settle it first. No bypass flag.
+- **A Working Spec** — the IBs reference its sections (`→ WS-NNN §Section`); `**Parent:** WS-NNN` when the WS is the reason the IB exists. **L12 gate:** run `dekspec validate <ws-path> --json`; if the WS is `ACCEPTED` and carries any unresolved `P1` open issue (`blocking_pre_ib` per ADR-013 / LINK-BS-BLOCKING-PRE-IB-CLEAN), refuse and name each issue. A WS at DRAFT/PROPOSED cannot be referenced as binding (it is not approved) — settle it first. No bypass flag.
 
 ### Investigate
 

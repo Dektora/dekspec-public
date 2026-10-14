@@ -1,0 +1,467 @@
+record_version: 1.0.0
+types:
+- type: system-vision
+  name: System Vision
+  aliases:
+  - sv
+  template: system-vision
+  skill: write-sv
+  holds:
+  - id: system-vision.holds.identity
+    text: The singleton describes what the whole system is and what it produces and consumes.
+  - id: system-vision.holds.audience
+    text: The vision names the users, customers and operators the system serves.
+  - id: system-vision.holds.motivation
+    text: The vision explains why the system exists and the problem that justified it.
+  - id: system-vision.holds.success
+    text: The vision describes observable success and its non-goals.
+  - id: system-vision.holds.principles
+    text: The vision states the operating principles that frame the system.
+  does_not_hold:
+  - id: system-vision.not.ruling
+    text: Architectural rulings and choices between alternatives are recorded separately.
+    destination: adr
+  - id: system-vision.not.subsystems
+    text: Subsystem descriptions use Architecture Elements instead of additional System Visions.
+    destination: architecture-element
+    subtype: subsystem
+  - id: system-vision.not.code-gap
+    text: Code-versus-spec observations are tracked as divergences or tracker issues.
+    destination: divergence-record
+  - id: system-vision.not.change-narrative
+    text: Detailed change rationale, cross-artifact impact analysis and revision process narrative stay in git commit messages.
+    destination: commit-message
+- type: constitution
+  name: Constitution
+  aliases: []
+  template: constitution
+  skill: write-constitution
+  holds:
+  - id: constitution.holds.commitments
+    text: The Constitution records standing project commitments in eight ordered articles — Project Identity, Technology Stack, Quality Standards, Architecture Principles, Development Workflow, Model Configuration, Boundaries and Amendments.
+  - id: constitution.holds.identity-pointer
+    text: Project identity is a summary and typed pointer to the System Vision.
+  - id: constitution.holds.stack
+    text: The Constitution declares the technology stack.
+  - id: constitution.holds.quality
+    text: The Constitution states project-wide quality standards.
+  - id: constitution.holds.architecture
+    text: The Constitution preserves standing architectural principles with optional typed adr_refs and standing boundaries with optional typed adr_refs and ae_refs.
+  - id: constitution.holds.workflow
+    text: The Constitution states development workflow policy.
+  - id: constitution.holds.model-policy
+    text: The Constitution records project policy for model configuration.
+  - id: constitution.holds.amendments
+    text: The Constitution records durable amendments to its commitments.
+  does_not_hold:
+  - id: constitution.not.system-description
+    text: The full system description stays in the System Vision referenced by Article 1.
+    destination: system-vision
+  - id: constitution.not.decision-rationale
+    text: Detailed option comparisons and decision rationale have their own decision records.
+    destination: adr
+  - id: constitution.not.code-gap
+    text: Code-versus-spec observations are tracked as divergences or tracker issues.
+    destination: divergence-record
+  - id: constitution.not.change-narrative
+    text: Detailed change rationale, cross-artifact impact analysis and revision process narrative stay in git commit messages.
+    destination: commit-message
+- type: mission
+  name: Mission
+  aliases:
+  - msn
+  template: mission
+  skill: write-mission
+  holds:
+  - id: mission.holds.outcome
+    text: A Mission frames a shared outcome across an ordered queue of Intents.
+  - id: mission.holds.verification
+    text: A Mission records the integrated observable verification predicate.
+  - id: mission.holds.boundaries
+    text: A Mission states shared non-goals, release boundaries, rollback plans and kill criteria.
+  - id: mission.holds.autonomy
+    text: A Mission sets the autonomy ceiling for its child Intents.
+  - id: mission.holds.flag-strategy
+    text: A Mission records the feature flag strategy that guards partial rollout.
+  - id: mission.holds.coverage
+    text: A Mission holds outcome-wide coverage gaps no single child Intent owns.
+  - id: mission.holds.creation-triggers
+    text: A Mission is warranted by multiple Intents, a shared rollout flag, a shared outcome or kill criterion, or work spanning more than about a week.
+  does_not_hold:
+  - id: mission.not.single-intent
+    text: Work that fits one Intent needs no Mission wrapper.
+    destination: intent
+  - id: mission.not.execution-history
+    text: Ownership, attempts, failures, evidence and verdicts are execution history.
+    destination: execution-record
+  - id: mission.not.code-gap
+    text: Code-versus-spec observations are tracked as divergences or tracker issues.
+    destination: divergence-record
+  - id: mission.not.change-narrative
+    text: Detailed change rationale, cross-artifact impact analysis and revision process narrative stay in git commit messages.
+    destination: commit-message
+- type: intent
+  name: Intent
+  aliases:
+  - int
+  template: intent
+  skill: write-intent
+  holds:
+  - id: intent.holds.outcome
+    text: An Intent commits to an outcome spanning several Implementation Briefs with its own outcome test.
+  - id: intent.holds.motivation
+    text: An Intent explains the motivation for the planned change.
+  - id: intent.holds.components
+    text: An Intent identifies the components and scope affected.
+  - id: intent.holds.verification
+    text: An Intent states executable outcome verification.
+  - id: intent.holds.decisions
+    text: An Intent records lifecycle decisions and references its child work contracts.
+  does_not_hold:
+  - id: intent.not.measurable-targets
+    text: Numeric latency, throughput, capacity and coverage targets are behavioral requirements.
+    destination: behavior-spec
+  - id: intent.not.decision-rationale
+    text: Comparisons of alternatives and the rationale for choosing one are architectural decisions.
+    destination: adr
+  - id: intent.not.boundary-contract
+    text: Boundary facts are referenced from their canonical Interface Contract rather than restated.
+    destination: interface-contract
+  - id: intent.not.behavior-rules
+    text: Behavioral rules are referenced from their canonical Behavior Specification rather than restated.
+    destination: behavior-spec
+  - id: intent.not.bounded-change
+    text: A bounded change that fits one Implementation Brief needs no Intent wrapper.
+    destination: implementation-brief
+  - id: intent.not.parent-mission
+    text: The shared outcome, queue and autonomy ceiling of multiple Intents are owned by their parent Mission.
+    destination: mission
+  - id: intent.not.code-gap
+    text: Code-versus-spec observations are tracked as divergences or tracker issues.
+    destination: divergence-record
+  - id: intent.not.change-narrative
+    text: Detailed change rationale, cross-artifact impact analysis and revision process narrative stay in git commit messages.
+    destination: commit-message
+  - id: intent.not.execution-history
+    text: Ownership, progress, attempts, failures, evidence and verdicts are execution history.
+    destination: execution-record
+- type: architecture-element
+  name: Architecture Element
+  aliases:
+  - ae
+  template: architecture-element
+  skill: write-ae
+  holds:
+  - id: architecture-element.holds.structure
+    text: An Architecture Element describes a system slice, responsibilities, boundaries, dependencies and relationships.
+  - id: architecture-element.holds.views
+    text: An Architecture Element provides architectural views or explains their absence.
+  - id: architecture-element.holds.principles
+    text: An Architecture Element states subsystem-specific vision, concepts and non-measurable constraints.
+  - id: architecture-element.holds.flows
+    text: Pipeline and Workflow / Process elements describe ordered architectural flows and scenarios.
+  - id: architecture-element.holds.data-model
+    text: Data Model elements describe conceptual data relationships.
+  - id: architecture-element.holds.interface-inventory
+    text: Interface Surface elements inventory endpoints, producers and consumers.
+  - id: architecture-element.holds.subtype
+    text: An Architecture Element selects one subtype from the architecture schema.
+  - id: architecture-element.holds.structural-numbers
+    text: Numbers that define architecture, such as three services or two phases, describe structure rather than tunable defaults.
+  does_not_hold:
+  - id: architecture-element.not.measurable-targets
+    text: Latency, throughput, capacity, retention, SLO and resource-utilization targets are behavioral requirements.
+    destination: behavior-spec
+  - id: architecture-element.not.decision-rationale
+    text: Alternative comparisons, tradeoffs and design-choice rationale are architectural decisions.
+    destination: adr
+  - id: architecture-element.not.boundary-contract
+    text: Detailed request and response guarantees, wire formats and schema, dtype or kwarg contracts define boundaries.
+    destination: interface-contract
+  - id: architecture-element.not.implementation-plan
+    text: Implementation recipes, tasks, migration steps, sequencing and rollout plans are bounded work hypotheses.
+    destination: implementation-brief
+  - id: architecture-element.not.behavior-rules
+    text: Algorithms, formulas, algorithm invariants, per-type dispatch mechanics, audit rulers and internal component behavior have a behavioral home.
+    destination: behavior-spec
+  - id: architecture-element.not.shared-behavior
+    text: Rules shared across briefs or relied on by later Intents need one canonical Behavior Specification home.
+    destination: behavior-spec
+  - id: architecture-element.not.defaults
+    text: Tunable configuration defaults and their rationale are behavioral requirements.
+    destination: behavior-spec
+  - id: architecture-element.not.code-detail
+    text: Implementation code, callable identifiers, import paths and library-function names remain in source code.
+    destination: source-code
+  - id: architecture-element.not.system-motivation
+    text: System-wide motivational scene-setting stays in the System Vision rather than being repeated.
+    destination: system-vision
+  - id: architecture-element.not.code-gap
+    text: Code-versus-spec observations are tracked as divergences or tracker issues.
+    destination: divergence-record
+  - id: architecture-element.not.change-narrative
+    text: Detailed change rationale, cross-artifact impact analysis and revision process narrative stay in git commit messages.
+    destination: commit-message
+  - id: architecture-element.not.execution-history
+    text: Ownership, progress, attempts, failures, evidence and verdicts are execution history.
+    destination: execution-record
+- type: adr
+  name: ADR
+  aliases:
+  - architectural-decision-record
+  template: adr
+  skill: write-adr
+  holds:
+  - id: adr.holds.choice
+    text: An ADR records one architectural choice between alternatives and its rationale.
+  - id: adr.holds.rejected-options
+    text: An ADR records the rejected options and why they were rejected.
+  - id: adr.holds.consequences
+    text: An ADR records the positive and negative consequences of the choice.
+  - id: adr.holds.context
+    text: An ADR records the context, drivers and constraints that shaped the choice.
+  - id: adr.holds.decision-illustration
+    text: An ADR may illustrate a wire-format choice in at most two lines when the format itself is the decision.
+  does_not_hold:
+  - id: adr.not.interface-surface
+    text: Structural interface inventories describe an Interface Surface.
+    destination: architecture-element
+    subtype: interface_surface
+  - id: adr.not.workflow
+    text: Architectural workflow and process structure describes a Workflow / Process.
+    destination: architecture-element
+    subtype: workflow_process
+  - id: adr.not.data-model
+    text: Conceptual data relationships describe a Data Model.
+    destination: architecture-element
+    subtype: data_model
+  - id: adr.not.container
+    text: Runtime and deployment unit structure describes a Container.
+    destination: architecture-element
+    subtype: container
+  - id: adr.not.boundary-contract
+    text: Detailed schemas, wire formats and boundary guarantees are interface contracts.
+    destination: interface-contract
+  - id: adr.not.behavior-rules
+    text: Algorithms, derivations, procedures, per-type dispatch mechanics and tunable defaults with rationale are behavioral rules.
+    destination: behavior-spec
+  - id: adr.not.project-commitment
+    text: Standing project commitments have a constitutional home.
+    destination: constitution
+  - id: adr.not.multi-intent-outcome
+    text: Shared outcomes spanning multiple Intents are Mission-level commitments.
+    destination: mission
+  - id: adr.not.code-detail
+    text: Function signatures, line numbers, configuration keys, variable names, code-level edge cases and implementation file paths stay in source code.
+    destination: source-code
+  - id: adr.not.code-gap
+    text: Code-versus-spec observations are tracked as divergences or tracker issues.
+    destination: divergence-record
+  - id: adr.not.change-narrative
+    text: Detailed change rationale, cross-artifact impact analysis and revision process narrative stay in git commit messages.
+    destination: commit-message
+  - id: adr.not.execution-history
+    text: Ownership, progress, attempts, failures, evidence and verdicts are execution history.
+    destination: execution-record
+- type: interface-contract
+  name: Interface Contract
+  aliases:
+  - ic
+  template: interface-contract
+  skill: write-ic
+  holds:
+  - id: interface-contract.holds.boundary-facts
+    text: An Interface Contract holds boundary facts between independently implementable, testable or replaceable parties.
+  - id: interface-contract.holds.parties
+    text: An Interface Contract names its parties and their authority.
+  - id: interface-contract.holds.semantics
+    text: An Interface Contract specifies inputs, outputs, request and response guarantees, schemas and compatibility promises.
+  - id: interface-contract.holds.errors
+    text: An Interface Contract specifies observable error semantics at the boundary.
+  - id: interface-contract.holds.consistency
+    text: An Interface Contract states both the consistency guarantees that hold and those that do not.
+  - id: interface-contract.holds.cross-cutting
+    text: An Interface Contract records cross-cutting properties only as they constrain its boundary.
+  does_not_hold:
+  - id: interface-contract.not.component-behavior
+    text: Behavior internal to one component is specified outside the boundary contract.
+    destination: behavior-spec
+  - id: interface-contract.not.code-gap
+    text: Code-versus-spec observations are tracked as divergences or tracker issues.
+    destination: divergence-record
+  - id: interface-contract.not.change-narrative
+    text: Detailed change rationale, cross-artifact impact analysis and revision process narrative stay in git commit messages.
+    destination: commit-message
+  - id: interface-contract.not.execution-history
+    text: Ownership, progress, attempts, failures, evidence and verdicts are execution history.
+    destination: execution-record
+- type: behavior-spec
+  name: Behavior Specification
+  aliases:
+  - bs
+  - behavior-specification
+  - working-spec # dekspec:names-both-forms
+  - ws # dekspec:names-both-forms
+  template: behavior-spec
+  skill: write-bs
+  holds:
+  - id: behavior-spec.holds.rules
+    text: A Behavior Specification holds testable behavioral requirements that span briefs or outlive an Intent.
+  - id: behavior-spec.holds.algorithm
+    text: A Behavior Specification specifies algorithms, formulas, invariants and component procedures.
+  - id: behavior-spec.holds.quality
+    text: A Behavior Specification holds measurable quality requirements and tunable defaults with rationale.
+  - id: behavior-spec.holds.failure
+    text: A Behavior Specification specifies observable failure detection and bounded recovery behavior.
+  - id: behavior-spec.holds.evals
+    text: A Behavior Specification holds evaluation hooks for behavior involving model output.
+  - id: behavior-spec.holds.non-goals
+    text: A Behavior Specification states the behavioral unit and its exclusions.
+  - id: behavior-spec.holds.references
+    text: Implementation Briefs reference canonical behavior sections as obligations rather than copying them.
+  does_not_hold:
+  - id: behavior-spec.not.boundary-contract
+    text: Independent boundary properties and interface guarantees are defined in Interface Contracts.
+    destination: interface-contract
+  - id: behavior-spec.not.vision
+    text: Architectural vision is described by the source Architecture Element.
+    destination: architecture-element
+    subtype: component
+  - id: behavior-spec.not.acceptance
+    text: Deterministic acceptance conditions and eval thresholds that gate a brief are recorded in that Implementation Brief.
+    destination: implementation-brief
+  - id: behavior-spec.not.code-detail
+    text: Function signatures, line numbers, config key names, variable names and code-level edge cases remain in source code.
+    destination: source-code
+  - id: behavior-spec.not.code-gap
+    text: Code-versus-spec observations are tracked as divergences or tracker issues.
+    destination: divergence-record
+  - id: behavior-spec.not.change-narrative
+    text: Detailed change rationale, cross-artifact impact analysis and revision process narrative stay in git commit messages.
+    destination: commit-message
+  - id: behavior-spec.not.execution-history
+    text: Ownership, progress, attempts, failures, evidence and verdicts are execution history.
+    destination: execution-record
+  legacy_template: working-spec # dekspec:names-both-forms
+  legacy_skill: write-ws # dekspec:names-both-forms
+- type: implementation-brief
+  name: Implementation Brief
+  aliases:
+  - ib
+  template: implementation-brief
+  skill: write-ibs
+  holds:
+  - id: implementation-brief.holds.contract
+    text: An Implementation Brief is the smallest governed work contract and can stand alone without a parent.
+  - id: implementation-brief.holds.outcome
+    text: An Implementation Brief states a bounded observable outcome and its rationale.
+  - id: implementation-brief.holds.obligations
+    text: An Implementation Brief references rather than copies obligations owned by ADRs, Interface Contracts, Behavior Specifications, Security Profiles, Architecture Elements or the Constitution, and states local obligations only when it owns them.
+  - id: implementation-brief.holds.scope
+    text: An Implementation Brief declares allowed changes and protected surfaces.
+  - id: implementation-brief.holds.acceptance
+    text: An Implementation Brief states independently based acceptance conditions with executable or review verification.
+  - id: implementation-brief.holds.hypothesis
+    text: An Implementation Brief holds a revisable implementation hypothesis for tasks, sequencing, rollout and cutover.
+  - id: implementation-brief.holds.environment
+    text: An Implementation Brief declares required environment prerequisites and probes.
+  does_not_hold:
+  - id: implementation-brief.not.shared-obligation
+    text: Rules that span briefs or outlive an Intent need a canonical Behavior Specification.
+    destination: behavior-spec
+  - id: implementation-brief.not.boundary-contract
+    text: Shared multi-line boundary shapes need a canonical Interface Contract section.
+    destination: interface-contract
+  - id: implementation-brief.not.decision-rationale
+    text: Architectural choices are referenced from their canonical decision records.
+    destination: adr
+  - id: implementation-brief.not.code-detail
+    text: Function signatures, line numbers, config key names, variable names and code-level edge cases remain in source code.
+    destination: source-code
+  - id: implementation-brief.not.code-gap
+    text: Code-versus-spec observations are tracked as divergences or tracker issues.
+    destination: divergence-record
+  - id: implementation-brief.not.change-narrative
+    text: Detailed change rationale, cross-artifact impact analysis and revision process narrative stay in git commit messages.
+    destination: commit-message
+  - id: implementation-brief.not.execution-history
+    text: Ownership, progress, attempts, failures, evidence and verdicts are execution history.
+    destination: execution-record
+- type: security-profile
+  name: Security Profile
+  aliases:
+  - sp
+  template: security-profile
+  skill: write-sp
+  holds:
+  - id: security-profile.holds.posture
+    text: A Security Profile declares the typed security posture for a repository or bounded context.
+  - id: security-profile.holds.dataflows
+    text: A Security Profile declares allowed dataflows and secret stores.
+  - id: security-profile.holds.authentication
+    text: A Security Profile declares authentication methods.
+  - id: security-profile.holds.supply-chain
+    text: A Security Profile declares allowed supply-chain sources.
+  - id: security-profile.holds.tools
+    text: A Security Profile declares SAST and DAST tools.
+  - id: security-profile.holds.coverage
+    text: A Security Profile declares OWASP coverage.
+  does_not_hold:
+  - id: security-profile.not.decision-rationale
+    text: Rationale for architectural security choices is recorded in an ADR.
+    destination: adr
+  - id: security-profile.not.component-behavior
+    text: Component security behavior is specified in a Behavior Specification.
+    destination: behavior-spec
+  - id: security-profile.not.code-gap
+    text: Code-versus-spec observations are tracked as divergences or tracker issues.
+    destination: divergence-record
+  - id: security-profile.not.change-narrative
+    text: Detailed change rationale, cross-artifact impact analysis and revision process narrative stay in git commit messages.
+    destination: commit-message
+- type: domain-glossary
+  name: Domain Glossary
+  aliases:
+  - glossary
+  template: glossary
+  skill: write-glossary
+  holds:
+  - id: domain-glossary.holds.definitions
+    text: The singleton domain glossary holds canonical definitions of domain terms.
+  - id: domain-glossary.holds.anti-definitions
+    text: The glossary records common misinterpretations that a term does not mean.
+  - id: domain-glossary.holds.code-conventions
+    text: The glossary records code naming conventions for domain terms.
+  - id: domain-glossary.holds.categories
+    text: The glossary groups terms into project-defined categories.
+  - id: domain-glossary.holds.living-reference
+    text: The glossary grows continuously through term authoring and promoted corrections.
+  does_not_hold:
+  - id: domain-glossary.not.corrections
+    text: Unpromoted terminology corrections and recurrence counts stay in the corrections log.
+    destination: corrections-log
+  - id: domain-glossary.not.behavior-rules
+    text: Behavioral requirements are specified separately from vocabulary definitions.
+    destination: behavior-spec
+  - id: domain-glossary.not.code-gap
+    text: Code-versus-spec observations are tracked as divergences or tracker issues.
+    destination: divergence-record
+  - id: domain-glossary.not.change-narrative
+    text: Detailed change rationale, cross-artifact impact analysis and revision process narrative stay in git commit messages.
+    destination: commit-message
+other_destinations:
+- id: execution-record
+  name: Execution record
+  text: Append-only ownership, progress, attempts, failures, evidence, reviews and verdicts for governed work.
+- id: divergence-record
+  name: Divergences
+  text: Code-versus-spec gaps tracked in dekspec/divergences or br issues.
+- id: commit-message
+  name: Git commit message
+  text: Detailed change narrative and the process by which a revision was made.
+- id: source-code
+  name: Source code
+  text: Implementation code and its code-level identifiers and details.
+- id: corrections-log
+  name: Corrections log
+  text: Terminology corrections and recurrence history before glossary promotion.

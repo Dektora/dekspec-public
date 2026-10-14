@@ -10,11 +10,11 @@ argument-hint: "[request or target]"
 ---
 
 Default to preparing a handoff of current work. “Resume” reads the latest record
-for the requested repository/run. Use `dekspec handoff --help`: `write --input
-RECORD.json --at REPO` writes through the existing core continuity engine;
+for the requested repository/run. Use `dektools handoff --help`: `write --input
+RECORD.json --at REPO` writes through the Tools continuity helper;
 `read --at REPO` returns a record plus freshness diagnostics. These are agent
-helper commands; the user says `/dekspec:handoff` or
-`/dekspec:handoff resume the parser work`.
+helper commands; the user says `/dektools:handoff` or
+`/dektools:handoff resume the parser work`.
 
 The input object's fields are `objective`, `artifacts_touched` (paths),
 `decisions`, `open_questions` (including unresolved work), `commands_run`,

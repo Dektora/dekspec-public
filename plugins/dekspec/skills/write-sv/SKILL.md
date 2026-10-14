@@ -5,13 +5,17 @@ mode: lite
 reasoning_effort: max
 disable-model-invocation: false
 allowed-tools: Read Write Edit Grep Glob Bash Agent
-argument-hint: [--provisional <slug>] [--help | --teaching | --audit | --review | --accept | --lock | --unlock | --deprecate] [description or path]
+argument-hint: "[--provisional <slug>] [--help | --teaching | --audit | --review | --accept | --lock | --unlock | --deprecate] [description or path]"
 related_skills: [write-ae, write-adr, write-constitution, write-mission, write-corrections]
 ---
 
+<!-- Before writing content, read `dekspec resource purpose system-vision` for the canonical purpose and routing items. See [_lib/artifact_purpose.md](../_lib/artifact_purpose.md). -->
+
+Before writing content, read this type’s purpose entry using the command above; follow the [artifact purpose guide](../_lib/artifact_purpose.md).
+
 > **Vendored asset paths:** Template + doc paths below resolve via `dekspec resource template <name>` / `dekspec resource doc <name>` (wheel-bundled since v0.91.0; consumer-fs override wins when present). See [`_lib/vendored_assets.md`](../_lib/vendored_assets.md) for the full resolution rule.
 
-> **Scope of this skill.** The System Vision is the singleton root of the dekspec graph. There is exactly one per system, at `dekspec/system-vision.md` (id: `SYSTEM-VISION`). Subsystem-level descriptions belong in Architecture Elements (`/write-ae`), not in additional Vision documents. If a prior artifact named `Vision Note:` exists, it is a legacy naming — migrate to a System Vision (singleton) or convert to an Architecture Element (subsystem).
+> **Scope of this skill.** Read `dekspec resource purpose system-vision` (`system-vision.holds.identity`, `system-vision.not.subsystems`). Use `dekspec/system-vision.md` (id: `SYSTEM-VISION`). If a prior artifact named `Vision Note:` exists, migrate it to the singleton or convert it to an Architecture Element according to that entry.
 
 > **Inline-mode context check** — see [`_lib/context_check.md`](../_lib/context_check.md). This applies only to inline modes. Substantive fan-out modes dispatch a fresh authoring context: skip `/clear`, history approval and contamination markers. Preserve the engineer's guidance verbatim, keep parsed mode/path arguments separate, label parent additions as orchestrator notes, and pass source paths rather than parent summaries. Show the manifest transparently and proceed under existing authorization; no additional pre-dispatch go-ahead is required.
 
@@ -253,7 +257,7 @@ See [`_lib/cow_write_guard.md`](../_lib/cow_write_guard.md) for the canonical co
 
 ## Common Pitfalls
 
-- Don't author a second Vision for a subsystem — write an Architecture Element via `/write-ae` instead; the System Vision is a per-system singleton at `dekspec/system-vision.md`.
+- Apply `system-vision.holds.identity` and `system-vision.not.subsystems` from the purpose entry before choosing `/write-sv` or `/write-ae`; the singleton path is `dekspec/system-vision.md`.
 - Don't emit `# Vision Note: ...` as the H1 — use `# System Vision: <Name>` (or `# <Plain Name>`); the parser has rejected the `Vision Note:` prefix since v0.38.0+.
 - Don't leave `Why This Exists` (or `Who This Is For`) thin or inferred — return `INSUFFICIENT_INPUT:` and ask the engineer; these are the load-bearing rationale, and guessing them poisons every downstream AE/ADR.
 - Don't patch a failed subagent draft inline in the parent — re-dispatch with the failing `validate_structure.py` rule names appended; silent parent-side fixes defeat the fan-out contract.

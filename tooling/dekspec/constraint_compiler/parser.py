@@ -10,6 +10,13 @@ Public API: parse(path) -> dict
 
 from __future__ import annotations
 
+from dekspec.spec_kinds import BEHAVIOR_SPEC_NAMES as BS
+
+from collections import OrderedDict
+from functools import wraps
+import pickle
+from threading import RLock
+
 import hashlib
 import math
 import re
@@ -20,8 +27,11 @@ from typing import Any
 
 from jsonschema import Draft202012Validator
 
+from .behavior_placement import read_placement
 from .vision_structure import REQUIRED_SECTIONS, normalize_heading, vision_sections
 from .. import __version__ as DEKSPEC_VERSION
+from ..brief_identity import BriefIdentityError, brief_id_from_path, dependency_ids
+from .._yaml import safe_load
 from ..severity import (
     ARTIFACT_SEVERITY_ALIAS_MAP as _SHARED_SEVERITY_ALIAS_MAP,
     CANONICAL_VALUES as _SEVERITY_CANONICAL_VALUES,
@@ -45,7 +55,7 @@ PARSER_VERSION = DEKSPEC_VERSION
 # 0.2.0 → 0.3.0 (IC / WS / ADR / AE), 0.1.0 → 0.2.0 (SV / Constitution),
 # Mission 0.2.0 → 0.3.0, Intent 0.3.0 → 0.4.0: ADR-057 retired statuses.
 _IC_IR_SCHEMA_VERSION = "0.3.0"
-_WS_IR_SCHEMA_VERSION = "0.3.0"
+_WS_IR_SCHEMA_VERSION = "0.4.0"
 _ADR_IR_SCHEMA_VERSION = "0.3.0"
 _IB_IR_SCHEMA_VERSION = "0.4.0"
 _INTENT_IR_SCHEMA_VERSION = "0.4.0"  # ADR-056/057: decision-only statuses, beads_before_accept retired
@@ -306,6 +316,71 @@ class ICParseError(Exception):
     """Raised when an IC's parsed IR fails schema validation."""
 
 
+# Serialized snapshots bound retained payloads to 32 MiB across all kinds.
+# Deserializing gives each caller a deep copy, including nested mutable values.
+# No source bytes, failures or live caller-owned IRs are retained.
+_PARSE_CACHE_LIMIT = 32 * 1024 * 1024
+_PARSE_CACHE = OrderedDict()
+_PARSE_CACHE_BYTES = 0
+_PARSE_CACHE_LOCK = RLock()
+
+
+def _reuse_identical_parse(schema_loader: str, schema_version: str):
+    def decorate(parse_artifact):
+        @wraps(parse_artifact)
+        def cached(path):
+            global _PARSE_CACHE_BYTES
+            src = Path(path).resolve()
+            content = src.read_bytes()  # Always read: neither mtime nor size proves freshness.
+            digest = hashlib.sha256(content).digest()
+            # Match read_text's universal-newline semantics, including source.sha256.
+            text = content.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")
+            try:
+                schema = globals()[schema_loader]()
+                schema_digest = hashlib.sha256(pickle.dumps(schema)).digest()
+            except Exception:
+                # Keep the parser's original error ordering (e.g. bad filename
+                # before a missing schema), and never cache unsuccessful reads.
+                return parse_artifact(path)
+            key = (parse_artifact.__name__, src.name, digest, PARSER_VERSION,
+                   globals()[schema_version], schema_digest)
+            with _PARSE_CACHE_LOCK:
+                entry = _PARSE_CACHE.get(key)
+                if entry is not None:
+                    _PARSE_CACHE.move_to_end(key)
+            if entry is not None:
+                # Brief identity also depends on the current declaration and
+                # path, neither of which is represented by the content key.
+                if parse_artifact.__name__ == "parse_ib":
+                    _extract_ib_id(src)
+                answer = pickle.loads(entry[0])
+                answer["source"]["path"] = str(src)
+                answer["source"]["parsed_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                return answer
+            answer = parse_artifact(path)
+            # A miss re-reads through the original parser. If a concurrent edit
+            # changed its input, do not put that result under the earlier key.
+            if (answer["source"]["path"] != str(src)
+                    or answer["source"]["sha256"] != hashlib.sha256(text.encode("utf-8")).hexdigest()):
+                return answer
+            payload = pickle.dumps(answer)
+            size = len(payload) + len(pickle.dumps(key))
+            if size <= _PARSE_CACHE_LIMIT:
+                with _PARSE_CACHE_LOCK:
+                    previous = _PARSE_CACHE.pop(key, None)
+                    if previous is not None:
+                        _PARSE_CACHE_BYTES -= previous[1]
+                    _PARSE_CACHE[key] = (payload, size)
+                    _PARSE_CACHE_BYTES += size
+                    while _PARSE_CACHE_BYTES > _PARSE_CACHE_LIMIT or len(_PARSE_CACHE) > 2048:
+                        _, (_, removed) = _PARSE_CACHE.popitem(last=False)
+                        _PARSE_CACHE_BYTES -= removed
+            return answer
+        return cached
+    return decorate
+
+
+@_reuse_identical_parse("_load_schema", "_IC_IR_SCHEMA_VERSION")
 def parse(path: str | Path) -> dict[str, Any]:
     """Parse an Interface Contract markdown file into a validated IR dict.
 
@@ -1007,7 +1082,7 @@ _AE_SUBTYPE_SLUGS = {
 }
 
 _LINKED_ARTIFACT_BULLET = re.compile(
-    r"^[-*]\s*\*\*Related\s+(?P<kind>ADRs?|WSs?|ICs?|IBs?|AEs?|INTs?|Intents?|Owners?):\*\*\s*(?P<value>.+?)$",
+    rf"^[-*]\s*\*\*Related\s+(?P<kind>ADRs?|(?:{'|'.join(BS.prefixes)})s?|ICs?|IBs?|AEs?|INTs?|Intents?|Owners?):\*\*\s*(?P<value>.+?)$",
     re.MULTILINE | re.IGNORECASE,
 )
 _NON_GOAL_BULLET = re.compile(
@@ -1030,6 +1105,7 @@ class AEParseError(Exception):
     """Raised when an AE's parsed IR fails schema validation."""
 
 
+@_reuse_identical_parse("_load_ae_schema", "_AE_IR_SCHEMA_VERSION")
 def parse_ae(path: str | Path) -> dict[str, Any]:
     """Parse an Architecture Element markdown file into a validated IR dict.
 
@@ -1637,7 +1713,7 @@ def _infer_ae_dir(ic_or_ws_ir: dict[str, Any]) -> Path | None:
         return None
     src_path = Path(src)
     parent = src_path.parent
-    if parent.name not in {"interface-contracts", "working-specs"}:
+    if parent.name not in {"interface-contracts", *BS.folders}:
         return None
     return parent.parent / "architecture-elements"
 
@@ -1646,8 +1722,8 @@ def _infer_ae_dir(ic_or_ws_ir: dict[str, Any]) -> Path | None:
 # Working Spec parser (v0.3-dev)
 # =========================================================================== #
 
-_WS_FILENAME = re.compile(r"^(WS-\d{3,})-.+\.md$")
-_WS_H1_TITLE = re.compile(r"^#\s+Working Spec:\s*(.+?)\s*$", re.MULTILINE)
+_WS_FILENAME = re.compile(rf"^({BS.id_pattern})-.+\.md$")
+_WS_H1_TITLE = re.compile(r"^#\s+(?:" + "|".join(map(re.escape, (BS.heading, *BS.old_headings))) + r"):\s*(.+?)\s*$", re.MULTILINE)
 _WS_VALID_STATUSES = _AE_VALID_STATUSES  # same enum
 _MECHANISM_LINE = re.compile(r"\*\*Mechanism:\*\*\s*(.+?)(?=\n\n|\Z)", re.DOTALL)
 _AE_REF_BULLET = re.compile(
@@ -1678,11 +1754,15 @@ _DOMAIN_EXCLUSION = re.compile(
 )
 
 
-class WSParseError(Exception):
-    """Raised when a WS's parsed IR fails schema validation."""
+class BSParseError(Exception):
+    """A Behavior Specification cannot be parsed or validated."""
 
 
-def parse_ws(path: str | Path) -> dict[str, Any]:
+WSParseError = BSParseError
+
+
+@_reuse_identical_parse("_load_ws_schema", "_WS_IR_SCHEMA_VERSION")
+def parse_bs(path: str | Path) -> dict[str, Any]:
     """Parse a Working Spec markdown file into a validated IR dict.
 
     Mirrors parse() (IC) and parse_ae() — lossy by design, missing fields
@@ -1806,6 +1886,8 @@ def parse_ws(path: str | Path) -> dict[str, Any]:
 
 
 # --------------------------------------------------------------------------- #
+parse_ws = parse_bs
+
 # WS field extractors
 # --------------------------------------------------------------------------- #
 
@@ -1818,17 +1900,17 @@ def _extract_ws_id(filename: str) -> str:
             return pid
         if _draft_id_or_none(filename) is not None:
             raise DraftArtifactError(
-                f"{filename} is a DRAFT artifact (WS-DRAFT-<slug>); allocate a "
+                f"{filename} is a DRAFT artifact ({BS.id_prefix}-DRAFT-<slug>); allocate a "
                 f"canonical ID with `dekspec id allocate` before parsing."
             )
-        raise WSParseError(f"Filename does not match WS-NNN-*.md pattern: {filename}")
+        raise WSParseError(f"Filename does not match {BS.id_prefix}-NNN-*.md pattern: {filename}")
     return m.group(1)
 
 
 def _extract_ws_name(text: str) -> str:
     m = _WS_H1_TITLE.search(text)
     if not m:
-        raise WSParseError("Missing or malformed H1 — expected '# Working Spec: <Name>'")
+        raise WSParseError(f"Missing or malformed H1 — expected '# {BS.heading}: <Name>'")
     return m.group(1).strip()
 
 
@@ -2105,7 +2187,7 @@ _QUANTIZATION_FIELDS = [
 
 def _load_ws_schema() -> dict[str, Any]:
     from ..schemas import load_schema as _load
-    return _load("working_spec")
+    return _load(BS.ir_kind)
 
 
 def _validate_ws(ir: dict[str, Any]) -> None:
@@ -2163,6 +2245,7 @@ class ADRParseError(Exception):
     """Raised when an ADR's parsed IR fails schema validation."""
 
 
+@_reuse_identical_parse("_load_adr_schema", "_ADR_IR_SCHEMA_VERSION")
 def parse_adr(path: str | Path) -> dict[str, Any]:
     """Parse an Architecture Decision Record markdown file into a validated IR.
 
@@ -2449,7 +2532,6 @@ def _validate_adr(ir: dict[str, Any]) -> None:
 # IB IR (Implementation Brief) parser
 # --------------------------------------------------------------------------- #
 
-_IB_FILENAME = re.compile(r"^(IB-\d{3,})-.+\.md$")
 _IB_VALID_STATUSES = {
     # ADR-057: an IB's governed status records decisions only — authorization
     # (PROPOSED → ACCEPTED) and evidence-backed completion (COMPLETE), plus the
@@ -2475,19 +2557,19 @@ _IB_RETIRED_STATUSES = {
 #: ADR-055 authority policies. `legacy` keeps the ADR-049-era restrictive
 #: meaning (Files to Modify is an allowlist, escalate on any unlisted file);
 #: `delegated` is the binding / acceptance / hypothesis model.
-IB_AUTHORITY_POLICIES = ("legacy", "delegated")
+IB_AUTHORITY_POLICIES = ("legacy", "delegated", "lean")
 _IB_H1_TITLE = re.compile(r"^#\s+(.+?)\s*$", re.MULTILINE)
 _IB_META_LINE = re.compile(r"^\*\*([^*]+?):\*\*\s*(.+?)\s*$", re.MULTILINE)
 _IB_AE_ID_REF = re.compile(r"\b(AE-\d{3,})\b")
-_IB_IB_ID_REF = re.compile(r"\b(IB-\d{3,})\b")
 _IB_INT_ID_REF = re.compile(r"\b(INT-\d{3,})\b")
-_WS_ID_FROM_PATH_IB = re.compile(r"\b(WS-\d{3,})\b")
+_WS_ID_FROM_PATH_IB = re.compile(rf"\b({BS.id_pattern})\b")
 
 
 class IBParseError(Exception):
     """Raised when an IB's parsed IR fails schema validation."""
 
 
+@_reuse_identical_parse("_load_ib_schema", "_IB_IR_SCHEMA_VERSION")
 def parse_ib(path: str | Path) -> dict[str, Any]:
     """Parse an Implementation Brief markdown file into a validated IR dict.
 
@@ -2497,6 +2579,11 @@ def parse_ib(path: str | Path) -> dict[str, Any]:
     """
     src = Path(path).resolve()
     text = src.read_text(encoding="utf-8")
+    return _parse_ib_text(src, text)
+
+
+def _parse_ib_text(src: Path, text: str) -> dict[str, Any]:
+    """Parse a source snapshot, also used by source migrations before writes."""
     ctx = _ParseContext(src=src, text=text, sections=_split_sections(text))
     meta = _extract_ib_metadata(text)
 
@@ -2506,7 +2593,7 @@ def parse_ib(path: str | Path) -> dict[str, Any]:
         # now canonical `P0..P3` rather than legacy
         # `{blocking, non_blocking}`.
         "ir_schema_version": _IB_IR_SCHEMA_VERSION,
-        "id": _extract_ib_id(src.name),
+        "id": _extract_ib_id(src),
         "name": _extract_ib_name(text),
         "status": _extract_ib_status(meta, ctx),
         "source": {
@@ -2525,7 +2612,7 @@ def parse_ib(path: str | Path) -> dict[str, Any]:
         # parent Working Spec at all (ADR-056), so its absence is not noted.
         ctx.warnings.append(_Warn(
             field="/spec",
-            reason="`**Spec:**` line does not name a WS-NNN (use `none` when there is no parent spec)",
+            reason=f"`**Spec:**` line does not name a {BS.id_prefix}-NNN (use `none` when there is no parent spec)",
             severity="warning",
         ))
 
@@ -2549,6 +2636,8 @@ def parse_ib(path: str | Path) -> dict[str, Any]:
     # `**Authority policy:**` line keeps the restrictive legacy meaning (it was
     # authored under ADR-049) — never silently reinterpreted as delegated.
     ir["authority_policy"] = _extract_ib_authority_policy(meta, ctx)
+    if meta.get("Risk"):
+        ir["risk"] = meta["Risk"].strip().strip("`")
 
     parent = _extract_ib_parent(meta)
     if parent:
@@ -2623,19 +2712,16 @@ def parse_ib(path: str | Path) -> dict[str, Any]:
     return ir
 
 
-def _extract_ib_id(filename: str) -> str:
-    m = _IB_FILENAME.match(filename)
-    if not m:
-        pid = _provisional_id_or_none(filename)
-        if pid is not None:
-            return pid
-        if _draft_id_or_none(filename) is not None:
-            raise DraftArtifactError(
-                f"{filename} is a DRAFT artifact (IB-DRAFT-<slug>); allocate a "
-                f"canonical ID with `dekspec id allocate` before parsing."
-            )
-        raise IBParseError(f"Filename does not match IB-NNN-*.md pattern: {filename}")
-    return m.group(1)
+def _extract_ib_id(path: Path) -> str:
+    if _draft_id_or_none(path.name) is not None:
+        raise DraftArtifactError(
+            f"{path.name} is a DRAFT artifact (IB-DRAFT-<slug>); allocate a "
+            "canonical ID with `dekspec id allocate` before parsing."
+        )
+    try:
+        return brief_id_from_path(path)
+    except BriefIdentityError as exc:
+        raise IBParseError(str(exc)) from exc
 
 
 def _extract_ib_name(text: str) -> str:
@@ -2725,15 +2811,7 @@ def _extract_ib_depends_on(meta: dict[str, str]) -> list[str]:
     raw = (meta.get("Depends on") or "").strip()
     if not raw or raw.lower() == "none":
         return []
-    out: list[str] = []
-    seen: set[str] = set()
-    for m in _IB_IB_ID_REF.finditer(raw):
-        ib_id = m.group(1)
-        if ib_id in seen:
-            continue
-        seen.add(ib_id)
-        out.append(ib_id)
-    return out
+    return dependency_ids(raw)
 
 
 _IB_CD_BULLET = re.compile(
@@ -2796,12 +2874,12 @@ def _extract_ib_domain_constraints(body: str) -> list[dict[str, str]]:
     return out
 
 
-_IB_PARENT_REF = re.compile(r"\b((?:INT|WS|MSN)-\d{3,})\b")
-_IB_SPEC_IMPACT_REF = re.compile(r"\b((?:ADR|IC|WS|AE|SP)-\d{3,}|CONSTITUTION|SYSTEM-VISION)\b")
+_IB_PARENT_REF = re.compile(rf"\b((?:INT|{'|'.join(BS.prefixes)}|MSN)-\d{{3,}})\b")
+_IB_SPEC_IMPACT_REF = re.compile(rf"\b((?:ADR|IC|{'|'.join(BS.prefixes)}|AE|SP)-\d{{3,}}|CONSTITUTION|SYSTEM-VISION)\b")
 _IB_OBLIGATION_REF = re.compile(
     r"^[-*]\s+\*\*(?P<id>O-\d+)\*\*\s*(?:→|->)\s*"
-    r"(?P<ref>(?:ADR|IC|WS|AE|SP|INT|MSN|IB)-\d{3,}|CONSTITUTION|SYSTEM-VISION)"
-    r"(?:\s*§\s*(?P<section>[^—\n]+?))?"
+    rf"(?P<ref>(?:ADR|IC|{'|'.join(BS.prefixes)}|AE|SP|INT|MSN|IB)-\d{{3,}}|CONSTITUTION|SYSTEM-VISION)"
+    r"(?:\s*§\s*(?P<section>[^\n]+?))?"
     r"(?:\s+—\s+(?P<note>.+?))?\s*$",
     re.MULTILINE,
 )
@@ -2809,7 +2887,16 @@ _IB_OBLIGATION_LOCAL = re.compile(
     r"^[-*]\s+\*\*(?P<id>O-\d+)\*\*\s*\(local\):\s*(?P<text>.+?)\s*$", re.MULTILINE
 )
 _IB_OBLIGATION_ANY = re.compile(r"^[-*]\s+\*\*O-\d+\*\*", re.MULTILINE)
-_IB_SCOPE_GLOB = re.compile(r"^[-*]\s+`(?P<glob>[^`]+)`\s*(?:—\s*(?P<note>.+?))?\s*$", re.MULTILINE)
+_IB_PATH_DECLARATION = re.compile(
+    r"^\s*[-*+]\s+(?P<paths>`[^`\n]+`(?:\s*,\s*`[^`\n]+`)*)"
+    r"\s*(?:—\s*(?P<note>.*))?$"
+)
+_IB_ASSET_LABEL = re.compile(r"^Protected acceptance assets(?:\s*\([^\n]*\))?\s*:\s*$", re.I)
+_IB_EMPTY_ASSETS = re.compile(r"none(?: beyond the test files named above)?(?:\s+.*)?", re.I)
+_IB_ASSET_IDENTIFIER = re.compile(
+    rf"(?:(?:P-)?(?:ADR|AE|IC|{'|'.join(BS.prefixes)}|IB|INT|MSN|SP)-[0-9]{{3,}}|AC-[0-9]+|"
+    r"CONSTITUTION|SYSTEM-VISION|DOMAIN-GLOSSARY)"
+)
 _IB_H3_SPLIT = re.compile(r"^###\s+(.+?)\s*$", re.MULTILINE)
 _IB_YAML_FENCE = re.compile(r"```ya?ml[^\n]*\n(?P<body>.*?)```", re.DOTALL)
 _IB_BACKTICK_PATH = re.compile(r"`([^`]+)`")
@@ -2860,6 +2947,72 @@ def _ib_subsections(body: str) -> tuple[str, dict[str, str]]:
     return lead, subs
 
 
+def _ib_section_line(ctx: _ParseContext, section: str) -> int:
+    """Original one-based line of the section body's first retained line.
+
+    Match the existing section splitter's last-heading and blank-line trimming
+    behavior. Locate by heading, never by searching for a possibly repeated
+    declaration string elsewhere in the document.
+    """
+    lines = ctx.text.splitlines()
+    start = 0
+    for index, line in enumerate(lines):
+        match = re.match(r"^##\s+(.+?)\s*$", line)
+        if match and match.group(1).strip() == section:
+            start = index + 1
+    while start < len(lines) and lines[start] == "":
+        start += 1
+    return start + 1
+
+
+def _ib_path_declaration(line: str, number: int, ctx: _ParseContext, *,
+                         assets: bool = False) -> tuple[list[str], str]:
+    """Consume a complete positional declaration, or emit one blocking warning.
+
+    Inline spans keep commas, spaces and dashes literal. Only a comma outside
+    those spans separates paths; an em-dash explanation contributes no paths.
+    The asset identifier reservation applies to the raw whole token before
+    existing path whitespace handling.
+    """
+    match = _IB_PATH_DECLARATION.fullmatch(line)
+    paths = _IB_BACKTICK_PATH.findall(match.group("paths")) if match else []
+    reserved = assets and any(_IB_ASSET_IDENTIFIER.fullmatch(p) for p in paths)
+    if not match or any(not p.strip() for p in paths) or reserved:
+        section = "protected acceptance assets" if assets else "Scope"
+        reason = "an identifier is not an asset declaration; " if reserved else ""
+        ctx.warnings.append(_Warn(
+            field="/acceptance_assets" if assets else "/scope",
+            reason=(f"{section} line {number}: {reason}use a complete quoted path list "
+                    "(`path`, `other path`) with an optional em-dash explanation. "
+                    + ("Use an explicit relative path such as `./AC-1` for a literal "
+                       "filename that is a reserved identifier." if reserved else "")),
+            severity="warning",
+        ))
+        return [], ""
+    return [p.strip() for p in paths], (match.group("note") or "").strip()
+
+
+def _ib_asset_declarations(body: str, offset: int, ctx: _ParseContext) -> list[str]:
+    """Read only a labelled post-YAML asset list, ending at following prose."""
+    first_line = _ib_section_line(ctx, "Acceptance") + body[:offset].count("\n")
+    assets: list[str] = []
+    active = False
+    for number, line in enumerate(body[offset:].splitlines(), first_line):
+        stripped = line.strip()
+        if _IB_ASSET_LABEL.fullmatch(stripped):
+            active = True
+        elif not stripped:
+            continue
+        elif active and re.match(r"^\s*[-*+]\s+", line):
+            value = re.sub(r"^\s*[-*+]\s+", "", line)
+            if not _IB_EMPTY_ASSETS.fullmatch(value):
+                paths, _ = _ib_path_declaration(line, number, ctx, assets=True)
+                assets.extend(paths)
+        else:
+            active = False
+    return sorted(dict.fromkeys(assets))
+
+
 def _extract_ib_acceptance(body: str, ctx: _ParseContext) -> tuple[list[dict[str, Any]], list[str]]:
     import yaml  # local import: only IBs with an Acceptance section need it
 
@@ -2872,7 +3025,7 @@ def _extract_ib_acceptance(body: str, ctx: _ParseContext) -> tuple[list[dict[str
         ))
         return [], []
     try:
-        data = yaml.safe_load(fence.group("body")) or []
+        data = safe_load(fence.group("body")) or []
     except yaml.YAMLError as exc:
         ctx.warnings.append(_Warn(
             field="/acceptance", reason=f"acceptance YAML does not parse: {exc}", severity="warning",
@@ -2909,6 +3062,16 @@ def _extract_ib_acceptance(body: str, ctx: _ParseContext) -> tuple[list[dict[str
                 severity="warning",
             ))
             continue
+        if "test_files" in verify:
+            paths = verify["test_files"]
+            if ("command" not in verify or not isinstance(paths, list)
+                    or any(not isinstance(p, str) or not p.strip()
+                           or p.startswith("/") or ".." in p.split("/")
+                           or any(c in p for c in "*?[") for p in paths)):
+                ctx.warnings.append(_Warn(
+                    field=where, reason=f"{ac_id} test_files must be a list of repository-relative "
+                    "file or folder paths without patterns, on a command condition only", severity="warning"))
+                continue
         entry: dict[str, Any] = {"id": ac_id, "condition": condition}
         if "pytest" in verify:
             nodes = verify["pytest"]
@@ -2925,6 +3088,8 @@ def _extract_ib_acceptance(body: str, ctx: _ParseContext) -> tuple[list[dict[str
                 ctx.warnings.append(_Warn(field=where, reason=f"{ac_id} has an empty command", severity="warning"))
                 continue
             entry["verify"] = {"command": cmd}
+            if "test_files" in verify:
+                entry["verify"]["test_files"] = verify["test_files"]
         else:
             what = str(verify["review"] or "").strip()
             if not what:
@@ -2937,12 +3102,7 @@ def _extract_ib_acceptance(body: str, ctx: _ParseContext) -> tuple[list[dict[str
         seen.add(ac_id)
         conditions.append(entry)
 
-    assets: list[str] = []
-    tail = body[fence.end():]
-    for line in tail.splitlines():
-        if line.lstrip().startswith(("-", "*")):
-            assets.extend(p.strip() for p in _IB_BACKTICK_PATH.findall(line) if p.strip())
-    return conditions, sorted(dict.fromkeys(assets))
+    return conditions, _ib_asset_declarations(body, fence.end(), ctx)
 
 
 def _extract_ib_contract_sections(ir: dict[str, Any], ctx: _ParseContext) -> None:
@@ -2950,6 +3110,8 @@ def _extract_ib_contract_sections(ir: dict[str, Any], ctx: _ParseContext) -> Non
     simply lacks them (its Files to Modify / Do Not Touch / Done When remain)."""
     sections = ctx.sections
 
+    if "Design intent" in sections:
+        ir["design_intent"] = sections["Design intent"].strip()
     outcome = sections.get("Outcome", "").strip()
     if outcome and not outcome.startswith("["):
         ir["outcome"] = outcome
@@ -2960,15 +3122,15 @@ def _extract_ib_contract_sections(ir: dict[str, Any], ctx: _ParseContext) -> Non
     if "Scope" in sections:
         lead, subs = _ib_subsections(sections["Scope"])
         scope = []
-        for m in _IB_SCOPE_GLOB.finditer(lead):
-            glob = m.group("glob").strip()
-            if glob.startswith("path/or/glob"):
+        for number, line in enumerate(lead.splitlines(), _ib_section_line(ctx, "Scope")):
+            if not re.match(r"^\s*[-*+]\s+", line):
                 continue
-            row = {"glob": glob}
-            note = (m.group("note") or "").strip()
-            if note and not note.startswith("["):
-                row["note"] = note
-            scope.append(row)
+            paths, note = _ib_path_declaration(line, number, ctx)
+            for glob in paths:
+                row = {"glob": glob}
+                if note and not note.startswith("["):
+                    row["note"] = note
+                scope.append(row)
         if scope:
             ir["scope"] = scope
         oos = [b for b in _extract_bullets(subs.get("out of scope", "")) if not b.startswith("[")]
@@ -2979,12 +3141,23 @@ def _extract_ib_contract_sections(ir: dict[str, Any], ctx: _ParseContext) -> Non
         body = sections["Obligations"]
         obligations: list[dict[str, Any]] = []
         seen_ids: set[str] = set()
+        invalid_sections = 0
         for m in _IB_OBLIGATION_REF.finditer(body):
             if m.group("ref") == "ADR-NNN" or m.group("id") in seen_ids:
                 continue
             row: dict[str, Any] = {"id": m.group("id"), "ref": m.group("ref")}
             if m.group("section"):
                 row["section"] = m.group("section").strip()
+                if "§" in row["section"]:
+                    reference = body[m.start("ref"):m.end("section")].rstrip()
+                    ctx.warnings.append(_Warn(
+                        field="/obligations",
+                        reason=f"{row['id']}: {reference} — one section per obligation",
+                        severity="warning",
+                    ))
+                    seen_ids.add(row["id"])
+                    invalid_sections += 1
+                    continue
             note = (m.group("note") or "").strip()
             if note and not note.startswith("["):
                 row["note"] = note
@@ -2998,7 +3171,7 @@ def _extract_ib_contract_sections(ir: dict[str, Any], ctx: _ParseContext) -> Non
             seen_ids.add(m.group("id"))
         declared = len(_IB_OBLIGATION_ANY.findall(body))
         placeholders = len(re.findall(r"\*\*O-\d+\*\*.*(?:ADR-NNN|IC-NNN|\[an obligation)", body))
-        if declared - placeholders > len(obligations):
+        if declared - placeholders > len(obligations) + invalid_sections:
             ctx.warnings.append(_Warn(
                 field="/obligations",
                 reason="an §Obligations bullet is neither `**O-n** → REF[ §Section][ — note]` nor `**O-n** (local): text`",
@@ -3117,6 +3290,7 @@ class IntentParseError(Exception):
     """Raised when an Intent's parsed IR fails schema validation."""
 
 
+@_reuse_identical_parse("_load_intent_schema", "_INTENT_IR_SCHEMA_VERSION")
 def parse_intent(path: str | Path) -> dict[str, Any]:
     """Parse an Intent markdown file into a validated IR.
 
@@ -3190,6 +3364,12 @@ def parse_intent(path: str | Path) -> dict[str, Any]:
     desired = ctx.sections.get("Desired Outcome", "").strip()
     if desired:
         ir["desired_outcome"] = desired
+
+    placement = read_placement(text)
+    if placement.rows:
+        ir["behavior_placement"] = list(placement.rows)
+    for problem in placement.problems:
+        ctx.warnings.append(_Warn("behavior_placement", f"line {problem.line}: {problem.message}"))
 
     type_specific = _extract_intent_type_specific(ctx)
     if type_specific:
@@ -3547,6 +3727,7 @@ class MissionParseError(Exception):
     """Raised when a Mission's parsed IR fails schema validation."""
 
 
+@_reuse_identical_parse("_load_mission_schema", "_MISSION_IR_SCHEMA_VERSION")
 def parse_mission(path: str | Path) -> dict[str, Any]:
     """Parse a Mission markdown file into a validated IR.
 
@@ -3935,6 +4116,7 @@ class GlossaryParseError(Exception):
     """Raised when the Domain Glossary fails schema validation."""
 
 
+@_reuse_identical_parse("_load_glossary_schema", "IR_SCHEMA_VERSION")
 def parse_glossary(path: str | Path) -> dict[str, Any]:
     """Parse the singleton domain-glossary.md into a validated IR.
 
@@ -4110,6 +4292,7 @@ class VisionParseError(Exception):
     """Raised when the System Vision fails schema validation."""
 
 
+@_reuse_identical_parse("_load_vision_schema", "_SV_IR_SCHEMA_VERSION")
 def parse_vision(path: str | Path) -> dict[str, Any]:
     """Parse the singleton system-vision.md into a validated IR."""
     src = Path(path).resolve()
@@ -4327,6 +4510,7 @@ class ConstitutionParseError(Exception):
     """Raised when constitution.md fails parsing or schema validation."""
 
 
+@_reuse_identical_parse("_load_constitution_schema", "_CONSTITUTION_IR_SCHEMA_VERSION")
 def parse_constitution(path: str | Path) -> dict[str, Any]:
     """Parse the singleton constitution.md into a validated IR.
 
@@ -4783,6 +4967,7 @@ class SPParseError(Exception):
     """Raised when a Security Profile markdown fails parsing or schema validation."""
 
 
+@_reuse_identical_parse("_load_security_profile_schema", "_SP_IR_SCHEMA_VERSION")
 def parse_security_profile(path: str | Path) -> dict[str, Any]:
     """Parse a Security Profile markdown file into a validated IR.
 

@@ -1,4 +1,14 @@
 # DekSpec Operating Guide
+
+**Three products, one release.** Since v0.129.0 DekSpec ships with DekBuilder
+(construction: `dekbuilder implement`, `dekbuilder wave`) and DekTools (standalone
+craft: `dektools handoff`, `dektools deepen-record`), all at one version and one tag
+on the public mirror. Install DekSpec and DekBuilder together from the same tag
+(`scripts/install.sh` does this; DekTools with `--with-dektools`). DekSpec keeps
+authorization, evidence judgment and the sole execution-record writer. On Claude
+Code the one `dekspec` plugin carries all three products' skills; other hosts
+receive DekSpec's skills through `dekspec install --platform <host>`.
+
 ### Version 2.0.0
 
 ---
@@ -89,13 +99,22 @@ When the mantra changes (rare; treated as a Constitution amendment), the table i
   → ib accept                       authorize execution; the acceptance baseline protects the reviewed floor
                                     ─────────────────────────────────
                                     Layer 4 — Construction and completion
-  → /orchestrate-coding-session     executes ready IBs in isolated worktrees: start → investigate → plan → attempts → verify
-  → /dekspec:review-pr              independent review of the delivery → one recorded verdict per IB
+  → /dekbuilder:orchestrate-coding-session     executes ready IBs in isolated worktrees: start → investigate → plan → attempts → verify
+  → /dekbuilder:review-pr              independent review of the delivery → one recorded verdict per IB
   → ib complete                     per IB, only on current evidence and a current independent verdict
-  → /dekspec:land-intent            delivery check at the exact head → operator-confirmed merge
+  → /dekbuilder:land-intent            delivery check at the exact head → operator-confirmed merge
 ```
 
 Each `/name` step is a skill shipped by the `dekspec` plugin; each `ib …` / `delivery …` step is a `dekspec` CLI verb. The diagram shows layer order, **not a mandatory chain**.
+
+Each reference must name **one section per obligation**: `IC-002 §20, §21`
+is refused, with the obligation id and reference in the message. A section
+reference resolves only on an exact match with one H2–H4 heading, by full title
+or section label (for example `20`, `2.1`, or `S0` before a spaced dash).
+Comparison ignores case and surrounding whitespace. Prefix-only references
+report the heading they used to match; multiple matches quote every matching
+heading and ask for one full title. These checks use the same resolver and
+`specification.reference_mode` as `ib context`, with identical problem text.
 
 ### End-to-end flow (step-by-step)
 
@@ -104,22 +123,24 @@ Each `/name` step is a skill shipped by the `dekspec` plugin; each `ib …` / `d
 1. **Decide what the change needs.** A bounded change starts at step 3. A committed outcome that will take several IBs gets `/write-intent` — every Intent ≥ ACCEPTED ships an `outcome_verification` under strong-TDD timing (ADR-029). Work that plausibly spans several Intents, or needs a flag, rollback plan or kill criteria, gets `/write-mission`.
 2. **Update the durable specs the change actually affects** — `/write-adr` for a decision, `/write-ae` for architecture, `/write-ws` for behavior that spans IBs, `/write-ic` for a boundary. An IB whose change alters architecture or a contract names those artifacts under `**Spec impact:**`; its verification fails unless the delivery modifies them.
 3. **Write the IB** — Outcome, Rationale, Scope, Obligations *by reference*, Protected Surfaces, Acceptance, and a revisable Implementation Hypothesis (§Implementation Brief). `dekspec ib new <slug>` scaffolds a delegated IB with no parent; `/write-ibs` authors IBs from a WS, from an Intent (`/write-intent --decompose`), or from a plain description. `dekspec ib lint IB-NNN` confirms it is an executable contract whose references resolve.
+
+
 4. **Acceptance tests, then the oracle review — mandatory before authorization (ADR-062).** `dekspec ib propose IB-NNN` (lint-gated) requests authorization. `/write-tests` writes the acceptance tests the conditions name — behavior-first (ADR-036), each new assertion with a `Basis:` line saying where its expected result comes from, and a behavior-free surface skeleton for any entry point that does not exist yet — and `dekspec ib floor IB-NNN` must show every new node genuinely red with a basis and every preserved node passing; `/write-evals` writes eval commands for model-output behavior. Then `/dekspec:review-ib IB-NNN`, in a context that did not write the tests, reviews the contract and, through its `acceptance-oracle` lens, the test sources, the skeleton and the floor report; a passing floor review is recorded as a `Floor reviewed: PASS — digest …` row in the IB's Amendment Log (§Protected acceptance, no regeneration).
 5. **Authorize** — `dekspec ib accept IB-NNN` (the engineer's decision; takes the acceptance baseline) — only while `dekspec ib floor IB-NNN` still reports the digest the `Floor reviewed:` row names. A pre-start change to the tests repeats the oracle review (a new row) before `dekspec ib baseline IB-NNN --reason "…"` re-protects them.
-6. **Execute** — `/dekspec:implement IB-NNN` (or `INT-NNN`) runs steps 6–8 autonomously once the work is READY (§Implementing ready work). Manually, `/orchestrate-coding-session` (or any agent, or a human) runs §Executing an Implementation Brief: `dekspec ib start`, investigation, a committed plan, counted attempts, `dekspec ib verify`.
-7. **Review** — `/dekspec:review-pr` reviews the delivery diff against every included IB; the reviewer, never the builder, records `dekspec ib review IB-NNN --reviewer NAME --verdict pass` (or `--verdict fail`). On `fail`: fix, re-verify, re-review.
-8. **Complete and land** — `dekspec ib complete IB-NNN` per IB; `dekspec delivery verify` and `dekspec delivery check` at the exact head; the operator merges (`/dekspec:land-intent`, ADR-026, ADR-058) — or `/dekspec:implement` integrates, when it was the engineer's request (ADR-059). An Intent completes with `dekspec intent verify` + `dekspec intent complete`; a Mission with `/write-mission --complete`.
+6. **Execute** — `/dekbuilder:implement IB-NNN` (or `INT-NNN`) runs steps 6–8 autonomously once the work is READY (§Implementing ready work). Manually, `/dekbuilder:orchestrate-coding-session` (or any agent, or a human) runs §Executing an Implementation Brief: `dekspec ib start`, investigation, a committed plan, counted attempts, `dekspec ib verify`.
+7. **Review** — `/dekbuilder:review-pr` reviews the delivery diff against every included IB; the reviewer, never the builder, records `dekspec ib review IB-NNN --reviewer NAME --verdict pass` (or `--verdict fail`). On `fail`: fix, re-verify, re-review.
+8. **Complete and land** — `dekspec ib complete IB-NNN` per IB; `dekspec delivery verify` and `dekspec delivery check` at the exact head; the operator merges (`/dekbuilder:land-intent`, ADR-026, ADR-058) — or `/dekbuilder:implement` integrates, when it was the engineer's request (ADR-059). An Intent completes with `dekspec intent verify` + `dekspec intent complete`; a Mission with `/write-mission --complete`.
 9. **Throughout** — `dekspec doctor` is the dogfood gate (Mission/Intent gates require P0/P1-clean).
 
-Reviews run the shared non-sycophantic orchestration: context-isolated lens specialists attack rather than grade, a blind aggregator scores, and a single confident veto (≥80) overrides any weighted average. A verdict counts only when it is recorded with `dekspec ib review`, bound to the content it reviewed (ADR-057); nothing merges without the operator (ADR-026) — whose explicit `/implement` request is that confirmation for the requested work (ADR-059).
+Reviews run the shared non-sycophantic orchestration: context-isolated lens specialists attack rather than grade, a blind aggregator scores, and a single confident veto (≥80) overrides any weighted average. A verdict counts only when it is recorded with `dekspec ib review`, bound to the content it reviewed (ADR-057); nothing merges without the operator (ADR-026) — whose explicit `/dekbuilder:implement` request is that confirmation for the requested work (ADR-059).
 
-### Implementing ready work (`/implement`, ADR-059)
+### Implementing ready work (`/dekbuilder:implement`, ADR-059)
 
-`/dekspec:implement <request>` takes ready work all the way through without asking the engineer to drive: `/dekspec:implement INT-041`, `/dekspec:implement int-041 and int-042`, `/dekspec:implement the authentication feature`. There are no mode flags. The explicit request is the authorization: it covers construction, tests, independent review, repair within scope and integration of that work, and nothing else — no specification approval, no weakening of acceptance, no branch-protection bypass, no deployment.
+`/dekbuilder:implement <request>` takes ready work all the way through without asking the engineer to drive: `/dekbuilder:implement INT-041`, `/dekbuilder:implement int-041 and int-042`, `/dekbuilder:implement the authentication feature`. There are no mode flags. The explicit request is the authorization: it covers construction, tests, independent review, repair within scope and integration of that work, and nothing else — no specification approval, no weakening of acceptance, no branch-protection bypass, no deployment.
 
-**READY is a predicate, not a status.** `dekspec implement ready <request>` holds when the Intent is `ACCEPTED` with a desired outcome, executable Verification and autonomy `medium` or `high`, no unresolved P0–P2 Open Issue and in-force linked specs; its IBs are delegated, authorized *for their current contract* (baseline hash = contract hash) and their obligations resolve; an IB with test conditions or declared assets holds its named acceptance nodes and declared assets in its baseline, and a `Floor reviewed:` row in its Amendment Log names the baseline digest (ADR-062 — the builder never first creates an acceptance test); every dependency is complete or selected; and the environment can execute (committed specs, the integration base, the integration method, a pytest interpreter, the IBs' prerequisite probes). Otherwise it names each missing preparation and its fix. `/dekspec:spec-intent` ends by evaluating the same predicate. A complete target is a verification result, not work.
+**READY is a predicate, not a status.** `dekbuilder implement ready <request>` holds when the Intent is `ACCEPTED` with a desired outcome, executable Verification and autonomy `medium` or `high`, no unresolved P0–P2 Open Issue and in-force linked specs; its IBs are delegated, authorized *for their current contract* (baseline hash = contract hash) and their obligations resolve; an IB with test conditions or declared assets holds its named acceptance nodes and declared assets in its baseline, and a `Floor reviewed:` row in its Amendment Log names the baseline digest (ADR-062 — the builder never first creates an acceptance test); every dependency is complete or selected; and the environment can execute (committed specs, the integration base, the integration method, a pytest interpreter, the IBs' prerequisite probes). Otherwise it names each missing preparation and its fix. `/dekspec:spec-intent` ends by evaluating the same predicate. A complete target is a verification result, not work.
 
-**The driver.** `dekspec implement next` decides every step from durable state — the IB, Intent and run records, git and the forge — and takes the mechanical ones itself; the skill only dispatches the workers it asks for (builder, independent reviewer, conflict resolver, intent reviewer) and acknowledges them:
+**The driver.** `dekbuilder implement next` decides every step from durable state — the IB, Intent and run records, git and the forge — and takes the mechanical ones itself; the skill only dispatches the workers it asks for (builder, independent reviewer, conflict resolver, intent reviewer) and acknowledges them:
 
 | Stage | What happens |
 | --- | --- |
@@ -130,11 +151,11 @@ Reviews run the shared non-sycophantic orchestration: context-isolated lens spec
 | Complete | `dekspec ib complete` per IB, then `dekspec intent complete` |
 | Land | `dekspec delivery check --rerun` at the content and base, recorded as `landing.verified`: it re-executes acceptance and the integration command except where the driver's own passing delivery verification stands at the identical binding, and names the evidence it relied on. Then integration (`integration.method`: `merge` or `github`), and confirmation that the integrated content is the verified content |
 
-**Agent roles.** Every worker's instructions are composed from one of DekSpec's six Agent Role Specifications (ADR-061) — builders and resolvers `implementer`, reviewers `code-reviewer`, Intent attestation `verifier` — as governing policy, role, procedure and assignment. The run record names the role and its policy revision for every dispatch, reviewers get the recorded facts rather than the builder's account, and a verdict made under an older review-policy revision is reviewed again. The roles ship inside DekSpec; there is nothing to author, select or configure.
+**Agent roles.** Every worker's instructions are composed from one of DekSpec's six Agent Role Specifications (ADR-061) — builders and resolvers `implementer`, reviewers `code-reviewer`, Intent attestation `verifier` — as governing policy, role, procedure and assignment. The run record names the role and its policy revision for every dispatch, reviewers get the recorded facts rather than the builder's account, and a verdict made under an older review-policy revision is reviewed again. The role definitions remain library-owned; see [Project rules for the built-in roles](#project-rules-for-the-built-in-roles) for recording project requirements.
 
 A moved base is merged in (conflicts go to a resolver) and everything re-verifies; reviews carry forward only across unreviewed surfaces. Repeated failure without progress gets two recorded strategy changes, then a genuine blocker; independent deliveries continue. Records make the run restartable: after a compaction the skill simply asks `next` again, and repeating the request after the session ended resumes it — a lost worker is reissued, and nothing merges twice.
 
-**Manual path.** The same phases remain available one at a time: `/orchestrate-coding-session` (construction), `/dekspec:review-pr` (review) and `/dekspec:land-intent` (landing with an operator-confirmed merge, ADR-026). `/orchestrate-intent` was retired by ADR-059 (which supersedes ADR-021).
+**Manual path.** The same phases remain available one at a time: `/dekbuilder:orchestrate-coding-session` (construction), `/dekbuilder:review-pr` (review) and `/dekbuilder:land-intent` (landing with an operator-confirmed merge, ADR-026). `/orchestrate-intent` was retired by ADR-059 (which supersedes ADR-021).
 
 **Auxiliary skills** (outside the main pipeline):
 
@@ -150,6 +171,31 @@ A moved base is merged in (conflicts go to a resolver) and everything re-verifie
 Layer boundaries are phase transitions — crossing from one layer to the next changes what kind of work you are doing. The role system and expertise audit are Layer 2 mechanisms that can trigger Layer 1 artifact creation (e.g., the Options Architect surfaces a decision that needs an ADR).
 
 ---
+
+
+### Project rules for the built-in roles
+
+A project's requirements may only add to the built-in role and must never relax its obligations (ADR-061, ADR-077). Definitions remain DekSpec's responsibility. Project rules supplement the library's policy within that boundary.
+
+A project layer must preserve:
+
+- Independent review and the reviewer's separate identity and context.
+- LOCKED artifacts and protected surfaces.
+- Acceptance test protection, including independent amendment review.
+- The rule that DekSpec never substitutes a model for a role.
+
+Keep pointers in `.dekspec/config.yaml` using these five keys:
+
+- `roles.project_rules.gates`: the location of gate/check commands.
+- `roles.project_rules.write_paths`: permitted writes and protected boundaries.
+- `roles.project_rules.credentials`: credential availability and access rules.
+- `roles.project_rules.review_concerns`: additional security/domain review requirements.
+- `roles.project_rules.models`: the location of model guidance, not a model mapping.
+
+Each pointer is a repository-relative path, or `none: <reason>` when no rule exists. A folder or index can cover multiple files. Paths are recorded without opening their targets. Use `dekspec config set` and `dekspec config get` to maintain them; unknown kinds and invalid values are refused before writing.
+
+Read the shared notice with `dekspec resource lib role-project-rules` for today's supported rule locations. `/setup-dekspec` is the project configuration entry point; its guided project-rules step follows in a later brief. Dispatch consumption awaits ADR-077's project extensions. Per-role model selection awaits ADR-067; roles currently inherit the session's model.
+
 
 ## The Artifacts
 
@@ -336,7 +382,7 @@ L4 Run    │ record   │  record  │  record  │
 
 An Intent is not a layer; it is a *driver* that an engineer or autonomy brain runs *through* the layered system. Its IBs point back at it (`**Parent:** INT-NNN`); nothing else ties them together.
 
-**Files canonical, delivered from one worktree.** Every Intent lives at `dekspec/intents/INT-NNN-<slug>.md` (provisional under `dekspec/provisional/<slug>/` until promoted, ADR-030). Its work is delivered from one worktree and branch per ADR-048 (`/dekspec:use-worktrees`); the file is the canonical record at every status transition; the index (`dekspec/intent-index.md`) tracks the active queue and the archive.
+**Files canonical, delivered from one worktree.** Every Intent lives at `dekspec/intents/INT-NNN-<slug>.md` (provisional under `dekspec/provisional/<slug>/` until promoted, ADR-030). Its work is delivered from one worktree and branch per ADR-048 (`/dekbuilder:use-worktrees`); the file is the canonical record at every status transition; the index (`dekspec/intent-index.md`) tracks the active queue and the archive.
 
 ### Lifecycle
 
@@ -355,7 +401,7 @@ DRAFT → PROPOSED → ACCEPTED → COMPLETE
 
 *`TODO`, `OVERSIZED`, `IMPLEMENTING`, `TESTPASS` and `MERGED` were retired by ADR-057: they mirrored activity, which now lives in the IBs' execution records and in git. `dekspec migrate` maps each and records the prior status in the Amendment Log. `TESTFAIL` was retired at the Intent level in 2026-05, reintroduced for IBs by ADR-027, and retired again when ADR-057 superseded ADR-027 — a failing verification is evidence, not a status. The Intent's `## TESTFAIL records` log and the bead tracking in `Layer impact analysis` are likewise retired for new work.*
 
-**Default Autonomy: `medium` (ADR-059).** `/write-intent` Creation Mode gives every new Intent `medium`, whatever its type: feature, NFR, ADR-driven and environment work included. Acceptance is the approval. After it, and once `dekspec implement ready` holds, `/implement` builds, tests, independently reviews, repairs and integrates the accepted work without routine prompts. The readiness and acceptance gates stay; the per-step approvals go. `manual` and `low` remain available as explicit restrictions. The engineer names the human decision they reserve, and the cap is the Mission's Autonomy ceiling. Existing Intents keep the value they recorded, and `dekspec implement ready` reports a restriction as `intent-autonomy` (or `mission-autonomy-ceiling`) rather than overriding it. This replaces INT-094's per-type default, which set `manual` for `feature` / `nfr` / `adr-driven` / `environment`. See `templates/intent-template.md` §Autonomy and `plugins/dekspec/skills/write-intent/modes/create.md` Step 4.
+**Default Autonomy: `medium` (ADR-059).** `/write-intent` Creation Mode gives every new Intent `medium`, whatever its type: feature, NFR, ADR-driven and environment work included. Acceptance is the approval. After it, and once `dekbuilder implement ready` holds, `/dekbuilder:implement` builds, tests, independently reviews, repairs and integrates the accepted work without routine prompts. The readiness and acceptance gates stay; the per-step approvals go. `manual` and `low` remain available as explicit restrictions. The engineer names the human decision they reserve, and the cap is the Mission's Autonomy ceiling. Existing Intents keep the value they recorded, and `dekbuilder implement ready` reports a restriction as `intent-autonomy` (or `mission-autonomy-ceiling`) rather than overriding it. This replaces INT-094's per-type default, which set `manual` for `feature` / `nfr` / `adr-driven` / `environment`. See `templates/intent-template.md` §Autonomy and `plugins/dekspec/skills/write-intent/modes/create.md` Step 4.
 
 ### Serialization
 
@@ -403,7 +449,11 @@ The default predicates live in `CLAUDE.md` §Verification Predicate Library so a
 
 **Completion.** `dekspec intent complete INT-NNN` writes `COMPLETE` only when the Intent is `ACCEPTED`, every IB whose `**Parent:**` is the Intent is `COMPLETE`, and the latest outcome evidence passes and matches the current content (with a current independent verdict for manual entries). `--check-only` evaluates the gate without writing. Evidence binds to content, not to a branch: any later content change makes it stale, and `dekspec intent verify` must run again.
 
-**Diff confinement lives at the IB.** Every IB's `dekspec ib verify` checks each changed file against that IB's Scope and Protected Surfaces, and `dekspec delivery check` re-checks the whole delivery at its head. The Intent's `Components affected:` still bounds the size analysis and the commit-time check of an Intent-bound session (§Session discipline).
+**Tracker bookkeeping.** IB and Intent fingerprints exclude `br` tracker records: files inside the root `.beads/`, `.beads-issues/` or `.beads-dekspec/` folders whose extension is `jsonl`, `json`, `yaml`, `yml`, `toml`, `md`, `db`, `gitignore` or `lock`. You can file beads after verification, committed or uncommitted, then review and complete without verifying again. Other files in those folders (such as `conftest.py`) and tracker-named files elsewhere remain content. In a repository that tracks tracker files, evidence recorded by an earlier version must be verified again once after upgrading to the new fingerprint.
+
+**Stale paths.** A stale Intent refusal lists every added, removed or changed path since its verification or manual attestation, in human and `--json` output and with `--check-only`. Recorded verification and review save manifests in the Intent's own execution snapshots. Those snapshots and its record do not stale evidence; stray files in that folder do. Dry verification stores nothing. If the snapshot is missing, invalid or was never written by an earlier version, the gate still refuses, says changed paths cannot be named and asks for `dekspec intent verify` again. Renew the independent attestation too when manual verification is stale.
+
+**Diff confinement lives at the IB.** ADR-073 bookkeeping is checked before protected surfaces using the same rule in verification, the commit-time guard and retirement disposition. Verification compares the delivery base to the working tree; the guard compares HEAD to the staged index.  Every IB's `dekspec ib verify` checks each changed file against that IB's Scope and Protected Surfaces, and `dekspec delivery check` re-checks the whole delivery at its head. The Intent's `Components affected:` still bounds the size analysis and the commit-time check of an Intent-bound session (§Session discipline).
 
 ### Executing an Intent's IBs
 
@@ -767,7 +817,7 @@ Tests are never auto-regenerated from spec prose — that produces tautological 
 
 **Red on the behavior, recorded.** A test for an entry point that does not exist yet ships with a behavior-free surface skeleton — the contracted entry point returning a neutral result, never raising — so its assertion fires on the missing behavior. `dekspec ib floor IB-NNN` runs the acceptance runner and reports, per condition and node, new or preserved, the failure kind (`genuine-red` only for an assertion failure with no usage or import signature, in-process or from a command the test runs), the failure line, the declared basis, and the floor digest the baseline would record. It changes nothing.
 
-**The oracle review before the baseline.** An independent reviewer — `/dekspec:review-ib`'s `acceptance-oracle` lens, a fresh-context `spec-reviewer`, never the test author or a builder — reads the test sources, the skeleton and the floor report and judges, per criterion, whether each basis is independent and represents the required behavior; a system-derived, copied or blessed expectation is blocking. A passing review is recorded in the IB's own Amendment Log as `| <date> | Review | Floor reviewed: PASS — digest <64 hex> — <n> new nodes genuine red with a basis, <m> preserved passing (review-ib acceptance-oracle) | <reviewer identity> |`, and the authorizer takes the baseline only when its digest matches. `/implement` readiness refuses an IB whose named nodes or declared assets are missing from its baseline, or whose baseline digest no such row names. The order is one and the same everywhere: write the IB (`dekspec ib lint`, `dekspec ib propose`) → `/write-tests` → `/dekspec:review-ib` → `dekspec ib accept`. This establishes a workflow and reproducible evidence, not the correctness of every assertion.
+**The oracle review before the baseline.** An independent reviewer — `/dekspec:review-ib`'s `acceptance-oracle` lens, a fresh-context `spec-reviewer`, never the test author or a builder — reads the test sources, the skeleton and the floor report and judges, per criterion, whether each basis is independent and represents the required behavior; a system-derived, copied or blessed expectation is blocking. A passing review is recorded in the IB's own Amendment Log as `| <date> | Review | Floor reviewed: PASS — digest <64 hex> — <n> new nodes genuine red with a basis, <m> preserved passing (review-ib acceptance-oracle) | <reviewer identity> |`, and the authorizer takes the baseline only when its digest matches. `/dekbuilder:implement` readiness refuses an IB whose named nodes or declared assets are missing from its baseline, or whose baseline digest no such row names. The order is one and the same everywhere: write the IB (`dekspec ib lint`, `dekspec ib propose`) → `/write-tests` → `/dekspec:review-ib` → `dekspec ib accept`. This establishes a workflow and reproducible evidence, not the correctness of every assertion.
 
 Once an IB is accepted, its acceptance tests are protected (ADR-057): the baseline pins the contract, every acceptance asset (`Basis:` lines included) and the runner inputs. Before a run starts, the authorizer may refresh it (`dekspec ib baseline IB-NNN --reason "…"`) — after the oracle review of any changed tests has recorded a new `Floor reviewed:` row. After the run starts, the builder may not edit, skip, deselect, delete or first create them to claim success — a genuinely invalid condition, or a missing test, is corrected only by `dekspec ib amend IB-NNN --reviewer NAME --reason "…"`, and the completing reviewer oracle-judges every amended or added asset's basis before acknowledging it. Development tests outside the acceptance assets stay freely editable. A useful development test becomes permanent by being named in a later IB's acceptance or kept under `tests/regression/` with a provenance docstring naming the WS rule or IC constraint it guards.
 
@@ -839,13 +889,15 @@ The format is `templates/implementation-brief-template.md`:
 |---|---|---|
 | Header: `**Status:**`, `**Authority policy:**`, `**Parent:**`, `**Depends on:**`, `**Spec impact:**` | — | lifecycle; `delegated` or `legacy`; optional parent (context only); IBs that must be `COMPLETE` first; the AEs/ADRs/ICs/WSs this delivery must modify |
 | Outcome, Rationale | — | the observable end state, and why — enough for a reviewer to judge the IB without a parent artifact |
-| Scope (+ Out of scope) | binding | globs where change is allowed without further permission |
+| Scope (+ Out of scope) | binding | globs where change is allowed without further permission. Patterns are anchored at the repository root. `*`, `?` and `[...]` stay within one folder and never match `/`; `**` matches any depth, including none. A trailing `/` names a folder and covers everything inside it. Unlike `.gitignore`, all patterns are root-anchored, there is no negation (a leading `!` is literal), and brace groups such as `{a,b}` expand. Use `docs/*.md` for Markdown files directly in `docs`, `docs/**/*.md` for any depth, and `**/build/` for build folders at any depth. |
 | Obligations | binding | references `- **O-n** → ADR-/IC-/WS-/SP-/AE-NNN [§Section]`, or `(local)` obligations whose canonical home is this IB |
 | Protected Surfaces | binding | files, or `path::symbol` for one Python function or class, that may not change even inside Scope |
 | Acceptance | acceptance | a YAML list of `AC-n`, each with a `condition` and exactly one `verify`: `pytest: [nodes]`, `command: "…"`, or `review: "…"`; plus any extra protected acceptance assets (fixtures, golden data) |
 | Implementation Hypothesis | hypothesis | likely files, approach, reuse — revisable after investigation |
 | Environment Prerequisites | precondition | probe commands `dekspec ib start` runs; a failed required probe blocks the run truthfully |
 | Open Issues, Amendment Log | — | as for every artifact |
+
+When upgrading a repository that predates ADR-068, run `dekspec migrate --apply` before authoring new patterns. The migration preserves in-play coverage exactly, leaves history untouched, and reports stopped lines for their owners to amend. Its permanent marker prevents a second conversion. A converted accepted brief must be re-accepted with `dekspec ib accept`; after a run starts, the accepting identity must be independent of its builders.
 
 Rules of the format:
 
@@ -961,7 +1013,7 @@ IB-2: Implement [new behavior]
 
 Crossing from Layer 3 to Layer 4 is a phase transition: the contract is authorized, and the work is now to satisfy it with evidence. The engineer's role shifts from "is the contract right?" to "does the evidence show it is met?"
 
-The engine is the `dekspec ib` verb family (AE-011). Every step appends to the IB's **execution record**, `.dekspec/execution/<IB>/record.jsonl` — an append-only, hash-chained event log of ownership, investigation, plan and task revisions, attempts, deviations, blockers, acceptance baselines, evidence, review verdicts and completion. It is committed durable state for audit and recovery, never a spec artifact: nothing in it is compiled into IR, projected into `AGENTS.md`, or copied back into specs (ADR-056). A hand edit breaks the hash chain and fails the completion gate. `/orchestrate-coding-session` drives these steps for the ready set; any agent, or a human, can run them directly.
+The engine is the `dekspec ib` verb family (AE-011). Every step appends to the IB's **execution record**, `.dekspec/execution/<IB>/record.jsonl` — an append-only, hash-chained event log of ownership, investigation, plan and task revisions, attempts, deviations, blockers, acceptance baselines, evidence, review verdicts and completion. It is committed durable state for audit and recovery, never a spec artifact: nothing in it is compiled into IR, projected into `AGENTS.md`, or copied back into specs (ADR-056). A hand edit breaks the hash chain and fails the completion gate. `/dekbuilder:orchestrate-coding-session` drives these steps for the ready set; any agent, or a human, can run them directly.
 
 All `ib` verbs take `--at`, `--dekspec-root`, `--actor` (default `$DEKSPEC_ACTOR`, then `git config user.name`) and `--json`. Exit codes: `0` ok · `1` refused or not satisfied · `2` usage · `3` blocked. Full flag reference: `docs/cli-reference.md` §ib.
 
@@ -1024,8 +1076,8 @@ dekspec ib block IB-NNN --reason contract-conflict --detail "O-2 and IC-012 §Er
 `dekspec ib verify IB-NNN [--base BRANCH] [--dry-run]` runs every acceptance condition against the current content and checks the rest of the contract:
 
 - **Test conditions** run through a per-node reporting plugin: a skipped, expected-to-fail, deselected or uncollected node does not satisfy its condition, and a deleted or renamed test file fails it. **Command conditions** need exit status 0. **Review conditions** are marked for the independent reviewer.
-- **Bytecode** — every Python file the implementation fingerprint covers runs from its current source. No bytecode for it is read, in any invalidation mode, from the repository's `__pycache__`, the bytecode cache or pytest's assertion-rewrite cache, even when a file has been planted there. That holds for its own path and for any path reaching it through the test interpreter's path entries: a symbolic link (`flit install --symlink`, setuptools' strict editable mode), a hard link or a mount. The entries are scanned for such paths before each run, and no bytecode is read or written at them. If they change while a condition runs, or the run compiled a reviewed file by a path a test made, the condition is run again from source without the cache. The test interpreter's own modules (standard library, site-packages, a virtual environment the repository ignores) are compiled at most once per interpreter and source version. They are reused from `$XDG_CACHE_HOME/dekspec/bytecode/` (default `~/.cache/dekspec/bytecode/`), outside every repository and resolved from the environment at each run. A run writes no bytecode inside the repository. A missing, unwritable or corrupt cache never changes an outcome: files the interpreter could not load are removed before every run, and without a usable cache the run compiles from source.
-- **Scope and Protected Surfaces** — every changed file (against `--base`, default `main`) inside Scope, none on a Protected Surface; declared **Spec impact** present in the delivery.
+- **Bytecode** — every Python file the implementation fingerprint covers runs from its current source. No bytecode for it is read, in any invalidation mode, from the repository's `__pycache__`, the bytecode cache or pytest's assertion-rewrite cache, even when a file has been planted there. That holds for its own path and for any path reaching it through the test interpreter's path entries: a symbolic link (`flit install --symlink`, setuptools' strict editable mode), a hard link or a mount. Source-loader paths containing parent-directory (`..`) segments, including pytest assertion-rewrite imports, compile directly from source without reading or writing bytecode, before any corrective rerun. Pytest still rewrites assertions from that source. The entries are scanned for aliases before each run, and no bytecode is read or written at them. If they change while a condition runs, or the run compiled a reviewed file by a path a test made, the condition is run again from source without the cache. Cached reuse covers modules in the test interpreter's own admitted path entries (standard library, site-packages, a virtual environment the repository ignores). Modules imported from outside those entries, including the staged evidence plugin in its fresh per-run directory, compile from source each run. Unchanged, usable bytecode is reused from `$XDG_CACHE_HOME/dekspec/bytecode/` (default `~/.cache/dekspec/bytecode/`), outside every repository and resolved from the environment at each run. A run writes no bytecode inside the repository. A missing, unwritable or corrupt cache never changes an outcome: files the interpreter could not load are removed from cache subtrees considered for use before each run, and without a usable cache the run compiles from source. Validation is repeated after a change to file identity, size, mtime or ctime, including in-place corruption that restores mtime. Symbolic links found while sweeping considered subtrees are removed without following them or modifying their targets; unused cache subtrees are left alone and never followed.
+- **Scope and Protected Surfaces** — every changed file (against `--base`, default `main`) inside Scope or an existing lifecycle exemption; declared **Spec impact** present in the delivery. Protection refuses every change except ADR-073 lifecycle bookkeeping: on the delivery's own existing brief files and their parent Intent files, only the status value under an engine transition (DRAFT → PROPOSED, PROPOSED → ACCEPTED, ACCEPTED → COMPLETE, COMPLETE → ACCEPTED) and rows appended to the Amendment Log; execution-record writes are exempt only for added or modified record files. Modified dates, edited/deleted/reordered existing rows, other sections or artifacts, mixed edits, and artifact additions, deletions or renames (including archive moves) stay refused. The check judges content, not authorship; hand-written bookkeeping grants no completion authority.
 - **Acceptance integrity** — the contract, acceptance assets and runner inputs (test configuration, ancestor `conftest.py`) match the baseline, or the change was amended.
 - **Obligations** still resolve to approved, in-force sources.
 
@@ -1033,7 +1085,7 @@ The result is recorded as evidence bound to the content fingerprint, the contrac
 
 ### 5. Review
 
-The reviewer — an identity other than the run owner and every attempt actor — examines the delivery against the IB (`/dekspec:review-pr`) and records the verdict:
+The reviewer — an identity other than the run owner and every attempt actor — examines the delivery against the IB (`/dekbuilder:review-pr`) and records the verdict:
 
 ```bash
 dekspec ib review IB-NNN --reviewer NAME --verdict pass --acknowledge "…" --notes "…"
@@ -1053,9 +1105,9 @@ One pull request = one worktree = one delivery unit, scoped per ADR-048: a singl
 
 1. `dekspec delivery verify [--ib IB-NNN …] [--base main]` re-runs every included IB's acceptance and the configured `integration_command` against the same final content (the IBs default to those discovered from the diff).
 2. A current verdict per IB at that head, then `dekspec ib complete` per IB.
-3. `dekspec delivery check [--base …]` passes only when every execution record the base or the delivery's history carried is still present and append-only, the branch is current with its base, and every delivered IB is satisfied at the exact head (`--ib` can add IBs, never hide one). `/dekspec:land-intent` runs it immediately before the operator-confirmed merge (ADR-026 — nothing merges automatically); CI runs `dekspec delivery check --rerun`, which re-executes acceptance and the base's integration command instead of trusting recorded results, and writes nothing. `/dekspec:implement` runs the same check as its landing gate but does not repeat what its own passing delivery verification already executed at the identical binding (ADR-059 stage 6); CI's run always re-executes.
+3. `dekspec delivery check [--base …]` passes only when every execution record the base or the delivery's history carried is still present and append-only, the branch is current with its base, and every delivered IB is satisfied at the exact head (`--ib` can add IBs, never hide one). `/dekbuilder:land-intent` runs it immediately before the operator-confirmed merge (ADR-026 — nothing merges automatically); CI runs `dekspec delivery check --rerun`, which re-executes acceptance and the base's integration command instead of trusting recorded results, and writes nothing. `/dekbuilder:implement` runs the same check as its landing gate but does not repeat what its own passing delivery verification already executed at the identical binding (ADR-059 stage 6); CI's run always re-executes.
 
-Any later commit — to any IB, or a rebase onto a moved base — makes deterministic evidence stale until re-run. Rewriting commits after review (for example `/dekspec:pr-branch` stripping spec-only commits) changes the head, so the check must pass again on the rewritten head.
+Any later commit — to any IB, or a rebase onto a moved base — makes deterministic evidence stale until re-run. Rewriting commits after review (for example `/dekbuilder:pr-branch` stripping spec-only commits) changes the head, so the check must pass again on the rewritten head.
 
 ### Directive Library
 
@@ -1079,6 +1131,79 @@ Any later commit — to any IB, or a rebase onto a moved base — makes determin
 ```
 
 ---
+
+
+**Carried delivery ranges.** When original records and committed ancestry prove
+separate units, delivery verification judges each unit against its own range.
+It reports membership, base/head OIDs and source record references in `ranges`.
+Only passing receipts can establish boundaries, and they must agree with recorded
+run starts. Selecting a subset of concurrently started briefs, including starts
+at the base commit, does not establish a separate unit. A later start from the
+same recorded base continues the unit. A unit cannot borrow another
+unit's scope or companion allowance. Merging a moved landing base during a run
+does not charge its changes, or work owned by an earlier proved unit, to the
+current unit. A passing receipt after that merge can establish the range;
+merge-resolution edits still need authorization. Merges are compared
+with Git's mechanical merge tree regardless of parent order. Clean automatic
+combinations, including separate edits in the same file, retain their original
+owners. Discarded contributions and manual changes to that result belong to the
+merging unit, or are unowned; conflicts retain checks against every parent.
+This includes `ours` merges and all applicable protections. Final paths must
+also preserve the pre-run boundary: a companion qualifies from its content at
+authorization, including multiple earlier authoring revisions, only if this
+unit's own preparation changed it and neither its recorded base nor the actual
+landing base changed it from the corresponding fork. That allowance applies
+only to ordinary commits at or before authorization. Later edits and every
+merge resolution must satisfy scope and protections, even when their bytes
+match the authorization anchor. A rejected path is not reported as pre-run.
+Temporary out-of-scope files added and removed before authorization do not
+qualify; range mode accounts for their intermediate edits, even when a
+single-unit net diff would omit them. Final paths must
+also be accounted for against the landing base. An unfinished side branch
+cannot erase another constituent's proved membership or borrow its scope.
+Overlapping that range without its own proved endpoint refuses eligibility.
+Verify the side on its original branch, fix any scope or protection violations,
+commit its passing receipt and merge its history again. Protection,
+rename/deletion checks, final acceptance and independent review remain required;
+unowned middle commits, merge-side edits and edits after a recorded head refuse
+landing. An ACCEPTED constituent can extend its own unclaimed tail after a
+committed composed receipt, if no later unit has started on it. Scope and
+protection checks cover each repair, and final verification and review run again.
+The next passing receipt advances that unit's head without changing membership
+or base, including a receipt taken after intervening record-only commits.
+Every intervening edge must qualify as bookkeeping. Commit the passing receipt
+before completing the repaired unit; completion refuses attribution that would
+stop being valid once the unit closes. Committing a composed receipt alone
+preserves its run-start source binding. Completed units first need the existing explicit reopening procedure;
+integrated completions remain closed. For unowned edits, drop an offending commit beyond a closed head from
+candidate history, discard an uncommitted edit, or deliver it under a newly
+authorized brief, then verify and review the final candidate. A revert alone
+does not remove the unowned commit from history.
+Re-verifying a closed constituent alone cannot claim an unowned edit. Keep integration configuration: only `integration.base` has its existing
+scope-bookkeeping exception. Method, push, remote and worktree setup remain
+content that can stale evidence, as do execution and runner settings.
+
+**Suspected attribution defects — operator recovery.** Suspend affected
+integrations and capture the exact candidate and actual base, Spec package/source
+revision, raw eligibility or refusal result, constituent contracts and baselines,
+and append-only execution records. The repository operator may authorize either
+restoration of the last independently qualified compatible Spec package or a
+separately authorized, independently reviewed recovery delivery. Keep integrations
+suspended if restoration would reintroduce a known integrity defect or no qualified
+safe package exists. Preserve original contracts, baselines and history; integrated
+completed records remain closed and later corrections need new contracts. Results
+from the suspected judge authorize neither recovery nor resumption. Before the
+operator explicitly resumes, regenerate current bindings and obtain current
+acceptance, the authoritative base's integration checks, fresh independent judgment
+for every carried IB and current landing eligibility at the final candidate. This
+procedure grants no automatic rollback, bypass or integration authority.
+
+The IB-152/153 diagnostic refusal at retained revision
+`b73a2749c45856815c9f27f8d6ac109a718ebbca` remains a refusal. Their valid ordered
+landings (`cc5a44247af197860833a9006d58f5796e43b192` and
+`52f0c8db8ac5de9cf29ef582d9c2633943658ede`) and retained suite receipt (4655 passed,
+112 skipped) are historical qualification only. They do not qualify this repair
+or replace its current evidence.
 
 ## Session discipline
 
@@ -1144,7 +1269,7 @@ The session gate proves *that* work happens under a named session; it does not p
 
 **`DEKSPEC_VIBECODING=1`.** Setting this env var downgrades the off-spec **block** to a **warning**: `DEKSPEC_VIBECODING=1 git commit ...` proceeds, but the off-spec commit is recorded into session state either way — exploratory off-spec work stays possible as a deliberate, recorded choice rather than a silent one.
 
-**`dekspec session report`.** The read-only end-of-session summary. It reads the session's recorded off-spec commits and prints a per-commit breakdown plus a *ratify-or-revert* prompt — ratify (capture the work in an IB, or widen the claimed scope) or revert. The `/orchestrate-coding-session` skill runs `dekspec session report` at session close so the operator cannot finish a session without seeing what fell off-spec.
+**`dekspec session report`.** The read-only end-of-session summary. It reads the session's recorded off-spec commits and prints a per-commit breakdown plus a *ratify-or-revert* prompt — ratify (capture the work in an IB, or widen the claimed scope) or revert. The `/dekbuilder:orchestrate-coding-session` skill runs `dekspec session report` at session close so the operator cannot finish a session without seeing what fell off-spec.
 
 The off-spec guardrail activates only when a consumer has installed the hooks (`dekspec session install-hooks`) at a library version that carries the off-spec stage; the library ships the capability inert until then. The library's own `dekspec/` self-spec is exempt by the same policy described next.
 
@@ -1160,7 +1285,7 @@ The DekSpec library's own `dekspec/` self-spec is governed by **Claude Code sess
 4. Document the escape hatches (`git commit --no-verify`, `DEKSPEC_BYPASS_SESSION=1`, `DEKSPEC_MCP_GUARD_MODE=warn`) in your team's onboarding doc so engineers know how to bypass when needed and that bypasses are logged for review.
 5. (Optional) Set `DEKSPEC_MCP_GUARD_MODE=warn` in your MCP-server env during the initial rollout window to log-only without blocking; flip to reject (unset, or `=reject`) once the team has internalized the workflow.
 
-The `/orchestrate-coding-session` skill automatically opens and closes a session around its dispatch loop, so engineers running the skill against an IB never need to run `dekspec session start` or `dekspec session end` themselves — see `plugins/dekspec/skills/orchestrate-coding-session/SKILL.md`.
+The `/dekbuilder:orchestrate-coding-session` skill automatically opens and closes a session around its dispatch loop, so engineers running the skill against an IB never need to run `dekspec session start` or `dekspec session end` themselves — see `plugins/dekspec/skills/orchestrate-coding-session/SKILL.md`.
 
 ---
 
@@ -1389,6 +1514,8 @@ Tools:
 - `dekspec aggregate agents-md [--at PATH] [--output PATH]` — regenerates only the DekSpec-owned region of `AGENTS.md` (between `<!-- dekspec:agents-md begin -->` and `<!-- dekspec:agents-md end -->`; everything outside it is preserved byte for byte) from LOCKED+ACCEPTED artifacts of the governing core (Constitution, Security Profile, System Vision, glossary, AE, ADR, IC, WS); work items (IB, Intent, Mission) are excluded by default (ADR-056). A legacy whole-file AGENTS.md is migrated only with `--migrate` (preview with `--migrate --dry-run`). Settings come from `.dekspec/config.yaml` `agents_md` (`path`, `status`, `include`, `required`) when declared (ADR-063).
 - `dekspec aggregate agents-md --check` — read-only freshness verdict: `current` 0, `stale` 1, `absent` 1 when required (else 0), `inapplicable` 0, `invalid` 1. It is also the `agents-md` section of `dekspec doctor` (a declared projection that is stale fails doctor) and an explicit CI step in this repository.
 
+DekSpec region and fragment markers in fenced code or indented by four or more columns are examples, not boundaries (tabs advance to the next multiple of four); zero to three spaces keep markers live. The configured/default projection must resolve inside the repository, including parent symlinks, absolute and `..` paths. A separate regular-file `--output` may be outside, but a traversed symlink may not escape. Escaping destinations, unreadable instruction files, destination or parent symlink loops, directory destinations, and unreadable, undecodable or unparseable sources are refused with exit 1 and a path, reason and recovery, without a traceback; the check and doctor’s `agents-md` section report them `invalid`. Repair the named path or permissions, choose a contained projection path, or fix the source before retrying. Refusals and checks preserve destination bytes, permissions, modification time, links and absence.
+
 Engineers regenerate pre-commit or post-merge; the post-merge hook reports a stale projection using the check. Regeneration is always an explicit act — checking never writes. CI runs `dekspec relink --check`, the `agents-md --check` step above and `dekspec doctor`, whose index-coherence rule reports an artifact missing from its index; there is no dedicated `regen-indexes --check` CI step. (MSN-015 is COMPLETE; an earlier note calling CI integration its open piece is historical.)
 
 ### Remaining gaps (deferred)
@@ -1496,17 +1623,17 @@ Provisional artifacts live under `dekspec/provisional/<incubation-slug>/`. When 
 
 *The engineer runs `dekspec ib lint` on both and proposes them (`dekspec ib propose`). `/write-tests` writes IB-1's acceptance tests before any code exists: each assertion carries a `Basis:` — the golden-I/O pair cites the engineer's hand-fixed values, the round-trip test a property justified from WS-001 §Precision — a behavior-free serializer skeleton makes the assertions fire, and `dekspec ib floor IB-001` shows every node genuinely red. `/dekspec:review-ib`, in a fresh context, reviews the contracts — domain constraints reachable through the references, acceptance covering integration and failure, not only the happy path — and oracle-reviews IB-1's tests against the floor report, recording `Floor reviewed: PASS — digest …` in its Amendment Log. The engineer then authorizes with `dekspec ib accept`, which protects exactly the reviewed floor.*
 
-### */orchestrate-coding-session*
+### */dekbuilder:orchestrate-coding-session*
 
-*The engineer invokes `/orchestrate-coding-session`. `dekspec ib ready` returns only IB-1 — IB-2 waits for IB-1 to complete. The orchestrator starts the run (`dekspec ib start IB-001`), generates the execution context with `dekspec ib context`, and dispatches a sub-agent in an isolated worktree with a prompt built from that context: ADR-001's decision and WS-001's precision section arrive as canonical text with their hashes, not as copies someone maintained.*
+*The engineer invokes `/dekbuilder:orchestrate-coding-session`. `dekspec ib ready` returns only IB-1 — IB-2 waits for IB-1 to complete. The orchestrator starts the run (`dekspec ib start IB-001`), generates the execution context with `dekspec ib context`, and dispatches a sub-agent in an isolated worktree with a prompt built from that context: ADR-001's decision and WS-001's precision section arrive as canonical text with their hashes, not as copies someone maintained.*
 
 *The sub-agent investigates before it plans. It finds an existing numpy buffer helper worth reusing and notices the IB's hypothesis put the codec in one file where the module already has a `codecs/` package. It commits a direct plan with those findings; the new file inside Scope is recorded as a deviation, no permission needed. It writes the public interface signatures first and the engineer reviews them against ADR-001: one accepts any tensor dtype rather than enforcing bfloat16 at the boundary. The agent corrects it before implementation.*
 
 *The first attempt fails a round-trip test at 2-bit depth; the agent ends it as failed and starts a second. Then it hits a real gap: ADR-001 chooses msgpack, but neither the ADR nor the WS says how numpy arrays are packed, and two plausible encodings give different byte layouts on the wire — an underdefined contract, not an implementation detail. The agent records `dekspec ib block IB-001 --reason contract-conflict` instead of choosing. The engineer settles the encoding in WS-001 §Encoding, adds it to IB-1's Obligations with `dekspec ib amend`, and unblocks the run. The next attempt passes; `dekspec ib verify IB-001` records passing evidence for every condition.*
 
-### */dekspec:review-pr and landing*
+### */dekbuilder:review-pr and landing*
 
-*IB-2 becomes ready and runs the same way. Both IBs ship from one worktree as one pull request. A reviewer who built neither IB runs `/dekspec:review-pr`, reviews the delivery against both, and records one verdict per IB with `dekspec ib review`, acknowledging IB-1's amendment. `dekspec delivery verify` re-runs both IBs' acceptance and the integration suite at the head; `dekspec ib complete` records each completion; `dekspec delivery check` passes at the exact head, and the operator merges.*
+*IB-2 becomes ready and runs the same way. Both IBs ship from one worktree as one pull request. A reviewer who built neither IB runs `/dekbuilder:review-pr`, reviews the delivery against both, and records one verdict per IB with `dekspec ib review`, acknowledging IB-1's amendment. `dekspec delivery verify` re-runs both IBs' acceptance and the integration suite at the head; `dekspec ib complete` records each completion; `dekspec delivery check` passes at the exact head, and the operator merges.*
 
 *The full binary IPC implementation is done — spec-grounded, evidence-verified, independently reviewed, and traceable back through the IBs' execution records, the Working Spec, and ADR-001.*
 

@@ -26,6 +26,8 @@ from dekspec.registry import (
 """
 from __future__ import annotations
 
+from dekspec.spec_kinds import BEHAVIOR_SPEC_NAMES as BS
+
 import os
 import tempfile
 from dataclasses import dataclass
@@ -167,18 +169,27 @@ def next_canonical_id(
     `corpus_ids` may contain IDs of any kind / DRAFT IDs — only IDs whose
     prefix matches `kind` and whose suffix is numeric are considered.
     """
-    prefix = f"{kind}-"
+    prefix = f"{BS.id_prefix if kind in BS.prefixes else kind}-"
     highest = 0
     for entry in iter_entries(registry):
-        if entry.kind == kind:
-            num = _id_number(entry.id, prefix)
+        if entry.kind == kind or (kind in BS.prefixes and entry.kind in BS.prefixes):
+            num = _id_number(BS.to_new_id(entry.id), prefix)
             if num is not None and num > highest:
                 highest = num
     for cid in corpus_ids:
-        num = _id_number(cid, prefix)
+        num = _id_number(BS.to_new_id(cid), prefix)
         if num is not None and num > highest:
             highest = num
     return f"{kind}-{highest + 1:03d}"
+
+
+def next_behavior_id(kind: str, spec_dir: Path) -> str:
+    """Allocate from both on-disk spellings and the shared registry namespace."""
+    if kind not in BS.prefixes:
+        raise RegistryError(f"Not a {BS.display_name} prefix: {kind}")
+    corpus_ids = [path.name.rsplit(".md", 1)[0].split("-", 2) for path in BS.paths(spec_dir)]
+    return next_canonical_id(kind, load_registry(spec_dir.parent, spec_dir.name),
+                             ["-".join(parts[:2]) for parts in corpus_ids])
 
 
 def _id_number(artifact_id: str, prefix: str) -> Optional[int]:

@@ -123,14 +123,24 @@ def cmd_new(args: argparse.Namespace) -> int:
 
 @_run
 def cmd_lint(args: argparse.Namespace) -> int:
+    if getattr(args, "delivery", None):
+        # `dekspec ib lint --delivery IB [IB ...]` (IB-181 O-13, O-14). Surface
+        # skeleton written with IB-181's acceptance tests (ADR-062): it accepts the
+        # contracted arguments, prints nothing and exits 0; the implementation
+        # replaces it.
+        return 0
+    if not args.ib:
+        print("REFUSED: name an IB, or a delivery set with --delivery IB [IB ...]", file=sys.stderr)
+        return 2
     eng = _engine(args)
     c = eng.contract(args.ib)
-    problems = list(c.contract_problems())
-    packet = eng.context(args.ib) if c.is_delegated else None
-    if packet:
-        problems += packet.problems
-    _emit(args, {"ib": c.ib_id, "ok": not problems, "problems": problems},
-          lambda d: f"{d['ib']}: {'OK' if d['ok'] else 'PROBLEMS'}" + "".join(f"\n  - {p}" for p in d["problems"]))
+    problems = eng.context(args.ib).problems if c.is_delegated else c.contract_problems()
+    from dekspec.migrations.pattern_dialect import unconverted
+    advisories = unconverted(eng.repo_root, eng.spec_root)
+    _emit(args, {"ib": c.ib_id, "ok": not problems, "problems": problems, "advisories": advisories},
+          lambda d: f"{d['ib']}: {'OK' if d['ok'] else 'PROBLEMS'}"
+          + "".join(f"\n  - {p}" for p in d["problems"])
+          + "".join(f"\n  advisory: {p}" for p in d["advisories"]))
     return 0 if not problems else 1
 
 
@@ -276,6 +286,29 @@ def cmd_floor(args: argparse.Namespace) -> int:
     return 0 if report["ok"] else 1
 
 
+def cmd_prove(args: argparse.Namespace) -> int:
+    """`dekspec ib prove` (IB-185 O-11, O-15; ADR-072).
+
+    Surface skeleton written with IB-185's acceptance tests (ADR-062): the
+    contracted entry point with no behavior. It accepts the contracted
+    arguments, prints nothing, records nothing and exits 0; the
+    implementation replaces it.
+    """
+    return 0
+
+
+def cmd_migrate_id(args: argparse.Namespace) -> int:
+    """`dekspec ib migrate-id <source> --to <new id> [--path <file>] [--json]`
+    (IB-243 O-12; WS-038 §The migration command).
+
+    Surface skeleton written with IB-243's acceptance tests (ADR-062): the
+    contracted entry point with no behavior. It accepts the contracted
+    arguments, prints nothing, writes nothing and exits 0; the implementation
+    replaces it.
+    """
+    return 0
+
+
 def _dispatched_revision(args: argparse.Namespace, expected: str) -> tuple[int | None, str | None]:
     """The policy revision a verdict answers to, and a refusal if any (ADR-061).
 
@@ -313,7 +346,8 @@ def cmd_review(args: argparse.Namespace) -> int:
         return 1
     payload = _engine(args).review(args.ib, args.reviewer, args.verdict, criteria=args.criteria or None,
                                    acknowledge=args.acknowledge or [], notes=args.notes or "",
-                                   policy_revision=revision)
+                                   policy_revision=revision,
+                                   approved_test_changes=args.approve_test_change)
     _emit(args, payload, lambda d: f"{args.ib}: verdict {d['verdict'].upper()} by {d['reviewer']} "
           f"bound to {d['fingerprint'][:12]}")
     return 0
@@ -425,6 +459,16 @@ def cmd_delivery_check(args: argparse.Namespace) -> int:
     return 0 if result.ok else 1
 
 
+@_run
+def _cmd_lean_guard(args: argparse.Namespace) -> int:
+    from dekspec.execution.lean_tests import guard
+
+    result = guard(_engine(args), base=args.base, head=args.head, ibs=args.ib)
+    _emit(args, result.as_dict(), lambda _d: "\n".join(
+        f"  [{'x' if check.ok else ' '}] {check.name}: {check.detail}" for check in result.checks))
+    return 0 if result.ok else 1
+
+
 # ------------------------------------------------------------------- intent
 @_run
 def cmd_intent_verify(args: argparse.Namespace) -> int:
@@ -464,6 +508,16 @@ def cmd_intent_complete(args: argparse.Namespace) -> int:
     return 0 if gate.ok else 1
 
 
+def cmd_intent_placement(args: argparse.Namespace) -> int:
+    """`dekspec intent placement` (IB-214, WS-033 §Gate verdict and output).
+
+    Surface skeleton written with IB-214's acceptance tests (ADR-062): the
+    contracted entry point with no behavior. It accepts the contracted
+    arguments, prints nothing and exits 0; the implementation replaces it.
+    """
+    return 0
+
+
 # ----------------------------------------------------------------- register
 def _common(p: argparse.ArgumentParser, *, ib: bool = True) -> None:
     if ib:
@@ -474,6 +528,29 @@ def _common(p: argparse.ArgumentParser, *, ib: bool = True) -> None:
     p.add_argument("--json", action="store_true", help="machine-readable output")
 
 
+@_run
+def _cmd_lean_record(args: argparse.Namespace) -> int:
+    from dekspec.execution.lean_records import record_floor_verdict, record_tests_authored
+    from dekspec.execution.engine import ExecutionError
+
+    engine = _engine(args)
+    if args.ib_command == "tests-authored":
+        payload = record_tests_authored(engine, args.ib, commit=args.commit,
+                                       author=args.author, actor=_actor(args), skeletons=args.skeleton)
+    else:
+        if _actor(args) != args.reviewer:
+            raise ExecutionError("the recording actor must be the reviewer; record your own floor verdict")
+        revision, refusal = _dispatched_revision(args, "spec-reviewer")
+        if refusal:
+            print(f"REFUSED: {refusal}", file=sys.stderr)
+            return 1
+        payload = record_floor_verdict(engine, args.ib, commit=args.commit,
+                                       verdict=args.verdict, reviewer=args.reviewer,
+                                       criteria=args.criteria, notes=args.notes, policy_revision=revision)
+    _emit(args, payload)
+    return 0
+
+
 def register(sub: argparse._SubParsersAction) -> None:
     ib = sub.add_parser(
         "ib",
@@ -482,6 +559,22 @@ def register(sub: argparse._SubParsersAction) -> None:
                     "evidence and completion live in the IB's execution record under .dekspec/execution/.",
     )
     ibs = ib.add_subparsers(dest="ib_command", metavar="<ib-command>", required=True)
+
+    # Lean records use the same atomic provider operations as IC-020.
+    for verb in ("tests-authored", "floor-review"):
+        p = ibs.add_parser(verb, help="lean acceptance record")
+        _common(p)
+        p.add_argument("--commit", required=True)
+        if verb == "tests-authored":
+            p.add_argument("--author", required=True)
+            p.add_argument("--skeleton", action="append", default=[])
+        else:
+            p.add_argument("--reviewer", required=True)
+            p.add_argument("--verdict", required=True, choices=["pass", "fail"])
+            p.add_argument("--criteria", nargs="*", default=[])
+            p.add_argument("--notes", default="")
+            p.add_argument("--policy-revision", type=int)
+        p.set_defaults(func=_cmd_lean_record)
 
     p = ibs.add_parser("new", help="scaffold a delegated IB (no parent artifact required)")
     p.add_argument("slug")
@@ -500,7 +593,11 @@ def register(sub: argparse._SubParsersAction) -> None:
         ("verify", cmd_verify, "run the acceptance conditions, scope and integrity checks; record evidence"),
     ):
         p = ibs.add_parser(name, help=hlp)
-        _common(p)
+        _common(p, ib=name != "lint")
+        if name == "lint":
+            p.add_argument("ib", nargs="?", help="IB id (IB-NNN) or path to the IB file")
+            p.add_argument("--delivery", nargs="+", metavar="IB",
+                           help="check a delivery set instead of one IB: every listed brief, every pair")
         if name in ("verify", "status", "gate", "complete"):
             p.add_argument("--base", help="the delivery's base branch, for the scope diff "
                                           "(default: $DEKSPEC_BASE, else main / origin/main / master)")
@@ -515,6 +612,22 @@ def register(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--dekspec-root", default="dekspec", help="spec tree relative to the repo (default: dekspec)")
     p.add_argument("--json", action="store_true", help="machine-readable output")
     p.set_defaults(func=cmd_floor)
+
+    p = ibs.add_parser("prove", help="green proof: run the brief's new protected nodes and its predecessors' "
+                                     "nodes against a throwaway reference copy, with the mutant check")
+    _common(p)
+    p.add_argument("--reference", required=True, help="the reference copy, outside the repository")
+    p.add_argument("--mutants", required=True, help="folder of *.patch mutants of the reference")
+    p.add_argument("--protect", action="append", default=[], help="extra immutable path pattern (repeatable)")
+    p.add_argument("--recheck", action="store_true", help="read-only: rerun one green node and one caught mutant")
+    p.set_defaults(func=cmd_prove)
+
+    p = ibs.add_parser("migrate-id", help="move a numbered brief that is not COMPLETE to a declared id, "
+                                          "keeping its old record as history")
+    _common(p)
+    p.add_argument("--to", required=True, dest="to", help="the declared id to move to (IB-NAME)")
+    p.add_argument("--path", help="the brief file's new path (default: the same folder, <new id>-<slug>.md)")
+    p.set_defaults(func=cmd_migrate_id)
 
     p = ibs.add_parser("baseline", help="refresh the acceptance baseline before execution starts")
     _common(p)
@@ -573,6 +686,8 @@ def register(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--policy-revision", type=int, dest="policy_revision",
                    help="the code-reviewer policy revision the review was dispatched under (from its instructions); "
                         "refused if the policy has changed since (ADR-061)")
+    p.add_argument("--approve-test-change", action="append", metavar="PATH=REASON",
+                   help="approve a protected lean test-author path with a reason (repeatable)")
     p.set_defaults(func=cmd_review)
 
     p = ibs.add_parser("block", help="record a blocked outcome")
@@ -619,6 +734,13 @@ def register(sub: argparse._SubParsersAction) -> None:
                            help="re-execute acceptance instead of trusting records; write nothing (CI mode)")
         p.set_defaults(func=fn)
 
+    p = dls.add_parser("lean-guard", help="judge red-first tests and test protection for every delivered lean brief")
+    _common(p, ib=False)
+    p.add_argument("--base", required=True, help="judged base commit")
+    p.add_argument("--head", required=True, help="judged head commit")
+    p.add_argument("--ib", action="append", help="add a brief to those discovered (repeatable)")
+    p.set_defaults(func=_cmd_lean_guard)
+
     it = sub.add_parser("intent", help="Intent outcome verification and evidence-backed completion.")
     its = it.add_subparsers(dest="intent_command", metavar="<intent-command>", required=True)
     p = its.add_parser("verify", help="run the Intent's Verification commands and record evidence")
@@ -641,3 +763,7 @@ def register(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--check-only", action="store_true")
     p.add_argument("--base", help="the delivery's base branch — for historical dependencies and scope (default: $DEKSPEC_BASE, else main / origin/main / master)")
     p.set_defaults(func=cmd_intent_complete)
+    p = its.add_parser("placement", help="the Behavior placement gate: does the Intent's table pass (read-only)")
+    p.add_argument("intent")
+    _common(p, ib=False)
+    p.set_defaults(func=cmd_intent_placement)

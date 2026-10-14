@@ -37,7 +37,7 @@ Print a findings table grouped by severity (CRITICAL / IMPORTANT / MINOR), each 
 Examples:
 - `[CRITICAL] LINK-INT-AE-EXISTS: AE-099 referenced in Linked Architecture Elements does not exist. Fix: --amend to rewrite the AE reference, or author the missing AE.`
 - `[IMPORTANT] LINK-INT-CMD-RESOLVE: scripts/measure-nfr.sh in verification[1].cmd is not executable. Fix: chmod or replace.`
-- `[MINOR] D19-INT-NUMERIC-NO-WS-CITE: motivation contains "≤ 250 ms" without a WS citation. Fix: --amend to move the target to a WS or add the WS reference.`
+- `[MINOR] D19-INT-NUMERIC-NO-BS-CITE: motivation contains "≤ 250 ms" without a WS citation. Fix: --amend to move the target to a WS or add the WS reference.`
 
 Print exit code `0` if no CRITICAL findings, `1` if any CRITICAL.
 

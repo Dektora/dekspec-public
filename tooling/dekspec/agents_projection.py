@@ -10,7 +10,7 @@ Everything outside the region belongs to someone else and is preserved byte for
 byte. This module owns the whole mechanism so that `dekspec aggregate agents-md`,
 its `--check`, and the `dekspec doctor` section run one implementation:
 
-- ownership parsing — line-anchored markers, fenced code ignored (IB-138 O-5);
+- ownership parsing — live DekSpec markers outside fenced and indented code;
 - legacy recognition — the earlier generator's whole-file output, the historical
   `dekspec init` placeholders and the historical Codex marker (O-7), a generated
   layout only when its extent is exactly generator output (IB-142 O-2);
@@ -198,6 +198,35 @@ def _split_lines(text: str) -> list[str]:
     return out
 
 
+def _unfenced_lines(lines: list[str]):
+    """Yield original line indices and text outside Markdown fences."""
+    fence: tuple[str, int] | None = None
+    for i, raw in enumerate(lines):
+        line = raw.rstrip("\r\n")
+        m = _FENCE.match(line)
+        if fence is None and m:
+            fence = (m.group(1)[0], len(m.group(1)))
+            continue
+        if fence is not None:
+            if m and m.group(1)[0] == fence[0] and len(m.group(1)) >= fence[1] and not m.group(2).strip():
+                fence = None
+            continue
+        yield i, line
+
+
+def _live_indentation(line: str) -> bool:
+    """DekSpec markers become code examples at four leading columns (O-12)."""
+    leading = line[:len(line) - len(line.lstrip())]
+    return len(leading.expandtabs(4)) < 4
+
+
+def _live_fragments(lines: list[str]) -> dict[int, re.Match[str]]:
+    return {
+        i: marker for i, line in _unfenced_lines(lines)
+        if _live_indentation(line) and (marker := _FRAGMENT_MARKER.match(line.strip()))
+    }
+
+
 @dataclass
 class Ownership:
     bom: bool
@@ -233,25 +262,15 @@ def parse_ownership(text: str) -> Ownership:
     ends: list[int] = []
     foreign: list[tuple[int, str]] = []
     fragments: list[tuple[int, str]] = []
-    fence: tuple[str, int] | None = None
-    for i, raw in enumerate(lines):
-        line = raw.rstrip("\r\n")
-        m = _FENCE.match(line)
-        if fence is None and m:
-            fence = (m.group(1)[0], len(m.group(1)))
-            continue
-        if fence is not None:
-            if m and m.group(1)[0] == fence[0] and len(m.group(1)) >= fence[1] and not m.group(2).strip():
-                fence = None
-            continue
+    for i, line in _unfenced_lines(lines):
         bare = line.strip()
-        if bare == BEGIN_MARKER:
-            begins.append(i)
-        elif bare == END_MARKER:
-            ends.append(i)
+        if bare in (BEGIN_MARKER, END_MARKER):
+            if _live_indentation(line):
+                (begins if bare == BEGIN_MARKER else ends).append(i)
         elif _OWNER_MARKER.match(bare):
+            # Other owners retain their existing marker grammar.
             foreign.append((i, bare))
-        else:
+        elif _live_indentation(line):
             fm = _FRAGMENT_MARKER.match(bare)
             if fm:
                 fragments.append((i, fm.group(2)))
@@ -438,9 +457,8 @@ def recognize_legacy(own: Ownership) -> Legacy | LegacyMismatch | None:
     if not source_line:
         return None
     last_end = None
-    for i, ln in enumerate(lines):
-        m = _FRAGMENT_MARKER.match(ln.rstrip("\r\n").strip())
-        if m and m.group(1) == "END":
+    for i, m in _live_fragments(lines).items():
+        if m.group(1) == "END":
             last_end = i
     name = "the earlier generator's whole-file output"
     if last_end is None:
@@ -509,9 +527,6 @@ def _legacy_prefix_mismatch(lines: list[str], stop: int) -> tuple[int, str] | No
     fence: tuple[str, int] | None = None
     for i in range(len(prefix), stop):
         bare = lines[i].rstrip("\r\n")
-        marker = _FRAGMENT_MARKER.match(bare.strip())
-        if marker:
-            return i, "a fragment end marker without its begin marker"
         # Only opaque singleton bodies could historically contain fenced code.
         # A quotation added to fixed scaffolding cannot establish ownership.
         m = _FENCE.match(bare)
@@ -522,6 +537,8 @@ def _legacy_prefix_mismatch(lines: list[str], stop: int) -> tuple[int, str] | No
             if m and m.group(1)[0] == fence[0] and len(m.group(1)) >= fence[1] and not m.group(2).strip():
                 fence = None
             continue
+        if _live_indentation(bare) and _FRAGMENT_MARKER.match(bare.strip()):
+            return i, "a fragment end marker without its begin marker"
         # Singleton Markdown was emitted verbatim, including horizontal rules.
         # Only a fixed fragment-section heading transitions back to scaffolding;
         # treating its preceding separator as a boundary rejects valid bodies.
@@ -553,11 +570,8 @@ def _legacy_extent_mismatch(own: Ownership, last_end: int) -> LegacyMismatch | N
     if foreign:
         found.append((foreign[0][0], "another owner's block marker"))
     lines = own.lines
-    first_begin = next(
-        (i for i, ln in enumerate(lines[:last_end + 1])
-         if (m := _FRAGMENT_MARKER.match(ln.rstrip("\r\n").strip())) and m.group(1) == "BEGIN"),
-        None,
-    )
+    markers = _live_fragments(lines[:last_end + 1])
+    first_begin = next((i for i, m in markers.items() if m.group(1) == "BEGIN"), None)
     prefix_mismatch = _legacy_prefix_mismatch(lines, first_begin if first_begin is not None else last_end + 1)
     if prefix_mismatch is not None:
         found.append(prefix_mismatch)
@@ -565,7 +579,7 @@ def _legacy_extent_mismatch(own: Ownership, last_end: int) -> LegacyMismatch | N
         current: tuple[int, str] | None = None  # (index, id) of the open fragment's begin marker
         for i in range(first_begin, last_end + 1):
             bare = lines[i].rstrip("\r\n")
-            m = _FRAGMENT_MARKER.match(bare.strip())
+            m = markers.get(i)
             if current is not None:
                 if m and m.group(1) == "END" and m.group(2) == current[1]:
                     current = None
@@ -917,7 +931,10 @@ def _part_breaks_region(text: str) -> bool:
                 fence = None
             continue
         bare = line.strip()
-        if bare in (BEGIN_MARKER, END_MARKER) or _OWNER_MARKER.match(bare):
+        if bare in (BEGIN_MARKER, END_MARKER):
+            if _live_indentation(line):
+                return True
+        elif _OWNER_MARKER.match(bare):
             return True
     return fence is not None
 
@@ -962,15 +979,28 @@ def _read(path: Path) -> bytes | None:
         return path.read_bytes()
     except FileNotFoundError:
         return None
-    except IsADirectoryError as err:
-        raise ProjectionRefused(f"{path} is a directory, not an instruction file") from err
+    except OSError as err:
+        raise ProjectionRefused(
+            f"cannot read instruction file {path}: {err}. Recovery: repair the path or its "
+            "permissions so it names a readable regular file."
+        ) from err
 
 
 def _decode(data: bytes, path: Path) -> str:
     try:
         return data.decode("utf-8")
     except UnicodeDecodeError as err:
-        raise ProjectionRefused(f"{path} is not UTF-8 text ({err})") from err
+        raise ProjectionRefused(
+            f"{path} is not UTF-8 text ({err}). Recovery: repair the file's UTF-8 encoding."
+        ) from err
+
+
+def _checked_render(repo_root: Path, settings: Settings, existing: str | None) -> Rendered:
+    """Before advising a write, validate its rendering and replacement without writing."""
+    rendered = render(repo_root, settings)
+    replacement, _ = compose(existing, rendered, migrate=True)
+    _self_check(replacement, rendered.region, rendered)
+    return rendered
 
 
 def check(repo_root: Path, dekspec_root: str = "dekspec") -> Verdict:
@@ -984,6 +1014,7 @@ def check(repo_root: Path, dekspec_root: str = "dekspec") -> Verdict:
         return Verdict("invalid", declared, f"invalid configuration: {decl.error}", decl.required)
     target = repo_root / decl.path
     try:
+        _resolve_target(target, repo_root, projection=True)
         data = _read(target)
         text = _decode(data, target) if data is not None else None
     except ProjectionRefused as err:
@@ -1001,6 +1032,11 @@ def check(repo_root: Path, dekspec_root: str = "dekspec") -> Verdict:
                        f"no projection is declared and {rel} {why}; nothing to check.")
 
     if not text:
+        if decl.configured:
+            try:
+                _checked_render(repo_root, decl.settings, text)
+            except ProjectionRefused as err:
+                return Verdict("invalid", declared, f"{rel}: {err}", decl.required)
         return missing("does not exist" if text is None else "is empty")
     own = parse_ownership(text)
     if own.region is None and not own.problems:
@@ -1011,6 +1047,10 @@ def check(repo_root: Path, dekspec_root: str = "dekspec") -> Verdict:
             why = _describe_mismatch(legacy, own.stray_fragments)
             if not decl.configured:
                 return Verdict("invalid", declared, f"{rel}: {why}", decl.required)
+            try:
+                render(repo_root, decl.settings)
+            except ProjectionRefused as err:
+                return Verdict("invalid", declared, f"{rel}: {err}", decl.required)
             need = "required" if decl.required else "declared but not required"
             return Verdict("absent", "configured",
                            f"{rel} has no DekSpec-owned region; the projection is {need}. "
@@ -1020,12 +1060,21 @@ def check(repo_root: Path, dekspec_root: str = "dekspec") -> Verdict:
                            f"{rel} is the earlier generator's output but has no fragment end marker, so its "
                            f"generated extent cannot be determined. Recovery: {_PLACE_MARKERS}.", decl.required)
         if legacy is not None:
+            try:
+                _checked_render(repo_root, decl.settings, text)
+            except ProjectionRefused as err:
+                return Verdict("invalid", declared, f"{rel}: {err}", decl.required)
             return Verdict("stale", declared,
                            f"{rel} is a recognized legacy layout ({legacy.name}) and needs migration. "
                            + _MIGRATE_HINT, decl.required)
         # O-6: for a configured projection a file without a region is absent, whatever else it holds.
         if own.stray_fragments and not decl.configured:
             return Verdict("invalid", declared, _describe_stray_ids(own.stray_fragments), decl.required)
+        if decl.configured:
+            try:
+                render(repo_root, decl.settings)
+            except ProjectionRefused as err:
+                return Verdict("invalid", declared, f"{rel}: {err}", decl.required)
         return missing("has no DekSpec-owned region")
     if own.region is not None and not decl.configured:
         declared = "region"
@@ -1039,12 +1088,16 @@ def check(repo_root: Path, dekspec_root: str = "dekspec") -> Verdict:
             advice = ("It was written by a newer DekSpec; this older tool must not overwrite it. "
                       "Upgrade dekspec, then check again.")
         else:
+            try:
+                _checked_render(repo_root, decl.settings, text)
+            except ProjectionRefused as err:
+                return Verdict("invalid", declared, f"{rel}: {err}", decl.required)
             advice = "It was written by an older DekSpec; refresh it with `dekspec aggregate agents-md`."
         return Verdict("stale", declared,
                        f"{rel}: renderer mismatch — the region records renderer revision {rec_revision}, "
                        f"this tool renders revision {RENDERER_REVISION}. {advice}", decl.required)
     try:
-        rendered = render(repo_root, decl.settings)
+        rendered = _checked_render(repo_root, decl.settings, text)
     except ProjectionRefused as err:
         return Verdict("invalid", declared, f"{rel}: {err}", decl.required)
     expected = rendered.region
@@ -1089,8 +1142,10 @@ def _fragments(region: str) -> tuple[dict[str, str], str]:
     frags: dict[str, list[str]] = {}
     rest: list[str] = []
     current: str | None = None
-    for line in region.split("\n"):
-        m = _FRAGMENT_MARKER.match(line.strip())
+    lines = region.split("\n")
+    markers = _live_fragments(lines)
+    for i, line in enumerate(lines):
+        m = markers.get(i)
         if m and m.group(1) == "BEGIN":
             current = m.group(2)
             frags[current] = [line]
@@ -1306,6 +1361,8 @@ def generate(
     """Render and write the owned region of `target`. Returns a summary line.
     Raises `ProjectionRefused` (file untouched) on any refusal."""
     repo_root = repo_root.resolve()
+    declaration = resolve_declaration(repo_root)
+    projection_destination(repo_root, target, declaration)
     real = _resolve_target(target, repo_root)
     original = _read(real)
     existing = _decode(original, real) if original is not None else None

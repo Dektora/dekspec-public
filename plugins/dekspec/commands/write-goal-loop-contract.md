@@ -15,6 +15,6 @@ long-running autonomous run.
    (Objective / Constraints / Validate command / verifiable Stop condition) with
    explicit reward-hacking + scope-creep forbiddance, names what to read first,
    and recommends the driver (`/loop`, a background agent, `/schedule`, or
-   `/dekspec:orchestrate-coding-session` for a construction run; always a branch, never
+   `/dekbuilder:orchestrate-coding-session` for a construction run; always a branch, never
    `main`). If the ask has no verifiable stop condition, the skill pushes back and
    helps narrow it rather than drafting a loose contract.

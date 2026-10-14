@@ -48,11 +48,13 @@ validators do the same.
 """
 from __future__ import annotations
 
+from dekspec.spec_kinds import BEHAVIOR_SPEC_NAMES as BS
+
 from functools import lru_cache
 from importlib.resources import files
 from typing import Any
 
-import yaml
+from .._yaml import safe_load
 
 
 class SchemaNotFoundError(Exception):
@@ -65,7 +67,7 @@ class SchemaNotFoundError(Exception):
 SCHEMA_FILENAMES: dict[str, str] = {
     "adr": "adr.schema.yaml",
     "architecture_element": "architecture-element.schema.yaml",
-    "working_spec": "working-spec.schema.yaml",
+    **{kind: BS.schema_file for kind in (BS.ir_kind, *BS.old_ir_kinds)},
     "interface_contract": "interface-contract.schema.yaml",
     "implementation_brief": "implementation-brief.schema.yaml",
     "intent": "intent.schema.yaml",
@@ -100,7 +102,7 @@ LATEST_VERSIONS: dict[str, str] = {
     # v0.1.0 AE IR JSON migrates forward via the IB-045 migration module.
     "adr": "0.3.0",
     "architecture_element": "0.3.0",
-    "working_spec": "0.3.0",
+    **{kind: "0.4.0" for kind in (BS.ir_kind, *BS.old_ir_kinds)},
     "interface_contract": "0.3.0",
     "implementation_brief": "0.4.0",  # ADR-055/056/057 — contract fields + decision-only status
     "intent": "0.4.0",  # ADR-056/057
@@ -181,7 +183,7 @@ def _read_yaml(parts: tuple[str, ...], filename: str) -> dict[str, Any]:
     if not path.is_file():
         raise FileNotFoundError(f"Schema not found at {path}")
     with path.open("rb") as f:
-        return yaml.safe_load(f)
+        return safe_load(f)
 
 
 def list_schemas() -> list[tuple[str, str]]:

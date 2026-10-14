@@ -1,0 +1,79 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+title: Artifact purpose record
+type: object
+additionalProperties: false
+required: [record_version, types, other_destinations]
+properties:
+  record_version: {type: string, minLength: 1}
+  types:
+    type: array
+    items: {$ref: '#/$defs/entry'}
+  other_destinations:
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [id, name, text]
+      properties:
+        id: {$ref: '#/$defs/slug'}
+        name: {$ref: '#/$defs/text'}
+        text: {$ref: '#/$defs/text'}
+$defs:
+  text: {type: string, minLength: 1}
+  slug: {type: string, pattern: '^[a-z0-9-]+$'}
+  entry:
+    type: object
+    additionalProperties: false
+    required: [type, name, aliases, template, skill, holds, does_not_hold]
+    properties:
+      type: {$ref: '#/$defs/slug'}
+      name: {$ref: '#/$defs/text'}
+      aliases:
+        type: array
+        uniqueItems: true
+        items: {$ref: '#/$defs/text'}
+      template: {$ref: '#/$defs/slug'}
+      skill: {$ref: '#/$defs/slug'}
+      legacy_template: {const: working-spec} # dekspec:names-both-forms
+      legacy_skill: {const: write-ws} # dekspec:names-both-forms
+      holds:
+        type: array
+        minItems: 1
+        items:
+          type: object
+          additionalProperties: false
+          required: [id, text]
+          properties:
+            id: {type: string, pattern: '^[a-z0-9-]+\.holds\.[a-z0-9-]+$'}
+            text: {$ref: '#/$defs/text'}
+      does_not_hold:
+        type: array
+        minItems: 1
+        items:
+          type: object
+          additionalProperties: false
+          required: [id, text, destination]
+          properties:
+            id: {type: string, pattern: '^[a-z0-9-]+\.not\.[a-z0-9-]+$'}
+            text: {$ref: '#/$defs/text'}
+            destination: {$ref: '#/$defs/slug'}
+            subtype: {$ref: '#/$defs/text'}
+          allOf:
+            - if:
+                properties:
+                  destination: {const: architecture-element}
+              then:
+                required: [subtype]
+              else:
+                not: {required: [subtype]}
+    allOf:
+      - if:
+          properties:
+            type: {const: behavior-spec}
+        then:
+          required: [legacy_template, legacy_skill]
+        else:
+          not:
+            anyOf:
+              - required: [legacy_template]
+              - required: [legacy_skill]

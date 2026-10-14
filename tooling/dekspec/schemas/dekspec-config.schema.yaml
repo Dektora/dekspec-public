@@ -31,6 +31,42 @@ required:
   - methodology_profile
 
 properties:
+  pattern_dialect:
+    description: Repository patterns use ADR-068; permanent after conversion or empty initialization.
+    const: folder-local
+
+  named_briefs:
+    description: Declared brief identities; grammar is judged by brief_identity (WS-038).
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [id, path]
+      properties:
+        id: {type: string, minLength: 1}
+        path: {type: string, minLength: 1}
+
+  roles:
+    description: Project-rule pointers only; no role policy or model mapping is loaded from them.
+    type: object
+    additionalProperties: false
+    properties:
+      project_rules:
+        type: object
+        additionalProperties: false
+        minProperties: 1
+        properties:
+          gates:
+            $ref: "#/$defs/project_rule_pointer"
+          write_paths:
+            $ref: "#/$defs/project_rule_pointer"
+          credentials:
+            $ref: "#/$defs/project_rule_pointer"
+          review_concerns:
+            $ref: "#/$defs/project_rule_pointer"
+          models:
+            $ref: "#/$defs/project_rule_pointer"
+
   schema_version:
     description: 'Config file format version. Today: 0.1.0.'
     type: string
@@ -120,25 +156,6 @@ properties:
     type: string
     minLength: 1
 
-  dektools:
-    description: >-
-      Retired by ADR-064: every tool now ships with the dekspec plugin, so
-      there is no tool selection. Accepted for one release so that an older
-      config still validates; `dekspec install` ignores it and prints a
-      notice. The key can be removed.
-    type: object
-    additionalProperties: false
-    properties:
-      enabled:
-        description: >-
-          The retired per-repo tool selection. Accepted for one release and
-          ignored; nothing reads or writes it.
-        type: array
-        uniqueItems: true
-        items:
-          type: string
-          minLength: 1
-
   specification:
     description: DekSpec-owned specification-reference policy, consumed by execution clients.
     type: object
@@ -160,6 +177,10 @@ properties:
     type: object
     additionalProperties: false
     properties:
+      lean:
+        description: Enable lean construction (off by default).
+        type: boolean
+        default: false
       max_attempts:
         description: 'Attempts per IB run before it blocks (counted across restarts). Default 3.'
         type: integer
@@ -198,6 +219,10 @@ properties:
     type: object
     additionalProperties: false
     properties:
+      parallel_briefs:
+        description: Maximum concurrent briefs in a lean wave.
+        type: integer
+        minimum: 1
       method:
         description: '`merge` (default) fast-forwards the base branch to the verified head; `github` lands it through a pull request with `gh`, after its required checks, never with an administrator override.'
         enum: [merge, github]
@@ -277,3 +302,20 @@ properties:
         items:
           type: string
           minLength: 1
+
+$defs:
+  project_rule_pointer:
+    description: >-
+      A repository path (existence is not checked), or "none: " and a reason.
+    type: string
+    oneOf:
+      - pattern: '^none: [\s\S]*\S[\s\S]*$'
+      - allOf:
+          - pattern: '^\S(?:[\s\S]*\S)?(?![\s\S])'
+          - not:
+              anyOf:
+                - pattern: '^none(?::|$)'
+                - pattern: '^/'
+                - pattern: '^[A-Za-z]:'
+                - pattern: '\\'
+                - pattern: '(^|/)\.\.(/|$)'

@@ -4,7 +4,7 @@ description: Write an IB's acceptance tests — the pytest nodes its `## Accepta
 mode: lite
 reasoning_effort: high
 allowed-tools: Read Write Edit Bash
-argument-hint: [--help | --teaching | --audit | --revise] [IB-NNN] [notes]
+argument-hint: "[--help | --teaching | --audit | --revise] [IB-NNN] [notes]"
 related_skills: [write-ibs, write-evals, orchestrate-coding-session, review-pr]
 disable-model-invocation: false
 ---

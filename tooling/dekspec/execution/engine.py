@@ -29,7 +29,7 @@ from dekspec.execution.fingerprint import (
 )
 from dekspec.execution.plan import validate_plan
 from dekspec.execution.record import EXECUTION_DIRNAME, Event, ExecutionRecord, RecordIntegrityError
-from dekspec.execution.scope import ScopeError, evaluate_scope
+from dekspec.execution.scope import ScopeError, evaluate_scope, resolve_base
 from dekspec.execution.settings import ExecutionSettings, load_settings, resolve_python
 from dekspec.execution.state import RunState, fold, parse_ts
 
@@ -49,6 +49,19 @@ RETIRED_STATUSES = ("DEPRECATED", "SUPERSEDED")
 
 class ExecutionError(RuntimeError):
     """The request is refused (wrong state, failed gate, invalid input)."""
+
+
+class _ProviderRecord(ExecutionRecord):
+    """Keep provider-owned writes behind validation without changing the writer."""
+
+    def append(self, type_, actor, data=None):
+        if type_ in ("tests.authored", "floor.verdict") or "approved_test_changes" in (data or {}):
+            raise ExecutionError(f"{type_} must be recorded through its provider operation")
+        return super().append(type_, actor, data)
+
+
+# Preserve the existing public record type while guarding provider-owned writes.
+ExecutionRecord = _ProviderRecord
 
 
 class Blocked(ExecutionError):
@@ -224,7 +237,7 @@ class Engine:
         c = self.contract(ref)
         if c.status != "COMPLETE":
             return False
-        if not c.is_delegated:
+        if not c.is_executable:
             return self.historically_complete(c, base=base or self.base)
         return self.current_completion(c.ib_id) is not None
 
@@ -344,7 +357,7 @@ class Engine:
         from dekspec.execution.history import LEGACY_TERMINAL_STATUSES, file_versions, status_of
         from dekspec.execution.scope import resolve_base
 
-        if contract.is_delegated or contract.status != "COMPLETE":
+        if contract.is_executable or contract.status != "COMPLETE":
             return False
         try:
             rev = resolve_base(self.repo_root, base)
@@ -365,11 +378,12 @@ class Engine:
         if self.is_complete(dep, base=base):
             return True
         _rec, _events, st = self.state(c.ib_id)
+        st = self._current_state(c, _events)
         latest = st.latest_evidence("ib")
         return bool(latest) and latest[1].get("overall") == "passed"
 
     def _require_delegated(self, c: IBContract) -> None:
-        problems = c.contract_problems()
+        problems = c.contract_problems(settings=self.settings)
         if problems:
             raise ExecutionError(f"{c.ib_id} is not an executable delegated contract: " + "; ".join(problems))
 
@@ -384,11 +398,30 @@ class Engine:
                    change="Proposed for authorization (`dekspec ib propose`): contract lint clean.")
         return "PROPOSED"
 
-    @_serialized
     def accept(self, ref: str, actor: str) -> dict[str, Any]:
-        """PROPOSED → ACCEPTED: authorize execution and take the acceptance baseline."""
+        """Authorize a proposed brief, or independently re-accept a changed contract."""
+        # A malformed declaration must fail without creating even an empty
+        # execution record. Recheck under the lock before taking the baseline.
+        self._require_delegated(self.contract(ref))
+        return self._accept(ref, actor)
+
+    @_serialized
+    def _accept(self, ref: str, actor: str) -> dict[str, Any]:
         c = self.contract(ref)
         self._require_delegated(c)
+        if c.status == "ACCEPTED":
+            _rec, _events, state = self.state(c.ib_id)
+            if state.baseline is None:
+                raise ExecutionError(f"{c.ib_id} has no acceptance baseline")
+            if state.baseline.get("contract_hash") == c.contract_hash():
+                raise ExecutionError(f"{c.ib_id}: nothing changed in the accepted contract")
+            packet = build_context(self.repo_root, c, spec_root=self.spec_root)
+            if packet.problems:
+                raise ExecutionError("cannot authorize: " + "; ".join(packet.problems))
+            reason = "Re-accepted changed contract " + c.contract_hash()
+            if state.started:
+                return self.amend(ref, actor, reviewer=actor, reason=reason)
+            return self.rebaseline(ref, actor, reason)
         if c.status != "PROPOSED":
             raise ExecutionError(f"{c.ib_id} is {c.status}; only a PROPOSED IB can be accepted")
         packet = build_context(self.repo_root, c, spec_root=self.spec_root)
@@ -397,7 +430,9 @@ class Engine:
         for dep in c.depends_on:
             self.contract(dep)  # must exist and parse
         rec = self.record(c.ib_id)
-        payload = acc.baseline_payload(self.repo_root, c)
+        payload = ({"commit": current_commit(self.repo_root), "contract_hash": c.contract_hash(),
+                    "assets": {}, "runner_inputs": {}} if c.is_lean
+                   else acc.baseline_payload(self.repo_root, c))
         payload.update({"by": actor, "phase": "authorization",
                         "absent_assets": sorted(k for k, v in payload["assets"].items() if v is None)})
         ev = rec.append("acceptance.baselined", actor, payload)
@@ -420,7 +455,9 @@ class Engine:
             raise ExecutionError(
                 f"{c.ib_id}'s run has started; the baseline changes only by `dekspec ib amend` "
                 "with a reason and an independent reviewer")
-        payload = acc.baseline_payload(self.repo_root, c)
+        payload = ({"commit": current_commit(self.repo_root), "contract_hash": c.contract_hash(),
+                    "assets": {}, "runner_inputs": {}} if c.is_lean
+                   else acc.baseline_payload(self.repo_root, c))
         payload.update({"by": actor, "phase": "pre-execution", "reason": reason,
                         "absent_assets": sorted(k for k, v in payload["assets"].items() if v is None)})
         rec.append("acceptance.baselined", actor, payload)
@@ -445,7 +482,9 @@ class Engine:
         if actor != reviewer:
             raise ExecutionError(
                 f"the reviewer records the amendment themselves (actor {actor!r} ≠ reviewer {reviewer!r})")
-        payload = acc.baseline_payload(self.repo_root, c)
+        payload = ({"commit": current_commit(self.repo_root), "contract_hash": c.contract_hash(),
+                    "assets": {}, "runner_inputs": {}} if c.is_lean
+                   else acc.baseline_payload(self.repo_root, c))
         prev = st.baseline
         changes = {
             "contract": prev.get("contract_hash") != payload["contract_hash"],
@@ -510,8 +549,13 @@ class Engine:
             raise ExecutionError("contract conflict — obligations do not resolve: " + "; ".join(packet.problems))
         fp = self.fingerprint()
         if not st.started:
+            try:
+                run_base = resolve_base(self.repo_root, base)
+            except ScopeError:
+                run_base = None  # starting never required a conventional trunk name
             rec.append("run.started", owner, {"owner": owner, "contract_hash": c.contract_hash(),
-                                              "fingerprint": fp, "commit": current_commit(self.repo_root)})
+                                              "fingerprint": fp, "commit": current_commit(self.repo_root),
+                                              "base_commit": run_base})
         elif st.owner != owner:
             rec.append("run.ownership-transferred", owner, {"from": st.owner, "to": owner})
         else:
@@ -556,7 +600,7 @@ class Engine:
         needs the base at all."""
         from dekspec.execution.scope import resolve_base
 
-        if not c.is_delegated:
+        if not c.is_executable:
             return
         rec = self.record(c.ib_id)
         st = fold(rec.events(strict=False)) if rec.exists() else RunState()  # integrity is judged by each verb
@@ -631,6 +675,14 @@ class Engine:
     def attempt_start(self, ref: str, actor: str, *, task: str | None = None) -> dict[str, Any]:
         c = self.contract(ref)
         rec, _events, st = self._require_active(c)
+        if c.is_lean:
+            from dekspec.execution.lean_records import current
+            history = current(self, c.ib_id)
+            if not history.floor_passed:
+                raise ExecutionError("a passing floor verdict for the current test-author commit is required")
+            problems = history.builder_problems(actor)
+            if problems:
+                raise ExecutionError("; ".join(problems))
         if st.blockers:
             raise Blocked(f"{c.ib_id} is blocked ({st.blockers[-1]['reason']}): resolve with `dekspec ib unblock`")
         if st.open_attempt:
@@ -741,6 +793,8 @@ class Engine:
             return ["no acceptance baseline (accept the IB first)"], attention
         if base.get("contract_hash") != c.contract_hash():
             problems.append("the IB's binding/acceptance content changed since the baseline without `dekspec ib amend`")
+        if c.is_lean:
+            return problems, attention
         now_assets = acc.asset_hashes(self.repo_root, c)
         for path in sorted(set(now_assets) | set(base.get("assets", {}))):
             before, after = base.get("assets", {}).get(path, "untracked"), now_assets.get(path, "untracked")
@@ -773,6 +827,11 @@ class Engine:
         co-delivered IBs that actually ran; attribution is anchored at the
         authorization baseline's commit (the builder does not choose it)."""
         planned = [f for t in st.tasks.values() for f in t.get("files", [])]
+        from dekspec.execution.ranges import resolve_ranges
+
+        attributed = resolve_ranges(self, base).scope_for(c.ib_id)
+        if attributed is not None:
+            return attributed
         # A retired IB never widens the delivery's allowed scope: its leftover
         # changes must be reverted or owned by active work (delivery check).
         partners = [p for p in (self.contract(i) for i in self.delivery_ibs(base) if i != c.ib_id)
@@ -808,6 +867,33 @@ class Engine:
                     "evidence must come from an interpreter the delivery cannot rewrite")
         return None
 
+    def _current_state(self, c: IBContract, events: list) -> RunState:
+        state = fold(events)
+        if c.is_lean:
+            from dekspec.execution.lean_records import current
+
+            history = current(self, c.ib_id)
+            eligible = {e.seq for e in events if history.counts(e)}
+            state.evidence = [(seq, data) for seq, data in state.evidence if seq in eligible]
+            state.verdicts = [(seq, data) for seq, data in state.verdicts if seq in eligible]
+        return state
+
+    def _content_binding(self, c: IBContract):
+        if c.is_lean:
+            from dekspec.execution.evidence_scope import bind
+
+            return bind(self, c.ib_id)
+        from dekspec.execution.evidence_scope import ScopedBinding
+
+        manifest = self.manifest()
+        return ScopedBinding(manifest, {}, fingerprint_of(manifest))
+
+    def _binding_fields(self, c: IBContract, binding) -> dict:
+        if not c.is_lean:
+            return {}
+        return {"scoped_manifest": binding.manifest, "runner_inputs": binding.runner_inputs,
+                "python": self.python}
+
     def verify(self, ref: str, actor: str, *, base: str | None = None, record: bool = True,
                kind: str = "ib") -> dict[str, Any]:
         base = base or self.base
@@ -821,7 +907,8 @@ class Engine:
         if record and st.started and not st.completions:
             st = self._sweep_stall(rec, st)
         packet = build_context(self.repo_root, c, spec_root=self.spec_root)
-        fp = self.fingerprint()
+        binding = self._content_binding(c)
+        fp = binding.digest
         problems, attention = self._integrity(c, st)
         interpreter = self._interpreter_problem()
         if interpreter:
@@ -845,8 +932,16 @@ class Engine:
         for plugin in sorted({pl for r in results for pl in r.get("plugins_in_repo", [])}):
             if plugin in content and not _same_as(self.repo_root, anchor, plugin):
                 attention = sorted(set(attention) | {f"plugin:{plugin}"})
+        if scope_dict.get("ranges"):
+            from dekspec.execution.ranges import resolve_ranges
+
+            after_ranges = resolve_ranges(self, base)
+            if after_ranges.binding != scope_dict["ranges"]:
+                problems = problems + ["range provenance changed during acceptance; re-verify the final candidate"]
+            observed = {v.get("detail") for v in scope_dict.get("violations", [])}
+            problems = problems + [p for p in after_ranges.problems if p not in observed and p not in problems]
         failing = [r["id"] for r in results if r["kind"] != "review" and r["status"] != "passed"]
-        after = self.fingerprint()
+        after = self._content_binding(c).digest
         if after != fp:
             problems = problems + [
                 "running the acceptance checks changed the repository content (a check writes tracked or "
@@ -873,6 +968,7 @@ class Engine:
             "results": results,
             "overall": overall,
         }
+        payload.update(self._binding_fields(c, binding))
         if record:
             rec.append("evidence.recorded", actor, payload)
             recorded = {f for d in st.deviations for f in d.get("files", [])}
@@ -914,27 +1010,58 @@ class Engine:
                 or ev.get("manifest_hash") != build_context(self.repo_root, c, spec_root=self.spec_root).manifest_hash \
                 or ev.get("python") != self.python:
             return None
+        from dekspec.execution.ranges import resolve_ranges
+
+        try:
+            attribution = resolve_ranges(self, base or self.base)
+        except ScopeError:
+            return None
+        if attribution.problems or (ev.get("scope") or {}).get("ranges", []) != attribution.binding:
+            return None
         return latest
 
     # ----------------------------------------------------------------- review
     @_serialized
     def review(self, ref: str, reviewer: str, verdict: str, *, criteria: list[str] | None = None,
                acknowledge: list[str] | None = None, notes: str = "",
-               policy_revision: int | None = None) -> dict[str, Any]:
+               policy_revision: int | None = None,
+               approved_test_changes: list[str] | None = None) -> dict[str, Any]:
         if verdict not in ("pass", "fail"):
             raise ExecutionError("verdict must be pass or fail")
         c = self.contract(ref)
         self._require_delegated(c)
         self._refuse_integrated(c)
         rec, _events, st = self.state(c.ib_id)
+        st = self._current_state(c, _events)
         if reviewer in st.builder_identities:
             raise ExecutionError(f"{reviewer} built this IB; the verdict must come from an independent reviewer")
+        if c.is_lean:
+            authors = {e.data.get("actor", e.actor) for e in _events if e.type == "tests.authored"}
+            floor_reviewers = {e.data.get("reviewer", e.actor) for e in _events if e.type == "floor.verdict"}
+            if reviewer in authors | floor_reviewers:
+                raise ExecutionError(f"{reviewer} authored or reviewed this IB's tests; code review must be independent")
+        approvals = []
+        if approved_test_changes:
+            from dekspec.execution import lean_tests
+
+            if not c.is_lean:
+                raise ExecutionError(f"{c.ib_id} is not lean; test-change approvals are unavailable")
+            if verdict != "pass":
+                raise ExecutionError("a fail verdict cannot approve test changes")
+            for change in approved_test_changes:
+                path, separator, reason = change.partition("=")
+                if not separator or not reason.strip():
+                    raise ExecutionError(f"{path}: test-change approval needs a non-empty reason")
+                if not lean_tests.may_approve(self, c.ib_id, path):
+                    raise ExecutionError(f"{path}: not a protected test-author path eligible for approval")
+                approvals.append({"path": path, "reason": reason})
         role = verdict_role_stamp(CODE_REVIEWER_ROLE, policy_revision)
         packet = build_context(self.repo_root, c, spec_root=self.spec_root)
         review_ids = [a.id for a in c.acceptance if a.kind == "review"]
         # Keep exactly what was reviewed, so a later change can be named path by
         # path (the verdict's carry-forward rule depends on it).
-        reviewed_fp = snapshots.save(self.repo_root, c.ib_id, self.manifest())
+        binding = self._content_binding(c)
+        reviewed_fp = binding.digest if c.is_lean else snapshots.save(self.repo_root, c.ib_id, binding.manifest)
         payload = {
             "verdict": verdict,
             "reviewer": reviewer,
@@ -948,17 +1075,36 @@ class Engine:
             "notes": notes,
             "agent_role": role,
         }
-        rec.append("verdict.recorded", reviewer, payload)
+        from dekspec.execution.ranges import resolve_ranges
+
+        latest = st.latest_evidence("ib")
+        reviewed_base = (latest[1].get("scope") or {}).get("base") if latest else self.base
+        try:
+            payload["range_binding"] = resolve_ranges(self, reviewed_base).binding
+        except ScopeError:
+            payload["range_binding"] = []
+        payload.update(self._binding_fields(c, binding))
+        if approvals:
+            from dekspec.execution.record import ExecutionRecord as RecordWriter
+
+            payload["approved_test_changes"] = approvals
+            # The provider operation has validated these reserved fields; the
+            # facade writer intentionally refuses them from arbitrary callers.
+            RecordWriter.append(rec, "verdict.recorded", reviewer, payload)
+        else:
+            rec.append("verdict.recorded", reviewer, payload)
         return payload
 
     # ------------------------------------------------------------- completion
     def _reviewed_surfaces(self, c: IBContract, st: RunState, manifest: list[dict[str, Any]]) -> list[str]:
-        globs = list(c.scope) + [p.split("::", 1)[0] for p in c.protected]
-        globs += c.acceptance_asset_paths()
-        globs += [k.split("#", 1)[0] for k in (st.baseline or {}).get("runner_inputs", {})]
-        globs += [m["path"] for m in manifest if m.get("path")]
-        globs.append(c.rel_path)
-        return globs
+        return list(c.scope) + [p.split("::", 1)[0] for p in c.protected]
+
+    def _reviewed_files(self, c: IBContract, st: RunState, manifest: list[dict[str, Any]]) -> set[str]:
+        # These are recorded filenames, not authored scope patterns. In
+        # particular brackets/braces in an asset's name must stay literal.
+        return {c.rel_path, *c.acceptance_asset_paths(),
+                *(k.split("#", 1)[0] for k in (st.baseline or {}).get("runner_inputs", {})),
+                *(m["path"] for m in manifest if m.get("path"))}
 
     def _stalled(self, st: RunState) -> bool:
         att = st.open_attempt
@@ -994,7 +1140,7 @@ class Engine:
         if integrity:
             return gate
         events = rec.events()
-        st = fold(events)
+        st = self._current_state(c, events)
         if st.started and not st.completions:
             if readonly:
                 if self._stalled(st):
@@ -1002,6 +1148,8 @@ class Engine:
                                         f"attempt {st.open_attempt.number} has no heartbeat within the stall limit"))
             else:
                 st = self._sweep_stall(rec, st)
+                if c.is_lean:
+                    st = self._current_state(c, rec.events())
         checks.append(Check("run-recorded", st.started,
                             f"owned by {st.owner}" if st.started else
                             "no run was started — `dekspec ib start` binds the context and checks prerequisites"))
@@ -1022,8 +1170,23 @@ class Engine:
                             "`direct: true` for a single continuous run)"))
         packet = build_context(self.repo_root, c, spec_root=self.spec_root)
         checks.append(Check("obligations-resolve", not packet.problems, "; ".join(packet.problems) or "all sources eligible under the project specification policy"))
-        current = self.manifest()
-        fp = fingerprint_of(current)
+        binding_problem = None
+        try:
+            binding = self._content_binding(c)
+            current, fp = binding.manifest, binding.digest
+        except ExecutionError as exc:
+            if not c.is_lean:
+                raise
+            binding_problem = str(exc)
+            current, fp = {}, None
+        if c.is_lean:
+            from dekspec.execution import lean_tests
+            try:
+                checks.extend(lean_tests.completion_checks(self, c.ib_id))
+            except ExecutionError as exc:
+                checks.append(Check("test-files-unchanged", False, str(exc)))
+            checks.append(Check("scoped-binding", binding_problem is None,
+                                binding_problem or "scoped content bound"))
         gate.fingerprint = fp
         integrity_problems, attention = self._integrity(c, st)
         interpreter = self._interpreter_problem()
@@ -1035,18 +1198,41 @@ class Engine:
         latest = st.latest_evidence("ib")
         if latest is None:
             checks.append(Check("evidence-present", False, "no evidence recorded — run `dekspec ib verify`"))
-            return gate
+            if not c.is_lean:
+                return gate
+            latest = (None, {})
         seq, ev = latest
         gate.evidence_seq = seq
-        stale = []
+        stale = ([binding_problem] if binding_problem else [])
+        if not ev:
+            stale.append("no evidence after current tests.authored")
+        if c.is_lean and ev.get("python") != self.python:
+            stale.append("test interpreter changed")
         if ev.get("fingerprint") != fp:
-            stale.append("implementation content changed since verification")
+            if c.is_lean and binding_problem is None and ev:
+                from dekspec.execution.evidence_scope import ScopedBinding, changed_paths
+
+                previous = ScopedBinding(ev.get("scoped_manifest", {}),
+                                         ev.get("runner_inputs", {}), ev.get("fingerprint", ""))
+                touched = changed_paths(previous, binding)
+                stale.append("scoped content changed since verification: " + ", ".join(touched))
+            else:
+                stale.append("implementation content changed since verification")
         if ev.get("contract_hash") != c.contract_hash():
             stale.append("contract changed")
         if ev.get("baseline_digest") != acc.baseline_digest(st.baseline):
             stale.append("acceptance baseline changed")
         if ev.get("manifest_hash") != packet.manifest_hash:
             stale.append("a governing source changed")
+        from dekspec.execution.ranges import resolve_ranges
+
+        try:
+            range_binding = resolve_ranges(self, base).binding
+        except ScopeError:
+            # Preserve the structured scope-indeterminate check below.
+            range_binding = []
+        if (ev.get("scope") or {}).get("ranges", []) != range_binding:
+            stale.append("constituent range binding changed since verification")
         checks.append(Check("evidence-current", not stale, "; ".join(stale) or f"evidence #{seq} matches current content"))
         failing = [f"{r['id']} {r['status']}: {r.get('detail', '')}" for r in ev.get("results") or []
                    if r["kind"] != "review" and r["status"] != "passed"]
@@ -1068,7 +1254,13 @@ class Engine:
             return gate
         vseq, verdict = st.verdicts[-1]
         gate.verdict_seq = vseq
-        vproblems = []
+        vproblems = [binding_problem] if binding_problem else []
+        if c.is_lean and verdict.get("python") != self.python:
+            vproblems.append("test interpreter changed")
+        if c.is_lean and verdict.get("manifest_hash") != packet.manifest_hash:
+            vproblems.append("governing sources changed since review")
+        if verdict.get("range_binding", []) != range_binding:
+            vproblems.append("constituent range binding changed since review")
         if verdict["verdict"] != "pass":
             vproblems.append(f"latest verdict is FAIL ({verdict.get('notes', '')})")
         if verdict["reviewer"] in st.builder_identities:
@@ -1084,14 +1276,25 @@ class Engine:
             # not re-judge them, only work that has not landed yet (ADR-061). Only a base
             # that resolves and holds the completion proves it integrated.
             vproblems.append(stale_policy)
-        if verdict["fingerprint"] != fp:
+        if c.is_lean and verdict["fingerprint"] != fp:
+            from dekspec.execution.evidence_scope import ScopedBinding, changed_paths
+
+            if binding_problem is None:
+                previous = ScopedBinding(verdict.get("scoped_manifest", {}),
+                                         verdict.get("runner_inputs", {}), verdict["fingerprint"])
+                touched = changed_paths(previous, binding)
+                vproblems.append("scoped content changed since review: " + ", ".join(touched))
+            else:
+                vproblems.append("scoped content could not be checked")
+        elif verdict["fingerprint"] != fp:
             reviewed = snapshots.load(self.repo_root, c.ib_id, verdict["fingerprint"])
             if reviewed is None:
                 vproblems.append("content changed since the verdict and the reviewed snapshot is missing or altered")
             else:
                 changed = manifest_changes(reviewed, current)
                 surfaces = self._reviewed_surfaces(c, st, packet.manifest)
-                touched = [p for p in changed if matches_any_glob(p, surfaces) or p in surfaces]
+                files = self._reviewed_files(c, st, packet.manifest)
+                touched = [p for p in changed if p in files or matches_any_glob(p, surfaces)]
                 if touched:
                     vproblems.append("reviewed surfaces changed since the verdict: " + ", ".join(touched[:8]))
                 else:
@@ -1115,6 +1318,23 @@ class Engine:
         c = self.contract(ref)
         self._refuse_integrated(c, base)
         gate = self.evaluate_completion(ref, base=base)
+        # Closing must not revoke the attribution that made the open unit
+        # eligible. A repair needs a retained passing receipt before its
+        # active-tail allowance disappears at COMPLETE.
+        from dekspec.execution.ranges import resolve_ranges
+
+        try:
+            closed = resolve_ranges(self, base, closing=(c.ib_id,))
+            closed_scope = closed.scope_for(c.ib_id)
+            problems = (closed_scope.as_dict()["violations"] if closed_scope else [])
+            stable = closed.binding == resolve_ranges(self, base).binding
+            gate.checks.append(Check("closed-range-attribution", not problems and stable,
+                                     "; ".join(v["detail"] for v in problems) or
+                                     ("attribution survives completion" if stable else
+                                      "range boundary changes at completion; commit the passing delivery "
+                                      "receipt, then verify and review the final candidate")))
+        except ScopeError as exc:
+            gate.checks.append(Check("closed-range-attribution", False, f"scope indeterminate: {exc}"))
         if not gate.ok:
             return gate
         rec = self.record(c.ib_id)
@@ -1128,10 +1348,15 @@ class Engine:
                 or st.completions[-1][1].get("verdict_seq") != gate.verdict_seq:
             # A new completion cites the evidence and verdict it rests on — also when a
             # fresh review (a review-policy change, ADR-061) replaced the one cited before.
-            rec.append("completion.recorded", actor, {
+            payload = {
                 "fingerprint": gate.fingerprint, "commit": current_commit(self.repo_root),
                 "evidence_seq": gate.evidence_seq, "verdict_seq": gate.verdict_seq,
-                "carried_forward": gate.carried_forward})
+                "carried_forward": gate.carried_forward}
+            if c.is_lean:
+                payload.update(self._binding_fields(c, self._content_binding(c)))
+                payload.update(contract_hash=c.contract_hash(),
+                               manifest_hash=build_context(self.repo_root, c, spec_root=self.spec_root).manifest_hash)
+            rec.append("completion.recorded", actor, payload)
         if c.status == "ACCEPTED":
             set_status(c.path, {"ACCEPTED"}, "COMPLETE", author=actor, change=(
                 f"Completed (`dekspec ib complete`): evidence #{gate.evidence_seq} and verdict "
@@ -1163,12 +1388,12 @@ class Engine:
                         c = load_contract(self.repo_root, str(self.repo_root / path), spec_root=self.spec_root)
                     except ContractError:
                         continue  # reported by delivery_anomalies
-                    if c.is_delegated and c.status == "COMPLETE":
+                    if c.is_executable and c.status == "COMPLETE":
                         found.add(c.ib_id)
         usable = []
         for ident in sorted(found):
             try:
-                if self.contract(ident).is_delegated:
+                if self.contract(ident).is_executable:
                     usable.append(ident)
             except ExecutionError:
                 continue
@@ -1207,11 +1432,11 @@ class Engine:
                 old_policy = pm.group(1).lower() if pm else "legacy"
             # A legacy COMPLETE is historical only: the base already carried a
             # terminal status (the migration maps the retired COMPLETED).
-            if head.status == "COMPLETE" and not head.is_delegated and old_status not in ("COMPLETE", "COMPLETED"):
+            if head.status == "COMPLETE" and not head.is_executable and old_status not in ("COMPLETE", "COMPLETED"):
                 problems.append(f"{head.ib_id} is marked COMPLETE but its authority policy is legacy and its "
                                 "completion does not predate this delivery — only `dekspec ib complete` on a "
                                 "delegated IB records new completion")
-            if old_policy == "delegated" and not head.is_delegated:
+            if old_policy == "delegated" and not head.is_executable:
                 problems.append(f"{head.ib_id} was relabelled from delegated to legacy; the authority policy "
                                 "only moves legacy → delegated (ADR-055)")
         return problems
@@ -1232,7 +1457,7 @@ class Engine:
             "deviations": len(st.deviations), "evidence": len(st.evidence), "verdicts": len(st.verdicts),
             "record_integrity": rec.verify_chain() or "ok",
         }
-        if c.is_delegated and c.status in ("ACCEPTED", "COMPLETE") and st.baseline:
+        if c.is_executable and c.status in ("ACCEPTED", "COMPLETE") and st.baseline:
             # Status is a pure query: it never records anything (stall closure
             # happens on the next mutating verb).
             gate = self.evaluate_completion(ref, readonly=True, base=base)
@@ -1250,7 +1475,7 @@ class Engine:
                 c = load_contract(self.repo_root, str(path), spec_root=self.spec_root)
             except ContractError:
                 continue
-            if not c.is_delegated or c.status != "ACCEPTED":
+            if not c.is_executable or c.status != "ACCEPTED":
                 continue
             try:
                 _rec, _ev, st = self.state(c.ib_id)

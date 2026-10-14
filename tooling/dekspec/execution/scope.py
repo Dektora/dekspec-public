@@ -2,17 +2,22 @@
 
 Precedence, strongest first:
 
-1. **Protected surfaces** — a listed path, glob, or ``path::symbol`` may not be
-   modified, renamed away or deleted. Nothing overrides this: not an allowed
-   glob, not a lifecycle exemption.
-2. **Lifecycle exemptions** — only the execution records, tracker records
+1. **ADR-073 bookkeeping**, checked before protection: only engine status
+   transitions and appended Amendment Log rows on the delivery's existing
+   briefs and parent Intents, and added/modified execution-record files.
+   Modified dates, other edits, existing-row changes, other artifacts, and
+   additions/deletions/renames of artifacts remain subject to protection.
+2. **Protected surfaces** — every other change to a listed path, glob, or
+   ``path::symbol`` is refused, even inside Scope. ADR-066 attributes only
+   its proved original preparation-time population.
+3. **Lifecycle exemptions** — only the execution records, tracker records
    (``br`` workspaces), generated spec indexes, the delivery's own IB files
    and acceptance assets, status-only edits of governed specs, and
    ``.dekspec/config.yaml`` changes confined to workflow sections
    (``integration.base``). (The old diff-confinement
    admit-set exempted all of ``dekspec/**``; a governing-spec edit is now an
    explicit, in-scope change instead.)
-3. **Allowed scope** — delegated IBs: ``§Scope`` globs, so a new helper file
+4. **Allowed scope** — delegated IBs: ``§Scope`` globs, so a new helper file
    inside an allowed glob needs no permission. Legacy IBs: the exact Files to
    Modify list (their ADR-049-era meaning). Anything else is a scope expansion.
 
@@ -25,15 +30,20 @@ file-level protection and says so.
 from __future__ import annotations
 
 import ast
+import hashlib
+import os
 import re
+import stat
 import subprocess
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any, Iterable
 
 from dekspec.diff_confinement import matches_any_glob
-from dekspec.execution.fingerprint import _is_cache
+from dekspec.execution.fingerprint import _is_cache, is_tracker_record
+from dekspec.execution.lifecycle_bookkeeping import bookkeeping_paths, is_protection_bookkeeping
 
 __all__ = ["Change", "ScopeError", "ScopeReport", "changed_files", "evaluate_scope", "resolve_base"]
 
@@ -61,6 +71,7 @@ class ScopeReport:
     pre_run: list[str] = field(default_factory=list)
     bookkeeping: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    ranges: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -77,6 +88,7 @@ class ScopeReport:
             "pre_run": self.pre_run,
             "bookkeeping": self.bookkeeping,
             "notes": self.notes,
+            "ranges": self.ranges,
         }
 
 
@@ -99,9 +111,10 @@ def resolve_base(repo_root: Path, base: str | None = None) -> str:
     raise ScopeError(f"cannot find a merge base with {' / '.join(c for c in candidates if c)}")
 
 
-def changed_files(repo_root: Path, base_commit: str) -> list[Change]:
+def changed_files(repo_root: Path, base_commit: str, end: str | None = None) -> list[Change]:
     """Work tree (committed + staged + unstaged + untracked) versus the base."""
-    out = _git(repo_root, "diff", "--name-status", "-M", "-z", base_commit)
+    out = _git(repo_root, "diff", "--name-status", "-M", "-z", *(["--cached"] if end == "" else []),
+               base_commit, *([end] if end else []))
     parts = [p for p in out.split("\0") if p != ""]
     changes: list[Change] = []
     i = 0
@@ -113,6 +126,8 @@ def changed_files(repo_root: Path, base_commit: str) -> list[Change]:
         else:
             changes.append(Change(code[0], parts[i + 1]))
             i += 2
+    if end is not None:
+        return changes
     untracked = _git(repo_root, "ls-files", "--others", "--exclude-standard", "-z")
     known = {c.path for c in changes}
     for path in (p for p in untracked.split("\0") if p):
@@ -406,27 +421,221 @@ def symbol_protection_violation(old: str | None, new: str | None, surface: str) 
 
 
 def _protected_hits(repo_root: Path, base_commit: str, change: Change, surface: str,
-                    notes: list[str]) -> str | None:
+                    notes: list[str], end: str | None = None) -> str | None:
     if "::" in surface:
-        path, _symbol = surface.split("::", 1)
-        touched = {change.path, change.old_path} - {None}
-        if path not in touched:
-            return None
-        if change.status == "D" or (change.status == "R" and change.old_path == path):
-            return f"{surface}: file {'deleted' if change.status == 'D' else 'renamed away'}"
-        current_path = Path(repo_root) / path
-        current = current_path.read_text(encoding="utf-8", errors="replace") if current_path.is_file() else None
-        hit = symbol_protection_violation(_base_text(repo_root, base_commit, path), current, surface)
-        if hit and "needs Python" in hit:
-            notes.append(f"{surface}: symbol-level protection needs Python; treated as file-level")
-        elif hit and "unresolved" in hit:
-            notes.append(f"{surface}: symbol not found; protected at file level")
-        return hit
+        pattern, symbol = surface.split("::", 1)
+        for path in dict.fromkeys((change.path, change.old_path)):
+            if not path or not matches_any_glob(path, [pattern]):
+                continue
+            if change.status == "D" or (change.status == "R" and change.old_path == path):
+                return f"{surface}: file {'deleted' if change.status == 'D' else 'renamed away'}"
+            current_path = Path(repo_root) / path
+            current = current_path.read_text(encoding="utf-8", errors="replace") if current_path.is_file() else None
+            if end is not None:
+                current = _base_text(repo_root, end, path)
+            hit = symbol_protection_violation(_base_text(repo_root, base_commit, path), current, f"{path}::{symbol}")
+            if hit and "needs Python" in hit:
+                notes.append(f"{surface}: symbol-level protection needs Python; treated as file-level")
+            elif hit and "unresolved" in hit:
+                notes.append(f"{surface}: symbol not found; protected at file level")
+            if hit:
+                return hit
+        return None
     for candidate in (change.path, change.old_path):
-        if candidate and (candidate == surface or matches_any_glob(candidate, [surface])):
+        if candidate and matches_any_glob(candidate, [surface]):
             verb = {"D": "deleted", "R": "renamed", "A": "added"}.get(change.status, "modified")
             return f"{surface}: {candidate} {verb}"
     return None
+
+
+# ADR-066's one instance (IB-173 O-13). These facts select evidence to prove;
+# none of them grants an allowance without the complete proof below.
+_ARCHIVE = "docs/workspace/three-product-plan/structural-first/prior-provider-review"
+_ARCHIVE_GLOB = _ARCHIVE + "/**"
+_ARCHIVE_BASE = "8146e4ad674007b57ceddb2bb62df10726dded9d"
+_ARCHIVE_AUTH = "9c55ed23ca8b5d7547f3b4f7e73812494f498ad0"
+_ARCHIVE_EVENT = "f65f9509dccf3b2469b7d7647514b45e6309b0c7695aab8aef62703296b9da3b"
+_ARCHIVE_FILES = {
+    _ARCHIVE + "/README.md": (
+        "590201a8fd518417bcf630fc9a732e1e02bc7fa1",
+        "9f43b8be0280f57e61afb30e7cd001dd37da228f01b9ee4003f74c27db26877b"),
+    _ARCHIVE + "/source-manifest.json": (
+        "7a862863ae255944f34c9f61a890b49311d0b5a3",
+        "26f58b13668f75db538e2066d938d5e293ebfc7e2465a118341e2b7aceb86bf2"),
+    _ARCHIVE + "/validation.json": (
+        "0c3f606e97b40c092d70e6a21fa7f315d3430251",
+        "436c2b0a42248dc3fabc3dd07396fcf7a9e9b0ad72009c08938d084bf2904f43"),
+}
+
+
+def _archive_git(repo_root: Path, *args: str) -> bytes:
+    """Read original Git objects without replacement-object interpretation."""
+    # Ambient alternate Git directories/indexes cannot supply replacement proof.
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    env["GIT_NO_REPLACE_OBJECTS"] = "1"
+    result = subprocess.run(["git", *args], cwd=repo_root, env=env, capture_output=True)
+    if result.returncode:
+        raise ScopeError("archive Git provenance unavailable: " + " ".join(args[:2]))
+    return result.stdout
+
+
+def _archive_tree(repo_root: Path, commit: str) -> dict[str, tuple[str, str, str]]:
+    inventory = {}
+    raw = _archive_git(repo_root, "ls-tree", "-r", "-t", "-z", commit, "--", _ARCHIVE)
+    for row in raw.split(b"\0"):
+        if not row:
+            continue
+        metadata, path = row.split(b"\t", 1)
+        mode, kind, oid = metadata.decode("ascii").split()
+        name = os.fsdecode(path)
+        # With -t Git also emits containing trees outside this pathspec.
+        # Their identity is checked separately in the filesystem ancestry proof.
+        if name != _ARCHIVE and not name.startswith(_ARCHIVE + "/"):
+            continue
+        if name in inventory:
+            raise ScopeError("ambiguous original archive inventory")
+        inventory[name] = (mode, kind, oid)
+    return inventory
+
+
+def _archive_worktree(repo_root: Path) -> None:
+    """Prove raw inventory without following links or hiding ignored objects."""
+    root = Path(_ARCHIVE)
+    for directory in (*reversed(root.parents[:-1]), root):
+        if not stat.S_ISDIR((repo_root / directory).lstat().st_mode):
+            raise ScopeError(f"archive directory identity changed: {directory}")
+    found = set()
+    # The original inventory is flat. Even an empty extra directory is a change.
+    with os.scandir(repo_root / root) as entries:
+        for entry in entries:
+            path = _ARCHIVE + "/" + entry.name
+            mode = entry.stat(follow_symlinks=False).st_mode
+            if path not in _ARCHIVE_FILES or not stat.S_ISREG(mode):
+                raise ScopeError(f"archive path/type inventory changed: {path}")
+            if mode & stat.S_IXUSR:
+                raise ScopeError(f"archive executable mode changed: {path}")
+            raw = (repo_root / path).read_bytes()
+            if hashlib.sha256(raw).hexdigest() != _ARCHIVE_FILES[path][1]:
+                raise ScopeError(f"archive raw bytes changed: {path}")
+            found.add(path)
+    if found != set(_ARCHIVE_FILES):
+        raise ScopeError("archive entries removed or renamed")
+
+
+def _archive_authorization(repo_root: Path, contract: Any, spec_root: str) -> None:
+    """Bind the original protecting contract to its original strict record event."""
+    from dekspec.execution.contract import load_contract
+    from dekspec.execution.record import ExecutionRecord
+    from dekspec.execution.state import fold
+
+    events = ExecutionRecord(repo_root, contract.ib_id).events()
+    first = events[0] if events else None
+    if (first is None or first.seq != 1 or first.type != "acceptance.baselined"
+            or first.hash != _ARCHIVE_EVENT or first.data.get("phase") != "authorization"
+            or first.data.get("commit") != _ARCHIVE_AUTH):
+        raise ScopeError("original protecting-IB authorization event is unavailable or rewritten")
+    baseline = fold(events).baseline
+    if baseline is None or baseline.get("contract_hash") != contract.contract_hash():
+        raise ScopeError("current archive contract is not independently authorized")
+    if _archive_git(repo_root, "for-each-ref", "--format=%(refname)", "refs/replace").strip():
+        raise ScopeError("replacement objects make archive Git provenance ambiguous")
+    grafts = Path(os.fsdecode(_archive_git(repo_root, "rev-parse", "--git-path", "info/grafts"))
+                  .rstrip("\n"))
+    if not grafts.is_absolute():
+        grafts = repo_root / grafts
+    if grafts.exists() and grafts.read_bytes().strip():
+        raise ScopeError("graft metadata makes archive Git provenance ambiguous")
+    _archive_git(repo_root, "merge-base", "--is-ancestor", _ARCHIVE_BASE, _ARCHIVE_AUTH)
+    _archive_git(repo_root, "merge-base", "--is-ancestor", _ARCHIVE_AUTH, "HEAD")
+    paths = _archive_git(repo_root, "ls-tree", "-r", "--name-only", "-z",
+                         _ARCHIVE_AUTH, "--", spec_root + "/impl-briefs")
+    originals = [os.fsdecode(p) for p in paths.split(b"\0") if p
+                 and Path(os.fsdecode(p)).name.startswith("IB-173-") and p.endswith(b".md")]
+    if len(originals) != 1:
+        raise ScopeError("original protecting IB is missing or ambiguous")
+    original = _archive_git(repo_root, "show", _ARCHIVE_AUTH + ":" + originals[0])
+    # Reuse canonical parsing/hashing without changing original lifecycle bytes.
+    # The authorization event, rather than an ACCEPTED Git header, is authority.
+    with TemporaryDirectory(prefix="dekspec-original-archive-contract-") as temp:
+        historical = Path(temp) / originals[0]
+        historical.parent.mkdir(parents=True)
+        historical.write_bytes(original)
+        authorized = load_contract(Path(temp), "IB-173", spec_root=spec_root)
+    if (authorized.contract_hash() != first.data.get("contract_hash")
+            or _ARCHIVE_GLOB not in authorized.protected):
+        raise ScopeError("original contract binding/protection does not match authorization")
+
+
+def _archive_population(repo_root: Path, contract: Any, base: str,
+                        spec_root: str) -> tuple[set[str], str | None]:
+    """Privately prove ADR-066 attribution for the protecting IB, or refuse it.
+
+    This never uses ordinary ``since`` attribution, a sibling's events, an
+    amendment's commit, or a caller-selected authorization. A failed proof is
+    itself a protected-surface refusal, including when a directory substitution
+    makes ordinary diff enumeration omit the protected archive paths.
+    """
+    obligations = getattr(contract, "obligations", ())
+    # Artifact numbers are local to each consumer. Only this fixed-base archive
+    # claim under the canonical single-instance policy selects the special proof.
+    # Other consumers and base-present surfaces retain ordinary ADR-055 judgment.
+    if (contract.ib_id != "IB-173" or base != _ARCHIVE_BASE
+            or not (_ARCHIVE_GLOB in contract.protected or any(
+                o.get("local") and _ARCHIVE in o.get("text", "") for o in obligations))):
+        return set(), None
+    from dekspec.execution.context import build_context
+
+    policy = [o for o in build_context(repo_root, contract, spec_root=spec_root).obligations
+              if o.ref == "ADR-066" and o.section == "Initial population" and o.ok]
+    if not any(_ARCHIVE_BASE in o.text and _ARCHIVE_AUTH in o.text for o in policy):
+        return set(), None
+    from dekspec.execution.contract import ContractError
+    from dekspec.execution.record import RecordIntegrityError
+
+    try:
+        reference = [o for o in obligations if o.get("id") == "O-12"]
+        local = [o for o in obligations if o.get("id") == "O-13" and o.get("local")]
+        if (len(reference) != 1 or reference[0].get("ref") != "ADR-066"
+                or reference[0].get("section") != "Initial population" or len(local) != 1
+                or _ARCHIVE_GLOB not in contract.protected):
+            raise ScopeError("original archive authority/protection declaration is inconsistent")
+        facts = (_ARCHIVE_BASE, _ARCHIVE_AUTH, _ARCHIVE_EVENT,
+                 *(value for path, pair in _ARCHIVE_FILES.items() for value in (path, *pair)))
+        if any(fact not in local[0].get("text", "") for fact in facts) or base != _ARCHIVE_BASE:
+            raise ScopeError("archive declaration does not match the fixed original facts/base")
+        _archive_authorization(repo_root, contract, spec_root)
+        if _archive_tree(repo_root, base):
+            raise ScopeError("archive was already present at the authoritative base")
+        original_tree = _archive_tree(repo_root, _ARCHIVE_AUTH)
+        expected = {p: ("100644", "blob", pair[0]) for p, pair in _ARCHIVE_FILES.items()}
+        directories = {p: v for p, v in original_tree.items() if v[:2] == ("040000", "tree")}
+        if set(directories) != {_ARCHIVE} or original_tree != {**expected, **directories}:
+            raise ScopeError("original complete archive inventory differs from the authorized facts")
+        for path, (oid, sha) in _ARCHIVE_FILES.items():
+            if hashlib.sha256(_archive_git(repo_root, "cat-file", "blob", oid)).hexdigest() != sha:
+                raise ScopeError(f"original archive blob bytes differ: {path}")
+        if _archive_tree(repo_root, "HEAD") != original_tree:
+            raise ScopeError("committed archive path/type/mode/byte inventory changed")
+        index = {}
+        for row in _archive_git(repo_root, "ls-files", "--stage", "-z", "--", _ARCHIVE).split(b"\0"):
+            if not row:
+                continue
+            metadata, path = row.split(b"\t", 1)
+            mode, oid, stage = metadata.decode("ascii").split()
+            name = os.fsdecode(path)
+            if stage != "0" or name in index:
+                raise ScopeError("archive index has conflicting or ambiguous entries")
+            index[name] = (mode, "blob", oid)
+        if index != expected:
+            raise ScopeError("staged archive path/type/mode/byte inventory changed")
+        history = _archive_git(repo_root, "log", "--full-history", "--format=", "--raw", "-m",
+                               _ARCHIVE_AUTH + "..HEAD", "--", _ARCHIVE)
+        if history.strip():
+            raise ScopeError("recorded post-authorization archive changes remain forbidden")
+        _archive_worktree(repo_root)
+    except (ScopeError, ContractError, RecordIntegrityError, OSError, ValueError) as exc:
+        return set(), str(exc)
+    return set(_ARCHIVE_FILES), None
 
 
 def _is_lifecycle(path: str, ib_files: set[str], spec_root: str) -> bool:
@@ -435,15 +644,10 @@ def _is_lifecycle(path: str, ib_files: set[str], spec_root: str) -> bool:
     files. Never implementation."""
     return (
         _is_execution_record_file(path)
-        or (path.split("/", 1)[0] in (".beads", ".beads-issues", ".beads-dekspec")
-            and path.rsplit(".", 1)[-1] in _TRACKER_SUFFIXES)
+        or is_tracker_record(path)
         or path in ib_files
         or (path.startswith(spec_root + "/") and path.count("/") == 1 and path.endswith("-index.md"))
     )
-
-
-#: What a `br` workspace holds: issue logs, its config and database, docs.
-_TRACKER_SUFFIXES = {"jsonl", "json", "yaml", "yml", "toml", "md", "db", "gitignore", "lock"}
 
 
 def _is_execution_record_file(path: str) -> bool:
@@ -475,7 +679,8 @@ def anchor_in_history(repo_root: Path, commit: str | None) -> bool:
                                      capture_output=True).returncode == 0
 
 
-def _same_as(repo_root: Path, commit: str | None, path: str, spec_root: str = "dekspec") -> bool:
+def _same_as(repo_root: Path, commit: str | None, path: str, spec_root: str = "dekspec",
+             end: str | None = None) -> bool:
     """True when ``path`` has the same content at ``commit`` and now — for
     governed markdown, ignoring lifecycle bookkeeping (status, Modified,
     Amendment Log), exactly as the fingerprint does. False whenever ``commit``
@@ -486,11 +691,17 @@ def _same_as(repo_root: Path, commit: str | None, path: str, spec_root: str = "d
         return False
     before = subprocess.run(["git", "show", f"{commit}:{path}"], cwd=str(repo_root), capture_output=True)
     current = Path(repo_root) / path
-    if before.returncode != 0:
-        return not current.exists()
-    if not current.is_file():
-        return False
-    now = current.read_bytes()
+    if end is not None:
+        after = subprocess.run(["git", "show", f"{end}:{path}"], cwd=repo_root, capture_output=True)
+        if before.returncode != 0 or after.returncode != 0:
+            return before.returncode != 0 and after.returncode != 0
+        now = after.stdout
+    else:
+        if before.returncode != 0:
+            return not current.exists()
+        if not current.is_file():
+            return False
+        now = current.read_bytes()
     if now == before.stdout:
         return True
     if path.startswith(spec_root + "/") and path.endswith(".md"):
@@ -519,14 +730,16 @@ def _workflow_view(config: dict) -> dict:
     return view
 
 
-def _workflow_config_only(repo_root: Path, base_commit: str, change: Change) -> bool:
+def _workflow_config_only(repo_root: Path, base_commit: str, change: Change,
+                          end: str | None = None) -> bool:
     import yaml
 
     if change.path != _CONFIG_PATH or change.status not in ("A", "M"):
         return False
     try:
         old = yaml.safe_load(_base_text(repo_root, base_commit, _CONFIG_PATH) or "") or {}
-        new = yaml.safe_load((Path(repo_root) / _CONFIG_PATH).read_text(encoding="utf-8")) or {}
+        new = yaml.safe_load(_base_text(repo_root, end, _CONFIG_PATH) if end is not None else
+                             (Path(repo_root) / _CONFIG_PATH).read_text(encoding="utf-8")) or {}
     except (yaml.YAMLError, OSError):
         return False
     if not isinstance(old, dict) or not isinstance(new, dict):
@@ -535,7 +748,7 @@ def _workflow_config_only(repo_root: Path, base_commit: str, change: Change) -> 
 
 
 def predates_run(repo_root: Path, base_commit: str, anchor: str | None, path: str,
-                 spec_root: str = "dekspec", *, companions_of: Iterable[str] | None = None) -> bool:
+                 spec_root: str = "dekspec", *, companions_of: Iterable[str] | None = None, end: str | None = None) -> bool:
     """Did the delivery change ``path`` *before* the run was authorized?
     Measured from the fork point between the anchor and the base (so merging a
     moved base mid-run changes nothing): the path changed between the fork and
@@ -561,7 +774,7 @@ def predates_run(repo_root: Path, base_commit: str, anchor: str | None, path: st
     at_fork = at(fork)
     if at(anchor) == at_fork or at(base_commit) != at_fork:
         return False
-    if not _same_as(repo_root, anchor, path, spec_root):
+    if not _same_as(repo_root, anchor, path, spec_root, end):
         return False
     if companions_of is None:
         return True
@@ -579,22 +792,24 @@ def predates_run(repo_root: Path, base_commit: str, anchor: str | None, path: st
     return bool(commits)
 
 
-def _bookkeeping_only(repo_root: Path, base_commit: str, change: Change, spec_root: str) -> bool:
+def _bookkeeping_only(repo_root: Path, base_commit: str, change: Change, spec_root: str,
+                      end: str | None = None) -> bool:
     """A governed artifact whose only change is lifecycle bookkeeping (Status,
     Modified, Amendment Log) — e.g. the parent Intent flipping to COMPLETE — or
     a DekSpec configuration change confined to workflow sections."""
     from dekspec.execution.fingerprint import normalize_governed_markdown
 
-    if _workflow_config_only(repo_root, base_commit, change):
+    if _workflow_config_only(repo_root, base_commit, change, end):
         return True
     if change.status != "M" or not (change.path.startswith(spec_root + "/") and change.path.endswith(".md")):
         return False
     before = _base_text(repo_root, base_commit, change.path)
     current = Path(repo_root) / change.path
-    if before is None or not current.is_file():
+    after = _base_text(repo_root, end, change.path) if end is not None else (
+        current.read_text(encoding="utf-8", errors="replace") if current.is_file() else None)
+    if before is None or after is None:
         return False
-    return normalize_governed_markdown(before) == normalize_governed_markdown(
-        current.read_text(encoding="utf-8", errors="replace"))
+    return normalize_governed_markdown(before) == normalize_governed_markdown(after)
 
 
 def evaluate_scope(
@@ -605,6 +820,11 @@ def evaluate_scope(
     spec_root: str = "dekspec",
     planned_files: Iterable[str] = (),
     since: str | None = None,
+    end: str | None = None,
+    changes: list[Change] | None = None,
+    attribution_base: str | None = None,
+    pre_run_paths: frozenset[str] = frozenset(),
+    check_impact: bool = True,
 ) -> ScopeReport:
     """Evaluate the delivery diff against one or more IB contracts.
 
@@ -618,13 +838,21 @@ def evaluate_scope(
     changed *before* this IB was authorized (e.g. the spec authoring that
     preceded it) and is reported as ``pre_run``, not as this IB's scope
     expansion — except DekSpec state and test-runner configuration, which are
-    always judged. Protected surfaces get no such allowance: they are compared
-    with the delivery base, whoever changed them.
+    always judged. Protected surfaces are compared with the delivery base,
+    whoever changed them. Only ADR-066's independently authorized, fully proved
+    original population can be attributed to specification preparation.
+    ``pre_run_paths`` supplies preparation already qualified by the range judge
+    at its authorization snapshot, for an ordinary pre-authorization edge only.
+    It never bypasses protection, lifecycle checks or the configuration exclusion.
     """
     repo_root = Path(repo_root)
-    base_commit = resolve_base(repo_root, base)
+    # Range attribution may compare a merge with its mechanical result tree.
+    # A tree has no ancestry to resolve; it is already the exact comparison
+    # content. Ordinary commit/ref callers retain merge-base semantics.
+    base_commit = (base if base and _git(repo_root, 'cat-file', '-t', base, check=False).strip() == 'tree'
+                   else resolve_base(repo_root, base))
     report = ScopeReport(base=base_commit)
-    report.changes = changed_files(repo_root, base_commit)
+    report.changes = changed_files(repo_root, base_commit, end) if changes is None else changes
     if since and not anchor_in_history(repo_root, since):
         report.notes.append(f"authorization anchor {since[:12]} is not in this history (rebased or squashed?): "
                             "no change is attributed to before the run")
@@ -634,36 +862,53 @@ def evaluate_scope(
     # implementation: they are governed by the contract hash and the
     # acceptance baseline (ADR-057), so scope does not judge them.
     ib_files = {c.rel_path for c in contracts} | {a for c in contracts for a in c.acceptance_asset_paths()}
+    covered = bookkeeping_paths(repo_root, contracts, base_commit, spec_root=spec_root, end=end)
     protected = [(c.ib_id, s) for c in contracts for s in c.protected]
-    delegated_globs = [g for c in contracts if c.is_delegated for g in c.scope]
-    legacy_files = {f for c in contracts if not c.is_delegated for f in c.scope}
+    delegated_globs = [g for c in contracts if c.is_executable for g in c.scope]
+    legacy_files = {f for c in contracts if not c.is_executable for f in c.scope}
     planned = set(planned_files)
+    initial_population = {}
     for c in contracts:
         for h in c.hypothesis:
             planned.update(re.findall(r"`([^`]+)`", h))
+        population, problem = _archive_population(repo_root, c, base_commit, spec_root)
+        initial_population[c.ib_id] = population
+        if problem:
+            report.violations.append({"kind": "protected-surface", "ib": c.ib_id,
+                                      "path": _ARCHIVE, "detail": f"{_ARCHIVE_GLOB}: {problem}"})
 
     for change in report.changes:
         hits = []
-        for ib_id, surface in protected:
-            hit = _protected_hits(repo_root, base_commit, change, surface, report.notes)
+        bookkeeping = is_protection_bookkeeping(repo_root, change, covered, base_commit, end=end)
+        for ib_id, surface in (() if bookkeeping else protected):
+            hit = _protected_hits(repo_root, base_commit, change, surface, report.notes, end)
+            if (hit and surface == _ARCHIVE_GLOB and change.status == "A"
+                    and change.old_path is None and change.path in initial_population[ib_id]):
+                continue
             if hit:
                 hits.append(hit)
                 report.violations.append({"kind": "protected-surface", "ib": ib_id,
                                           "path": change.path, "detail": hit})
         if hits:
             continue
+        if change.status == "A" and any(change.path in p for p in initial_population.values()):
+            report.pre_run.append(change.path)
+            continue
         paths = [p for p in (change.path, change.old_path) if p]
         if all(_is_lifecycle(p, ib_files, spec_root) for p in paths):
             report.exempt.append(change.path)
             continue
-        if _bookkeeping_only(repo_root, base_commit, change, spec_root):
+        if _bookkeeping_only(repo_root, base_commit, change, spec_root, end):
             report.bookkeeping.append(change.path)
             continue
         for p in paths:
-            if matches_any_glob(p, delegated_globs) or p in legacy_files:
+            if matches_any_glob(p, delegated_globs) or matches_any_glob(p, legacy_files):
                 continue
-            if (since and not any(_never_pre_run(q) for q in paths)
-                    and all(predates_run(repo_root, base_commit, since, q, spec_root) for q in paths)):
+            if (not any(_never_pre_run(q) for q in paths)
+                    and (all(q in pre_run_paths for q in paths)
+                         or (since and all(predates_run(
+                             repo_root, attribution_base or base_commit, since, q,
+                             spec_root, end=end) for q in paths)))):
                 report.pre_run.append(change.path)
                 break
             report.violations.append({"kind": "scope-expansion", "path": p,
@@ -676,7 +921,7 @@ def evaluate_scope(
     touched = {c.path for c in report.changes} | {c.old_path for c in report.changes if c.old_path}
     from dekspec.execution.references import artifact_path
 
-    for c in contracts:
+    for c in contracts if check_impact else []:
         for ref in c.spec_impact:
             path = artifact_path(repo_root, ref, spec_root=spec_root)
             rel = str(path.relative_to(repo_root)) if path else None

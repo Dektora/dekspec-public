@@ -5,9 +5,13 @@ mode: lite
 reasoning_effort: max
 disable-model-invocation: false
 allowed-tools: Read Write Edit Grep Glob Bash Agent
-argument-hint: [--provisional <slug>] [--help | --teaching | --audit | --review | --accept | --approve | --revise] [description or path to architecture element]
+argument-hint: "[--provisional <slug>] [--help | --teaching | --audit | --review | --accept | --approve | --revise] [description or path to architecture element]"
 related_skills: [write-sv, write-adr, write-ws, write-ic, write-intent]
 ---
+
+<!-- Before writing content, read `dekspec resource purpose architecture-element` for the canonical purpose and routing items. See [_lib/artifact_purpose.md](../_lib/artifact_purpose.md). -->
+
+Before writing content, read this type’s purpose entry using the command above; follow the [artifact purpose guide](../_lib/artifact_purpose.md).
 
 > **Vendored asset paths:** Template + doc paths below resolve via `dekspec resource template <name>` / `dekspec resource doc <name>` (wheel-bundled since v0.91.0; consumer-fs override wins when present). See [`_lib/vendored_assets.md`](../_lib/vendored_assets.md) for the full resolution rule.
 
@@ -132,7 +136,7 @@ Skill-specific structural checks to surface as Open Issues: T11 (missing inside/
 
 ## AE Classifier/Router
 
-**Run this gate before Creation Mode begins.** Read the engineer's input and decide whether it is genuinely AE-shaped, or whether it should route to a different skill. The classifier uses keyword pattern matching on the input; the routing rules below are the canonical source (see also `dekspec/architecture-frameworks-reference.md` §Routing keyword tables).
+**Run this gate before Creation Mode begins.** Read the engineer's input and decide whether it is genuinely AE-shaped, or whether it should route to a different skill. Read `dekspec resource purpose architecture-element` first. The keyword examples and stop messages below apply `architecture-element.holds.structure`, `architecture-element.not.decision-rationale`, `architecture-element.not.measurable-targets`, `architecture-element.not.boundary-contract` and `architecture-element.not.implementation-plan`; the record is the canonical source.
 
 ### Route to AE when input is dominated by
 
@@ -252,9 +256,9 @@ Path to the architecture element.
 
 - [ ] **D13 — Mirror-for-reader-convenience anti-pattern** (added 2026-04-24 from DN-convergence lessons). Flag any AE body sentence containing the phrases `mirrored here for reader convenience`, `duplicate of`, `repeated here from`, `for completeness`, `exact values mirrored from`, `mirrored from ADR-`, `mirrored from WS-`, `mirrored from DN-`. These are always a signal that a value's authoritative home is elsewhere and the AE is duplicating rather than citing it. The mirror drifts; the citation stays correct. *Precedent:* AE-009 tier-percentage mirror (19.9 / 32.9 / 23.6 / 14.6 / 9.0 %) labeled "mirrored here for reader convenience — ADR-051 is the authoritative home" — dropped during Phase 3 D6 consolidation.
 
-- [ ] **D14 — Audit-ruler / canonical-process framing** (added 2026-04-24 from DN-convergence lessons). Flag any subsection header matching `Canonical Process`, `Audit Ruler`, `Canonical Procedure`, `Canonical Algorithm`, `Reference Implementation`, `Authoritative Specification`, `Authoritative Procedure`. These framings reliably smuggle procedural L2/L3 content into L1 vision documents — a section that can be used as an audit ruler is a *behavioral contract*, which belongs in a Working Spec. AEs describe why the contract matters; WSs *are* the contract. *Precedent:* AE-031 §Canonical Process (Audit Ruler) — a 9-step block extracted to WS-033 during Phase 4.1.
+- [ ] **D14 — Audit-ruler / canonical-process framing** (added 2026-04-24 from DN-convergence lessons). Flag any subsection header matching `Canonical Process`, `Audit Ruler`, `Canonical Procedure`, `Canonical Algorithm`, `Reference Implementation`, `Authoritative Specification`, `Authoritative Procedure`. Apply `architecture-element.not.behavior-rules` from `dekspec resource purpose architecture-element` to these candidate framings. *Precedent:* AE-031 §Canonical Process (Audit Ruler) — a 9-step block extracted to WS-033 during Phase 4.1.
 
-- [ ] **D15 — Single-authoritative-reference overreach** (added 2026-04-24 from DN-convergence lessons). Flag AE-body phrases claiming contract authority: `single authoritative reference`, `the full contract`, `exhaustive specification`, `the complete definition of`, `the behavioral contract for`, `single source of truth for`, `authoritative specification`, `complete specification`. AEs are authoritative for *vision and principles*; Working Specs are authoritative for *behavior*; Interface Contracts are authoritative for *boundaries*. An AE claiming "authoritative contract" status is almost certainly overstepping. *Precedent:* AE-020 §Purpose and Scope opening — "This architecture element is the single authoritative reference for the full dtype contract across all three boundaries" — rewritten during Phase 4.5 with dtype mechanics extracted to IC-014.
+- [ ] **D15 — Single-authoritative-reference overreach** (added 2026-04-24 from DN-convergence lessons). Flag AE-body phrases claiming contract authority: `single authoritative reference`, `the full contract`, `exhaustive specification`, `the complete definition of`, `the behavioral contract for`, `single source of truth for`, `authoritative specification`, `complete specification`. Apply `architecture-element.holds.principles`, `architecture-element.not.behavior-rules` and `architecture-element.not.boundary-contract` from `dekspec resource purpose architecture-element` when judging these candidates. *Precedent:* AE-020 §Purpose and Scope opening — "This architecture element is the single authoritative reference for the full dtype contract across all three boundaries" — rewritten during Phase 4.5 with dtype mechanics extracted to IC-014.
 
 - [ ] **D16 — Open Issues classification (spec-coverage-gap vs code-gap)** (added 2026-04-24 from DN-convergence lessons). Each Open Issue is classified by its text shape:
     - **Spec-coverage-gap (acceptable in AE Open Issues):** starts with `WS-NNN is DRAFT`, `IC-NNN is DRAFT`, `ADR for <X> is pending`, `<spec> has not been written yet`, `needs a formal spec`. These are design-level questions about spec completeness.
@@ -519,8 +523,8 @@ Engineer's description: $ARGUMENTS
    - **Relationships and Dependencies** — pre-structured four-sub-bullet (Consumes / Produces / Depends on / Consumed by); optional `**Indirect governing ADRs:**` sub-bullet for peripheral ADRs that don't count against the 2–8 direct-body rule
    - **Views** — C4 view(s) that materially clarify the AE; for structural subtypes, at least one view normally expected (T12) — if absent, justify the absence in this section
    - **Runtime Behavior / Data and State / Deployment / Operational Shape** — optional sections; populate when subtype warrants (Pipeline / Workflow / Container / Data Model / Platform Concern)
-   - **Constraints and Quality Notes** — non-measurable architectural constraints; measurable quality targets (latency, throughput, SLOs) live in linked WSs, NOT here (D17)
-   - **Open Questions / Planned Follow-ons** — design-level questions only; code-gap items route to the divergence ledger or `br`
+   - **Constraints and Quality Notes** — apply `architecture-element.holds.principles` and `architecture-element.not.measurable-targets` from the purpose entry (D17); examples to check include latency, throughput and SLOs
+   - **Open Questions / Planned Follow-ons** — apply `architecture-element.not.code-gap` from the purpose entry when classifying questions
    - **Amendment Log** — empty on initial creation
 8. **Step 4a — Verification (D1–D18 drift + L1 consistency).** Run D1–D18 and L1 consistency checks (L1-ADR, L1-ADR-STALE, L1-AE, L1-GLOSSARY, L1-VISION, L1-WS-EXISTS, L1-ADR-SCOPE) against the draft. If any drift is detected, present the engineer with each finding and three options:
 
@@ -577,33 +581,25 @@ See [`_lib/cow_write_guard.md`](../_lib/cow_write_guard.md) for the canonical co
 
 - **Log corrections.** When any mode (creation, audit, review, revise) corrects a domain misinterpretation — wrong term usage, confused concepts, contradicted architectural facts — invoke `/write-corrections --log` with the correction details before proceeding. This feeds the glossary promotion pipeline.
 
-- **AEs are about vision and principles — never about mechanics, numbers, or names.** An Architecture Element describes *what the subsystem is, what success looks like, what it is not, its key concepts, and how it relates to other components.* It must not contain:
-  - Implementation code — no code-shaped identifiers with parens, import paths or library-function names. Mermaid/Structurizr diagrams under architectural view headings are allowed (D1).
-  - Mathematical formulas, derivations, inline math, or algorithm-invariant narratives — refer to the formula by its home.
-  - Function / method / class / callable names — concept shortnames only.
-  - Implementation recipes and rollout tasks. Architectural scenarios and ordered Workflow / Process or Pipeline flows are allowed (D4).
-  - Per-type dispatch enumerations with mechanics — decision-level categorization only.
-  - Configuration defaults with justifying prose — the relevant Working Spec owns defaults, rationale and measurable targets.
-  - Detailed schema/dtype/kwarg contracts — move to an Interface Contract. Conceptual Data Model relationships and Interface Surface inventories are allowed (D7).
-  - Code-gap punch-lists in `Open Issues` — those belong in the divergence ledger or `br`. AE-004 and AE-037 are grandfathered for pre-2026-04-24 entries (§9 row 5).
-  - Process narrative in the amendment log or body — audit trails live in git and in the audits directory.
-  - Stale superseded-approach prose in the live body — it goes to a one-line Amendment Log summary.
-  - Motivational restating of the System Vision — subsystem-specific claims from paragraph one.
-  - "Expected Operating Range" / capacity tables — measurable quality targets live in a linked Working Spec (D17).
+- **Purpose and content boundaries.** Read `dekspec resource purpose architecture-element` before writing content. Apply its `holds` and `does_not_hold` items, including the allowances for architectural flows, conceptual data relationships, interface inventories and architecture-defining numbers. The audit triggers above and routing examples below apply those items.
+  - Diagram examples: Mermaid and Structurizr under architectural view headings (D1).
+  - Use concept shortnames instead of callable identifiers; start with subsystem-specific claims from paragraph one.
+  - Preserve existing grandfathering: AE-004 and AE-037 code-gap entries before 2026-04-24 (§9 row 5).
+  - Summarize a superseded approach in one Amendment Log line, outside the live description.
 
-- **Where does the drifted content go? — Extraction Default-Home Table** (replaces the prose version; added 2026-04-24 from DN-convergence lessons). When Step 4a Verification surfaces drift, use this table to pick the destination. The drafter consults it during authoring; the skill uses it when recommending a target for an Audit Mode D-series finding.
+- **Where does the drifted content go? — Extraction Default-Home Table** (replaces the prose version; added 2026-04-24 from DN-convergence lessons). These retained examples apply `dekspec resource purpose architecture-element`; resolve the named item before recommending a destination during authoring or Step 4a Verification.
 
     | Content shape | Default home |
     |---|---|
-    | Algorithm / step-by-step procedure | **WS** §Algorithm |
-    | Schema / dtype / field / kwarg table | **IC** |
-    | HTTP / gRPC / cross-process wire-format definition | **IC** |
-    | **In-process Python module** with behavior rules (acquire / release / ref-count etc.) | **WS** — **not IC.** ICs are for cross-process / cross-component boundaries; in-process modules are WS-shaped. Lesson from DN-convergence R2 DECISION 1 (IC-013 → WS-042 re-home). |
-    | Tunable configuration default with rationale | **WS-019** §Memory Budgets / §Algorithm Defaults |
-    | Numeric capacity / latency / throughput / resource-utilization target | **WS** §Quality Requirements |
+    | Algorithm / step-by-step procedure | **Behavior Specification** §Algorithm (`architecture-element.not.behavior-rules`) |
+    | Schema / dtype / field / kwarg table | **IC** (`architecture-element.not.boundary-contract`) |
+    | HTTP / gRPC / cross-process wire-format definition | **IC** (`architecture-element.not.boundary-contract`) |
+    | **In-process Python module** with behavior rules (acquire / release / ref-count etc.) | **Behavior Specification** (`architecture-element.not.behavior-rules`), not IC: this example describes internal behavior, while `architecture-element.not.boundary-contract` covers cross-process / cross-component contracts. Lesson from DN-convergence R2 DECISION 1 (IC-013 → WS-042 re-home). |
+    | Tunable configuration default with rationale | **Behavior Specification** (e.g., WS-019) §Memory Budgets / §Algorithm Defaults (`architecture-element.not.defaults`) |
+    | Numeric capacity / latency / throughput / resource-utilization target | **Behavior Specification** §Quality Requirements (`architecture-element.not.measurable-targets`) |
     | Code-vs-oracle structural divergence | **`dekspec/divergences/DIV-NNN-*.md`** |
     | Code-bug (built drifts from spec) | **`br`** issue with type `bug` |
-    | Implementation file path in prose | never in AE — file a `br` issue (spec-coverage gap) or a `dekspec/divergences/DIV-NNN-*.md` entry (oracle-vs-built) |
+    | Implementation file path in prose | **Source code** (`architecture-element.not.code-detail`); file a `br` issue for a spec-coverage gap or a **Divergences** entry for oracle-vs-built drift (`architecture-element.not.code-gap`) |
     | Historical superseded approach | one-line AL summary; not live body |
     | Motivational scene-setting | delete — `system-vision.md` already does this |
 
@@ -613,11 +609,11 @@ See [`_lib/cow_write_guard.md`](../_lib/cow_write_guard.md) for the canonical co
 
   - **Hedge-word test for numerics.** Before writing a numeric value with a unit, ask: is this value TUNABLE (can an operator change it without changing the architecture)? If yes → cite the relevant Working Spec, do not inline. If the value DEFINES the architecture (e.g. "five relevance tiers", "two-phase pipeline", "three services"), inline is correct. Hedging words (`currently`, `~`, `roughly`, `seed default`, `per ADR-NNN`) are the tell: architecture-defining values are not hedged.
 
-  - **Single-authoritative prohibition.** An AE never claims to be "the single authoritative reference" for a contract. WSs are authoritative for *behavior*; ICs are authoritative for *boundaries*; AEs are authoritative for *vision and principles*. If you're tempted to write "this AE is the full / complete / authoritative specification of X", X belongs in a WS or IC, not in this AE.
+  - **Single-authoritative prohibition.** Apply `architecture-element.not.behavior-rules` and `architecture-element.not.boundary-contract` from `dekspec resource purpose architecture-element`. Example warning phrase: "this AE is the full / complete / authoritative specification of X".
 
   - **Mirror prohibition.** Never duplicate a value, table, or formula from another artifact "for reader convenience". A citation is always correct; a mirror is always one amendment away from stale. If the detail is important enough to want the reader to see it, the reader can click through.
 
-  - **Audit-ruler prohibition.** If you need to write a section that serves as an audit ruler — "every IB / WS / code audit must conform to this process" — that content is a behavioral contract. It belongs in a Working Spec. AEs do not author audit rulers; they describe why the contract matters.
+  - **Audit-ruler prohibition.** Apply `architecture-element.not.behavior-rules` from `dekspec resource purpose architecture-element`. Example: "every IB / WS / code audit must conform to this process".
 
   - **One-date Modified rule.** The Modified field is a single ISO-8601 date with no parenthetical narrative, no multi-date stack. Narrative about what changed belongs in Amendment Log entries (one line each per Δ-SQ-17). If you find yourself wanting to explain an edit in the Modified field, write it in AL instead.
 
@@ -626,11 +622,11 @@ See [`_lib/cow_write_guard.md`](../_lib/cow_write_guard.md) for the canonical co
 - **Common authoring anti-patterns to avoid** (named instincts — recognize them in yourself during drafting):
 
   - **"Completeness instinct."** The drafter tries to make the AE "comprehensive" and detail creeps vision → algorithm → code. *Counter:* a complete AE is concise; a drifting AE is detailed. Target 1–2 pages; anything beyond 350 body lines is a scope error, not a thoroughness virtue.
-  - **"Authoritative-reference instinct."** The drafter claims "this is the single source of truth for X" and slides into WS/IC territory. *Counter:* AEs are authoritative for vision; WSs for behavior; ICs for boundaries. If X is a contract, it's not this AE's scope.
-  - **"Audit-ruler instinct."** The drafter writes content that other artifacts are supposed to conform to ("every IB / code audit must measure against this process"). *Counter:* audit rulers belong in Working Specs. AEs describe why the ruler matters, not the ruler itself.
+  - **"Authoritative-reference instinct."** The drafter claims "this is the single source of truth for X" and slides into WS/IC territory. *Counter:* apply `architecture-element.not.behavior-rules` or `architecture-element.not.boundary-contract` from the purpose entry.
+  - **"Audit-ruler instinct."** The drafter writes content that other artifacts are supposed to conform to ("every IB / code audit must measure against this process"). *Counter:* apply `architecture-element.not.behavior-rules` from the purpose entry.
   - **"Mirror-for-convenience instinct."** The drafter writes "mirrored here for reader convenience" to duplicate a value whose authoritative home is elsewhere. *Counter:* cite, don't mirror. The mirror always drifts.
   - **"Dev-mode ambition instinct."** The drafter tries to spec an entire feature (AE + WS + IC) in a single document, producing a mega-doc. *Counter:* one AE per subsystem / concern, one WS per behavioral unit, one IC per boundary. If you can't describe the AE without switching into mechanics, you're writing a WS.
-  - **"Process-narrative instinct."** The drafter records how a revision was done ("autonomy L3 @ 0.85", "engineer scope-C pre-approval", "Closes iter-6 fidelity-audit finding I-6"). *Counter:* process metadata belongs in git commit messages and audit-trail docs, not the AE body or Amendment Log. AL entries are one-line descriptions of *what* changed; *how* it was done stays outside the artifact.
+  - **"Process-narrative instinct."** The drafter records how a revision was done ("autonomy L3 @ 0.85", "engineer scope-C pre-approval", "Closes iter-6 fidelity-audit finding I-6"). *Counter:* apply `architecture-element.not.change-narrative` and `architecture-element.not.execution-history` from the purpose entry. AL entries are one-line descriptions of *what* changed.
 
 - **L1-ADR deviation acknowledgment is strict (Q5 resolution, §3.3).** When an AE describes a state that differs from a referenced ADR's current `§Decision`, the acknowledgment must live in the AE body — specifically `Responsibilities` or `Boundaries and Non-Goals` — NOT in the Amendment Log. The Amendment Log is an audit trail; a reader who reads only the current body sections must get the right current state.
 
@@ -646,7 +642,7 @@ See [`_lib/cow_write_guard.md`](../_lib/cow_write_guard.md) for the canonical co
 
 - 1–2 pages maximum — if you need more, split the spec
 
-- **Scope discipline:** An Architecture Element describes a coherent subsystem or cross-cutting concern. If it covers less than two ADRs worth of territory, it is too narrow — the ADRs are sufficient. If it covers more than eight, it is too broad — split it. The count is over direct-body ADRs only.
+- **Scope discipline:** Apply `architecture-element.holds.structure` from the purpose entry. If the element covers less than two ADRs worth of territory, it is too narrow — the ADRs are sufficient. If it covers more than eight, it is too broad — split it. The count is over direct-body ADRs only.
 
 - If the architecture element surfaces an undocumented architectural decision, invoke `/write-adr` to create the ADR before completing the architecture element — do not flag it as a stopping point
 

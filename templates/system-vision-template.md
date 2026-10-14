@@ -1,3 +1,5 @@
+<!-- Before writing content, read `dekspec resource purpose system-vision` for the canonical purpose and routing items. -->
+
 # System Vision: [System Name]
 
 [One-paragraph elevator pitch. What this system does, who it serves, what it changes. 2-4 sentences. This paragraph is the preamble — text between the H1 and the first H2 — and is extracted into `preamble` in the IR.]

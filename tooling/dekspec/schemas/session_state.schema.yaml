@@ -60,7 +60,8 @@ properties:
       Implementation Brief id (IB-NNN — the IB-bound commit guard, ADR-056)
       or a legacy br bead id (^[a-z0-9-]+$).
     type: string
-    pattern: "^(IB-[0-9]{3,}|[a-z0-9-]+)$"
+    # Declared form matches brief_identity (WS-038); saved sessions stay valid.
+    pattern: "^(IB-[0-9]{3,}|IB-(?!DRAFT$)[A-Z][A-Z0-9]{0,15}|[a-z0-9-]+)$"
 
   bound_intent_id:
     description: >-

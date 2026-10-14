@@ -15,11 +15,12 @@ IB-118.
 """
 from __future__ import annotations
 
-import fnmatch
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+
+from dekspec.diff_confinement import matches_any_glob
 
 __all__ = [
     "CoverageError",
@@ -38,23 +39,34 @@ EXCLUDE_FILE = ".dekspec/archeology-exclude"
 # The consumer's own entries are unioned with these; the file extends, it
 # does not replace.
 DEFAULT_EXCLUDES: tuple[str, ...] = (
-    "**/__pycache__/",
-    "**/.venv/",
-    "**/node_modules/",
-    "**/build/",
-    "**/dist/",
-    "**/_vendored/",
-    "**/.claude/worktrees/**",
-    ".beads/",
-    "dekspec/_vendored/",
-    # VCS + tooling caches + packaging metadata — build/cache artifacts, not
-    # spec-coverable source (ds-rt0m).
-    "**/.git/",
-    "**/.pytest_cache/",
-    "**/.ruff_cache/",
-    "**/.mypy_cache/",
-    "**/*.egg-info/",
-    "**/*.pyc",
+    '**/__pycache__',
+    '**/__pycache__/',
+    '**/.venv',
+    '**/.venv/',
+    '**/node_modules',
+    '**/node_modules/',
+    '**/build',
+    '**/build/',
+    '**/dist',
+    '**/dist/',
+    '**/_vendored',
+    '**/_vendored/',
+    '**/.claude/worktrees/**',
+    '**/.beads',
+    '**/.beads/',
+    'dekspec/_vendored',
+    'dekspec/_vendored/**',
+    '**/.git',
+    '**/.git/',
+    '**/.pytest_cache',
+    '**/.pytest_cache/',
+    '**/.ruff_cache',
+    '**/.ruff_cache/',
+    '**/.mypy_cache',
+    '**/.mypy_cache/',
+    '**/*.egg-info',
+    '**/*.egg-info/',
+    '**/*.pyc',
 )
 
 # Glob bullet inside an Intent's §Components affected section, mirroring the
@@ -196,50 +208,14 @@ def load_excludes(repo_root: Path) -> list[str]:
 
 
 def _is_excluded(rel_path: str, excludes: list[str]) -> bool:
-    """True if `rel_path` (a POSIX repo-relative path) matches an exclude glob.
-
-    A directory-shaped glob (one ending in `/`) excludes everything under
-    that directory. A `**`-bearing glob is matched with `fnmatch`, which
-    treats `**` like `*` — adequate for the coarse exclude surfaces here.
-    """
-    posix = rel_path.replace("\\", "/")
-    parts = posix.split("/")
-    for raw in excludes:
-        glob = raw.replace("\\", "/")
-        if glob.endswith("/"):
-            # Directory prefix: exclude any path with that dir as a segment.
-            dir_glob = glob.rstrip("/")
-            # Strip a leading **/ so "foo" matches at any depth.
-            bare = dir_glob[3:] if dir_glob.startswith("**/") else dir_glob
-            # Match a path segment either exactly or by glob (e.g. `*.egg-info`).
-            if bare and (
-                bare in parts or any(fnmatch.fnmatch(seg, bare) for seg in parts)
-            ):
-                return True
-            if posix == dir_glob or posix.startswith(dir_glob + "/"):
-                return True
-            continue
-        if fnmatch.fnmatch(posix, glob):
-            return True
-        # A leading **/ should also match files at depth zero.
-        if glob.startswith("**/") and fnmatch.fnmatch(posix, glob[3:]):
-            return True
-    return False
+    """Read exclusions in the shared ADR-068 dialect."""
+    return matches_any_glob(rel_path, excludes)
 
 
 def _claimed_by(rel_path: str, intent_globs: dict[str, list[str]]) -> str | None:
-    """First covering Intent id whose glob set claims `rel_path`, else `None`."""
-    posix = rel_path.replace("\\", "/")
-    for intent_id, globs in intent_globs.items():
-        for glob in globs:
-            g = glob.replace("\\", "/")
-            if fnmatch.fnmatch(posix, g):
-                return intent_id
-            # `dir/**/*.py`-shaped globs match nested files; also accept a
-            # plain `**` segment standing in for any depth.
-            if "**" in g and fnmatch.fnmatch(posix, g.replace("**/", "")):
-                return intent_id
-    return None
+    """First covering Intent, using the same dialect as its edit guard."""
+    return next((ident for ident, patterns in intent_globs.items()
+                 if matches_any_glob(rel_path, patterns)), None)
 
 
 def run(at: str | Path = ".") -> list[CoverageGap]:

@@ -1,5 +1,7 @@
 # Interface Contract: [Name]
 
+<!-- Before writing content, read `dekspec resource purpose interface-contract` for the canonical purpose and routing items. -->
+
 ## Status
 
 DRAFT
@@ -161,7 +163,7 @@ Use tables for structured data. Be specific about types, shapes, units and order
 
 *Add an entry for every change made after Locked status, or when unlocking back to Proposed.*
 
-**Compressed-format policy (added convergence-v2 iter-7 Δ-SQ-17, 2026-04-22).** Entries SHOULD follow a one-line-per-entry format. Target: `| YYYY-MM-DD | <Type> | <one-sentence what + reference to delta-doc / commit > | <author> |`. Detailed change narrative belongs in the git commit message — not in the IC body. Historical entries are preserved as-is; the policy applies to **new** entries going forward.
+**Compressed-format policy (added convergence-v2 iter-7 Δ-SQ-17, 2026-04-22).** Entries SHOULD follow a one-line-per-entry format. Target: `| YYYY-MM-DD | <Type> | <one-sentence what + reference to delta-doc / commit > | <author> |`. Detailed change narrative belongs in the git commit message — not in the IC body. Historical entries are preserved as-is; the policy applies to **new** entries going forward. <!-- purpose: interface-contract.not.change-narrative -->
 
 | Date | Type | Change | Author |
 |------|------|--------|--------|

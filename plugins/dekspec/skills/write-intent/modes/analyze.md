@@ -123,8 +123,8 @@ List the IBs `--decompose` would author — one line each (outcome in a few word
 
 ### Step 8: Drift Checks
 
-- **D19 — no measurable targets in Intent prose.** Scan Motivation, Desired Outcome, and prose around the type-specific block for sentences that contain numeric thresholds, latency targets, throughput targets, capacity targets, or coverage thresholds. Such content belongs in a Working Spec. Surface findings; refuse advance until each is rewritten or moved.
-- **D20 — no decision rationale in Intent prose.** Scan for "we chose X over Y because…" patterns or option-comparison rhetoric. Such content belongs in an ADR. Surface findings; refuse advance until rewritten or moved.
+- **D19 — no measurable targets in Intent prose.** Scan Motivation, Desired Outcome, and prose around the type-specific block for sentences that contain numeric thresholds, latency targets, throughput targets, capacity targets, or coverage thresholds. Apply `intent.not.measurable-targets` from `dekspec resource purpose intent`. Surface findings; refuse advance until each is rewritten or moved.
+- **D20 — no decision rationale in Intent prose.** Scan for "we chose X over Y because…" patterns or option-comparison rhetoric. Apply `intent.not.decision-rationale` from `dekspec resource purpose intent`. Surface findings; refuse advance until rewritten or moved.
 
 ### Step 9: Mission Autonomy Ceiling (if `mission:` is set)
 

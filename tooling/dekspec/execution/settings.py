@@ -1,10 +1,11 @@
-"""Execution policy settings (ADR-057 §Bounded, truthful execution).
-
-Read from the optional ``execution:`` block of ``.dekspec/config.yaml``.
-These are adaptable execution *policy* — model- and repo-dependent numbers —
-not governing obligations; every value has a conservative default so a repo
-with no block still gets bounded, evidence-gated execution.
-"""
+"""Hides optional configuration; ExecutionSettings gains lean: bool=False;
+load_settings(root) and load_settings_at(root, commit) keep existing signatures.
+Absent, false and non-boolean switch values mean off; callers never parse YAML
+or choose a fallback, and base reads never inherit the working tree switch.
+Alternatives: a separate feature-flag service; caller YAML; existing settings.
+Existing settings wins because all execution policy already travels as one value.
+The settings loader supplies the value; only contract_problems combines it with
+the brief policy. Exposing the raw setting does not make callers policy judges."""
 
 from __future__ import annotations
 
@@ -21,6 +22,7 @@ __all__ = ["ExecutionSettings", "load_settings", "load_settings_at", "resolve_py
 
 @dataclass(frozen=True)
 class ExecutionSettings:
+    lean: bool = False
     #: Attempts per IB run before the run blocks (counted across restarts).
     max_attempts: int = 3
     #: An attempt with no heartbeat for this long is closed as stalled.
@@ -79,6 +81,7 @@ def _from_text(text: str, spec_root: str) -> ExecutionSettings:
         return value if isinstance(value, int) and value > 0 else default
 
     return ExecutionSettings(
+        lean=raw.get("lean") is True,
         max_attempts=_int("max_attempts", defaults.max_attempts),
         stall_minutes=_int("stall_minutes", defaults.stall_minutes),
         no_progress_attempts=_int("no_progress_attempts", defaults.no_progress_attempts),

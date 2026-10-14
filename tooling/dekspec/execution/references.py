@@ -16,6 +16,8 @@ artifact does not stale the evidence of an IB that never referenced it.
 
 from __future__ import annotations
 
+from dekspec.spec_kinds import BEHAVIOR_SPEC_NAMES as BS
+
 import hashlib
 import re
 from dataclasses import dataclass
@@ -39,7 +41,7 @@ RETIRED_STATUSES = frozenset({"SUPERSEDED", "DEPRECATED", "KILLED"})
 _KIND_DIRS: dict[str, tuple[str, bool]] = {
     "ADR": ("adrs", False),
     "IC": ("interface-contracts", False),
-    "WS": ("working-specs", False),
+
     "AE": ("architecture-elements", False),
     "SP": ("security-profiles", False),
     "INT": ("intents", False),
@@ -72,6 +74,7 @@ class ResolvedObligation:
     problem: str | None = None
     reference_policy: dict[str, str | int] | None = None
     advisory: str | None = None
+    prefix_heading: str | None = None
 
     @property
     def ok(self) -> bool:
@@ -99,6 +102,12 @@ def artifact_path(repo_root: Path, ref: str, *, spec_root: str = "dekspec") -> P
         p = base / _SINGLETONS[ref]
         return p if p.is_file() else None
     kind = ref.split("-", 1)[0]
+    if kind in BS.prefixes:
+        found = BS.paths(base, ref)
+        if len(found) > 1:
+            raise AmbiguousReference(f"{ref} matches {len(found)} files: " + ", ".join(
+                str(f.relative_to(base)) for f in found))
+        return found[0] if found else None
     if kind not in _KIND_DIRS:
         return None
     sub, recursive = _KIND_DIRS[kind]
@@ -128,9 +137,16 @@ def _successor(text: str) -> str | None:
 
 
 def extract_section(text: str, section: str | None) -> str | None:
-    """Return the heading+body of the first H2–H4 whose title equals or
-    starts with ``section`` (case-insensitive). ``None`` → the whole body
-    minus lifecycle bookkeeping sections."""
+    """Return the unique H2–H4 matching a full title or section label.
+
+    ``None`` selects the whole body minus lifecycle bookkeeping sections.
+    Missing or ambiguous sections return ``None``.
+    """
+    return _section_result(text, section)[0]
+
+
+def _section_result(text: str, section: str | None) -> tuple[str | None, str | None, str | None]:
+    """Extract binding text, or explain refusal and identify a former prefix match."""
     lines = text.splitlines()
     if section is None:
         out: list[str] = []
@@ -147,23 +163,42 @@ def extract_section(text: str, section: str | None) -> str | None:
             elif skip_level:
                 continue
             out.append(line)
-        return "\n".join(out).strip()
-    want = section.strip().lower()
+        return "\n".join(out).strip(), None, None
+    want = section.strip().removeprefix("§").strip().lower()
+    matches: list[tuple[int, re.Match[str]]] = []
+    prefix_heading = None
     for i, line in enumerate(lines):
         h = _HEADING.match(line)
         if not h:
             continue
         title = h.group(2).strip().lower()
-        if title == want or title.startswith(want):
-            level = len(h.group(1))
-            body = [line]
-            for nxt in lines[i + 1:]:
-                hn = _HEADING.match(nxt)
-                if hn and len(hn.group(1)) <= level:
-                    break
-                body.append(nxt)
-            return "\n".join(body).strip()
-    return None
+        labels = {title, re.split(r" [—–] ", title, maxsplit=1)[0].strip()}
+        number = re.match(r"^§?\s*(\d+(?:\.\d+)*)(?=\.(?!\d)|\s|$)", title)
+        if number:
+            labels.add(number.group(1))
+        if want in labels:
+            matches.append((i, h))
+        if prefix_heading is None and title.startswith(want):
+            prefix_heading = h.group(2).strip()
+    if not matches:
+        problem = f"has no section matching §{section}"
+        if prefix_heading is not None:
+            problem += (f'; it used to match "{prefix_heading}" by prefix. '
+                        "Name the section by its full title or section label")
+        return None, problem, prefix_heading
+    if len(matches) > 1:
+        headings = ", ".join(f'"{h.group(2).strip()}"' for _, h in matches)
+        return (None, f"has {len(matches)} headings matching §{section}: {headings}. "
+                "Name one by its full title", None)
+    i, h = matches[0]
+    level = len(h.group(1))
+    body = [lines[i]]
+    for nxt in lines[i + 1:]:
+        hn = _HEADING.match(nxt)
+        if hn and len(hn.group(1)) <= level:
+            break
+        body.append(nxt)
+    return "\n".join(body).strip(), None, None
 
 
 def _resolve_one(repo_root: Path, ib_path: Path, ob: dict[str, Any], spec_root: str, policy: ReferencePolicy) -> ResolvedObligation:
@@ -201,10 +236,10 @@ def _resolve_one(repo_root: Path, ib_path: Path, ob: dict[str, Any], spec_root: 
                                       problem=f"{ref} has no local obligation {section.strip()}")
         return ResolvedObligation(ob["id"], ref, section, note, rel, status, match, _sha(match))
     wanted = section or _DEFAULT_SECTION.get(kind)
-    body = extract_section(text, wanted)
+    body, problem, prefix_heading = _section_result(text, wanted)
     if body is None:
         return ResolvedObligation(ob["id"], ref, section, note, rel, status, "", _sha(""),
-                                  problem=f"{ref} has no section matching §{wanted}")
+                                  problem=f"{ref} {problem}", prefix_heading=prefix_heading)
     evolving = policy.evolving(ref, status)
     return ResolvedObligation(ob["id"], ref, section, note, rel, status, body, _sha(body),
                               reference_policy=policy.stamp if evolving else None,

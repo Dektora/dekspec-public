@@ -1,0 +1,1 @@
+recursive-include plugins *.md *.py

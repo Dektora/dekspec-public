@@ -21,7 +21,7 @@ Those execution records are the primary construction evidence; consult them
 before attributing a stop. Only when the evidence report lists DekSpec execution
 records and `dekspec` is on PATH may you also ask the engine for its read-only
 view of them: `dekspec ib status IB-NNN` for an IB record and
-`dekspec implement status REQUEST` for a run record. Otherwise (no records
+`dekbuilder implement status REQUEST` for a run record. Otherwise (no records
 listed, or the engine unavailable) read those record files directly instead:
 each `.dekspec/execution/<ID>/record.jsonl` is an append-only, hash-chained
 JSON Lines log whose events carry `seq`, `type`, `actor`, `ts` and `data`.

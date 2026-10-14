@@ -43,7 +43,7 @@ The `/implement` driver composes its prompts with this same code (`dekspec.roles
 | Role | Dispatched or played by |
 |---|---|
 | `specifier` | `write-*` authoring modes; the `*-author` agents (`adr-author`, `ae-author`, `ib-author`, `ic-author`, `intent-author`, `mission-author`, `ws-author`); `spec-intent` authoring steps |
-| `spec-reviewer` | the `--review` spec-reviewer dispatch of `write-intent`, `write-ws`, `write-ic`, `write-ae`, `write-adr` and `write-ibs` (below); `review-ib` lens specialists |
+| `spec-reviewer` | the `--review` spec-reviewer dispatch of `write-intent`, `write-ws`, `write-ic`, `write-ae`, `write-adr` and `write-ibs` (below), with `/spec-intent` Phase 2 using `/write-intent --review` Step 2.5; `review-ib` lens specialists |
 | `implementer` | `/implement` builders and conflict resolvers (driver); `orchestrate-coding-session` builders |
 | `code-reviewer` | `/implement` reviewers (driver); `review-pr` lens specialists and the verdict it records |
 | `verifier` | `/implement` Intent manual-verification attestation (driver); the attestation step of `land-intent` and of `write-intent --lock` |
@@ -60,7 +60,7 @@ This pass is added alongside the skill's own walkthrough or Open-Issues loop; th
    - **Policy:** "Review only. You may not edit, accept, lock or approve the artifact; the engineer decides."
    - **Role:** the command's output, verbatim.
    - **Procedure:** "Assess the artifact as your role requires. Return each finding as `- [P0–P3] <section or line>: <finding> — <what would fix it>`. End with the aspects you checked. Report no findings only after checking every aspect."
-   - **Assignment:** the artifact's path, the paths of the governing specifications it names (parent, Architecture Elements, ADRs, ICs, glossary), and the `dekspec validate <path>` output.
+   - **Assignment:** the artifact's path, the paths of the governing specifications it names (parent, Architecture Elements, ADRs, ICs, glossary), and the `dekspec validate <path>` output. For an Intent, also pass its `## Behavior placement` table and the path of every artifact it names (each Behavior Specification, Interface Contract and Architecture Element home). Resolve homes as WS-033 §Home forms defines them; for a home marked `(new)`, pass its working name (BR 9) instead of a path.
 3. Present each finding to the engineer at its severity (default P2, approval-blocking; never auto-merged) alongside the walkthrough items. A finding the engineer accepts becomes an Open Issue.
 4. **No placeholder passes.** An empty reply, a failed dispatch or a host without sub-agents means the independent review did not run: say so. Never present your own in-session review as the spec-reviewer's.
 

@@ -5,9 +5,13 @@ mode: full
 reasoning_effort: max
 disable-model-invocation: false
 allowed-tools: Read Write Edit Grep Glob Bash Agent
-argument-hint: [--provisional <slug>] [--help | --teaching | --audit | --review | --accept | --approve | --lock | --unlock | --revise] [description, "from WS-NNN", or path to contract] [notes]
+argument-hint: "[--provisional <slug>] [--help | --teaching | --audit | --review | --accept | --approve | --lock | --unlock | --revise] [description, \"from WS-NNN\", or path to contract] [notes]"
 related_skills: [write-ws, write-ae, write-adr, write-ibs]
 ---
+
+<!-- Before writing content, read `dekspec resource purpose interface-contract` for the canonical purpose and routing items. See [_lib/artifact_purpose.md](../_lib/artifact_purpose.md). -->
+
+Before writing content, read this type’s purpose entry using the command above; follow the [artifact purpose guide](../_lib/artifact_purpose.md).
 
 > **Vendored asset paths:** Template + doc paths below resolve via `dekspec resource template <name>` / `dekspec resource doc <name>` (wheel-bundled since v0.91.0; consumer-fs override wins when present). See [`_lib/vendored_assets.md`](../_lib/vendored_assets.md) for the full resolution rule.
 
@@ -335,6 +339,10 @@ Downstream impact scan (run during Step 2 alongside the reason gate): grep specs
 Engineer's description or spec reference: $ARGUMENTS
 
 ## When to Use
+
+Read `dekspec resource purpose interface-contract`, especially
+`interface-contract.holds.boundary-facts` and
+`interface-contract.not.component-behavior`, before writing content.
 
 - A cross-component boundary exists where both sides could be implemented independently
 - The interface is external-facing

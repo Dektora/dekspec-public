@@ -1,5 +1,7 @@
 # ADR-NNN: [Verb-first, specific title]
 
+<!-- Before writing content, read `dekspec resource purpose adr` for the canonical purpose and routing items. -->
+
 ## Status
 
 PROPOSED
@@ -64,7 +66,7 @@ The `— desc` clause is what the audit shows as the rationale; keep it concise.
 
 [What was decided. One clear statement, then why this option over the alternatives in this system's specific context.]
 
-*Decision-level only. No fenced code blocks beyond 2-line wire-format illustrations where the format IS the decision. No function / method / class signatures. No step-by-step procedures of 3 or more items. No schema / dtype / kwarg tables. No algorithmic math or derivations (state the decision, not the formula). No per-type dispatch enumerations with mechanics. No magic-number configuration values paired with justifying prose (move tunable defaults to the constants-management Working Spec, WS-019). No file paths to implementation (`*.py`, `services/…`, `api_server/…`). No "Key files" section or bullet. Algorithms belong in Working Specs; schemas and wire formats belong in Interface Contracts. See `/write-adr --help` for the full D1–D9 drift rules.*
+*Decision-level only. No fenced code blocks beyond 2-line wire-format illustrations where the format IS the decision. No function / method / class signatures. No step-by-step procedures of 3 or more items. No schema / dtype / kwarg tables. No algorithmic math or derivations (state the decision, not the formula). No per-type dispatch enumerations with mechanics. No magic-number configuration values paired with justifying prose (move tunable defaults to the constants-management Working Spec, WS-019). No file paths to implementation (`*.py`, `services/…`, `api_server/…`). No "Key files" section or bullet. Algorithms belong in Working Specs; schemas and wire formats belong in Interface Contracts. See `/write-adr --help` for the full D1–D9 drift rules.* <!-- purpose: adr.not.behavior-rules --> <!-- purpose: adr.not.boundary-contract -->
 
 ## Options Considered (if applicable)
 
@@ -110,7 +112,7 @@ The `— desc` clause is what the audit shows as the rationale; keep it concise.
 
 [Design-level questions, contradictions, and concerns. Logged during initial drafting, audits, reviews, or cascades from other artifacts. Resolve via `/write-adr --review`.]
 
-*Scope: design-level only. Code-gap observations ("code does X but spec says Y") belong in `dekspec/divergences/DIV-NNN-*.md` or `br`, not here.*
+*Scope: design-level only. Code-gap observations ("code does X but spec says Y") belong in `dekspec/divergences/DIV-NNN-*.md` or `br`, not here.* <!-- purpose: adr.not.code-gap -->
 
 - [ ] [Issue description] — **Source:** [initial draft / audit / review / cascade from \<artifact\>] — **Severity:** [`P0` / `P1` / `P2` / `P3`]
 
@@ -120,7 +122,7 @@ The `— desc` clause is what the audit shows as the rationale; keep it concise.
 
 *Add an entry for every change made after Locked status, or when unlocking back to Proposed.*
 
-**Compressed-format policy (added convergence-v2 iter-7 Δ-SQ-17, 2026-04-22).** Entries SHOULD follow a one-line-per-entry format. Target: `| YYYY-MM-DD | <Type> | <one-sentence what + reference to delta-doc / commit > | <author> |`. Detailed change narrative (rationale, multi-paragraph justifications, cross-artifact impact analysis) belongs in the git commit message — not in the spec body. Historical entries are preserved as-is; the policy applies to **new** entries going forward. An amendment log that grows past ~10 entries per year of spec lifetime is a smell and should be trimmed into a pinned-to-tag release note rather than carried in the spec.
+**Compressed-format policy (added convergence-v2 iter-7 Δ-SQ-17, 2026-04-22).** Entries SHOULD follow a one-line-per-entry format. Target: `| YYYY-MM-DD | <Type> | <one-sentence what + reference to delta-doc / commit > | <author> |`. Detailed change narrative (rationale, multi-paragraph justifications, cross-artifact impact analysis) belongs in the git commit message — not in the spec body. Historical entries are preserved as-is; the policy applies to **new** entries going forward. An amendment log that grows past ~10 entries per year of spec lifetime is a smell and should be trimmed into a pinned-to-tag release note rather than carried in the spec. <!-- purpose: adr.not.change-narrative -->
 
 | Date | Type | Change | Author |
 |------|------|--------|--------|

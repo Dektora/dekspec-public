@@ -26,8 +26,8 @@ and conservatively thresholded.
 The family covers exactly five (artifact-kind, field) pairs — one
 `T-PROSE-*` rule code each:
 
-  - T-PROSE-WS-BUSINESS-RULE     — WS business_rules[].rule
-  - T-PROSE-WS-FAILURE-BEHAVIOR  — WS failure_behavior[].behavior
+  - T-PROSE-BS-BUSINESS-RULE     — WS business_rules[].rule
+  - T-PROSE-BS-FAILURE-BEHAVIOR  — WS failure_behavior[].behavior
   - T-PROSE-IB-GOAL              — IB goal
   - T-PROSE-IB-DONE-WHEN         — IB done_when[]
   - T-PROSE-AE-RESPONSIBILITY    — AE responsibilities[]
@@ -344,9 +344,9 @@ _SKIP_AE = {"DEPRECATED"}
 # --------------------------------------------------------------------------- #
 
 def _t_prose_ws_business_rule(graph: SpecGraph, profile: Any) -> list[Finding]:
-    """T-PROSE-WS-BUSINESS-RULE (advisory): a WS business rule whose prose
+    """T-PROSE-BS-BUSINESS-RULE (advisory): a WS business rule whose prose
     falls below the shape threshold. Evaluated per business-rule item."""
-    config = _resolve_config("T-PROSE-WS-BUSINESS-RULE", profile)
+    config = _resolve_config("T-PROSE-BS-BUSINESS-RULE", profile)
     if not config.enabled:
         return []
     out: list[Finding] = []
@@ -360,7 +360,7 @@ def _t_prose_ws_business_rule(graph: SpecGraph, profile: Any) -> list[Finding]:
             rule_text = br.get("rule")
             number = br.get("number", "?")
             finding = _evaluate(
-                rule_code="T-PROSE-WS-BUSINESS-RULE",
+                rule_code="T-PROSE-BS-BUSINESS-RULE",
                 artifact_id=ws_id,
                 field_label=f"WS.business_rules[{number}]",
                 text=rule_text if isinstance(rule_text, str) else "",
@@ -372,9 +372,9 @@ def _t_prose_ws_business_rule(graph: SpecGraph, profile: Any) -> list[Finding]:
 
 
 def _t_prose_ws_failure_behavior(graph: SpecGraph, profile: Any) -> list[Finding]:
-    """T-PROSE-WS-FAILURE-BEHAVIOR (advisory): a WS failure-behavior entry
+    """T-PROSE-BS-FAILURE-BEHAVIOR (advisory): a WS failure-behavior entry
     whose `behavior` prose falls below the shape threshold. Per-item."""
-    config = _resolve_config("T-PROSE-WS-FAILURE-BEHAVIOR", profile)
+    config = _resolve_config("T-PROSE-BS-FAILURE-BEHAVIOR", profile)
     if not config.enabled:
         return []
     out: list[Finding] = []
@@ -388,7 +388,7 @@ def _t_prose_ws_failure_behavior(graph: SpecGraph, profile: Any) -> list[Finding
             behavior_text = fb.get("behavior")
             label = fb.get("failure") or f"#{idx + 1}"
             finding = _evaluate(
-                rule_code="T-PROSE-WS-FAILURE-BEHAVIOR",
+                rule_code="T-PROSE-BS-FAILURE-BEHAVIOR",
                 artifact_id=ws_id,
                 field_label=f"WS.failure_behavior[{label}].behavior",
                 text=behavior_text if isinstance(behavior_text, str) else "",
@@ -475,8 +475,8 @@ def _t_prose_ae_responsibility(graph: SpecGraph, profile: Any) -> list[Finding]:
 
 #: Every T-PROSE-* rule code this module emits — the family's public list.
 PROSE_SHAPE_RULE_CODES: tuple[str, ...] = (
-    "T-PROSE-WS-BUSINESS-RULE",
-    "T-PROSE-WS-FAILURE-BEHAVIOR",
+    "T-PROSE-BS-BUSINESS-RULE",
+    "T-PROSE-BS-FAILURE-BEHAVIOR",
     "T-PROSE-IB-GOAL",
     "T-PROSE-IB-DONE-WHEN",
     "T-PROSE-AE-RESPONSIBILITY",

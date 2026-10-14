@@ -1,0 +1,120 @@
+#!/usr/bin/env python3
+# DekSpec destructive-git guard (INT-175 / ι2) — defensive deny-list hook.
+#
+# A standalone, stdlib-only guard that refuses a fixed initial set of
+# destructive git commands and lets everything else through. It is
+# DEFENSIVE tooling: it blocks dangerous in-flight git operations (force
+# pushes, hard resets, force-clean, force-delete-branch) before they can
+# discard work or rewrite shared history.
+#
+# Installed into a consumer's `.claude/hooks/` by the `setup-dekspec` skill
+# (ι1). Invoke it with the candidate git command as argv, e.g.:
+#
+#     destructive-git-guard.py git push --force origin main
+#
+# Exit 0  -> command is allowed (benign, or bypassed).
+# Exit 2  -> command is BLOCKED; a refusal naming the blocked verb is
+#            printed to stderr.
+#
+# Documented bypass (mirrors `DEKSPEC_BYPASS_SESSION=1` in pre-commit.template):
+#
+#     DEKSPEC_ALLOW_DESTRUCTIVE=1 destructive-git-guard.py git push --force ...
+#
+# The bypass is logged to stderr and exits 0. Use it deliberately.
+#
+# Deny vocabulary (fixed initial list, INT-175; expansion such as
+# `filter-branch` / `update-ref -d` is deferred to a later Intent):
+#   - push --force / push --force-with-lease
+#   - reset --hard
+#   - clean -f / -fd / -fdx (any force-clean)
+#   - branch -D (force-delete; benign `branch -d` is allowed)
+"""DekSpec destructive-git guard — see module header for the contract."""
+
+from __future__ import annotations
+
+import os
+import sys
+
+BYPASS_ENV = "DEKSPEC_ALLOW_DESTRUCTIVE"
+
+
+def _normalize(argv: list[str]) -> list[str]:
+    """Return the git command tokens, dropping a leading literal ``git``."""
+    tokens = list(argv)
+    if tokens and tokens[0] == "git":
+        tokens = tokens[1:]
+    return tokens
+
+
+def _has_flag(tokens: list[str], *names: str) -> bool:
+    """True if any of ``names`` appears as a standalone token."""
+    return any(t in names for t in tokens)
+
+
+def _has_force_clean(tokens: list[str]) -> bool:
+    """True if a `clean` carries a force flag (`-f`, or bundled `-fd`/`-fdx`/`-xfd`...).
+
+    git's `clean` requires `-f`/`--force` to actually delete; we block any
+    force-clean. Short flags may be bundled (`-fdx`), so inspect each
+    single-dash token's letters. A `-n`/`--dry-run` clean is benign and
+    NOT blocked.
+    """
+    for t in tokens:
+        if t == "--force":
+            return True
+        if t.startswith("-") and not t.startswith("--") and "f" in t[1:]:
+            return True
+    return False
+
+
+def classify(argv: list[str]) -> str | None:
+    """Return the blocked verb label if ``argv`` is destructive, else None.
+
+    Pure function over the candidate command tokens — the testable core of
+    the guard.
+    """
+    tokens = _normalize(argv)
+    if not tokens:
+        return None
+    verb = tokens[0]
+    rest = tokens[1:]
+
+    if verb == "push" and _has_flag(rest, "--force", "-f", "--force-with-lease"):
+        return "push --force"
+    if verb == "reset" and _has_flag(rest, "--hard"):
+        return "reset --hard"
+    if verb == "clean" and _has_force_clean(rest):
+        return "clean -f"
+    if verb == "branch" and _has_flag(rest, "-D"):
+        return "branch -D"
+    return None
+
+
+def main(argv: list[str]) -> int:
+    if os.environ.get(BYPASS_ENV) == "1":
+        sys.stderr.write(
+            f"dekspec: destructive-git guard bypassed via {BYPASS_ENV}=1 (logged).\n"
+        )
+        return 0
+
+    blocked = classify(argv)
+    if blocked is None:
+        return 0
+
+    cmd = " ".join(_normalize(argv))
+    sys.stderr.write(
+        f"dekspec: BLOCKED — destructive git command '{blocked}'.\n"
+        f"\n"
+        f"  Refused: git {cmd}\n"
+        f"\n"
+        f"  This guard refuses force-push / hard-reset / force-clean /\n"
+        f"  force-delete-branch to protect work in flight.\n"
+        f"\n"
+        f"  If you really mean it, bypass deliberately (logged):\n"
+        f"      {BYPASS_ENV}=1 git {cmd}\n"
+    )
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

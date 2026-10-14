@@ -5,13 +5,17 @@ mode: lite
 reasoning_effort: max
 disable-model-invocation: false
 allowed-tools: Read Write Edit Grep Glob Bash Agent
-argument-hint: [--provisional <slug>] [--help | --teaching | --audit | --review | --resync | --revise | --accept | --approve | --dry-run] [path to Constitution or target slug] [engineer notes or path to notes file]
+argument-hint: "[--provisional <slug>] [--help | --teaching | --audit | --review | --resync | --revise | --accept | --approve | --dry-run] [path to Constitution or target slug] [engineer notes or path to notes file]"
 related_skills: [write-sv, write-corrections, write-adr, write-ae, write-evals]
 ---
 
+<!-- Before writing content, read `dekspec resource purpose constitution` for the canonical purpose and routing items. See [_lib/artifact_purpose.md](../_lib/artifact_purpose.md). -->
+
+Before writing content, read this type’s purpose entry using the command above; follow the [artifact purpose guide](../_lib/artifact_purpose.md).
+
 > **Vendored asset paths:** Template + doc paths below resolve via `dekspec resource template <name>` / `dekspec resource doc <name>` (wheel-bundled since v0.91.0; consumer-fs override wins when present). See [`_lib/vendored_assets.md`](../_lib/vendored_assets.md) for the full resolution rule.
 
-Write or maintain the project's Constitution — the third L0 singleton (after System Vision and Domain Glossary) that captures standing operational commitments worker agents read at session-load time. The Constitution has exactly eight articles in canonical order: Project Identity (typed pointer to System Vision), Technology Stack, Quality Standards, Architecture Principles (standing prose with optional typed `adr_refs`), Development Workflow, Model Configuration, Boundaries (standing prose with optional typed `adr_refs` + `ae_refs`), Amendments.
+Write or maintain the project's Constitution, the third L0 singleton after System Vision and Domain Glossary. Before drafting, apply `constitution.holds.commitments` and the article items in the purpose entry. Worker agents read it at session-load time; preserve the template's canonical article order and typed reference fields.
 
 > **Inline-mode context check** — see [`_lib/context_check.md`](../_lib/context_check.md). This applies only to inline modes. Substantive fan-out modes dispatch a fresh authoring context: skip `/clear`, history approval and contamination markers. Preserve the engineer's guidance verbatim, keep parsed mode/path arguments separate, label parent additions as orchestrator notes, and pass source paths rather than parent summaries. Show the manifest transparently and proceed under existing authorization; no additional pre-dispatch go-ahead is required.
 

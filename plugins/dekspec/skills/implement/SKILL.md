@@ -1,6 +1,6 @@
 ---
 name: implement
-description: Implement ready, approved work end to end — `/implement INT-041`, `/implement int-041 and int-042`, `/implement the authentication feature`. Resolves the request to approved Intents or IBs, checks readiness, then drives construction, tests, independent review, repairs, integration and verification to completion without asking the engineer to drive, dispatching fresh-context builder and reviewer sub-agents from the core driver's `dekspec implement next` decisions. Use only to carry out an explicit implementation request; to explain how implementation would work, answer directly instead.
+description: Implement ready, approved work end to end — `/implement INT-041`, `/implement int-041 and int-042`, `/implement the authentication feature`. Resolves the request to approved Intents or IBs, checks readiness, then drives construction, tests, independent review, repairs, integration and verification to completion without asking the engineer to drive, dispatching fresh-context builder and reviewer sub-agents from the core driver's `dekbuilder implement next` decisions. Use only to carry out an explicit implementation request; to explain how implementation would work, answer directly instead.
 mode: lite
 reasoning_effort: high
 disable-model-invocation: true
@@ -13,7 +13,7 @@ related_skills: [spec-intent, write-ibs, review-pr, land-intent, orchestrate-cod
 
 **An explicit `/implement` request is the authorization (ADR-059).** It covers construction, tests, independent review, repair within scope and integration of the requested work — and nothing more. Do not ask the engineer to confirm, continue, dispatch or merge on this path. Do not create or approve specifications, weaken an acceptance condition, edit a protected acceptance test, bypass branch protection, deploy, or touch production. The core driver records the authorization and hands every worker the same statement.
 
-**You do not decide the process; the driver does.** `dekspec implement next` is deterministic core code over durable records, git and the forge. It performs every mechanical step itself: preparing the delivery worktree, starting IB runs, verification, completion, updating from the base, integration. It returns the one step only an agent can take. You carry out that step, acknowledge it, and ask again. Never run `dekspec ib complete`, merge, commit or edit files yourself on this path.
+**You do not decide the process; the driver does.** `dekbuilder implement next` is deterministic core code over durable records, git and the forge. It performs every mechanical step itself: preparing the delivery worktree, starting IB runs, verification, completion, updating from the base, integration. It returns the one step only an agent can take. You carry out that step, acknowledge it, and ask again. Never run `dekspec ib complete`, merge, commit or edit files yourself on this path.
 
 ## Mode Detection
 
@@ -22,23 +22,23 @@ related_skills: [spec-intent, write-ibs, review-pr, land-intent, orchestrate-cod
 
 ## Help Mode
 
-See [`_lib/help_mode_template.md`](../_lib/help_mode_template.md). Manifest:
+See `dekspec resource lib help_mode_template.md` (Spec-owned `_lib/help_mode_template.md`). Manifest:
 
 ```yaml
-skill_name: "/dekspec:implement"
+skill_name: "/dekbuilder:implement"
 one_line:   "Implement ready work all the way through: construct, test, review, repair, integrate, verify, complete."
 modes:
   - { flag: "", args: "<INT-NNN | IB-NNN | ids | feature description> [budget]", description: "Resolve the request, check readiness, and drive it to integrated, verified completion." }
   - { flag: "--help", args: "", description: "Show this help message." }
 examples:
-  - "/dekspec:implement INT-041"
-  - "/dekspec:implement int-041 and int-042"
-  - "/dekspec:implement the authentication feature"
-  - "/dekspec:implement INT-041 — stop after 30 minutes"
+  - "/dekbuilder:implement INT-041"
+  - "/dekbuilder:implement int-041 and int-042"
+  - "/dekbuilder:implement the authentication feature"
+  - "/dekbuilder:implement INT-041 — stop after 30 minutes"
 extra_sections:
   - heading: "READY"
     body:
-      - "Readiness is `dekspec implement ready <request>` — an ACCEPTED Intent (autonomy medium or high) with an outcome"
+      - "Readiness is `dekbuilder implement ready <request>` — an ACCEPTED Intent (autonomy medium or high) with an outcome"
       - "and executable verification, authorized IBs whose obligations resolve, satisfiable dependencies, and an"
       - "environment that can run the checks and integrate. Not ready → the exact missing preparation."
 ```
@@ -50,14 +50,14 @@ At runtime, render the manifest per `_lib/help_mode_template.md` and stop.
 Let `REQ` be the whole argument (for example `INT-041 and INT-042`), minus any budget phrase. Run in the repository (any checkout of it):
 
 ```bash
-dekspec implement next "REQ" --json
+dekbuilder implement next "REQ" --json
 ```
 
 Act on the returned `action`, then call `next` again with the same `REQ`. Repeat until the action is `done`, `blocked` or `not-ready`.
 
 | `action` | What you do |
 |---|---|
-| `dispatch` | Launch **one fresh-context sub-agent** (the Agent tool, general-purpose) whose prompt is `prompt`, **verbatim**, with nothing added or removed. When it returns, run `dekspec implement ack "REQ" --dispatch <id> --summary "<its final report>"`. Then call `next`. The `role` tells you who it is: `builder`, `reviewer`, `resolver` (merge conflicts) or `intent-reviewer`. The driver composed the prompt from that role's Agent Role Specification (`implementer`, `code-reviewer`, `implementer`, `verifier` — ADR-061) and recorded which revision; you never choose, swap or add a role. Do not do their work yourself, and never answer a worker's question by granting more than the authorization. |
+| `dispatch` | Launch **one fresh-context sub-agent** (the Agent tool, general-purpose) whose prompt is `prompt`, **verbatim**, with nothing added or removed. When it returns, run `dekbuilder implement ack "REQ" --dispatch <id> --summary "<its final report>"`. Then call `next`. The `role` tells you who it is: `builder`, `reviewer`, `resolver` (merge conflicts) or `intent-reviewer`. The driver composed the prompt from that role's Agent Role Specification (`implementer`, `code-reviewer`, `implementer`, `verifier` — ADR-061) and recorded which revision; you never choose, swap or add a role. Do not do their work yourself, and never answer a worker's question by granting more than the authorization. |
 | `wait` | The forge is still running required checks. Wait `seconds` using the host's timer (in Claude Code, a background `sleep`), then call `next`. |
 | `done` | Report the result (below) and stop. |
 | `blocked` | Report every blocker with its evidence and what would resolve it (below), and stop. Independent work has already continued; the driver only reports `blocked` when nothing authorized is left to do. |
@@ -65,9 +65,9 @@ Act on the returned `action`, then call `next` again with the same `REQ`. Repeat
 
 **Recovery is the driver's job, not a reason to stop.** A failing test, a failed review, a failing required forge check, a merge conflict or a lost worker all come back as the next `dispatch`. Repeated failure without progress gets at most two recorded strategy changes per IB, then a genuine blocker.
 
-**Continuation.** Your position lives in the records, not in this conversation. After a context compaction, just call `next` again. If this session ends, the engineer re-runs `/dekspec:implement` with the same request and it resumes; a worker that was running is reissued once. Repeating a finished request returns its result without doing anything again.
+**Continuation.** Your position lives in the records, not in this conversation. After a context compaction, just call `next` again. If this session ends, the engineer re-runs `/dekbuilder:implement` with the same request and it resumes; a worker that was running is reissued once. Repeating a finished request returns its result without doing anything again.
 
-**Budgets.** If the engineer gave a budget ("stop after 30 minutes", "at most three workers"), stop at the first step boundary past it. Run `dekspec implement status "REQ"` and report where the run stands and that repeating the request resumes it. There is no other reason to stop early.
+**Budgets.** If the engineer gave a budget ("stop after 30 minutes", "at most three workers"), stop at the first step boundary past it. Run `dekbuilder implement status "REQ"` and report where the run stands and that repeating the request resumes it. There is no other reason to stop early.
 
 ## Reporting
 
@@ -85,3 +85,24 @@ Act on the returned `action`, then call `next` again with the same `REQ`. Repeat
 - Don't mark anything complete or merge by hand, and don't retry a refused merge with administrator rights. Report the blocker instead.
 - Don't turn "explain how you would implement X" into a run. That question gets a direct answer.
 - Don't write, fix or re-baseline an acceptance test to make a request ready. Acceptance assets are fixed for this run; their `Basis:` lines and declared fixtures included.
+
+## The wave loop
+
+For a request naming an Intent or several briefs, run:
+
+```bash
+dekbuilder wave next "REQ" --json
+```
+
+Take every returned action. For each `dispatch` action, start one fresh worker
+with its prompt verbatim through the host's dispatch mechanism
+(`_lib/claude-host.md`, `_lib/amp-host.md`). When a worker returns, pass that
+action's `ack_request` unchanged to:
+
+```bash
+dekbuilder implement ack "<ack_request>" --dispatch <id>
+```
+
+Call `wave next` again only when every worker of the round has returned and
+been acknowledged. Handle waits and terminal results as in the loop above;
+repeat while authorized work remains. Report with `dekbuilder wave status "REQ"`.

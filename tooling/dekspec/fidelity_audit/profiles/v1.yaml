@@ -26,13 +26,13 @@ rules:
   # L-series — linkage integrity (cross-artifact reference + back-pointer)
   - LINK-ADR-AE-MISSING
   - LINK-ADR-AE-EXISTS
-  - LINK-WS-AE-MISSING
-  - LINK-WS-AE-EXISTS
+  - LINK-BS-AE-MISSING
+  - LINK-BS-AE-EXISTS
   - LINK-IC-AE-MISSING
   - LINK-IC-AE-EXISTS
   - LINK-IB-SPEC-MISSING
   - LINK-IB-PARENT-EXISTS
-  - LINK-IB-WS-EXISTS
+  - LINK-IB-BS-EXISTS
   - LINK-IB-INTENT-EXISTS
   - LINK-IB-AE-MISSING
   - LINK-IB-AE-EXISTS
@@ -127,7 +127,7 @@ rules:
   - LINK-MSN-CMD-RESOLVE
   - LINK-GLOSSARY-COVERAGE
   - LINK-MSN-STALE
-  - LINK-WS-BLOCKING-PRE-IB-CLEAN
+  - LINK-BS-BLOCKING-PRE-IB-CLEAN
   # IB-050 / INT-036 — Intent two-path lock coherence (ADR-017)
   # IB-005 / WS-005 — Constitution L0 singleton linkage integrity
   - LINK-CONSTITUTION-ARTICLE-1-SV-REF
@@ -155,29 +155,29 @@ rules:
   - T17-MSN-VERIFICATION
   - T17-MSN-OUTCOME
   - T17-MSN-ROLLBACK
-  - T20-WS-BUSINESS-RULES
-  - T21-WS-FAILURE-BEHAVIOR
+  - T20-BS-BUSINESS-RULES
+  - T21-BS-FAILURE-BEHAVIOR
   - T30-ADR-DECISION
   - T31-ADR-VALIDATION
   - T40-IB-GOAL
   - T41-IB-DONE-WHEN
   # D-series — content drift routing
-  - D17-AE-NUMERIC-NO-WS-CITE
+  - D17-AE-NUMERIC-NO-BS-CITE
   - D18-AE-RATIONALE-NO-ADR-CITE
-  - D19-INT-NUMERIC-NO-WS-CITE
+  - D19-INT-NUMERIC-NO-BS-CITE
   - D20-INT-RATIONALE-NO-ADR-CITE
   # ds-52p D-15 — prose drift on WS / IC / IB (mirrors D17/D18 for those types)
-  - D-15a-WS-RATIONALE-NO-ADR-CITE
+  - D-15a-BS-RATIONALE-NO-ADR-CITE
   - D-15b-IC-RATIONALE-NO-ADR-CITE
   - D-15c-IB-RATIONALE-NO-ADR-CITE
-  - D-15d-IC-NUMERIC-NO-WS-CITE
+  - D-15d-IC-NUMERIC-NO-BS-CITE
   # INT-065 — T-PROSE prose-shape heuristic family (advisory; per-repo
   # configurable). Evaluates the heuristic *shape* of a prose field against
   # the five PROSE facets (Precision / Rationale / Outcome / Scope / Example).
   # Listed-and-active but conservatively thresholded (see `parameters:` below)
   # — every finding emits at P3 (advisory), so the family never blocks a build.
-  - T-PROSE-WS-BUSINESS-RULE
-  - T-PROSE-WS-FAILURE-BEHAVIOR
+  - T-PROSE-BS-BUSINESS-RULE
+  - T-PROSE-BS-FAILURE-BEHAVIOR
   - T-PROSE-IB-GOAL
   - T-PROSE-IB-DONE-WHEN
   - T-PROSE-AE-RESPONSIBILITY
@@ -190,6 +190,8 @@ rules:
   # ADR-061 — a retired Context Specification left in the tree (P3 advisory).
   # Replaces LINK-CS-ROLE-UNIQUE: nothing resolves roles from project files now.
   - LINK-LEGACY-CONTEXT-SPEC
+  # INT-219 — dispatched work without recorded project rules (P3 advisory).
+  - L-ROLE-PROJECT-RULES-UNRECORDED
   # ds-52p D-16 — singleton self-consistency
   - T-GLOSSARY-DUPLICATE
   - T-GLOSSARY-MISSING-DEFINITION
@@ -275,10 +277,10 @@ parameters:
   # family stays quiet on a methodology-practicing repo — IB-111's
   # calibration measured 3 advisory findings on the dekspec/ self-spec
   # corpus at this setting (2026-05-21).
-  T-PROSE-WS-BUSINESS-RULE:
+  T-PROSE-BS-BUSINESS-RULE:
     threshold: 1
     severity: P3
-  T-PROSE-WS-FAILURE-BEHAVIOR:
+  T-PROSE-BS-FAILURE-BEHAVIOR:
     threshold: 1
     severity: P3
   T-PROSE-IB-GOAL:

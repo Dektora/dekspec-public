@@ -1,0 +1,107 @@
+# Domain Glossary IR — JSON Schema (Draft 2020-12)
+#
+# Singleton artifact at <dekspec-root>/domain-glossary.md. Captures canonical
+# term definitions across the corpus. Used by future audits to detect
+# undefined-term usage in artifact bodies.
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://dekspec.dektora/schemas/v0.1/domain-glossary.schema.json"
+title: Domain Glossary IR
+description: >-
+  Normalized intermediate representation of the singleton Domain Glossary
+  artifact. Produced by dekspec.constraint_compiler.parser.parse_glossary();
+  consumed by the L10 glossary-coverage audit rule and (planned) AGENTS.md
+  glossary section. One Glossary per repo; canonical id is
+  DOMAIN-GLOSSARY.
+
+type: object
+additionalProperties: false
+required:
+  - ir_schema_version
+  - id
+  - source
+  - terms
+
+properties:
+  ir_schema_version:
+    const: "0.1.0"
+
+  id:
+    description: 'Singleton id for the domain glossary.'
+    const: "DOMAIN-GLOSSARY"
+
+  source:
+    type: object
+    additionalProperties: false
+    required: [path, sha256, parser_version, parsed_at]
+    properties:
+      path:
+        type: string
+      sha256:
+        type: string
+        pattern: "^[a-f0-9]{64}$"
+      parser_version:
+        type: string
+        pattern: "^\\d+\\.\\d+\\.\\d+$"
+      parsed_at:
+        type: string
+        format: date-time
+
+  created:
+    type: string
+    format: date
+
+  modified:
+    type: string
+    format: date
+
+  purpose:
+    type: string
+
+  terms:
+    description: 'Flat list of glossary entries. Each entry carries category for grouping.'
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [term, category]
+      properties:
+        term:
+          type: string
+          minLength: 1
+        category:
+          type: string
+          description: 'The H2 category section the term lives under.'
+        canonical_definition:
+          type: string
+        not_this:
+          type: string
+          description: 'Anti-definition column (what the term does NOT mean).'
+        code_convention:
+          type: string
+          description: 'Naming/identifier convention column (e.g., snake_case ident).'
+        aliases:
+          description: >-
+            Alternate names that refer to the same canonical term. Used by
+            T-GLOSSARY-DANGLING-ALIAS to detect aliases pointing at terms
+            that do not exist. Populated by the parser from a comma-separated
+            5th column in the glossary table when present. Optional; additive
+            in v0.40.0 (ds-52p, D-16).
+          type: array
+          items:
+            type: string
+            minLength: 1
+
+  parse_warnings:
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [field, reason, severity]
+      properties:
+        field:
+          type: string
+        reason:
+          type: string
+        severity:
+          enum: [info, warning]

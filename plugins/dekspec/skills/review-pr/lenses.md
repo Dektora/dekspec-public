@@ -1,8 +1,8 @@
 # REVIEW_PR lens pack
 
-> 13 lenses for `/dekspec:review-pr` — the post-implementation review of a delivery at its head, judged per IB (ADR-058). Each entry conforms to the schema in `plugins/dekspec/skills/_lib/review_lens_registry.md` (4 required fields). The orchestration shell (`_lib/review-orchestration.md`) loads this file and fans out one specialist per lens.
+> 13 lenses for `/dekbuilder:review-pr` — the post-implementation review of a delivery at its head, judged per IB (ADR-058). Each entry conforms to the schema in `Spec resource lib review_lens_registry.md` (4 required fields). The orchestration shell (`_lib/review-orchestration.md`) loads this file and fans out one specialist per lens.
 
-All 13 lenses share `severity_rubric: shared` (resolves to `plugins/dekspec/skills/_lib/review_confidence_rubric.md`). Surface threshold 80. Asymmetric voting per ADR-026.
+All 13 lenses share `severity_rubric: shared` (resolves to `Spec resource lib review_confidence_rubric.md`). Surface threshold 80. Asymmetric voting per ADR-026.
 
 ---
 
@@ -14,7 +14,7 @@ All 13 lenses share `severity_rubric: shared` (resolves to `plugins/dekspec/skil
     Beyond passing their named checks, does the diff actually achieve the
     observable behavior each acceptance condition states — and does every
     `review:` condition hold?
-  input_slice: delivery.diff + ib.body + evidence.results
+  input_slice: delivery.diff + ib.body + evidence.results + ib.context + acceptance.test_sources
   attack_patterns:
     - a condition's check passes against a stub, a hard-coded value or a special case for the test input
     - the named test asserts something weaker than the condition states
@@ -31,9 +31,9 @@ All 13 lenses share `severity_rubric: shared` (resolves to `plugins/dekspec/skil
     Does the diff honor every binding obligation as its canonical text in
     the generated execution context states it (ADR-055) — architecture,
     interface semantics, security, compatibility, resource bounds?
-  input_slice: delivery.diff + ib.context
+  input_slice: delivery.diff + ib.context + evidence.results + record.amendments
   attack_patterns:
-    - the diff contradicts a referenced ADR, IC or WS section
+    - the diff contradicts a referenced ADR, IC or Behavior Specification section
     - an interface pinned by an IC changes shape, error semantics or ordering
     - a compatibility or security obligation is weakened by a new code path
     - the implementation re-decides something an obligation settles, citing its own judgment
@@ -48,7 +48,7 @@ All 13 lenses share `severity_rubric: shared` (resolves to `plugins/dekspec/skil
     Does every changed file fall inside the delivery's allowed Scope with
     no Protected Surface modified, renamed or deleted — and does the
     engine's scope check agree?
-  input_slice: delivery.files_changed + ib.body + evidence.scope
+  input_slice: delivery.files_changed + ib.body + evidence.scope + delivery.diff
   attack_patterns:
     - a changed file lies outside every co-delivered IB's Scope
     - a protected path or `path::symbol` is modified, renamed or deleted
@@ -65,7 +65,7 @@ All 13 lenses share `severity_rubric: shared` (resolves to `plugins/dekspec/skil
     Does the delivery update every specification its IBs name in `Spec
     impact`, and does it change architecture or a contract that no `Spec
     impact` declares (ADR-056 §4)?
-  input_slice: delivery.diff + delivery.files_changed + ib.body + audit_doctor.spec_coverage
+  input_slice: delivery.diff + delivery.files_changed + ib.body + ib.context
   attack_patterns:
     - a Spec impact artifact is not modified by the delivery
     - the diff changes a component boundary or interface described by an AE or IC with Spec impact none
@@ -189,7 +189,7 @@ The commit-ordering half of the strong-TDD gate (DSF-014); `outcome-tdd-discipli
     Does the diff violate a standing rule pinned in `CLAUDE.md` (no
     specless edits, branch discipline, never-edit-locked-artifacts,
     glossary discipline, cross-repo discipline)?
-  input_slice: delivery.diff + claude_md
+  input_slice: delivery.diff + claude_md + record
   attack_patterns:
     - diff edits a LOCKED artifact (ADR, IC, SP, SV, Constitution) without its unlock cycle
     - diff edits source that no IB in the delivery governs
@@ -206,7 +206,7 @@ The commit-ordering half of the strong-TDD gate (DSF-014); `outcome-tdd-discipli
   question: |
     Does the cached audit come back without P0/P1 findings on the
     artifacts the delivery touches, at the head?
-  input_slice: audit_doctor.linkage_findings
+  input_slice: audit_doctor.sections
   attack_patterns:
     - P0 finding on any artifact the diff touches
     - P1 finding on any artifact the diff touches

@@ -32,6 +32,8 @@ _COMPONENTS_SECTION = re.compile(
 )
 _BULLET = re.compile(r"^[ \t]*[-*][ \t]+(?P<body>.+?)[ \t]*$")
 _FUTURE_MARKER = re.compile(r"future implementation paths", re.IGNORECASE)
+_BRACE = re.compile(r"\{([^{}]*)\}")
+_EXPANSION_LIMIT = 4096
 # An inline-code span at the start of a bullet holds the glob/path.
 _BACKTICK = re.compile(r"`([^`]+)`")
 
@@ -63,6 +65,62 @@ def parse_components(text: str) -> list[str]:
     return entries
 
 
+def _expand_braces(pattern: str) -> list[str]:
+    """Match the engine's innermost expansion, with a pre-matching budget.
+
+    Retain duplicate alternatives: each consumes a candidate. Every pass can
+    only maintain or increase the count, so refusing a pass over the limit is
+    equivalent to refusing its eventual Cartesian product. Count before split
+    or construction, including a single group with thousands of alternatives.
+    """
+    candidates = [pattern]
+    while True:
+        groups = [_BRACE.search(candidate) for candidate in candidates]
+        if not any(groups):
+            return candidates
+        count = sum(group.group(1).count(",") + 1 if group else 1 for group in groups)
+        if count > _EXPANSION_LIMIT:
+            raise ValueError(
+                f"{pattern}: brace expansion exceeds the {_EXPANSION_LIMIT} candidate limit; "
+                "reduce alternatives or split the Components declaration."
+            )
+        expanded: list[str] = []
+        for candidate, group in zip(candidates, groups):
+            if group is None:
+                expanded.append(candidate)
+            else:
+                expanded.extend(candidate[:group.start()] + alternative + candidate[group.end():]
+                                for alternative in group.group(1).split(","))
+        candidates = expanded
+
+
+# Surface skeleton (ADR-062) for IB-191 O-9: the checker's public copy of the
+# engine's matcher, brace expansion and limit. Behavior-free and unused until
+# IB-191 implements them; `check()` and `main()` are unchanged.
+EXPANSION_LIMIT: int | None = None
+
+
+def expand_braces(pattern: str) -> list[str]:
+    """Surface skeleton (IB-191 O-9); returns no candidates yet."""
+    return []
+
+
+def matches_any_glob(path: str, globs) -> bool:
+    """Surface skeleton (IB-191 O-9); matches nothing yet."""
+    return False
+
+
+def _resolves(pattern: str, repo_root: Path) -> bool:
+    """Preserve ordinary glob/literal behavior for one expanded candidate."""
+    rel = pattern.lstrip("/")
+    try:
+        if next(repo_root.glob(rel), None) is not None:
+            return True
+    except (ValueError, NotImplementedError):
+        pass
+    return not any(c in rel for c in "*?[]") and (repo_root / rel).exists()
+
+
 def check(intent_path: Path, repo_root: Path) -> dict[str, object]:
     """Resolve every Components-affected entry; return a structured result."""
     text = intent_path.read_text(encoding="utf-8")
@@ -70,17 +128,14 @@ def check(intent_path: Path, repo_root: Path) -> dict[str, object]:
     unresolved: list[str] = []
     resolved: list[str] = []
     for entry in entries:
-        # Absolute-looking entries are normalised relative to repo_root.
-        rel = entry.lstrip("/")
         try:
-            matches = list(repo_root.glob(rel))
-        except (ValueError, NotImplementedError):
-            matches = []
-        # A literal path with no glob metacharacters: also accept a plain exist.
-        if not matches and not any(c in rel for c in "*?[]"):
-            if (repo_root / rel).exists():
-                matches = [repo_root / rel]
-        (resolved if matches else unresolved).append(entry)
+            candidates = _expand_braces(entry)
+        except ValueError as exc:
+            print(f"L7b FAIL: {exc}", file=sys.stderr)
+            unresolved.append(entry)
+            continue
+        matched = any(_resolves(candidate, repo_root) for candidate in candidates)
+        (resolved if matched else unresolved).append(entry)
     return {
         "intent": str(intent_path),
         "total": len(entries),

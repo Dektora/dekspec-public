@@ -172,6 +172,92 @@ properties:
     description: 'What is true after the Intent lands. Subject to D19/D20.'
     type: string
 
+  behavior_placement:
+    description: 'Well-formed placement rows in table order; absent when there are none.'
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [line, rule_set, home, triggers, reason]
+      properties:
+        line:
+          type: integer
+          minimum: 1
+        rule_set:
+          type: string
+          minLength: 1
+        reason:
+          type: string
+          minLength: 1
+        triggers:
+          type: array
+          uniqueItems: true
+          items:
+            enum: [T1, T2, T3, T4]
+        home:
+          oneOf:
+            - type: object
+              additionalProperties: false
+              required: [kind, id]
+              properties:
+                kind:
+                  const: behavior_spec
+                id:
+                  type: string
+                  pattern: '^(BS|WS)-[0-9]{3,}$'  # dekspec:names-both-forms
+            - type: object
+              additionalProperties: false
+              required: [kind, name]
+              properties:
+                kind:
+                  const: new_behavior_spec
+                name:
+                  type: string
+                  minLength: 1
+            - type: object
+              additionalProperties: false
+              required: [kind, id, section]
+              properties:
+                kind:
+                  const: interface_contract_section
+                id:
+                  type: string
+                  pattern: '^IC-[0-9]{3,}$'
+                section:
+                  type: string
+                  minLength: 1
+                  pattern: '^[^§]+$'
+            - type: object
+              additionalProperties: false
+              required: [kind, id]
+              properties:
+                kind:
+                  const: architecture_element
+                id:
+                  type: string
+                  pattern: '^AE-[0-9]{3,}$'
+            - type: object
+              additionalProperties: false
+              required: [kind]
+              oneOf:
+                - required: [brief]
+                - required: [id]
+              properties:
+                kind:
+                  const: local
+                brief:
+                  type: integer
+                  minimum: 0
+                id:
+                  type: string
+                  pattern: '^IB-[0-9]{3,}$'
+            - type: object
+              additionalProperties: false
+              required: [kind]
+              properties:
+                kind:
+                  const: none
+
   type_specific:
     description: 'Type-specific block. Shape depends on intent_type. Lossy capture — keep verbatim.'
     type: object

@@ -10,10 +10,13 @@ v0.2.0 commands:
 
 from __future__ import annotations
 
+from dekspec.spec_kinds import BEHAVIOR_SPEC_NAMES as BS
+
 import argparse
 import contextlib
 import io
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -22,6 +25,13 @@ from typing import TYPE_CHECKING, Any, NamedTuple
 
 if TYPE_CHECKING:
     pass
+
+from .brief_identity import (
+    IB_PREFIX as _IB_PREFIX,  # noqa: F401 — compatibility export
+    BriefIdentityError,
+    check_brief_filename,
+    is_brief_filename,
+)
 
 from . import __version__
 from . import platform_install
@@ -67,9 +77,8 @@ import re as _re
 
 _IC_PREFIX = _re.compile(r"^IC-\d{3,}-")
 _AE_PREFIX = _re.compile(r"^AE-\d{3,}-")
-_WS_PREFIX = _re.compile(r"^WS-\d{3,}-")
+_WS_PREFIX = _re.compile(rf"^{BS.id_pattern}-")
 _ADR_PREFIX = _re.compile(r"^ADR-\d{3,}-")
-_IB_PREFIX = _re.compile(r"^IB-\d{3,}-")
 _INT_PREFIX = _re.compile(r"^INT-\d{3,}-")
 _MSN_PREFIX = _re.compile(r"^MSN-\d{3,}-")
 _SP_PREFIX = _re.compile(r"^SP-\d{3,}-")
@@ -187,6 +196,18 @@ def build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.Argument
         help="Report without applying any fix (the CI-safe path; default is fix-to-convergence).",
     )
     p_audit.add_argument("--loop", action="store_true", help="Explicitly request the default mechanical fix-to-convergence pass.")
+    # IB-220 surface skeleton (ADR-062): parsed, not yet applied; IB-220's
+    # implementation gives these flags their WS-035 behavior.
+    p_audit.add_argument("--axis", default=None, help="Comma-separated rule-family letters (IB-220; not yet in effect).")
+    p_audit.add_argument("--baseline", default=None, help="Partition baseline file (IB-220; not yet in effect).")
+    p_audit.add_argument("--write-baseline", default=None, help="Write a partition baseline file (IB-220; not yet in effect).")
+    p_audit.add_argument("--new-only", action="store_true", help="Print only new partition findings (IB-220; not yet in effect).")
+    # IB-223 surface skeleton (ADR-062): parsed, not yet applied; IB-223's
+    # implementation gives this flag its WS-035 §Opt-in failure behavior.
+    p_audit.add_argument("--fail-on-new", action="store_true", help="Exit 1 when the run has a new partition finding (IB-223; not yet in effect).")
+    # IB-224 surface skeleton (ADR-062): parsed, not yet applied; IB-224's
+    # implementation gives this option its WS-035 §Model-judged findings behavior.
+    p_audit.add_argument("--model-findings", default=None, help="Model-judged partition findings file, or - for standard input (IB-224; not yet in effect).")
     p_audit.set_defaults(func=cmd_audit)
 
     # 3. exec
@@ -238,7 +259,7 @@ def build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.Argument
     # host (claude/codex/antigravity/cursor/copilot/pi) expects. Build-time only:
     # writes files, never executes (ADR-024).
     _add_install_subparser(sub)
-    from .toolkit_cli import register_helpers
+    from .legacy_products import register_helpers
     register_helpers(SubParserWrapper(sub, suppress=True))
 
     # 8. slices — LLM-free structural slice-discovery (ds-mrsu). Thin adapter
@@ -286,9 +307,13 @@ def build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.Argument
 
     _register_execution(sub)
     # ADR-059 — `dekspec implement`: the core of `/implement` and its caller contract.
-    from dekspec.implement.cli import register as _register_implement
+    from dekspec.legacy_products import register_implement as _register_implement
 
     _register_implement(sub)
+    # IB-234 — read-only CI classification of protected acceptance tests.
+    from dekspec.ci_acceptance_plan import register as _register_ci
+
+    _register_ci(sub)
 
     group_parsers = {
         "check": p_check,
@@ -678,11 +703,16 @@ def cmd_compile(args: argparse.Namespace) -> int:
         + (["--treat-as-locked"] if args.treat_as_locked else [])
     )
 
+    try:
+        check_brief_filename(src.name)
+    except BriefIdentityError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 2
     artifact_kind = _detect_artifact_kind(src.name)
     if artifact_kind is None:
         print(
             f"Error: cannot detect artifact kind from filename '{src.name}'. "
-            f"Expected IC-NNN-*.md, AE-NNN-*.md, WS-NNN-*.md, ADR-NNN-*.md, "
+            f"Expected IC-NNN-*.md, AE-NNN-*.md, {BS.id_prefix}-NNN-*.md, ADR-NNN-*.md, "
             f"IB-NNN-*.md, INT-NNN-*.md, MSN-NNN-*.md, SP-NNN-*.md, "
             f"system-vision.md, domain-glossary.md, or constitution.md.",
             file=sys.stderr,
@@ -1592,7 +1622,7 @@ def cmd_audit_lock_ready(args: argparse.Namespace) -> int:
         art_id = art.get("id", "")
         if not art_id:
             continue
-        if not (art_id.startswith("AE-") or art_id.startswith("ADR-") or art_id.startswith("WS-") or art_id.startswith("IC-")):
+        if not (art_id.startswith("AE-") or art_id.startswith("ADR-") or art_id.startswith(BS.id_starts) or art_id.startswith("IC-")):
             continue
         status = art.get("status")
         if status != "ACCEPTED":
@@ -2273,6 +2303,17 @@ def _add_doctor_subparser(sub: argparse._SubParsersAction) -> None:
             "to those families. Default: all axes."
         ),
     )
+    # IB-220 surface skeleton (ADR-062): parsed, not yet applied; IB-220's
+    # implementation gives these flags their WS-035 behavior.
+    p.add_argument("--baseline", default=None, help="Partition baseline file (IB-220; not yet in effect).")
+    p.add_argument("--write-baseline", default=None, help="Write a partition baseline file (IB-220; not yet in effect).")
+    p.add_argument("--new-only", action="store_true", help="Print only new partition findings (IB-220; not yet in effect).")
+    # IB-223 surface skeleton (ADR-062): parsed, not yet applied; IB-223's
+    # implementation gives this flag its WS-035 §Opt-in failure behavior.
+    p.add_argument("--fail-on-new", action="store_true", help="Exit 1 when the run has a new partition finding (IB-223; not yet in effect).")
+    # IB-224 surface skeleton (ADR-062): parsed, not yet applied; IB-224's
+    # implementation gives this option its WS-035 §Model-judged findings behavior.
+    p.add_argument("--model-findings", default=None, help="Model-judged partition findings file, or - for standard input (IB-224; not yet in effect).")
     p.set_defaults(func=cmd_doctor)
 
 
@@ -2454,6 +2495,17 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 
     sections: list[dict[str, Any]] = []
     worst_severity = "clean"  # clean | advisory | warning | critical
+    from .migrations.pattern_dialect import unconverted
+    try:
+        dialect_problems = unconverted(repo_root, getattr(args, "dekspec_root", None) or "dekspec")
+    except Exception as error:  # noqa: BLE001 — doctor reports failed diagnostics
+        sections.append({"name": "pattern-dialect", "status": "error", "summary": str(error)})
+        worst_severity = "error"
+    else:
+        if dialect_problems:
+            sections.append({"name": "pattern-dialect", "status": "advisory",
+                             "summary": "\n".join(dialect_problems)})
+            worst_severity = "advisory"
 
     # Section 1: verify-vendored (auto-skip if no .dekspec-version + no vendored prefix)
     has_version_marker = (repo_root / ".dekspec-version").exists()
@@ -2937,6 +2989,11 @@ def cmd_validate(args: argparse.Namespace) -> int:
     if not src.exists():
         print(f"Error: source not found: {src}", file=sys.stderr)
         return 2
+    try:
+        check_brief_filename(src.name)
+    except BriefIdentityError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 2
     artifact_kind = getattr(args, "kind", None) or _detect_artifact_kind(src.name)
     if artifact_kind is None:
         print(
@@ -2984,9 +3041,14 @@ def cmd_validate(args: argparse.Namespace) -> int:
             else:
                 print(error, file=sys.stderr)
             return 4
+    placement_invalid = (
+        artifact_kind == "intent"
+        and ir.get("status") in {"DRAFT", "PROPOSED"}
+        and any(w.get("field") == "behavior_placement" for w in warnings)
+    )
     if args.json:
         print(json.dumps({
-            "ok": True,
+            "ok": not placement_invalid,
             "id": ir.get("id"),
             "status": ir.get("status"),
             "kind": artifact_kind,
@@ -2994,12 +3056,13 @@ def cmd_validate(args: argparse.Namespace) -> int:
         }, default=str))
     else:
         print(
-            f"OK — {ir.get('id', '?')} ({ir.get('status', '?')}, kind={artifact_kind}). "
+            f"{'INVALID' if placement_invalid else 'OK'} — {ir.get('id', '?')} "
+            f"({ir.get('status', '?')}, kind={artifact_kind}). "
             f"{len(warnings)} parse warning(s)."
         )
         for w in warnings:
             print(f"  [{w.get('severity', '?')}] {w.get('field', '?')}: {w.get('reason', '')}")
-    return 0
+    return 4 if placement_invalid else 0
 
 
 def _add_resource_subparser(sub: argparse._SubParsersAction) -> None:
@@ -3016,7 +3079,7 @@ def _add_resource_subparser(sub: argparse._SubParsersAction) -> None:
         ),
     )
     p.add_argument(
-        "kind", choices=["template", "doc", "lib", "role"],
+        "kind", choices=["template", "doc", "lib", "role", "purpose"],
         help="Kind of resource to resolve. `template` reads from "
         "templates/<name>.md; `doc` reads from docs/<name>.md (methodology + "
         "operating-guide family); `lib` reads from the shared skill substrate "
@@ -3025,14 +3088,19 @@ def _add_resource_subparser(sub: argparse._SubParsersAction) -> None:
         "Specification (ADR-061) — `specifier`, `spec-reviewer`, `implementer`, "
         "`code-reviewer`, `verifier`, `auditor`, or a retired `CS-NNN` id. Roles "
         "are internal to DekSpec skills: always the installed library's own, "
-        "never a project file (`--at` does not apply).",
+        "never a project file (`--at` does not apply). `purpose` prints one artifact "
+        "type purpose entry as YAML from the installed library, also ignoring `--at`.",
     )
     p.add_argument(
-        "name",
+        "name", nargs="?", default=None,
         help="Resource name. Examples: `intent` (for templates/intent-template.md), "
         "`operating-guide` (for docs/dekspec-operating-guide.md). The "
         "`-template` suffix and `dekspec-` prefix are appended automatically.",
     )
+    p.add_argument("--list", action="store_true", dest="list_roles",
+                   help="List installed role ids and policy revisions (role only; omit NAME).")
+    p.add_argument("--json", action="store_true", dest="as_json",
+                   help="With role --list, print the installed release and revisions as JSON.")
     p.add_argument(
         "--at",
         help="Consumer repo root (default: cwd). Consumer-fs override at "
@@ -3059,6 +3127,31 @@ def cmd_resource(args: argparse.Namespace) -> int:
     """
     from .vendoring import resolve_doc, resolve_lib, resolve_template
 
+    if args.kind == "purpose" and (args.list_roles or args.as_json or args.name is None):
+        print("error: use resource purpose <type> [--path-only] [--at PATH]", file=sys.stderr)
+        return 2
+    if args.list_roles or args.as_json or args.name is None:
+        if (args.kind != "role" or not args.list_roles
+                or args.name is not None or args.path_only):
+            print("error: use resource role <id> [--path-only] or "
+                  "resource role --list [--json]; other resources require a name",
+                  file=sys.stderr)
+            return 2
+        from . import __version__
+        from .role_disclosure import current_roles
+        from .roles import RoleDefinitionError
+
+        try:
+            revisions = current_roles()
+        except RoleDefinitionError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        if args.as_json:
+            print(json.dumps({"release": __version__, "roles": revisions}))
+        else:
+            for role, revision in revisions.items():
+                print(f"{role} {revision}")
+        return 0
     name = args.name.strip()
     if not name:
         print("error: resource name is empty", file=sys.stderr)
@@ -3068,6 +3161,8 @@ def cmd_resource(args: argparse.Namespace) -> int:
     # the `.md` suffix internally.
     if args.kind == "role":
         return _emit_role(name, path_only=args.path_only)
+    if args.kind == "purpose":
+        return _emit_purpose(name, path_only=args.path_only)
     retired = _RETIRED_RESOURCES.get((args.kind, name.removesuffix(".md").removesuffix("-template")))
     if retired:
         print(f"error: {args.kind} {args.name!r} is retired: {retired}", file=sys.stderr)
@@ -3096,6 +3191,32 @@ def cmd_resource(args: argparse.Namespace) -> int:
         except OSError as exc:
             print(f"error: failed to read {resolved}: {exc}", file=sys.stderr)
             return 1
+    return 0
+
+
+def _emit_purpose(name: str, *, path_only: bool) -> int:
+    """Emit validated installed policy without consulting consumer resources."""
+    import yaml
+
+    from .artifact_purpose import (
+        PurposeRecordError,
+        UnknownArtifactTypeError,
+        purpose_entry,
+        record_path,
+    )
+
+    try:
+        entry = purpose_entry(name)
+        if path_only:
+            print(record_path())
+        else:
+            print(yaml.safe_dump(entry, sort_keys=False, allow_unicode=True), end="")
+    except UnknownArtifactTypeError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    except PurposeRecordError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
     return 0
 
 
@@ -3299,7 +3420,7 @@ def _add_init_subparser(sub: argparse._SubParsersAction) -> None:
 _INIT_SUBDIRS = (
     "adrs",
     "architecture-elements",
-    "working-specs",
+    BS.folder,
     "interface-contracts",
     "impl-briefs/queued",
     "impl-briefs/active",
@@ -3315,7 +3436,7 @@ _INIT_SUBDIRS = (
 _INIT_INDEXES = (
     ("adr-index.md", "# ADR Index\n\n*Architecture Decision Records.*\n\n_None yet — author the first one with `/write-adr`._\n"),
     ("architecture-elements-index.md", "# Architecture Elements Index\n\n*The architectural slices of this system.*\n\n_None yet — author the first one with `/write-ae`._\n"),
-    ("working-spec-index.md", "# Working Spec Index\n\n*Behavioral specs.*\n\n_None yet — author the first one with `/write-ws`._\n"),
+    (BS.index_file, f"# {BS.display_name} Index\n\n*Behavioral specs.*\n\n_None yet — author the first one with `/write-ws`._\n"),
     ("interface-contract-index.md", "# Interface Contract Index\n\n*Provider/Consumer wire contracts.*\n\n_None yet — author the first one with `/write-ic`._\n"),
     ("intent-index.md", "# Intent Index\n\n*Captured engineer intent.*\n\n_None yet — author the first one with `/write-intent`._\n"),
     ("mission-index.md", "# Mission Index\n\n*Cross-Intent coordination.*\n\n_None yet — author the first one with `/write-mission`._\n"),
@@ -3324,7 +3445,7 @@ _INIT_INDEXES = (
 _INIT_INDEXES = tuple(
     (filename, content + "\n" + getattr(_init_index_ops, f"_{kind}_HEADER") + "\n"
      + getattr(_init_index_ops, f"_{kind}_SEP") + "\n")
-    for (filename, content), kind in zip(_INIT_INDEXES, ("ADR", "AE", "WS", "IC", "INTENT", "MSN"))
+    for (filename, content), kind in zip(_INIT_INDEXES, ("ADR", "AE", BS.old_id_prefixes[0], "IC", "INTENT", "MSN"))
 )
 
 # Audit-profile config files scaffolded under the full profile only. The
@@ -3551,7 +3672,7 @@ _INIT_CLAUDE_MD_PLACEHOLDER = """\
 ## DekSpec Guardrails
 
 - **Provisional-first authoring.** NEW Intents (INT-NNN) and NEW Missions (MSN-NNN) ALWAYS start under `dekspec/provisional/<slug>/` via `dekspec library cow-stage <slug>` (or by hand-creating the directory + `INT-provisional-<slug>.md` skeleton). Canonical IDs (INT-NNN / MSN-NNN) are allocated only at hand-promote time, not at draft time. Walk DRAFT → PROPOSED → ACCEPTED in provisional; promote via `dekspec.promote.plan_promotion(incubation_dir, dekspec_dir)` + `apply_promotion(steps, incubation_dir, repo_root)` Python helpers once the family is ACCEPTED. **Missions are exempt from the ACCEPTED requirement (ds-6s7k):** a Mission has no ACCEPTED status (its lifecycle is PROPOSED → ACTIVE → COMPLETE), so a provisional Mission promotes at its natural `PROPOSED` frame state — do not block Mission promotion on an ACCEPTED it can never reach. This rule prevents collision on the canonical ID space when multiple authors draft concurrently and keeps the canonical tree free of half-baked drafts.
-- **No Specless Edits.** Before making any source-code edit that introduces new capability or modifies existing behavior, halt and check whether a DekSpec artifact should be authored or updated first. A bounded change needs only an Implementation Brief (`dekspec ib new <slug>`) plus updates to the specs it actually affects; author an Intent, Mission, Working Spec or ADR only when it adds something distinct (ADR-056). If yes, surface 1–3 context-aware artifact-action suggestions to the engineer; do not edit code until the spec context is established or explicitly deferred. Use `/dekspec:spec-mode --on` to toggle this guardrail on, `--off` to defer it for an exploratory session.
+- **No Specless Edits.** Before making any source-code edit that introduces new capability or modifies existing behavior, halt and check whether a DekSpec artifact should be authored or updated first. A bounded change needs only an Implementation Brief (`dekspec ib new <slug>`) plus updates to the specs it actually affects; author an Intent, Mission, Behavior Specification or ADR only when it adds something distinct (ADR-056). If yes, surface 1–3 context-aware artifact-action suggestions to the engineer; do not edit code until the spec context is established or explicitly deferred. Use `/dekspec:spec-mode --on` to toggle this guardrail on, `--off` to defer it for an exploratory session.
 - **Library-side audit is the dogfood gate.** Run `dekspec audit doctor --at .` before any commit that touches `dekspec/` artifacts. CLEAN is the target; ADVISORY (P3-only findings) is tolerated for in-flight provisional work. P0 / P1 / P2 findings must be cleared before merge.
 - **LOCKED artifacts are immutable.** Never edit an artifact whose Status is `LOCKED`. Unlock to `PROPOSED` first via the `--unlock` flag on the artifact's authoring skill, then re-lock via `--lock` after the edit cycle.
 - **Execute IBs directly; complete on evidence.** There are no code beads. Pick up work with `dekspec ib ready`, get the IB's binding obligations from `dekspec ib context IB-NNN` (read anything else you need — it informs, it does not bind), investigate before `dekspec ib plan`, and let `dekspec ib verify` / `dekspec ib complete` decide completion. Never edit an IB's acceptance tests to make them pass; a wrong acceptance condition is an escalation (ADR-055 / ADR-057).
@@ -3734,7 +3855,7 @@ def cmd_init(args: argparse.Namespace) -> int:
         created.append(f"dir  {d.relative_to(repo_root)}")
 
     for filename, content in _INIT_INDEXES:
-        p = dekspec_dir / filename
+        p = BS.index_path(dekspec_dir) if filename == BS.index_file else dekspec_dir / filename
         if p.exists() and not args.force:
             skipped.append(f"file {p.relative_to(repo_root)}")
             continue
@@ -3929,6 +4050,9 @@ def _init_write_config(
         "schema_version": dekspec_config.CONFIG_SCHEMA_VERSION,
         "methodology_profile": methodology,
     }
+    from .migrations.pattern_dialect import artifact_files
+    if not artifact_files(repo_root, args.dekspec_root or "dekspec"):
+        config_doc["pattern_dialect"] = "folder-local"
     if project is not None:
         config_doc["beads"] = {"project_prefix": project}
     try:
@@ -4016,7 +4140,9 @@ def _add_config_subparser(sub: argparse._SubParsersAction) -> None:
             "methodology_profile (alias: profile), repo.scope, issue_tracker, "
             "beads.project_prefix, specification.reference_mode, "
             "ephemeral_scratch_dir, glossary_path, triage_labels.hitl, "
-            "triage_labels.afk, triage_labels.buckets."
+            "triage_labels.afk, triage_labels.buckets, roles.project_rules.gates, "
+            "roles.project_rules.write_paths, roles.project_rules.credentials, "
+            "roles.project_rules.review_concerns, roles.project_rules.models."
         ),
     )
     c_sub = p.add_subparsers(dest="config_command", metavar="<config-command>")
@@ -4213,7 +4339,7 @@ def _render_graph_dot(
 # Kind grouping order for the human-readable `text` graph render.
 _GRAPH_KIND_ORDER = [
     "SYSTEM-VISION", "CONSTITUTION", "AE", "ADR", "IC",
-    "WS", "IB", "INT", "MSN", "SP", "DOMAIN-GLOSSARY",
+    *BS.prefixes, "IB", "INT", "MSN", "SP", "DOMAIN-GLOSSARY",
 ]
 
 
@@ -4268,7 +4394,7 @@ def cmd_graph_export(args: argparse.Namespace) -> int:
         prefix_filter: set[str] | None = None
     else:
         valid = {
-            "AE", "ADR", "WS", "IC", "IB", "INT", "MSN", "SP",
+            "AE", "ADR", *BS.prefixes, "IC", "IB", "INT", "MSN", "SP",
             "GLOSSARY", "VISION", "CONSTITUTION",
         }
         kinds = {k.strip().upper() for k in args.include.split(",") if k.strip()}
@@ -4282,7 +4408,7 @@ def cmd_graph_export(args: argparse.Namespace) -> int:
             return 2
         # Map kind name → id prefix used in irs_by_id
         prefix_map = {
-            "AE": "AE-", "ADR": "ADR-", "WS": "WS-", "IC": "IC-",
+            "AE": "AE-", "ADR": "ADR-", **{p: p + "-" for p in BS.prefixes}, "IC": "IC-",
             "IB": "IB-", "INT": "INT-", "MSN": "MSN-", "SP": "SP-",
             "GLOSSARY": "DOMAIN-GLOSSARY", "VISION": "SYSTEM-VISION",
             "CONSTITUTION": "CONSTITUTION",
@@ -4397,7 +4523,7 @@ def _add_relink_subparser(sub: argparse._SubParsersAction) -> None:
 _RELINK_ARTIFACT_DIRS: tuple[tuple[str, str, bool], ...] = (
     ("adrs", "ADR-*.md", False),
     ("architecture-elements", "AE-*.md", False),
-    ("working-specs", "WS-*.md", False),
+    *((folder, prefix + "-*.md", False) for folder in BS.folders for prefix in BS.prefixes),
     ("security-profiles", "SP-*.md", False),
     ("interface-contracts", "IC-*.md", False),
     ("impl-briefs", "IB-*.md", True),
@@ -4411,7 +4537,9 @@ _RELINK_SINGLETONS: tuple[tuple[str, str], ...] = (
     ("constitution.md", "CONSTITUTION"),
 )
 # An artifact ID embedded at the start of a filename: <ID>-slug.md or <ID>.md.
-_RELINK_ID_RE = _re.compile(r"^((?:ADR|AE|WS|SP|IC|IB|INT|MSN)-\d+)(?:-.*)?$")
+_RELINK_ID_RE = _re.compile(
+    rf"^((?:ADR|AE|{'|'.join(BS.prefixes)}|SP|IC|IB|INT|MSN)-\d+)(?:-.*)?$"
+)
 
 
 def _relink_artifact_paths(dekspec_dir: Path) -> dict[str, Path]:
@@ -4785,7 +4913,8 @@ def _add_dekspec_migrate_pipeline_subparser(sub: argparse._SubParsersAction) -> 
     Single top-level entry point that runs the three upgrade-related
     operations in sequence (verify-vendored drift check → migrate-ir on
     persisted IR JSON → migrate-artifacts on the dekspec/ markdown tree).
-    Exits non-zero on the first failing stage. The three underlying
+    Aborts on a stage that cannot run; artifact advisories and per-file failures
+    still allow pattern conversion, with a non-zero final exit. The three underlying
     subverbs (`repo verify`, `repo migrate-ir`, `repo migrate-artifacts`)
     are no longer separately registered — this verb is the only blessed
     entry point.
@@ -4847,6 +4976,15 @@ def _add_dekspec_migrate_pipeline_subparser(sub: argparse._SubParsersAction) -> 
         action="store_true",
         help="Skip the vendor-drift verify stage. Use when the consumer has pip-only install (no vendored tree).",
     )
+    # IB-208 surface skeleton (ADR-062): parsed, not yet applied; IB-208's
+    # implementation gives these flags their WS-032 behavior (O-12).
+    p.add_argument("--keep-list", default=None, help="Keep-list and identifier-map file (IB-208; not yet in effect).")
+    p.add_argument("--rename-token", action="append", default=[], help="Identifier to rename (IB-208; not yet in effect).")
+    p.add_argument("--keep", action="append", default=[], help="Path or path#term to keep (IB-208; not yet in effect).")
+    p.add_argument("--keep-token", action="append", default=[], help="Identifier to keep (IB-208; not yet in effect).")
+    p.add_argument("--include", action="append", default=[], help="Text file or glob to convert (IB-208; not yet in effect).")
+    p.add_argument("--no-advisory-file", action="store_true",
+                   help="Report artifact advisories without writing their separate JSON file.")
     p.set_defaults(func=cmd_dekspec_migrate_pipeline)
 
 
@@ -4887,10 +5025,12 @@ def cmd_dekspec_migrate_pipeline(
               repo state dir.
     Stage 3 — migrate-artifacts: `cmd_migrate_artifacts` walks the
               dekspec/ markdown tree.
+    Stage 4 — pattern-dialect: converts in-play file patterns and reports
+              stopped files and changed history readings (ADR-068).
 
-    First non-zero exit short-circuits. When migrate-artifacts populates
-    an advisory queue, the existing hint is surfaced verbatim (it's already
-    printed by `cmd_migrate_artifacts`).
+    Earlier stages short-circuit on failure. Artifact advisories and per-file
+    failures still allow pattern conversion; the final exit remains non-zero.
+    The existing advisory hint is printed by `cmd_migrate_artifacts`.
     """
     repo_root = Path(args.at).resolve() if args.at else Path.cwd()
     is_json = bool(args.json)
@@ -5015,7 +5155,7 @@ def _migrate_pipeline(
         dekspec_root=args.dekspec_root,
         dry_run=bool(args.dry_run),
         json=False,
-        no_advisory_file=False,
+        no_advisory_file=getattr(args, "no_advisory_file", False),
     )
     try:
         rc = cmd_migrate_artifacts(artifacts_ns)
@@ -5027,6 +5167,34 @@ def _migrate_pipeline(
             print(f"  error: migrate-artifacts stage raised {type(e).__name__}: {e}", file=sys.stderr)
         return 2
     stage_results.append({"stage": "migrate-artifacts", "exit_code": rc})
+    # Exit 1 reports per-file failures/advisories, not a failed stage setup.
+    # ADR-068 still requires conversion of every other pattern we can convert.
+    if rc == 2:
+        if is_json:
+            print_json(stage_results)
+        return rc
+
+    from .migrations.pattern_dialect import migrate as migrate_patterns
+    try:
+        pattern_report = migrate_patterns(repo_root, apply=bool(args.apply) and not bool(args.dry_run),
+                                          spec_root=args.dekspec_root or "dekspec")
+    except Exception as error:  # noqa: BLE001 — same diagnostic boundary as other stages
+        stage_results.append({"stage": "pattern-dialect", "exit_code": 2, "error": str(error)})
+        if is_json:
+            print_json(stage_results)
+        else:
+            print(f"error: file-pattern conversion: {error}", file=sys.stderr)
+        return 2
+    stage_results.append(pattern_report)
+    if not is_json:
+        print(f"[migrate] file patterns: {len(pattern_report['converted'])} converted files")
+        for category in ("history", "resolve_changes", "stopped"):
+            print(f"  {category}: {len(pattern_report[category])}")
+            for entry in pattern_report[category]:
+                print(f"    {entry['file']}:{entry['line']}: {entry['pattern']} "
+                      + json.dumps({k: v for k, v in entry.items() if k not in {"file", "line", "pattern"}}))
+    if pattern_report["stopped"]:
+        rc = 1
 
     if is_json:
         print_json(stage_results)
@@ -5163,8 +5331,12 @@ def cmd_sync(args: argparse.Namespace) -> int:
             migration = _sync_migrate_step(args, repo_root, baseline, target, as_json=True)
             doc["migrate"] = migration.report
             refused = migration.required_refusal
-        print(json.dumps(doc, indent=2))
-        return 1 if refused else 0
+        if refused:
+            print(json.dumps(doc, indent=2))
+            return 1
+        return _print_project_rules_notice(
+            repo_root, release_moved=baseline != target, dry_run=args.dry_run, doc=doc,
+        )
 
     mode_label = "DRY RUN \u2014 " if args.dry_run else ""
     print(f"{mode_label}DekSpec library sync \u2014 {repo_root}")
@@ -5178,8 +5350,11 @@ def cmd_sync(args: argparse.Namespace) -> int:
         )
         if records:
             migration = _sync_migrate_step(args, repo_root, baseline, target, as_json=False)
-            return 1 if migration.required_refusal else 0
-        return 0
+            if migration.required_refusal:
+                return 1
+        return _print_project_rules_notice(
+            repo_root, release_moved=baseline != target, dry_run=args.dry_run,
+        )
 
     print(
         f"  vendored content: {report.files_written} written, "
@@ -5195,7 +5370,9 @@ def cmd_sync(args: argparse.Namespace) -> int:
         print("  [dry-run] would run: dekspec migrate "
               "(verify \u2192 migrate-ir \u2192 migrate-artifacts)")
         print("  [dry-run] would report: vendored-content drift")
-        return 0
+        return _print_project_rules_notice(
+            repo_root, release_moved=baseline != target, dry_run=True,
+        )
 
     # Step 2: migrate \u2014 invoke the existing migrate pipeline IN-PROCESS as
     # a SEPARATE sub-step (migrate stays an independently-invocable verb; we
@@ -5215,6 +5392,29 @@ def cmd_sync(args: argparse.Namespace) -> int:
     print()
     print(f"Reconciled to installed engine v{target}.")
     print("  Review and commit the reconcile diff.")
+    return _print_project_rules_notice(repo_root, release_moved=baseline != target)
+
+
+def _print_project_rules_notice(
+    repo_root: Path, *, platform: str | None = None, release_moved: bool = False,
+    dry_run: bool = False, doc: dict | None = None,
+) -> int:
+    """Output boundary shared by successful install and sync paths."""
+    from .role_rules_notice import NoticeError, prepare
+
+    try:
+        decision = prepare(
+            repo_root, release=__version__, platform=platform,
+            release_moved=release_moved, dry_run=dry_run,
+        )
+    except NoticeError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    if doc is not None:
+        doc["project_rules_notice"] = decision.as_json()
+        print(json.dumps(doc, indent=2))
+    else:
+        print(decision.render(), end="")
     return 0
 
 
@@ -5280,7 +5480,7 @@ def _detect_artifact_kind(filename: str) -> str | None:
         return "adr"
     if _AE_PREFIX.match(filename):
         return "ae"
-    if _IB_PREFIX.match(filename):
+    if is_brief_filename(filename):
         return "ib"
     if _IC_PREFIX.match(filename):
         return "ic"
@@ -5869,7 +6069,7 @@ def cmd_session_report(args: argparse.Namespace) -> int:
 _ID_ARTIFACT_DIRS: tuple[tuple[str, bool], ...] = (
     ("adrs", False),
     ("architecture-elements", False),
-    ("working-specs", False),
+    *((folder, False) for folder in BS.folders),
     ("interface-contracts", False),
     ("security-profiles", False),
     ("impl-briefs", True),
@@ -5881,7 +6081,7 @@ _ID_ARTIFACT_DIRS: tuple[tuple[str, bool], ...] = (
 _ID_KIND_GLOBS: tuple[tuple[str, str, bool], ...] = (
     ("ADR", "adrs", False),
     ("AE", "architecture-elements", False),
-    ("WS", "working-specs", False),
+    *((prefix, folder, False) for prefix in BS.prefixes for folder in BS.folders),
     ("IC", "interface-contracts", False),
     ("SP", "security-profiles", False),
     ("IB", "impl-briefs", True),
@@ -5889,9 +6089,9 @@ _ID_KIND_GLOBS: tuple[tuple[str, str, bool], ...] = (
     ("MSN", "missions", True),
 )
 
-_ID_IB_SPEC_RE = _re.compile(r"^\*\*Spec:\*\*\s.*?(WS-\d{3,})", _re.MULTILINE)
+_ID_IB_SPEC_RE = _re.compile(rf"^\*\*Spec:\*\*\s.*?({BS.id_pattern})", _re.MULTILINE)
 _ID_CANONICAL_FILENAME_RE = _re.compile(
-    r"^(ADR|AE|WS|IC|IB|INT|MSN|SP)-(\d{3,})-([a-z0-9]+(?:-[a-z0-9]+)*)\.md$"
+    rf"^(ADR|AE|{'|'.join(BS.prefixes)}|IC|IB|INT|MSN|SP)-(\d{{3,}})-([a-z0-9]+(?:-[a-z0-9]+)*)\.md$"
 )
 
 
@@ -6042,7 +6242,8 @@ def cmd_id_allocate(args: argparse.Namespace) -> int:
     new_entries: list[_registry.RegistryEntry] = []
     for path in draft_files:
         kind, slug = parse_draft_filename(path.name)
-        pool = list(corpus_ids.get(kind, [])) + assigned_by_kind.get(kind, [])
+        pool_kinds = BS.prefixes if kind in BS.prefixes else (kind,)
+        pool = [cid for k in pool_kinds for cid in (*corpus_ids.get(k, []), *assigned_by_kind.get(k, []))]
         canonical = _registry.next_canonical_id(kind, reg, pool)
         assigned_by_kind.setdefault(kind, []).append(canonical)
         number = canonical.split("-", 1)[1]
@@ -6334,7 +6535,7 @@ def _add_archeology_subparser(sub: argparse._SubParsersAction) -> None:
         help="Emit the gap report as a JSON array instead of a Markdown table.",
     )
     p_cov.set_defaults(func=cmd_archeology_coverage)
-    from .toolkit_cli import scan_command
+    from .scan_cli import scan_command
     p_scan = arch_sub.add_parser("scan", help="Inspect Python API/state and static import callers.")
     p_scan.add_argument("target")
     p_scan.add_argument("--at", default=".")
@@ -6439,7 +6640,7 @@ _PROVISIONAL_BRANCH_PREFIX: dict[str, str] = {
     "ADR": "feat",
     "AE": "feat",
     "IC": "feat",
-    "WS": "feat",
+    **{p: "feat" for p in BS.prefixes},
     "IB": "feat",
     "SP": "feat",
 }
@@ -6454,7 +6655,7 @@ _CANONICAL_DIR_BY_KIND: dict[str, str] = {
     "ADR": "adrs",
     "AE": "architecture-elements",
     "IC": "interface-contracts",
-    "WS": "working-specs",
+    **dict(zip(BS.prefixes, BS.folders)),
     "IB": "impl-briefs/queued",
     "SP": "security-profiles",
 }
@@ -6531,7 +6732,7 @@ def _add_new_provisional_subparser(sub: argparse._SubParsersAction) -> None:
     )
     p.add_argument(
         "kind",
-        choices=sorted(["INT", "MSN", "ADR", "AE", "IC", "WS", "IB", "SP"]),
+        choices=sorted(_CANONICAL_DIR_BY_KIND),
         help="IR kind (uppercase abbreviation).",
     )
     p.add_argument(
@@ -6735,7 +6936,7 @@ def _render_provisional_skeleton(
         "ADR": "Architecture Decision Record",
         "AE":  "Architecture Element",
         "IC":  "Interface Contract",
-        "WS":  "Working Spec",
+        **{p: BS.display_name for p in BS.prefixes},
         "IB":  "Implementation Brief",
         "SP":  "Security Profile",
     }[kind]
@@ -6779,7 +6980,7 @@ def _render_provisional_skeleton(
             f"{amendment_log}"
         )
     return (
-        f"# {prov_id}: {title}\n\n"
+        f"# {BS.heading if kind in BS.prefixes else prov_id}: {title}\n\n"
         f"{banner}\n\n"
         f"## Status\n\nDRAFT\n\n"
         f"## Created\n\n{today}\n\n"
@@ -6962,17 +7163,14 @@ def _default_skills_source() -> Path:
     """
     from .vendoring import library_root
 
+    if os.environ.get("DEKSPEC_LIBRARY_ROOT", "").strip():
+        explicit = library_root()
+        plugin = explicit / "plugins" / "dekspec"
+        if (plugin / "skills").is_dir() and (plugin / "commands").is_dir():
+            return plugin
+        if (explicit / "skills").is_dir() and (explicit / "commands").is_dir():
+            return explicit
     return _resolve_skills_source(Path(__file__).resolve(), library_root)
-
-
-class _RemovedInstallFlag(argparse.Action):
-    """A removed `dekspec install` flag: using it is a usage error (exit 2)."""
-
-    def __call__(self, parser, namespace, values, option_string=None):
-        parser.error(
-            f"{option_string} was removed: every tool now ships with the dekspec "
-            f"plugin; run `dekspec install --platform <host>`"
-        )
 
 
 def _add_install_subparser(sub) -> None:
@@ -6988,7 +7186,7 @@ def _add_install_subparser(sub) -> None:
     p.add_argument(
         "--platform",
         required=True,
-        choices=["claude", "codex", "antigravity", "cursor", "copilot", "pi"],
+        choices=["claude", "codex", "antigravity", "cursor", "copilot", "pi", "amp"],
         help="Target harness host.",
     )
     p.add_argument(
@@ -7004,30 +7202,31 @@ def _add_install_subparser(sub) -> None:
             "override the skill/command/hook source."
         ),
     )
-    # ADR-064 (g): the two install flags are removed. They stay registered,
-    # hidden, only so that using one fails as a usage error naming the
-    # replacement; a deleted flag would get argparse's generic "unrecognized
-    # arguments" instead.
-    # Consume an optional value only to reject every spelling with the same
-    # replacement guidance, including bare and equals-value forms.
-    for flag in ("--dektools-source", "--dektools-only"):
-        p.add_argument(flag, action=_RemovedInstallFlag, nargs="?", help=argparse.SUPPRESS)
+    # IB-203 surface skeleton (ADR-062): parsed, not yet applied. IB-203 O-17
+    # (`--platform codex`) and IB-195 O-14 (`--platform amp`) give these flags
+    # their read-only check behavior.
+    p.add_argument("--check", action="store_true", help="Check the installed tree against its install record (IB-203/IB-195; not yet in effect).")
+    p.add_argument("--json", action="store_true", help="With --check, print one JSON object (IB-203/IB-195; not yet in effect).")
+    # IB-195 surface skeleton (ADR-062): parsed, not yet applied. IB-195 O-13
+    # gives this flag its Amp-only uninstall behavior.
+    p.add_argument("--uninstall", action="store_true", help="Remove the owned Amp plugin output (IB-195; not yet in effect).")
     p.set_defaults(func=cmd_install)
 
 
 def cmd_install(args: argparse.Namespace) -> int:
-    from . import dekspec_config
+    from .skill_headers import SkillHeaderError
+
+    if getattr(args, "check", False):
+        # IB-203 surface skeleton (ADR-062): the check writes nothing and
+        # reports nothing yet; IB-203 O-17 / IB-195 O-14 replace this.
+        return 0
+    if getattr(args, "uninstall", False):
+        # IB-195 surface skeleton (ADR-062): the uninstall removes nothing
+        # and reports nothing yet; IB-195 O-13 replaces this.
+        return 0
 
     source_dir = Path(args.source) if args.source else _default_skills_source()
     target_dir = Path(args.target)
-    if dekspec_config.carries_legacy_tool_selection(target_dir):
-        # ADR-064 (g): accepted for one release, ignored with a notice. The
-        # config is never rewritten (ADR-064 (d)).
-        print(
-            "Notice: `dektools.enabled` in .dekspec/config.yaml is ignored — every "
-            "tool now ships with the dekspec plugin; the key can be removed.",
-            file=sys.stderr,
-        )
     # ADR-064 (d): a host root holding a v0.126.0 ownership record is
     # migrated here. Everything is classified, and an untrustworthy record
     # refused, before the emission writes anything.
@@ -7049,11 +7248,17 @@ def cmd_install(args: argparse.Namespace) -> int:
             target_dir=target_dir,
             preserve=preserve,
         )
-    except HarnessUnsupported as e:
+    except (HarnessUnsupported, SkillHeaderError) as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
+    for problem in result.header_warnings:
+        print(f"Warning: {problem}; another product's skill, installed unchanged.", file=sys.stderr)
     if migration is not None:
         dektools_installations.apply_install(migration, result.written)
+    from .leftover_core_tree import leftover_core_tree_report
+
+    if warning := leftover_core_tree_report(target_dir, source_dir):
+        print(warning, file=sys.stderr)
     print(
         f"Installed DekSpec for '{result.platform}' into {target_dir} "
         f"({len(result.written)} files):"
@@ -7073,8 +7278,13 @@ def cmd_install(args: argparse.Namespace) -> int:
             except ValueError:
                 shown = path
             print(f"  {label}: {shown}")
+    for notice in result.notices:
+        print(notice)
     if migration is not None:
         _print_dektools_plan(migration, applied=True, by_install=True)
+    rc = _print_project_rules_notice(target_dir, platform=args.platform)
+    if rc:
+        return rc
     # Honesty guard: the skill/command/hook tree is copied from the plugin
     # source (a source checkout, else the copy bundled in the wheel, ADR-045).
     # When neither is found, only the host marker gets written — don't let that
@@ -7103,4 +7313,3 @@ def cmd_install(args: argparse.Namespace) -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-

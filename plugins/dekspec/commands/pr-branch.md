@@ -1,5 +1,5 @@
 ---
-description: Build a clean PR branch by filtering out spec-only commits (Intent/WS/IB/ADR/IC/AE status bumps, index reconciliation, pm STATE/LEDGER) so code reviewers see only the implementation diff — invokes the /pr-branch skill. Mixed code+spec commits are cherry-picked with the spec-only paths stripped. Pure git; emits `<branch>-pr` ready to push.
+description: Build a clean PR branch by filtering out spec-only commits (Intent/BS/IB/ADR/IC/AE status bumps, index reconciliation, pm STATE/LEDGER) so code reviewers see only the implementation diff — invokes the /pr-branch skill. Mixed code+spec commits are cherry-picked with the spec-only paths stripped. Pure git; emits `<branch>-pr` ready to push.
 allowed-tools: Skill
 argument-hint: [--help] [target-branch]
 disable-model-invocation: false
@@ -13,7 +13,8 @@ branch with zero DekSpec artifact churn in the diff.
 ## Steps
 
 1. Invoke the `pr-branch` skill via the Skill tool, forwarding `$ARGUMENTS` verbatim.
-2. Relay the skill's output to the operator. The skill is pure git: it never
+2. Relay the skill's command report to the operator. The skill calls
+   `dekbuilder pr-branch $ARGUMENTS` once. The command uses pure git: it never
    modifies the original branch, classifies each commit ahead of the target as
    CODE / SPEC_ONLY / MIXED, builds `<branch>-pr` from the target, cherry-picks
    CODE commits and the code half of MIXED commits (stripping the spec-only

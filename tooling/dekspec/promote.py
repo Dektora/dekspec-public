@@ -11,6 +11,8 @@ INT-provisional-promote-verb (provisional Intent under MSN-014).
 
 from __future__ import annotations
 
+from dekspec.spec_kinds import BEHAVIOR_SPEC_NAMES as BS
+
 import re
 import shutil
 import subprocess
@@ -28,7 +30,7 @@ KIND_TO_DIR: dict[str, str] = {
     "ADR": "adrs",
     "AE": "architecture-elements",
     "IC": "interface-contracts",
-    "WS": "working-specs",
+    **dict(zip(BS.prefixes, BS.folders)),
     "IB": "impl-briefs/queued",
     "SP": "security-profiles",
 }
@@ -110,6 +112,11 @@ def find_canonical_path(canonical_id: str, dekspec_dir: Path) -> Path | None:
     directory, or None if not found. For IBs, searches all 3 lifecycle
     subdirs (queued, active, completed).
     """
+    if canonical_id.startswith(BS.id_starts):
+        paths = BS.paths(dekspec_dir, canonical_id)
+        if len(paths) > 1:
+            raise PromoteError(f"Ambiguous {canonical_id}: " + ", ".join(map(str, paths)))
+        return paths[0] if paths else None
     parts = canonical_id.split("-", 1)
     if len(parts) != 2:
         return None
@@ -134,6 +141,10 @@ def find_canonical_path(canonical_id: str, dekspec_dir: Path) -> Path | None:
 def _find_next_canonical_id(kind: str, dekspec_dir: Path) -> int:
     """Scan the canonical directory for the highest existing
     `<kind>-NNN-*.md` and return the next-free integer."""
+    if kind in BS.prefixes:
+        from .registry import next_behavior_id
+        allocated = next_behavior_id(kind, dekspec_dir)
+        return int(allocated.rsplit("-", 1)[1])
     if kind not in KIND_TO_DIR:
         raise PromoteError(f"Unknown IR kind: {kind!r}")
     if kind == "IB":
@@ -204,10 +215,11 @@ def plan_promotion(
             continue
 
         # NEW mode: allocate next-free canonical ID.
-        if kind not in next_id_per_kind:
-            next_id_per_kind[kind] = _find_next_canonical_id(kind, dekspec_dir)
-        new_num = next_id_per_kind[kind]
-        next_id_per_kind[kind] += 1
+        pool_kind = BS.id_prefix if kind in BS.prefixes else kind
+        if pool_kind not in next_id_per_kind:
+            next_id_per_kind[pool_kind] = _find_next_canonical_id(kind, dekspec_dir)
+        new_num = next_id_per_kind[pool_kind]
+        next_id_per_kind[pool_kind] += 1
         new_id = f"{kind}-{new_num:03d}"
         new_filename = f"{new_id}-{slug}.md"
         target_dir = dekspec_dir / KIND_TO_DIR[kind]

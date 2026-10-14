@@ -59,7 +59,12 @@ class ContextPacket:
 
     @property
     def problems(self) -> list[str]:
-        return ([self.policy_error] if self.policy_error else []) + [f"{o.id}: {o.problem}" for o in self.obligations if o.problem]
+        # Legacy packets remain readable without a delegated acceptance contract.
+        problems = self.contract.contract_problems() if self.contract.is_executable else []
+        if self.policy_error:
+            problems.append(self.policy_error)
+        problems.extend(f"{o.id}: {o.problem}" for o in self.obligations if o.problem)
+        return problems
 
     @property
     def manifest(self) -> list[dict[str, Any]]:
@@ -78,7 +83,7 @@ class ContextPacket:
             "authority_policy": c.authority_policy,
             "contract_hash": c.contract_hash(),
             "manifest_hash": self.manifest_hash,
-            "precedence": list(PRECEDENCE) if c.is_delegated else list(LEGACY_RULES),
+            "precedence": list(PRECEDENCE) if c.is_executable else list(LEGACY_RULES),
             "escalate_when": list(ESCALATE_WHEN),
             "outcome": c.ir.get("outcome") or c.ir.get("goal"),
             "rationale": c.ir.get("rationale"),
@@ -97,6 +102,8 @@ class ContextPacket:
             "environment_prerequisites": list(c.prerequisites),
             "problems": self.problems,
         }
+        if c.is_lean:
+            result["design_intent"] = c.design_intent
         advisories = [{"obligation": o.id, "ref": o.ref, "status": o.status, "detail": o.advisory}
                       for o in self.obligations if o.advisory]
         if advisories:
@@ -121,6 +128,8 @@ class ContextPacket:
             "",
             d["outcome"] or "(none stated)",
         ]
+        if c.is_lean:
+            out += ["", "## Design intent", "", c.design_intent]
         if d["rationale"]:
             out += ["", "## Rationale", "", d["rationale"]]
         out += ["", "## Scope (allowed change surface)", ""]

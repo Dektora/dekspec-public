@@ -97,11 +97,11 @@ Bootstrap the fresh worktree before working (gitignored state is NOT copied):
   cd "${WORKTREE}"
   # 1. Copy env/secret files from the primary checkout (copy, never symlink):
   #      cp "${PRIMARY}/.env" .env  2>/dev/null || true   (if present)
-  # 2. Python: this repo runs from source via PYTHONPATH=tooling; the pipx/
-  #      editable 'dekspec' on PATH pins to the PRIMARY checkout, so exercise
-  #      THIS worktree's code with:  PYTHONPATH=tooling python3 -m dekspec.cli ...
+  # 2. Python: use separately installed local product wheels. The Builder CLI
+  #      consumes installed Spec S0; test from outside source trees with no
+  #      sibling PYTHONPATH/editable fallback. The engineer provisions wheels.
   # 3. Rebuild vendored content if you touched templates/docs/plugins:
-  #      the _vendored tree is a build output (setup.py VendoringBuildPy).
+  #      each product payload is an independent build output (product setup.py).
   # 4. br tracker workspaces (.beads*/): each SQLite DB re-derives from its
   #      tracked issues.jsonl — run 'br' once per workspace to hydrate it;
   #      never hand-copy a DB. (Code beads are retired, ADR-056: IB execution

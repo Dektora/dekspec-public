@@ -5,7 +5,7 @@ mode: lite
 reasoning_effort: high
 disable-model-invocation: false
 allowed-tools: Read Write Edit Bash
-argument-hint: [--help] [--at PATH]
+argument-hint: "[--help] [--at PATH]"
 related_skills: [using-dekspec, write-glossary, write-ibs]
 ---
 
@@ -103,6 +103,44 @@ edits an existing config, it does not scaffold one.
    unless the repo has multiple engineers signing off on transitions.
    `team` adds the INT-021 approval gates on top of it.
 
+### Project rules for the built-in roles
+
+Show the text of [role-project-rules](../_lib/role-project-rules.md) unchanged,
+as resolved by `dekspec resource lib role-project-rules --at <repo>` (the
+adjacent fragment is available to read too). If the notice cannot be loaded,
+report that failure and name `dekspec resource lib role-project-rules`; never
+paraphrase or reconstruct it.
+
+Ask where the project keeps each kind below, **one kind at a time**. First run
+its `config get`, show any existing value, and keep it unless the engineer gives
+a replacement. Accept one repository path, or `none: <reason>` when there is
+no home yet. For rules spread across files, record a folder or an index file.
+A path need not exist; it must be relative to the repository, with no leading
+or trailing whitespace, leading slash, Windows drive prefix, backslash or
+`..` segment. Ask for a reason if the answer is `none` or `none:` without a
+non-space reason; never record either of those or an empty value. An empty
+answer keeps an existing value; without one, ask again.
+
+For each new or changed answer, run its `config set` with the value safely
+shell-quoted as one argument, then repeat its `config get` to confirm the exact
+value reads back. If the CLI refuses an answer (including exit 2 for an unknown
+key or malformed value), show the refusal and ask again. Never edit
+`.dekspec/config.yaml` by hand for these keys.
+
+| Kind — explain before asking where it lives | Read existing value and confirm after setting | Record the answer |
+| --- | --- | --- |
+| `gates` — checks a role must run successfully. | `dekspec config get roles.project_rules.gates --at <repo>` | `dekspec config set roles.project_rules.gates <value> --at <repo>` |
+| `write_paths` — allowed write locations and surfaces that must be preserved. | `dekspec config get roles.project_rules.write_paths --at <repo>` | `dekspec config set roles.project_rules.write_paths <value> --at <repo>` |
+| `credentials` — available credentials and which roles may use them. | `dekspec config get roles.project_rules.credentials --at <repo>` | `dekspec config set roles.project_rules.credentials <value> --at <repo>` |
+| `review_concerns` — security and domain checks for reviewers. | `dekspec config get roles.project_rules.review_concerns --at <repo>` | `dekspec config set roles.project_rules.review_concerns <value> --at <repo>` |
+| `models` — where the project documents its rule about models for roles. | `dekspec config get roles.project_rules.models --at <repo>` | `dekspec config set roles.project_rules.models <value> --at <repo>` |
+
+These answers are pointers only: never open, read or validate their target
+files. This step writes no role file, agent definition, extension or stub;
+it neither recommends nor selects a model and writes no model mapping.
+Showing this notice records only the answers above; never create, change or
+delete `.dekspec-role-disclosure.json` in this step.
+
 ### Agent-config pointers
 
 After the config fields are set, write the consumer-agent pointers so
@@ -131,7 +169,7 @@ See [`_lib/help_mode_template.md`](../_lib/help_mode_template.md) for the canoni
 skill_name: "/dekspec:setup-dekspec"
 one_line:   "Interactive per-repo config front-end — issue tracker, scratch dir, triage labels, glossary, profile (round-trips through dekspec config)"
 modes:
-  - { flag: "", args: "[--at PATH]", description: "Setup mode — walk the .dekspec/config.yaml choices one question at a time (issue_tracker, ephemeral_scratch_dir, triage_labels, glossary_path, methodology_profile), persisting each via `dekspec config set` so it round-trips, then write agent-config pointers and optionally hand off to the quality/guardrail hook install." }
+  - { flag: "", args: "[--at PATH]", description: "Setup mode — walk the .dekspec/config.yaml choices one question at a time (issue_tracker, ephemeral_scratch_dir, triage_labels, glossary_path, methodology_profile), persisting each via `dekspec config set` so it round-trips, then show the project-rules notice and record where each kind of rule lives, write agent-config pointers and optionally hand off to the quality/guardrail hook install." }
   - { flag: "--help", args: "", description: "Show this help message." }
 examples:
   - "/dekspec:setup-dekspec --at ."
@@ -147,6 +185,7 @@ At runtime, render the manifest per `_lib/help_mode_template.md` and stop.
 ## When to use
 
 - During DekSpec onboarding, after `/dekspec:using-dekspec --init` has scaffolded the artifact tree and written a base `.dekspec/config.yaml` — to configure the per-repo choices a working adoption needs.
+- To show the project-rules notice and record or revisit where the project keeps each kind of rule for the built-in roles.
 - Any time the engineer wants to revisit the tracker / scratch-dir / triage-label / glossary / profile choices, each of which round-trips through `dekspec config`.
 
 ## When NOT to use

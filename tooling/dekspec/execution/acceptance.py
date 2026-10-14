@@ -292,6 +292,71 @@ for path in sys.stdin.buffer.read().split(b"\0"):
 """
 
 
+#: Installed before pytest starts, and inherited by Python subprocesses through
+#: PYTHONPATH. A prefix cannot confine a literal parent segment: the OS resolves
+#: it after following our cache links, potentially outside the prefix entirely.
+#: Keep that spelling for source loading (including symlink/.. semantics), but
+#: never ask the loader to read or write bytecode for it. Ordinary paths retain
+#: the existing cache and alias safeguards.
+_SOURCE_LOADER_GUARD = """\
+import _frozen_importlib_external as _external
+import os as _os
+
+_get_code = _external.SourceLoader.get_code
+
+def _has_parent_segment(path):
+    spelling = path.replace(_os.altsep, _os.sep) if _os.altsep else path
+    return '..' in spelling.split(_os.sep)
+
+def _source_only_parent_path(self, fullname):
+    path = self.get_filename(fullname)
+    if _has_parent_segment(path):
+        return self.source_to_code(self.get_data(path), path)
+    return _get_code(self, fullname)
+
+_external.SourceLoader.get_code = _source_only_parent_path
+
+# Pytest implements its own loader and cache protocol. Install its guard when
+# that module is loaded, without importing pytest in ordinary Python children.
+# Keep pytest's source rewriting and bookkeeping; bypass only bytecode I/O for
+# the unsafe spelling, before it can create even a cache directory.
+_exec_module = _external.SourceFileLoader.exec_module
+
+def _guard_rewrite_loader(self, module):
+    _exec_module(self, module)
+    if module.__name__ != '_pytest.assertion.rewrite':
+        return
+    original = module.AssertionRewritingHook.exec_module
+
+    def source_only_rewrite(hook, reviewed):
+        origin = reviewed.__spec__.origin
+        if not _has_parent_segment(origin):
+            return original(hook, reviewed)
+        path = module.Path(origin)
+        hook._rewritten_names[reviewed.__name__] = path
+        _, code = module._rewrite_test(path, hook.config)
+        exec(code, reviewed.__dict__)
+
+    module.AssertionRewritingHook.exec_module = source_only_rewrite
+
+_external.SourceFileLoader.exec_module = _guard_rewrite_loader
+
+# Preserve the interpreter's existing customization after installing the guard.
+# Exclude only this staged directory, and give the original its own namespace
+# so its globals cannot overwrite the guard's saved loader method.
+import _frozen_importlib as _bootstrap
+import sys as _sys
+
+_here = _os.path.realpath(_os.path.dirname(__file__))
+_paths = [p for p in _sys.path if _os.path.realpath(p) != _here]
+_spec = _external.PathFinder.find_spec('sitecustomize', _paths)
+if _spec is not None and _spec.loader is not None:
+    _original = _bootstrap.module_from_spec(_spec)
+    _sys.modules['sitecustomize'] = _original
+    _spec.loader.exec_module(_original)
+"""
+
+
 class _Probe(NamedTuple):
     tag: str
     magic: str
@@ -471,8 +536,8 @@ _SETTLE_NS = 2_000_000_000
 _INVENTORY_LIMIT = 500_000
 #: Directories reached through links while scanning one entry.
 _VISIT_LIMIT = 10_000
-#: Cached files found loadable in this process: (path, magic) → (dev, ino, size, mtime).
-_loadable: dict[tuple[str, str], tuple[int, int, int, int]] = {}
+#: Cached files found loadable in this process: (path, magic) → (dev, ino, size, mtime, ctime).
+_loadable: dict[tuple[str, str], tuple[int, int, int, int, int]] = {}
 
 _FILE, _DIR = "file", "dir"
 
@@ -988,7 +1053,7 @@ class _BytecodeCache:
         since is not read again. False when the check could not run."""
         tag, magic, suffixes = self.probe.tag, self.probe.magic, self.probe.suffixes
         marks = (f".{tag}.", f".{tag}-")
-        pending: list[tuple[str, tuple[int, int, int, int]]] = []
+        pending: list[tuple[str, tuple[int, int, int, int, int]]] = []
         for top in tops:
             stack = [str(top)]
             while stack:
@@ -1010,7 +1075,8 @@ class _BytecodeCache:
                             os.unlink(child.path)
                         elif any(m in child.name for m in marks):
                             st = child.stat(follow_symlinks=False)
-                            stamp = (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns)
+                            # ctime changes even when an in-place write restores mtime.
+                            stamp = (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
                             if _loadable.get((child.path, magic)) != stamp:
                                 pending.append((child.path, stamp))
                     except OSError:
@@ -1119,6 +1185,7 @@ def _run_pytest_once(root: Path, cond: AcceptanceCondition, python: str, timeout
         # interpreter usually does not have dekspec installed.
         plugin_dir = Path(tmp) / "plugin"
         plugin_dir.mkdir()
+        (plugin_dir / "sitecustomize.py").write_text(_SOURCE_LOADER_GUARD, encoding="utf-8")
         (plugin_dir / f"{_PLUGIN_MODULE}.py").write_bytes(Path(pytest_evidence.__file__).read_bytes())
         extra_env = {"DEKSPEC_EVIDENCE_FULL": "1"} if detail else {}
         prefix = Path(tmp) / "pycache"

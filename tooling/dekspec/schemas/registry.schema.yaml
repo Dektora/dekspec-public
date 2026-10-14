@@ -40,11 +40,11 @@ properties:
       properties:
         kind:
           description: 'Artifact kind prefix.'
-          enum: [ADR, AE, WS, IC, IB, INT, MSN, SP]
+          enum: [ADR, AE, BS, WS, IC, IB, INT, MSN, SP]
         id:
           description: 'Canonical artifact ID, e.g. ADR-014.'
           type: string
-          pattern: "^(ADR|AE|WS|IC|IB|INT|MSN|SP)-\\d{3,}$"
+          pattern: "^(ADR|AE|BS|WS|IC|IB|INT|MSN|SP)-\\d{3,}$"
         slug:
           description: 'Semantic slug carried across the renumber boundary.'
           type: string
@@ -65,4 +65,4 @@ properties:
             unique only within their parent WS, so the registry mirrors the
             SpecGraph composite key. Null / absent for all other kinds.
           type: ["string", "null"]
-          pattern: "^WS-\\d{3,}$"
+          pattern: "^(?:BS|WS)-\\d{3,}$"

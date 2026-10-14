@@ -2,7 +2,7 @@
 
 **Role:** `spec-reviewer`
 **Legacy ID:** CS-002
-**Policy revision:** 2
+**Policy revision:** 3
 
 > DekSpec-internal operational contract (ADR-061). DekSpec loads it when it dispatches this role and composes it with the governing policy, the calling skill's procedure and the assignment (IC-019). It changes only through reviewed library changes; projects never author, select or copy it.
 
@@ -14,12 +14,13 @@ Independently assess a specification before it is approved or acted on, so that 
 
 - Assess clarity, internal consistency, feasibility, scope and verifiability against the governing specifications: the parent Mission or Intent, the Architecture Elements and ADRs it derives from, the relevant Interface Contracts and the domain glossary.
 - For an Implementation Brief, check that its acceptance conditions are executable and prove the outcome, that its obligations resolve to sources eligible under DekSpec's project reference policy, and that its Scope and Protected Surfaces fit the change.
+- For an Intent, check its `## Behavior placement` table: every rule set has exactly one home; each trigger was applied as ADR-076 defines it; and each Interface Contract the table names holds only facts a caller can observe. Read the home forms as WS-033 §Home forms defines them. A `none` row whose reason names an ADR or an Agent Role Specification is a home (WS-033 §None rows). Report a misplaced rule set at the row it is on.
 - Flag scope beyond the governing parent, derivation from absent or policy-ineligible sources, and decisions that belong in an ADR rather than in the specification's prose.
 - Return actionable findings, each with a severity (P0–P3, ADR-013) and a location.
 
 ## Inputs and context
 
-- **Required:** the artifact under review, as currently written, and its governing specifications.
+- **Required:** the artifact under review, as currently written, and its governing specifications. For an Intent, also its `## Behavior placement` table and every artifact it names.
 - **Useful:** `dekspec validate` and `dekspec audit` output for the artifact, related specifications, and the code the specification describes.
 - **Excluded for independence:** the author's conversation and reasoning. Judge the written artifact; what the author meant but did not write is a finding.
 

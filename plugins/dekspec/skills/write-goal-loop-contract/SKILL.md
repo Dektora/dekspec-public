@@ -21,7 +21,7 @@ verification loop*, not a "run forever" button.
 
 ## Mode Detection
 
-See [`_lib/mode_detection_template.md`](../_lib/mode_detection_template.md). Default mode: **Goal-Loop mode**.
+See `dekspec resource lib mode_detection_template.md` (Spec-owned `_lib/mode_detection_template.md`). Default mode: **Goal-Loop mode**.
 
 - **Help mode** — `--help` flag. Render the Help manifest below and stop.
 - **Goal-Loop mode** — no flag (default). The positional `$ARGUMENTS` is the task
@@ -47,7 +47,7 @@ agentic loop. Pick the driver that fits the run:
   job with a single completion checkpoint.
 - **`/schedule` (cron routine)** — for runs that fire on a clock (nightly,
   hourly) rather than continuously.
-- **`/dekspec:orchestrate-coding-session`** — when the run IS a dekspec construction
+- **`/dekbuilder:orchestrate-coding-session`** — when the run IS a dekspec construction
   session (execute ready IBs — `dekspec ib ready` — in isolated worktrees), that
   skill is the native driver, and each IB's completion gate (`dekspec ib gate`) is
   its stop condition; write-goal-loop-contract just sharpens the objective + stop condition feeding it.
@@ -161,7 +161,7 @@ underspecified" — catches ambiguity up front and prevents drift.
 1. **Branch or worktree first — never `main`.** Long autonomy means a big diff;
    keep it isolated (`git worktree add` or a feature branch).
 2. Pick the driver: `/loop <contract>` (cross-turn self-paced) · background agent
-   (single long job) · `/schedule` (clock) · `/dekspec:orchestrate-coding-session` (a
+   (single long job) · `/schedule` (clock) · `/dekbuilder:orchestrate-coding-session` (a
    dekspec construction run) · paste-as-prompt (quick).
 3. Walk away — but see "Controlling" and **always review the diff**.
 
@@ -206,18 +206,18 @@ diffs compound.
 
 ## Help Mode
 
-See [`_lib/help_mode_template.md`](../_lib/help_mode_template.md) for the canonical Help rendering contract. Manifest for this skill:
+See `dekspec resource lib help_mode_template.md` (Spec-owned `_lib/help_mode_template.md`) for the canonical Help rendering contract. Manifest for this skill:
 
 ```yaml
-skill_name: "/dekspec:write-goal-loop-contract"
+skill_name: "/dekbuilder:write-goal-loop-contract"
 one_line:   "Write a verifiable goal contract (Objective / Constraints / Validate / Stop) for a long-running autonomous run, and drive it via /loop, a background agent, /schedule, or orchestrate-coding-session. A spec with a stop condition, not a run-forever button."
 modes:
   - { flag: "",       args: "[task or intent]", description: "Draft a 4-part goal contract for the task (or explain the loop / fit-check it); forbid reward-hacking + scope creep; name the right driver. If the ask has no verifiable stop condition, push back and help narrow it." }
   - { flag: "--help", args: "",                 description: "Show this help message." }
 examples:
-  - "/dekspec:write-goal-loop-contract migrate this service from Flask to FastAPI overnight"
-  - "/dekspec:write-goal-loop-contract raise coverage in src/payments from 40% to 80%"
-  - "/dekspec:write-goal-loop-contract --help"
+  - "/dekbuilder:write-goal-loop-contract migrate this service from Flask to FastAPI overnight"
+  - "/dekbuilder:write-goal-loop-contract raise coverage in src/payments from 40% to 80%"
+  - "/dekbuilder:write-goal-loop-contract --help"
 ```
 
 At runtime, render the manifest per `_lib/help_mode_template.md` and stop.
@@ -226,11 +226,11 @@ At runtime, render the manifest per `_lib/help_mode_template.md` and stop.
 
 - For a task with no verifiable "done" definition — narrow it to one first, or it
   is not a write-goal-loop-contract candidate.
-- To execute accepted dekspec IBs — that is `/dekspec:orchestrate-coding-session`;
+- To execute accepted dekspec IBs — that is `/dekbuilder:orchestrate-coding-session`;
   write-goal-loop-contract only sharpens the objective + stop condition it runs against.
 
 ## Related
 
-- `/dekspec:orchestrate-coding-session` — the native driver when the run is a dekspec construction session.
-- `/dekspec:implement` — drives ready Intents or IBs to integrated, verified completion (a governed alternative to a free-form goal loop, ADR-059).
-- `/dekspec:prototype` — when the goal is to explore a design shape disposably rather than drive to a verifiable outcome. It is an operator slash command: name it to the engineer rather than invoking it.
+- `/dekbuilder:orchestrate-coding-session` — the native driver when the run is a dekspec construction session.
+- `/dekbuilder:implement` — drives ready Intents or IBs to integrated, verified completion (a governed alternative to a free-form goal loop, ADR-059).
+- `/dektools:prototype` — when the goal is to explore a design shape disposably rather than drive to a verifiable outcome. It is an operator slash command: name it to the engineer rather than invoking it.

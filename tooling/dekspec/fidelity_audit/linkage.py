@@ -23,7 +23,9 @@ Each check returns Finding objects with:
 
 from __future__ import annotations
 
-import glob as _glob
+from dekspec.file_pattern_paths import repository_paths, resolve_pattern
+from dekspec.spec_kinds import BEHAVIOR_SPEC_NAMES as BS
+
 import importlib.util as _importlib_util
 import os as _os
 import re
@@ -34,7 +36,6 @@ from pathlib import Path
 from typing import Any
 
 from ..constraint_compiler.graph import SpecGraph
-from ..glob_braces import expand_braces as _expand_braces
 from ..severity import P0, P1, P2, P3, Severity
 from ..specification_policy import ReferencePolicy, ReferencePolicyError, load_policy
 
@@ -173,6 +174,7 @@ def audit_linkage(
     # Retired Context Specifications left in the tree (ADR-061) — advisory P3:
     # DekSpec no longer reads them, so a leftover file is reported, not trusted.
     findings.extend(_l_legacy_context_specs(graph))
+    findings.extend(_l_role_project_rules_unrecorded(graph))
     findings.extend(_t_glossary_self_consistency(graph))
     # Terminology pipeline (INT-191) — the cross-artifact half of what
     # `write-ggc`'s Audit Mode did in prose. The corrections log is read as
@@ -287,6 +289,79 @@ def audit_linkage(
 # --------------------------------------------------------------------------- #
 
 
+def _l_role_project_rules_unrecorded(graph: SpecGraph) -> list[Finding]:
+    """Disclose dispatched work without a rules record; never interpret its values."""
+    import json
+    import stat
+
+    import yaml
+
+    from ..execution.record import EXECUTION_DIRNAME
+
+    if graph.repo_root is None:
+        return []
+    config_path = graph.repo_root / ".dekspec/config.yaml"
+    try:
+        mode = config_path.stat().st_mode
+    except FileNotFoundError:
+        pass  # A missing config means no record, unlike an unreadable config.
+    except OSError:
+        return []
+    else:
+        if not stat.S_ISREG(mode):
+            return []
+        try:
+            config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, yaml.YAMLError):
+            return []
+        if not isinstance(config, dict):
+            return []
+        roles = config.get("roles")
+        if isinstance(roles, dict) and "project_rules" in roles:
+            return []
+
+    execution = graph.repo_root / EXECUTION_DIRNAME
+    try:
+        if not execution.is_dir():
+            return []
+        records = sorted(execution.glob("*/record.jsonl"))
+    except OSError:
+        return []
+    count = 0
+    for path in records:
+        try:
+            if not path.is_file():
+                continue
+            # Decode the entire file before counting: invalid UTF-8 anywhere
+            # makes this record unreadable, even after a valid dispatch line.
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeError):
+            continue
+        for line in lines:
+            try:
+                event = json.loads(line)
+            except (ValueError, RecursionError):
+                continue
+            if isinstance(event, dict) and event.get("type") == "dispatch.issued":
+                count += 1
+                break
+    if not count:
+        return []
+    return [Finding(
+        severity=P3,
+        rule="L-ROLE-PROJECT-RULES-UNRECORDED",
+        artifact_id=".dekspec/config.yaml",
+        message=(
+            f"{count} execution record(s) hold dispatched work, but roles.project_rules "
+            "is unrecorded. The built-in roles do not know this project's own rules. "
+            "Run /setup-dekspec and read [Project rules for the built-in roles]"
+            "(../../../../docs/dekspec-operating-guide.md#project-rules-for-the-built-in-roles) "
+            "with `dekspec resource doc operating-guide`."
+        ),
+        fix_kind="semantic",
+    )]
+
+
 def _lx_parse_failures(graph: SpecGraph) -> list[Finding]:
     out: list[Finding] = []
     for fail in graph.parse_failures():
@@ -306,7 +381,7 @@ def _lx_parse_failures(graph: SpecGraph) -> list[Finding]:
 # (the `**Spec:** <path-to-WS-NNN-…>.md` line). Used only by LX-DUP so we
 # can group IBs by (parent_ws, ib_id) without paying for a full parse.
 # Tolerant of: optional path prefix, optional bracket links, slug variability.
-_IB_SPEC_PARENT_RE = re.compile(r"^\*\*Spec:\*\*\s.*?(WS-\d{3,})", re.MULTILINE)
+_IB_SPEC_PARENT_RE = re.compile(rf"^\*\*Spec:\*\*\s.*?({BS.id_pattern})", re.MULTILINE)
 
 
 def _extract_ib_parent_ws(path: Path) -> str | None:
@@ -349,7 +424,7 @@ def _lx_duplicate_ids(graph: SpecGraph) -> list[Finding]:
     dirs = [
         ("adrs", "ADR-", False, False),
         ("architecture-elements", "AE-", False, False),
-        ("working-specs", "WS-", False, False),
+        *((folder, prefix + "-", False, False) for folder in BS.folders for prefix in BS.prefixes),
         ("interface-contracts", "IC-", False, False),
         ("impl-briefs", "IB-", True, True),
         ("intents", "INT-", True, False),
@@ -414,7 +489,7 @@ _RECOGNIZED_KIND_DIRS = frozenset(
     {
         "adrs",
         "architecture-elements",
-        "working-specs",
+        *BS.folders,
         "security-profiles",
         "interface-contracts",
         "impl-briefs",
@@ -592,10 +667,10 @@ def _l3_ws_ae_links(graph: SpecGraph) -> list[Finding]:
             out.append(
                 Finding(
                     severity=P2,
-                    rule="LINK-WS-AE-MISSING",
+                    rule="LINK-BS-AE-MISSING",
                     artifact_id=ws_id,
                     message=(
-                        "WS has no Related Architecture Elements (L3 mandatory at LOCK). "
+                        f"{BS.display_name} has no Related Architecture Elements (L3 mandatory at LOCK). "
                         "Backfill expected before next status advance."
                     ),
                     fix_kind="semantic",
@@ -608,9 +683,9 @@ def _l3_ws_ae_links(graph: SpecGraph) -> list[Finding]:
                 out.append(
                     Finding(
                         severity=P1,
-                        rule="LINK-WS-AE-EXISTS",
+                        rule="LINK-BS-AE-EXISTS",
                         artifact_id=ws_id,
-                        message=(f"WS references AE {ae_id} which does not exist in the registry."),
+                        message=(f"{BS.display_name} references AE {ae_id} which does not exist in the registry."),
                         fix_kind="semantic",
                     )
                 )
@@ -740,7 +815,7 @@ def _l5_ib_ws_links(graph: SpecGraph) -> list[Finding]:
                                         resolvable `intent` (no `**Intent:**`
                                         line resolving to an INT). One of the
                                         two parent links is required.
-      - LINK-IB-WS-EXISTS    (critical):  spec.id not in registry.
+      - LINK-IB-BS-EXISTS    (critical):  spec.id not in registry.
       - LINK-IB-INTENT-EXISTS (critical): intent.id set but not in registry.
       - LINK-IB-AE-MISSING   (minor):     no source_aes AND parent WS has no
                                         related_architecture_elements — the
@@ -762,7 +837,7 @@ def _l5_ib_ws_links(graph: SpecGraph) -> list[Finding]:
         intent_satisfies = bool(int_id) and graph.has(int_id)
         # ADR-056: a delegated IB is a self-sufficient work contract — no
         # Mission / Intent / WS is required. Its optional `Parent` must resolve.
-        delegated = ib.get("authority_policy") == "delegated"
+        delegated = ib.get("authority_policy") in ("delegated", "lean")
         parent_id = (ib.get("parent") or {}).get("id")
         if parent_id and not graph.has(parent_id):
             out.append(
@@ -782,9 +857,9 @@ def _l5_ib_ws_links(graph: SpecGraph) -> list[Finding]:
                     rule="LINK-IB-SPEC-MISSING",
                     artifact_id=ib_id,
                     message=(
-                        "IB has neither a `**Spec:**` line resolving to a WS nor "
+                        f"IB has neither a `**Spec:**` line resolving to a {BS.display_name} nor "
                         "an `**Intent:**` line resolving to an existing Intent. "
-                        "Add one: `**Spec:** `path/to/WS-NNN-*.md`` (WS-backed "
+                        f"Add one: `**Spec:** `path/to/{BS.id_prefix}-NNN-*.md`` (spec-backed "
                         "IB) or ensure the `**Intent:**` line points at an "
                         "existing `INT-NNN` artifact (Intent-only decomposition)."
                     ),
@@ -795,10 +870,10 @@ def _l5_ib_ws_links(graph: SpecGraph) -> list[Finding]:
             out.append(
                 Finding(
                     severity=P1,
-                    rule="LINK-IB-WS-EXISTS",
+                    rule="LINK-IB-BS-EXISTS",
                     artifact_id=ib_id,
                     message=(
-                        f"IB references parent {ws_id} which does not exist in "
+                        f"IB references parent {BS.display_name} {ws_id} which does not exist in "
                         f"the registry. Either fix the path or author {ws_id}."
                     ),
                     fix_kind="semantic",
@@ -886,7 +961,9 @@ def _t_ib_execution_contract(graph: SpecGraph) -> list[Finding]:
         or deprecated home is P2 on an ACCEPTED IB and P3 on a COMPLETE one:
         a completion is integrated history that is not amended (ADR-057,
         ADR-064), and a COMPLETE IB generates context again only if it is
-        reopened, which returns it to ACCEPTED and to the P2 grade. The grade
+        reopened, which returns it to ACCEPTED and to the P2 grade. Prefix-only
+        sections likewise become P3 only on COMPLETE history (ADR-076), with
+        the former heading named; other unresolved sections remain P2. The grade
         changes the report only; dispatch still refuses the reference
         (`dekspec.execution.references`, ADR-055).
       - T-IB-COMPLETE-WITHOUT-EVIDENCE (P1): a delegated IB is COMPLETE but its
@@ -909,7 +986,7 @@ def _t_ib_execution_contract(graph: SpecGraph) -> list[Finding]:
                         "Run `dekspec migrate` to stamp it explicitly.",
                 fix_kind="mechanical",
             ))
-        if ib.get("authority_policy") != "delegated" or ib.get("status") in ("DRAFT", "SUPERSEDED", "DEPRECATED"):
+        if ib.get("authority_policy") not in ("delegated", "lean") or ib.get("status") in ("DRAFT", "SUPERSEDED", "DEPRECATED"):
             continue
         problems = []
         if not ib.get("outcome"):
@@ -949,7 +1026,9 @@ def _t_ib_execution_contract(graph: SpecGraph) -> list[Finding]:
                             f"Obligation {ob.id}: {policy.notice(ob.ref, ob.status)}", "semantic",
                         ))
                     continue
-                if ib["status"] == "COMPLETE" and ob.status in ("SUPERSEDED", "DEPRECATED"):
+                if ib["status"] == "COMPLETE" and (
+                    ob.status in ("SUPERSEDED", "DEPRECATED") or ob.prefix_heading is not None
+                ):
                     out.append(Finding(
                         severity=P3, rule="T-IB-OBLIGATION-UNRESOLVED", artifact_id=ib_id,
                         message=f"Obligation {ob.id}: {ob.problem}. The IB is COMPLETE, so this is integrated "
@@ -1163,8 +1242,8 @@ def _t_artifact_completeness(graph: SpecGraph) -> list[Finding]:
         - T-AE-RESPONSIBILITIES (minor): at least one responsibility entry.
 
       WS rules:
-        - T20-WS-BUSINESS-RULES (important): at least one business rule.
-        - T21-WS-FAILURE-BEHAVIOR (important): at least one failure-behavior entry.
+        - T20-BS-BUSINESS-RULES (important): at least one business rule.
+        - T21-BS-FAILURE-BEHAVIOR (important): at least one failure-behavior entry.
 
       ADR rules:
         - T30-ADR-DECISION (critical): §Decision content present.
@@ -1272,9 +1351,9 @@ def _t_artifact_completeness(graph: SpecGraph) -> list[Finding]:
             out.append(
                 Finding(
                     severity=P2,
-                    rule="T20-WS-BUSINESS-RULES",
+                    rule="T20-BS-BUSINESS-RULES",
                     artifact_id=ws_id,
-                    message="WS has no §Business Rules entries (T20 requires ≥1).",
+                    message=f"{BS.display_name} has no §Business Rules entries (T20 requires ≥1).",
                     fix_kind="semantic",
                 )
             )
@@ -1282,9 +1361,9 @@ def _t_artifact_completeness(graph: SpecGraph) -> list[Finding]:
             out.append(
                 Finding(
                     severity=P2,
-                    rule="T21-WS-FAILURE-BEHAVIOR",
+                    rule="T21-BS-FAILURE-BEHAVIOR",
                     artifact_id=ws_id,
-                    message="WS has no §Failure Behavior entries (T21 requires ≥1).",
+                    message=f"{BS.display_name} has no §Failure Behavior entries (T21 requires ≥1).",
                     fix_kind="semantic",
                 )
             )
@@ -1325,7 +1404,7 @@ def _t_artifact_completeness(graph: SpecGraph) -> list[Finding]:
         ib_id = ib["id"]
         if ib.get("status") == "DEPRECATED":
             continue
-        if ib.get("authority_policy") == "delegated":
+        if ib.get("authority_policy") in ("delegated", "lean"):
             # The delegated form states its result as Outcome and its criteria
             # as Acceptance; T-IB-CONTRACT-INCOMPLETE checks those (ADR-056).
             continue
@@ -1390,7 +1469,7 @@ _D18_RATIONALE_PHRASES = re.compile(
     re.IGNORECASE,
 )
 
-_WS_REF = re.compile(r"\bWS-\d{3,}\b")
+_WS_REF = re.compile(rf"\b{BS.id_pattern}\b")
 _ADR_REF = re.compile(r"\bADR-\d{3,}\b")
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+(?=[A-Z(])")
 
@@ -1429,13 +1508,13 @@ def _d_artifact_drift(graph: SpecGraph) -> list[Finding]:
                     out.append(
                         Finding(
                             severity=P2,
-                            rule="D17-AE-NUMERIC-NO-WS-CITE",
+                            rule="D17-AE-NUMERIC-NO-BS-CITE",
                             artifact_id=ae_id,
                             message=(
                                 f"AE.{field} contains a measurable target "
-                                f"`{num.group(0)}` outside a WS citation. "
-                                f"Per audit-v2 D17, route quantitative SLOs to a WS and cite "
-                                f"it here (e.g., 'WS-NNN §Latency targets'). Snippet: {snippet}"
+                                f"`{num.group(0)}` outside a {BS.display_name} citation. "
+                                f"Per audit-v2 D17, route quantitative SLOs to a {BS.display_name} and cite "
+                                f"it here (e.g., '{BS.id_prefix}-NNN §Latency targets'). Snippet: {snippet}"
                             ),
                             fix_kind="semantic",
                         )
@@ -1478,12 +1557,12 @@ def _d_artifact_drift(graph: SpecGraph) -> list[Finding]:
                     out.append(
                         Finding(
                             severity=P2,
-                            rule="D19-INT-NUMERIC-NO-WS-CITE",
+                            rule="D19-INT-NUMERIC-NO-BS-CITE",
                             artifact_id=int_id,
                             message=(
                                 f"Intent.{field} contains a measurable target "
-                                f"`{num.group(0)}` outside a WS citation. "
-                                f"Per audit-v2 D19, route quantitative targets to a WS "
+                                f"`{num.group(0)}` outside a {BS.display_name} citation. "
+                                f"Per audit-v2 D19, route quantitative targets to a {BS.display_name} "
                                 f"(NFR Intents may put a Target in the type-specific block — "
                                 f"that is exempt). Snippet: {snippet}"
                             ),
@@ -1523,9 +1602,7 @@ def _truncate(text: str, max_chars: int) -> str:
 # --------------------------------------------------------------------------- #
 
 
-# `_expand_braces` is imported from `dekspec.glob_braces` (see the top-of-file
-# imports). Brace expansion is shared with the `--testpass` diff-confinement
-# gate so the two can never diverge again — the root cause of ds-059n.
+
 
 
 # Phase 1.B / ds-puvi: recommended open-enum vocabulary for Intent.risk_tier.
@@ -1583,6 +1660,7 @@ def _l7_intent_linkage(graph: SpecGraph) -> list[Finding]:
     """
     out: list[Finding] = []
     repo_root = graph.repo_root
+    paths = repository_paths(repo_root) if repo_root is not None else []
     for intent in graph.intents():
         int_id = intent["id"]
         if intent.get("status") in {"DEPRECATED", "SUPERSEDED"}:
@@ -1651,13 +1729,7 @@ def _l7_intent_linkage(graph: SpecGraph) -> list[Finding]:
             status = (intent.get("status") or "DRAFT").upper()
             severity = P2 if status == "LOCKED" else P3
             for pattern in components:
-                # `glob.glob` understands `*`, `**`, `?`, `[seq]` but NOT
-                # shell brace expansion `{a,b}`. Expand braces ourselves
-                # and union the matches so a brace glob resolves when any
-                # branch matches ≥1 path (ds-l7b).
-                matches: list[str] = []
-                for expansion in _expand_braces(pattern):
-                    matches.extend(_glob.glob(str(repo_root / expansion), recursive=True))
+                matches = resolve_pattern(repo_root, pattern, paths=paths)
                 if not matches:
                     out.append(
                         Finding(
@@ -1838,7 +1910,8 @@ def _l8_mission_intent_bidirectional(graph: SpecGraph) -> list[Finding]:
                 )
                 continue
             int_mission = (intent.get("mission") or {}).get("id")
-            if int_mission != msn_id:
+            if (msn.get("status") not in {"SUPERSEDED", "COMPLETE", "KILLED"}
+                    and int_mission != msn_id):
                 out.append(
                     Finding(
                         severity=P2,
@@ -2240,8 +2313,8 @@ _TITLECASE_PHRASE = re.compile(r"(?<![.!?]\s)(?<!§)\b((?:[A-Z][a-z]+\s+){1,3}[A
 # definitions. The four classes below cover the patterns the bead surfaced.
 _L10_STOPWORDS = {
     # ----- DekSpec IR kind names ---------------------------------------
-    "Working Spec",
-    "Working Specs",
+    BS.display_name, BS.display_name + "s",
+    *BS.old_display_names, *(name + "s" for name in BS.old_display_names),
     "Implementation Brief",
     "Implementation Briefs",
     "Interface Contract",
@@ -2464,7 +2537,7 @@ def _l11_mission_stale(
 
 
 # --------------------------------------------------------------------------- #
-# LINK-WS-BLOCKING-PRE-IB-CLEAN (P1): WS gate — `blocking_pre_ib` open_issues
+# LINK-BS-BLOCKING-PRE-IB-CLEAN (P1): WS gate — `blocking_pre_ib` open_issues
 # must be resolved before status walks past PROPOSED.
 # --------------------------------------------------------------------------- #
 
@@ -2477,7 +2550,7 @@ _L12_GATE_STATUSES = frozenset({"ACCEPTED", "LOCKED"})
 
 
 def _l12_ws_blocking_pre_ib_clean(graph: SpecGraph) -> list[Finding]:
-    """LINK-WS-BLOCKING-PRE-IB-CLEAN (P1): a WS at status=ACCEPTED or higher
+    """LINK-BS-BLOCKING-PRE-IB-CLEAN (P1): a WS at status=ACCEPTED or higher
     must not carry P1 open_issues.
 
     P1 is the canonical severity for the `blocking_pre_ib` /
@@ -2516,15 +2589,15 @@ def _l12_ws_blocking_pre_ib_clean(graph: SpecGraph) -> list[Finding]:
             out.append(
                 Finding(
                     severity="P1",
-                    rule="LINK-WS-BLOCKING-PRE-IB-CLEAN",
+                    rule="LINK-BS-BLOCKING-PRE-IB-CLEAN",
                     artifact_id=ws["id"],
                     message=(
-                        f"WS status={status} carries a P1 open_issue (canonical for the "
+                        f"{BS.display_name} status={status} carries a P1 open_issue (canonical for the "
                         f"`blocking_pre_ib` / `blocking_pre_code` / `blocking` aliases per "
-                        f'ADR-013): "{preview}". WSes that have walked past PROPOSED must '
+                        f'ADR-013): "{preview}". {BS.display_name}s that have walked past PROPOSED must '
                         f'resolve every P1 entry before downstream work — "Clarify Before '
-                        f'Plan" gate. Fix: settle the question in the WS body (and demote the '
-                        f"open_issue to P2/P3 or check it `[x]`), or unlock the WS back to "
+                        f'Plan" gate. Fix: settle the question in the {BS.display_name} body (and demote the '
+                        f"open_issue to P2/P3 or check it `[x]`), or unlock the {BS.display_name} back to "
                         f"PROPOSED until the blocker resolves."
                     ),
                     fix_kind="semantic",
@@ -2778,10 +2851,10 @@ def _d15_prose_drift_wsicib(graph: SpecGraph) -> list[Finding]:
                     out.append(
                         Finding(
                             severity=P2,
-                            rule="D-15a-WS-RATIONALE-NO-ADR-CITE",
+                            rule="D-15a-BS-RATIONALE-NO-ADR-CITE",
                             artifact_id=ws_id,
                             message=(
-                                f"WS.{field} contains decision-rationale prose "
+                                f"{BS.display_name}.{field} contains decision-rationale prose "
                                 f"`{rat.group(0)}` outside an ADR citation. "
                                 f"Per audit-v2 D-15a, route rationale to an ADR. "
                                 f"Snippet: {_truncate(sentence, 180)}"
@@ -2824,13 +2897,13 @@ def _d15_prose_drift_wsicib(graph: SpecGraph) -> list[Finding]:
                     out.append(
                         Finding(
                             severity=P2,
-                            rule="D-15d-IC-NUMERIC-NO-WS-CITE",
+                            rule="D-15d-IC-NUMERIC-NO-BS-CITE",
                             artifact_id=ic_id,
                             message=(
                                 f"IC.{field} contains a measurable target "
-                                f"`{num.group(0)}` outside a WS citation. "
+                                f"`{num.group(0)}` outside a {BS.display_name} citation. "
                                 f"Per audit-v2 D-15d, quantitative targets belong "
-                                f"in a Working Spec / NFR — cite it here. "
+                                f"in a {BS.display_name} / NFR — cite it here. "
                                 f"Snippet: {_truncate(sentence, 180)}"
                             ),
                             fix_kind="semantic",
@@ -4129,7 +4202,7 @@ def _l_no_draft_in_main(graph: SpecGraph) -> list[Finding]:
     dirs = [
         ("adrs", False),
         ("architecture-elements", False),
-        ("working-specs", False),
+        *((folder, False) for folder in BS.folders),
         ("interface-contracts", False),
         ("security-profiles", False),
         ("impl-briefs", True),
@@ -4265,7 +4338,7 @@ def _l_registry_append_only(graph: SpecGraph) -> list[Finding]:
 _APPROVAL_GATE_DIRS: list[tuple[str, str, bool]] = [
     ("ADR", "adrs", False),
     ("AE", "architecture-elements", False),
-    ("WS", "working-specs", False),
+    *((prefix, folder, False) for prefix in BS.prefixes for folder in BS.folders),
     ("IC", "interface-contracts", False),
     ("SecurityProfile", "security-profiles", False),
     ("Intent", "intents", True),
@@ -4490,7 +4563,7 @@ _INDEX_COHERENCE_TARGETS: tuple[tuple[str, str, str], ...] = (
     ("architecture-elements-index.md", r"(?<![A-Za-z0-9-])AE-\d{3,}(?!\d)", "aes"),
     ("interface-contract-index.md", r"(?<![A-Za-z0-9-])IC-\d{3,}(?!\d)", "ics"),
     ("intent-index.md", r"(?<![A-Za-z0-9-])INT-\d{3,}(?!\d)", "intents"),
-    ("working-spec-index.md", r"(?<![A-Za-z0-9-])WS-\d{3,}(?!\d)", "wses"),
+    (BS.index_file, rf"(?<![A-Za-z0-9-]){BS.id_pattern}(?!\d)", "wses"),
     ("mission-index.md", r"(?<![A-Za-z0-9-])MSN-\d{3,}(?!\d)", "missions"),
 )
 
@@ -4611,6 +4684,10 @@ def _l15_index_file_coherence(graph: SpecGraph) -> list[Finding]:
         return out
     for filename, id_pattern, iter_attr in _INDEX_COHERENCE_TARGETS:
         index_path = dekspec_dir / filename
+        if filename == BS.index_file and not index_path.exists():
+            # Preserve the legacy audit's coverage (O-15): ws-index.md is a
+            # write fallback, but was never audited for index coherence.
+            index_path = dekspec_dir / BS.old_index_files[0]
         if not index_path.exists():
             continue
         try:
@@ -4618,12 +4695,13 @@ def _l15_index_file_coherence(graph: SpecGraph) -> list[Finding]:
         except (OSError, UnicodeDecodeError):
             continue
         id_re = re.compile(id_pattern)
-        rows = _index_rows(index_text, id_re)
+        rows = {BS.to_new_id(key): value for key, value in _index_rows(index_text, id_re).items()}
+        filename = index_path.name
         for ir in sorted(graph.__getattribute__(iter_attr)(), key=lambda x: x["id"]):
             artifact_id = ir["id"]
             ir_status = (ir.get("status") or "").strip()
             ir_version = ir.get("version")
-            row = rows.get(artifact_id)
+            row = rows.get(BS.to_new_id(artifact_id))
             if row is None:
                 out.append(
                     Finding(
@@ -4850,7 +4928,7 @@ def _t_status_auto_fixable(graph: SpecGraph, artifact_id: str) -> tuple[bool, st
         band-3 analogue `ACTIVE` is gated on a child Intent locking.
       - the artifact is a Working Spec carrying an unresolved `P1`
         open_issue — raising it to `ACCEPTED` would trip
-        LINK-WS-BLOCKING-PRE-IB-CLEAN ("Clarify Before Plan" gate). The WS
+        LINK-BS-BLOCKING-PRE-IB-CLEAN ("Clarify Before Plan" gate). The WS
         is correctly sub-`ACCEPTED` until the blocker is settled.
     """
     if artifact_id.startswith("MSN-"):
@@ -4864,13 +4942,13 @@ def _t_status_auto_fixable(graph: SpecGraph, artifact_id: str) -> tuple[bool, st
     policy = _reference_policy(graph)
     if policy.evolving(artifact_id, ir.get("status")):
         return False, policy.notice(artifact_id, ir.get("status"))
-    if artifact_id.startswith("WS-"):
+    if artifact_id.startswith(BS.id_starts):
         for issue in ir.get("open_issues") or []:
             if issue.get("severity") == "P1":
                 return False, (
-                    "Working Spec carries an unresolved P1 open_issue — "
+                    f"{BS.display_name} carries an unresolved P1 open_issue — "
                     "an `ACCEPTED` transition would trip the "
-                    'LINK-WS-BLOCKING-PRE-IB-CLEAN "Clarify Before Plan" '
+                    'LINK-BS-BLOCKING-PRE-IB-CLEAN "Clarify Before Plan" '
                     "gate; settle the blocker first"
                 )
     return True, "clean metadata transition to ACCEPTED"
@@ -4923,9 +5001,9 @@ def _status_dependency_edges(graph: SpecGraph) -> list[tuple[str, str, str]]:
     # WS -> AE  +  WS -> ADR
     for ws in graph.wses():
         for ae_id in graph.aes_of_ws(ws["id"]):
-            edges.append((ws["id"], ae_id, "WS->AE"))
+            edges.append((ws["id"], ae_id, f"{BS.old_id_prefixes[0]}->AE"))
         for adr_id in SpecGraph._adrs_of(ws):
-            edges.append((ws["id"], adr_id, "WS->ADR"))
+            edges.append((ws["id"], adr_id, f"{BS.old_id_prefixes[0]}->ADR"))
 
     # IC -> AE  +  IC -> ADR
     for ic in graph.ics():
@@ -4945,7 +5023,8 @@ def _status_dependency_edges(graph: SpecGraph) -> list[tuple[str, str, str]]:
         for adr_id in SpecGraph._adrs_of(ib):
             edges.append((ib["id"], adr_id, "IB->ADR"))
 
-    return edges
+    return [(source, (graph.by_id(target) or {}).get("id", target), kind)
+            for source, target, kind in edges]
 
 
 def _t_status_inversion(graph: SpecGraph) -> list[Finding]:
@@ -4964,7 +5043,7 @@ def _t_status_inversion(graph: SpecGraph) -> list[Finding]:
       - `P3` (advisory, flag-only) when the provider's `ACCEPTED` transition
         is NOT a clean metadata move — a Mission (no `ACCEPTED` status), or
         a Working Spec carrying an unresolved `P1` open_issue (an `ACCEPTED`
-        transition would itself trip LINK-WS-BLOCKING-PRE-IB-CLEAN). The
+        transition would itself trip LINK-BS-BLOCKING-PRE-IB-CLEAN). The
         inversion is surfaced, not gated; the auto-fix never forges it.
 
     Off-ramp ends (`DEPRECATED` / `SUPERSEDED` / Mission `KILLED`) are
@@ -5091,7 +5170,7 @@ def _t_status_lag(graph: SpecGraph) -> list[Finding]:
     for ib in graph.ibs():
         ws_id = (ib.get("spec") or {}).get("id")
         if isinstance(ws_id, str) and ws_id:
-            ibs_of_ws.setdefault(ws_id, []).append(ib)
+            ibs_of_ws.setdefault(BS.to_new_id(ws_id), []).append(ib)
         int_id = (ib.get("intent") or {}).get("id")
         if isinstance(int_id, str) and int_id:
             ibs_of_intent.setdefault(int_id, []).append(ib)
@@ -5120,7 +5199,7 @@ def _t_status_lag(graph: SpecGraph) -> list[Finding]:
         signals: list[str] = []
 
         # Signal 1 — decomposition complete (all child IBs LOCKED).
-        child_ibs = ibs_of_ws.get(art_id, []) + ibs_of_intent.get(art_id, [])
+        child_ibs = ibs_of_ws.get(BS.to_new_id(art_id), []) + ibs_of_intent.get(art_id, [])
         live_ibs = [
             ib
             for ib in child_ibs
@@ -5247,7 +5326,7 @@ _T_STATUS_INDEX_FILES: dict[str, str] = {
     "ADR-": "adr-index.md",
     "AE-": "architecture-elements-index.md",
     "IC-": "interface-contract-index.md",
-    "WS-": "working-spec-index.md",
+    **{prefix: BS.index_file for prefix in BS.id_starts},
     "INT-": "intent-index.md",
     "MSN-": "mission-index.md",
 }
@@ -5511,7 +5590,7 @@ def _apply_t_status_fix(
     if dekspec_dir is not None:
         for prefix, index_name in _T_STATUS_INDEX_FILES.items():
             if fix.artifact_id.startswith(prefix):
-                index_path = dekspec_dir / index_name
+                index_path = BS.index_path(dekspec_dir) if index_name == BS.index_file else dekspec_dir / index_name
                 if dry_run:
                     # Dry-run: report whether a reconcilable row exists.
                     result["index_reconciled"] = index_path.exists() and bool(
@@ -5590,8 +5669,8 @@ def is_lock_ready(graph: SpecGraph, artifact_id: str) -> tuple[bool, str]:
     # ADR-046: WS and AE no longer lock — they rest at ACCEPTED as living
     # references. Only the decision/contract kinds (ADR, IC, and the singletons)
     # are lock-ready; never suggest locking a WS or AE.
-    if artifact_id.startswith(("WS-", "AE-")):
-        return False, "WS/AE rest at ACCEPTED under ADR-046 — not a lockable kind"
+    if artifact_id.startswith((*BS.id_starts, "AE-")):
+        return False, f"{BS.display_name}/AE rest at ACCEPTED under ADR-046 — not a lockable kind"
 
     status = ir.get("status")
     band = maturity_band(status)
@@ -5628,12 +5707,12 @@ def is_lock_ready(graph: SpecGraph, artifact_id: str) -> tuple[bool, str]:
             return True, "IC references satisfy policy and has no active L4 findings. " + " ".join(notices)
         return True, "IC has all party/consumer AEs >= ACCEPTED and no active L4 findings"
 
-    elif artifact_id.startswith("WS-"):
+    elif artifact_id.startswith(BS.id_starts):
         for issue in ir.get("open_issues") or []:
             if issue.get("severity") in ("P1", "P2"):
                 return (
                     False,
-                    f"WS has unresolved blocking open issue: {issue.get('id')} ({issue.get('severity')})",
+                    f"{BS.display_name} has unresolved blocking open issue: {issue.get('id')} ({issue.get('severity')})",
                 )
 
         realizing_intents = set()
@@ -5655,7 +5734,7 @@ def is_lock_ready(graph: SpecGraph, artifact_id: str) -> tuple[bool, str]:
                     f"realizing Intent {intent_id} is not LOCKED (status is {intent.get('status')})",
                 )
 
-        return True, "WS has no blocking open issues and all realizing Intents are LOCKED"
+        return True, f"{BS.display_name} has no blocking open issues and all realizing Intents are LOCKED"
 
     elif artifact_id.startswith("ADR-"):
         return True, "ADR status is ACCEPTED and no unlock is in flight"
@@ -5669,7 +5748,7 @@ def is_lock_ready(graph: SpecGraph, artifact_id: str) -> tuple[bool, str]:
             if ws_band is None or ws_band < 5:
                 return (
                     False,
-                    f"child Working Spec {ws['id']} is not LOCKED (status is {ws.get('status')})",
+                    f"child {BS.display_name} {ws['id']} is not LOCKED (status is {ws.get('status')})",
                 )
         for ic in child_ics:
             ic_band = maturity_band(ic.get("status"))
@@ -5681,7 +5760,7 @@ def is_lock_ready(graph: SpecGraph, artifact_id: str) -> tuple[bool, str]:
 
         return (
             True,
-            "AE status is ACCEPTED and all child Working Specs and Interface Contracts are LOCKED",
+            f"AE status is ACCEPTED and all child {BS.display_name}s and Interface Contracts are LOCKED",
         )
 
     else:
@@ -5704,7 +5783,7 @@ def _t_status_lock_ready(graph: SpecGraph) -> list[Finding]:
         if not (
             art_id.startswith("AE-")
             or art_id.startswith("ADR-")
-            or art_id.startswith("WS-")
+            or art_id.startswith(BS.id_starts)
             or art_id.startswith("IC-")
         ):
             continue
@@ -6918,8 +6997,7 @@ def _resolve_claimed_paths(
     {canonical-path: [(INT-id, glob), ...]} so a single canonical file
     can be reverse-looked-up to every Intent that claims it.
     """
-    import glob as _glob
-
+    paths = repository_paths(repo_root)
     claims: dict[str, list[tuple[str, str]]] = {}
     for ir in graph.intents():
         if (ir.get("status") or "") not in _COW_PRE_ACCEPTED_STATUSES:
@@ -6934,9 +7012,9 @@ def _resolve_claimed_paths(
             if not pat:
                 continue
             # Resolve glob against repo root.
-            matches = _glob.glob(str(repo_root / pat), recursive=True)
+            matches = resolve_pattern(repo_root, pat, paths=paths)
             for m in matches:
-                rel = str(Path(m).resolve().relative_to(repo_root.resolve()))
+                rel = Path(m).relative_to(repo_root).as_posix()
                 claims.setdefault(rel, []).append((intent_id, pat))
     return claims
 

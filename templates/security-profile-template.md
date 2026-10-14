@@ -1,11 +1,10 @@
 # Security Profile: <engineer-fills-here — short title>
 
-> **Purpose.** Capture a project's typed security posture — allowed
-> dataflows, secret stores, authn methods, supply-chain allowed sources,
-> SAST/DAST tools, and OWASP coverage — as a Security Profile (SP), the
-> 10th DekSpec IR kind per ADR-011 Option B. One repo may declare a
-> singleton SP-001 covering the whole codebase (`bounded_context` absent),
-> or multiple per-`bounded_context` SPs (e.g., `api-gateway`, `worker`).
+<!-- Before writing content, read `dekspec resource purpose security-profile` for the canonical purpose and routing items. -->
+
+> The Security Profile is the 10th DekSpec IR kind per ADR-011 Option B.
+> A repository may use a singleton SP-001 (`bounded_context` absent), or
+> per-context profiles (examples: `api-gateway`, `worker`).
 >
 > **Canonical ID regex.** `^SP-\d{3,}$` — filename is
 > `dekspec/security-profiles/SP-NNN-<slug>.md`. Three or more digits;

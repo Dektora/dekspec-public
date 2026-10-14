@@ -32,6 +32,8 @@ Public API:
 
 from __future__ import annotations
 
+from dekspec.spec_kinds import BEHAVIOR_SPEC_NAMES as BS
+
 import re
 from dataclasses import dataclass
 from typing import Mapping, Sequence
@@ -67,7 +69,7 @@ _HEADING_RE = re.compile(r"^#{1,6}\s+")
 # ``Related ADRs: ...`` form.
 _RELATED_LINE_RE = re.compile(
     r"^(?P<head>\s*(?:[-*]\s+)?\*{0,2}"
-    r"(?P<label>Related (?:ADRs|WSs|ICs|IBs|Intents))"
+    rf"(?P<label>Related (?:ADRs|(?:{'|'.join(BS.prefixes)})s|ICs|IBs|Intents))"
     r"\*{0,2}:\*{0,2})"
     r"(?P<rest>.*)$"
 )

@@ -38,6 +38,8 @@ so consumers can aggregate / replace fragments programmatically.
 
 from __future__ import annotations
 
+from dekspec.spec_kinds import BEHAVIOR_SPEC_NAMES as BS
+
 from pathlib import PureWindowsPath
 from typing import Any
 
@@ -62,7 +64,7 @@ def emit(ir: dict[str, Any]) -> str:
         return emit_adr(ir)
     if aid.startswith("IC-"):
         return emit_ic(ir)
-    if aid.startswith("WS-"):
+    if aid.startswith(BS.id_starts):
         return emit_ws(ir)
     if aid.startswith("IB-"):
         return emit_ib(ir)
@@ -72,7 +74,7 @@ def emit(ir: dict[str, Any]) -> str:
         return emit_mission(ir)
     raise ValueError(
         f"agents_md emitter doesn't know how to handle artifact id '{aid}'. "
-        f"Expected AE-NNN, ADR-NNN, IC-NNN, WS-NNN, IB-NNN, INT-NNN, or MSN-NNN."
+        f"Expected AE-NNN, ADR-NNN, IC-NNN, {BS.id_prefix}-NNN, IB-NNN, INT-NNN, or MSN-NNN."
     )
 
 
@@ -307,7 +309,7 @@ def emit_ws(ir: dict[str, Any]) -> str:
 
     parts = [
         _begin_marker(aid),
-        _header(ir, kind="Working Spec"),
+        _header(ir, kind=BS.old_display_names[0] if ir["id"].startswith(tuple(p + "-" for p in BS.old_id_prefixes)) else BS.display_name),
         f"## {aid}: {name}",
         "",
         f"**Status:** {status}",

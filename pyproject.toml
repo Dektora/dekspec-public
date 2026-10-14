@@ -76,7 +76,7 @@ dekspec = "dekspec.cli:main"
 dekspec-mcp = "dekspec.mcp.server:main"
 
 [tool.setuptools.packages.find]
-where = ["tooling"]
+where = ["products/dekspec/src"]
 include = ["dekspec*"]
 
 [tool.setuptools.package-data]
@@ -96,7 +96,7 @@ include = ["dekspec*"]
 # ADR-045 / INT-179: ship the FULL plugin tree (skills incl. _lib, commands,
 # hooks) so `dekspec install --platform` works off a pipx engine on non-Claude
 # hosts — not just the runtime `skills/_lib` helpers.
-"dekspec._vendored" = ["templates/**/*", "docs/**/*", "skills/**/*", "commands/**/*", "hooks/**/*"]
+"dekspec._vendored" = ["templates/**/*", "docs/**/*", "skills/**/*", "commands/**/*", "hooks/**/*", "hooks-handlers/**/*"]
 
 [tool.setuptools.dynamic]
 version = { attr = "dekspec.__version__" }

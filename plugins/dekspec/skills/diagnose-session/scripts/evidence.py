@@ -49,7 +49,7 @@ def collect(repo, full=False):
     records = execution_records(root, full)
     return {"identity": target,
             "execution_records": records,
-            "execution_hint": ("inspect with `dekspec ib status <IB>`, `dekspec implement status <request>`"
+            "execution_hint": ("inspect with `dekspec ib status <IB>`, `dekbuilder implement status <request>`"
                                if records else "no DekSpec execution records"),
             "status": git(root, "status", "--short").stdout.decode().splitlines(),
             "commits": git(root, "log", f"-{100 if full else 10}", "--format=%h %aI %s").stdout.decode().splitlines(),

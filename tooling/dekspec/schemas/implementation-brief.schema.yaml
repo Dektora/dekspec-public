@@ -57,7 +57,8 @@ properties:
   id:
     description: Canonical IB identifier derived from filename (e.g., IB-001).
     type: string
-    pattern: "^(?:P-)?IB-\\d{3,}$"
+    # Declared form matches brief_identity (WS-038); schema version unchanged.
+    pattern: "^(?:(?:P-)?IB-\\d{3,}|IB-(?!DRAFT$)[A-Z][A-Z0-9]{0,15})$"
 
   name:
     description: 'Title from the markdown H1 (e.g., "Implementation Brief: Harness Foundation").'
@@ -88,7 +89,15 @@ properties:
       conditions and a revisable implementation hypothesis. `legacy`: the
       ADR-049-era restrictive meaning (Files to Modify is an allowlist;
       escalate on any unlisted file). Absent header line parses as legacy.
-    enum: [legacy, delegated]
+    enum: [legacy, delegated, lean]
+
+  risk:
+    description: Owner-approved lean risk; execution currently admits normal only.
+    type: string
+
+  design_intent:
+    description: Binding Design intent section of a lean brief.
+    type: string
 
   parent:
     description: Optional context parent (Intent, Working Spec or Mission). Not required (ADR-056).
@@ -98,7 +107,7 @@ properties:
     properties:
       id:
         type: string
-        pattern: "^(?:INT|WS|MSN)-\\d{3,}$"
+        pattern: "^(?:INT|BS|WS|MSN)-\\d{3,}$"
 
   spec_impact:
     description: >-
@@ -107,7 +116,7 @@ properties:
     type: array
     items:
       type: string
-      pattern: "^(?:(?:ADR|IC|WS|AE|SP)-\\d{3,}|CONSTITUTION|SYSTEM-VISION)$"
+      pattern: "^(?:(?:ADR|IC|BS|WS|AE|SP)-\\d{3,}|CONSTITUTION|SYSTEM-VISION)$"
 
   outcome:
     description: The observable state true when the IB is complete.
@@ -140,7 +149,7 @@ properties:
       required: [id]
       properties:
         id: {type: string, pattern: "^O-\\d+$"}
-        ref: {type: string, pattern: "^(?:(?:ADR|IC|WS|AE|SP|INT|MSN|IB)-\\d{3,}|CONSTITUTION|SYSTEM-VISION)$"}
+        ref: {type: string, pattern: "^(?:(?:ADR|IC|BS|WS|AE|SP|INT|MSN|IB)-\\d{3,}|CONSTITUTION|SYSTEM-VISION)$"}
         section: {type: string}
         note: {type: string}
         local: {type: boolean}
@@ -172,8 +181,31 @@ properties:
           type: object
           additionalProperties: false
           minProperties: 1
-          maxProperties: 1
+          oneOf:
+            - required: [pytest]
+              not:
+                anyOf:
+                  - required: [command]
+                  - required: [review]
+                  - required: [test_files]
+            - required: [command]
+              not:
+                anyOf:
+                  - required: [pytest]
+                  - required: [review]
+            - required: [review]
+              not:
+                anyOf:
+                  - required: [pytest]
+                  - required: [command]
+                  - required: [test_files]
           properties:
+            test_files:
+              type: array
+              items:
+                type: string
+                minLength: 1
+                pattern: '^(?!/)(?!.*(?:^|/)\.\.(?:/|$))(?!.*[*?\[])(?=.*\S).+$'
             pytest:
               type: array
               minItems: 1
@@ -228,7 +260,7 @@ properties:
     properties:
       id:
         type: string
-        pattern: "^WS-\\d{3,}$"
+        pattern: "^(?:BS|WS)-\\d{3,}$"
       path:
         type: string
         description: 'Original path string from the **Spec:** line (may be a typo per `working-working-specs/`); kept for round-trip fidelity.'
@@ -264,7 +296,7 @@ properties:
     type: array
     items:
       type: string
-      pattern: "^IB-\\d{3,}$"
+      pattern: "^(?:IB-\\d{3,}|IB-(?!DRAFT$)[A-Z][A-Z0-9]{0,15})$"
 
   production_gate:
     description: 'Free-text gate: what production state this IB targets, or "none".'

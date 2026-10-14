@@ -1,5 +1,15 @@
 # DekSpec — Quick Reference
 
+**Three products, one release.** Since v0.129.0 DekSpec ships with DekBuilder
+(construction: `dekbuilder implement`, `dekbuilder wave`) and DekTools (standalone
+craft: `dektools handoff`, `dektools deepen-record`), all at one version and one tag
+on the public mirror. Install DekSpec and DekBuilder together from the same tag
+(`scripts/install.sh` does this; DekTools with `--with-dektools`). DekSpec keeps
+authorization, evidence judgment and the sole execution-record writer. On Claude
+Code the one `dekspec` plugin carries all three products' skills; other hosts
+receive DekSpec's skills through `dekspec install --platform <host>`.
+
+
 **Read time: 5-10 minutes.** Full guide: `dekspec/dekspec-operating-guide.md`
 
 ---
@@ -19,7 +29,7 @@ AI coding agents fill ambiguity with confident, plausible, wrong decisions. By r
 | **L1 Design** | Vision, principles, decisions | System Vision, Architecture Elements (AE), ADRs, Domain Glossary | `/write-ae`, `/write-adr`, `/recover-specs` |
 | **L2 Specification** | Behavioral contracts | Working Specs (WS), Interface Contracts (IC) | `/write-ws`, `/write-ic` |
 | **L3 Implementation** | Executable work contracts | Implementation Briefs (IB) | `/write-ibs` |
-| **L4 Construction** | Code, evidence, completion | Code, acceptance tests, evals, IB execution records | `/write-tests`, `/write-evals`, `/orchestrate-coding-session`, `/review-pr`, `/land-intent` |
+| **L4 Construction** | Code, evidence, completion | Code, acceptance tests, evals, IB execution records | `/write-tests`, `/write-evals`, `/dekbuilder:orchestrate-coding-session`, `/dekbuilder:review-pr`, `/dekbuilder:land-intent` |
 
 **Intent (`INT-NNN`) and Mission (`MSN-NNN`) anchor at L1 and span downward through L2-L4.** They link to L1 AEs, parent L3 IBs, may revise L2 WSs / ICs, and carry L4-surface `verification` / `rollback` / `kill_criteria` commands. The operating guide covers their audit rule classes (L7a / L7b / L8 / L9). Both are optional: a bounded change is one IB with no parent (ADR-056); reach for an Intent when an outcome spans several IBs, a Mission for a programme with kill criteria.
 
@@ -44,15 +54,15 @@ For the arc42 chapter mapping, C4 diagram lexicon, and skill routing tables, see
 5. PREPARE     /write-tests, /write-evals       → acceptance assets: a basis per assertion, genuine red on `ib floor`
                /review-ib                       → contract review + oracle review; pass = `Floor reviewed:` row
                dekspec ib accept                → the baseline protects exactly the reviewed floor
-6. BUILD       /orchestrate-coding-session      → start, investigate, plan, attempts, verify
-7. REVIEW      /review-pr                       → an independent verdict per IB
-8. LAND        /land-intent                     → complete each IB, check the delivery, operator merges
+6. BUILD       /dekbuilder:orchestrate-coding-session      → start, investigate, plan, attempts, verify
+7. REVIEW      /dekbuilder:review-pr                       → an independent verdict per IB
+8. LAND        /dekbuilder:land-intent                     → complete each IB, check the delivery, operator merges
 
    6–8 in one request, once the work is READY:
-   /implement <INT | IB | feature>      → construct, review, repair, integrate, verify, complete (ADR-059)
+   /dekbuilder:implement <INT | IB | feature>      → construct, review, repair, integrate, verify, complete (ADR-059)
 ```
 
-Steps 1–3 are used when they add something. Step 5 is not optional for an IB with `pytest:` conditions or declared assets (ADR-062): one order everywhere — write the IB (`dekspec ib lint`, `dekspec ib propose`) → `/write-tests` → `/review-ib` → `dekspec ib accept`; a pre-start change to the tests repeats the oracle review before `dekspec ib baseline`. The builder never writes an acceptance test, and `/implement` readiness refuses an IB whose named nodes are missing from its baseline or whose baseline digest no `Floor reviewed:` row names. The engine verbs underneath (the skills call them; `dekspec ib <verb> --help` for flags):
+Steps 1–3 are used when they add something. Step 5 is not optional for an IB with `pytest:` conditions or declared assets (ADR-062): one order everywhere — write the IB (`dekspec ib lint`, `dekspec ib propose`) → `/write-tests` → `/review-ib` → `dekspec ib accept`; a pre-start change to the tests repeats the oracle review before `dekspec ib baseline`. The builder never writes an acceptance test, and `/dekbuilder:implement` readiness refuses an IB whose named nodes are missing from its baseline or whose baseline digest no `Floor reviewed:` row names. The engine verbs underneath (the skills call them; `dekspec ib <verb> --help` for flags):
 
 ```
 dekspec ib new <slug>
@@ -103,16 +113,16 @@ Progress, attempts, failures, reviews and blockers live in the IB's execution re
 | `/write-tests` | Write acceptance tests named by an IB's conditions — a basis per new assertion, genuine red on `dekspec ib floor` — before authorization (mandatory) |
 | `/review-ib` | Pre-authorization review of an IB contract and oracle review of its acceptance tests and floor report; a pass is a `Floor reviewed:` row |
 | `/write-evals` | Write probabilistic evals for model output |
-| `/implement` | Implement ready work end to end — no prompts, no flags; READY = `dekspec implement ready` (ADR-059) |
-| `/orchestrate-coding-session` | Execute accepted IBs through the `dekspec ib` engine (parallel worktrees for independent IBs) |
-| `/review-pr` | Independent post-implementation review; records a verdict per IB, judging the basis of amended or added acceptance assets before acknowledging them |
-| `/land-intent` | Complete each IB, run the delivery gate, operator-confirmed merge |
+| `/dekbuilder:implement` | Implement ready work end to end — no prompts, no flags; READY = `dekbuilder implement ready` (ADR-059) |
+| `/dekbuilder:orchestrate-coding-session` | Execute accepted IBs through the `dekspec ib` engine (parallel worktrees for independent IBs) |
+| `/dekbuilder:review-pr` | Independent post-implementation review; records a verdict per IB, judging the basis of amended or added acceptance assets before acknowledging them |
+| `/dekbuilder:land-intent` | Complete each IB, run the delivery gate, operator-confirmed merge |
 | `/doctor` | AE-aware fidelity audit — canonical for new audits |
 | `/write-glossary` | Extract term candidates and add terms to the domain glossary |
 | `/write-corrections` | Log domain corrections, track recurrences, promote at threshold |
 | `/ingest-docs` | Classify inherited markdown prose into DekSpec artifact slots (helper tool) |
 
-Core skills support `--help`. The helper tools take natural-language requests; the ten user-only ones (`project-board`, `audit-codebase`, `deepen`, `security-review`, `ingest-docs`, `handoff`, `diagnose-session`, `debug`, `prototype`, `spike`) are started by the operator: `/dekspec:<tool>` on Claude Code, or the host-native skill invocation on other hosts, and the authoring skills compose `interview-me` and `recover-specs`. Ask a tool what it does for examples and recovery options.
+Spec authoring owns `/dekspec:ingest-docs` and composes `interview-me` and `recover-specs`. Deck Builder owns the construction skills named above. The nine craft tools (`project-board`, `audit-codebase`, `deepen`, `security-review`, `handoff`, `diagnose-session`, `debug`, `prototype`, `spike`) are user-only `/dektools:<tool>` skills on Claude Code, or their host-native invocation elsewhere. Helper tools take natural-language requests; ask a tool what it does for examples and recovery options.
 
 ---
 
@@ -222,6 +232,8 @@ gate — is in the operating guide §Provisional incubation.
 Run `/doctor` periodically or after major changes. It checks skill / template / index / guide alignment, header-metadata freshness, glossary consistency, cross-artifact coherence, sibling-SSoT duplication, extraction-landing, and cascade-scope discipline. See the skill `--help` for `--fix`, `--full`, and the full scope list.
 
 **AGENTS.md freshness.** `dekspec aggregate agents-md` rewrites only the DekSpec-owned region (`<!-- dekspec:agents-md begin -->` … `<!-- dekspec:agents-md end -->`) and keeps everything else; a legacy whole-file AGENTS.md needs `--migrate` once (`--migrate --dry-run` previews). `dekspec aggregate agents-md --check` is read-only and prints one verdict — `current` (0), `stale` (1), `absent` (1 if required), `inapplicable` (0), `invalid` (1). Declare the projection in `.dekspec/config.yaml` (`agents_md: {path, status, include, required}`) and `dekspec doctor` fails when it goes stale (ADR-063).
+
+DekSpec region and fragment markers in fenced code or indented by four or more columns are examples, not boundaries (tabs advance to the next multiple of four); zero to three spaces keep markers live. The configured/default projection must resolve inside the repository, including parent symlinks, absolute and `..` paths. A separate regular-file `--output` may be outside, but a traversed symlink may not escape. Escaping destinations, unreadable instruction files, destination or parent symlink loops, directory destinations, and unreadable, undecodable or unparseable sources are refused with exit 1 and a path, reason and recovery, without a traceback; the check and doctor’s `agents-md` section report them `invalid`. Repair the named path or permissions, choose a contained projection path, or fix the source before retrying. Refusals and checks preserve destination bytes, permissions, modification time, links and absence.
 
 **Provisional + CoW audit rules** (P3 advisory unless noted):
 `LINK-PROVISIONAL-TREE-PRESENT` (incubation folder exists),

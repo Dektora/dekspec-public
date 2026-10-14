@@ -1,0 +1,103 @@
+# Team-profile config — JSON Schema (Draft 2020-12)
+#
+# The `team` audit profile (INT-021) is a profile manifest at
+# `tooling/dekspec/fidelity_audit/profiles/team.yaml`. It inherits the v1
+# rule set (`inherits: v1`), registers exactly one new rule code
+# (`T-APPROVAL-GATE`), and carries an `approval_gates:` block declaring, per
+# artifact kind and per status transition, how many reviewer signatures of
+# which role are required before the artifact may walk that transition.
+#
+# This schema validates the SHAPE of any audit-profile manifest that carries
+# an `approval_gates:` block — `profiles/team.yaml` is the V1 instance. It is
+# NOT an artifact-IR schema; it validates a configuration file. Loaded via the
+# `team_profile` key in `dekspec.schemas.SCHEMA_FILENAMES` (mirroring how the
+# INT-020 `registry` config schema was registered).
+#
+# ADR-006 — `additionalProperties: false` at every object level.
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://dekspec.dektora/schemas/v0.1/team-profile.schema.json"
+title: Team Profile manifest
+description: >-
+  Audit-profile manifest declaring per-artifact-kind, per-status-transition
+  approval gates. The `team` profile (INT-021) is the V1 instance. Enforced
+  by the `T-APPROVAL-GATE` linkage rule, which is silent under any profile
+  whose `approval_gates` block is absent.
+
+type: object
+additionalProperties: false
+required:
+  - profile
+  - rules
+
+properties:
+  profile:
+    description: 'Profile name. Must match the manifest filename stem.'
+    type: string
+    pattern: "^[A-Za-z0-9][A-Za-z0-9_-]*$"
+
+  inherits:
+    description: >-
+      Parent profile name, or null for a root profile. The `team` profile
+      sets `inherits: v1` — the loader composes the v1 rule set with this
+      manifest's additions.
+    type: ["string", "null"]
+    pattern: "^[A-Za-z0-9][A-Za-z0-9_-]*$"
+
+  rules:
+    description: >-
+      Rule codes this manifest contributes. The loader merges these with
+      rules inherited via `inherits:`. `team.yaml` lists only the new
+      `T-APPROVAL-GATE` code.
+    type: array
+    items:
+      type: string
+      pattern: "^[A-Za-z][A-Za-z0-9-]+$"
+
+  remove:
+    description: >-
+      Rule codes to drop from the inherited set. Reserved; accepted but
+      unused by the V1 `team` profile.
+    type: array
+    items:
+      type: string
+      pattern: "^[A-Za-z][A-Za-z0-9-]+$"
+
+  parameters:
+    description: >-
+      Per-rule parameter overrides, keyed by rule code. Each value is a
+      free-form mapping of parameter name to value (the consuming rule
+      defines its own parameter vocabulary).
+    type: object
+    additionalProperties:
+      type: object
+
+  approval_gates:
+    description: >-
+      Per-artifact-kind, per-transition approval-gate policy. Keyed by
+      artifact-kind label (ADR / AE / WS / IC / Intent / Mission /
+      Constitution / SecurityProfile). Each kind maps a `FROM_to_TO`
+      transition label to a gate object.
+    type: object
+    additionalProperties:
+      type: object
+      description: 'Transition-label -> gate map for one artifact kind.'
+      additionalProperties:
+        type: object
+        additionalProperties: false
+        required:
+          - required_reviewers
+        properties:
+          required_reviewers:
+            description: >-
+              How many `review-approval` signature rows the artifact's
+              `## Amendment Log` must record for this transition.
+            type: integer
+            minimum: 1
+          reviewer_role:
+            description: >-
+              Declared role of the required reviewers. ADVISORY in V1 — the
+              `T-APPROVAL-GATE` rule counts signatures regardless of signer
+              role; the role string is documentation only.
+            type: string
+            minLength: 1

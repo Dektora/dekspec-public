@@ -30,11 +30,15 @@ migration so the first real schema change is a small additive PR.
 """
 from __future__ import annotations
 
+from dekspec.spec_kinds import BEHAVIOR_SPEC_NAMES as BS
+
 import json
 import re as _re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Iterator
+
+from ..brief_identity import is_brief_filename
 
 
 _SEMVER_RE = _re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$")
@@ -229,9 +233,8 @@ class MarkdownMigrationReport:
 _PREFIX_TO_TYPE: tuple[tuple[_re.Pattern[str], str], ...] = (
     (_re.compile(r"^ADR-\d{3,}-"), "adr"),
     (_re.compile(r"^AE-\d{3,}-"), "architecture_element"),
-    (_re.compile(r"^WS-\d{3,}-"), "working_spec"),
+    (_re.compile(rf"^{BS.id_pattern}-"), BS.old_ir_kinds[0]),
     (_re.compile(r"^IC-\d{3,}-"), "interface_contract"),
-    (_re.compile(r"^IB-\d{3,}-"), "implementation_brief"),
     (_re.compile(r"^INT-\d{3,}-"), "intent"),
     (_re.compile(r"^MSN-\d{3,}-"), "mission"),
     (_re.compile(r"^SP-\d{3,}-"), "security_profile"),
@@ -265,6 +268,8 @@ def detect_artifact_type(filename: str) -> str | None:
     # Pre-ADR-043 provisional files are named `<KIND>-provisional-<slug>.md`.
     bare = filename[2:] if filename.startswith("P-") else filename
     bare = _re.sub(r"^([A-Z]+)-provisional-", r"\1-000-", bare)
+    if is_brief_filename(filename, migration=True):
+        return "implementation_brief"
     for pattern, kind in _PREFIX_TO_TYPE:
         if pattern.match(bare):
             return kind
@@ -279,7 +284,7 @@ def detect_artifact_type(filename: str) -> str | None:
 _ARTIFACT_SUBDIRS = (
     "adrs",
     "architecture-elements",
-    "working-specs",
+    *BS.folders,
     "interface-contracts",
     "impl-briefs",
     "intents",

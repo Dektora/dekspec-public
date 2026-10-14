@@ -20,8 +20,12 @@ chain and the captured output in full, so a signature is never cut off
 
 from __future__ import annotations
 
+import ast
+from importlib.util import resolve_name
 import json
 import os
+import sys
+from pathlib import Path
 from typing import Any
 
 _state: dict[str, Any] = {"collected": [], "deselected": [], "collect_errors": [], "results": {},
@@ -73,6 +77,97 @@ def _message_chain(value: BaseException, first: str) -> str:
     return chain if _full() else chain[:_MESSAGE_CHARS]
 
 
+def _is_test_helper(path: Path, own_file: Path, root: Path) -> bool:
+    """O-11(c)'s location boundary; being repository code alone is insufficient."""
+    try:
+        relative = path.resolve().relative_to(root.resolve())
+    except ValueError:
+        return False
+    return path.resolve().parent == own_file.resolve().parent or bool({"test", "tests"} & set(relative.parts[:-1]))
+
+
+def _imported_modules(tree: ast.AST) -> set[tuple[str, int]]:
+    """Read direct imports and literal import calls, including parent packages.
+
+    Shared by history and runtime provenance; this never imports user code.
+    Relative levels stay attached until each caller resolves its own context.
+    """
+    modules: set[tuple[str, int]] = set()
+    aliases: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            modules.update((a.name, 0) for a in node.names)
+            aliases.update((a.asname or a.name.split(".")[0],
+                            a.name if a.asname else a.name.split(".")[0]) for a in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            modules.add((node.module or "", node.level))
+            modules.update((".".join(filter(None, (node.module, a.name))), node.level)
+                           for a in node.names if a.name != "*")
+            if not node.level:
+                aliases.update((a.asname or a.name, f"{node.module}.{a.name}") for a in node.names)
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not node.args:
+            continue
+        name = node.func
+        suffix = []
+        while isinstance(name, ast.Attribute):
+            suffix.insert(0, name.attr)
+            name = name.value
+        if not isinstance(name, ast.Name):
+            continue
+        symbol = ".".join([aliases.get(name.id, name.id), *suffix])
+        if symbol not in {"importlib.import_module", "__import__", "pytest.importorskip"}:
+            continue
+        literal = node.args[0]
+        if isinstance(literal, ast.Constant) and isinstance(literal.value, str):
+            module = literal.value
+            if module.startswith(".") and symbol == "importlib.import_module":
+                package = (node.args[1] if len(node.args) > 1 else
+                           next((kw.value for kw in node.keywords if kw.arg == "package"), None))
+                if isinstance(package, ast.Constant) and isinstance(package.value, str):
+                    try:
+                        module = resolve_name(module, package.value)
+                    except ImportError:
+                        continue
+            if module and not module.startswith("."):
+                modules.add((module, 0))
+    parents = set(modules)
+    for module, level in modules:
+        parts = module.split(".")
+        parents.update((".".join(parts[:i]), level) for i in range(1, len(parts)))
+        if level:
+            parents.add(("", level))
+    return parents
+
+
+def _test_helpers(own_file: str | None, root: str) -> set[str]:
+    """Only modules explicitly imported by this test file qualify as helpers."""
+    if not own_file:
+        return set()
+    try:
+        tree = ast.parse(Path(own_file).read_text(encoding="utf-8"))
+    except (OSError, SyntaxError, ValueError):
+        return set()
+    names = set()
+    own_module = next((m for m in list(sys.modules.values())
+                       if getattr(m, "__file__", None) == own_file), None)
+    package = getattr(own_module, "__package__", "") or ""
+    for module, level in _imported_modules(tree):
+        prefix = module
+        if level:
+            parts = package.split(".")
+            prefix = ".".join([*parts[:len(parts) - level + 1], *([module] if module else [])])
+        # Resolving a relative import also imports its absolute parent packages.
+        parts = prefix.split(".")
+        names.update(".".join(parts[:i]) for i in range(1, len(parts) + 1))
+    paths = set()
+    for name in names:
+        path = getattr(sys.modules.get(name), "__file__", None)
+        if path and _is_test_helper(Path(path), Path(own_file), Path(root)):
+            paths.add(os.path.abspath(path))
+    return paths
+
+
 def _failure(excinfo, own_file: str | None, root: str) -> dict[str, Any]:
     """Type, assertion class, message chain and failure line of one exception."""
     etype = excinfo.type
@@ -87,6 +182,10 @@ def _failure(excinfo, own_file: str | None, root: str) -> dict[str, Any]:
     while tb is not None:
         frames.append((os.path.abspath(tb.tb_frame.f_code.co_filename), tb.tb_lineno))
         tb = tb.tb_next
+    framework = getattr(sys.modules.get("_pytest"), "__file__", None)
+    framework_dir = os.path.dirname(os.path.abspath(framework)) + os.sep if framework else None
+    raising = next((f for f in reversed(frames) if not framework_dir or not f[0].startswith(framework_dir)), None)
+    test_owned = bool(raising and (raising[0] == own_file or raising[0] in _test_helpers(own_file, root)))
     own = [f for f in frames if own_file and f[0] == own_file]
     where = (own or frames or [(own_file or "?", 0)])[-1]
     # pytest's own failure outcome (`pytest.fail`, "DID NOT RAISE"); it reports itself as a builtin.
@@ -94,6 +193,8 @@ def _failure(excinfo, own_file: str | None, root: str) -> dict[str, Any]:
     return {
         "type": etype.__name__,
         "assertion": bool(issubclass(etype, AssertionError) or is_failed_outcome),
+        "test_assertion": test_owned,
+        "raising_line": f"{_rel(raising[0], root)}:{raising[1]}" if raising else None,
         "message": _message_chain(excinfo.value, first),
         "failure_line": f"{_rel(where[0], root)}:{where[1]}: {first}"[:_MESSAGE_CHARS],
     }
@@ -140,11 +241,48 @@ def pytest_runtest_logreport(report):
         _state["captured"][report.nodeid] = captured if _full() else captured[-_CAPTURE_CHARS:]
 
 
+def _runtime_support(item, root: str) -> list[str]:
+    """Resolve declared plugins and direct test imports through Python's loaded modules.
+
+    This supplements the floor's history resolver for runner-specific import
+    paths and computed pytest_plugins declarations; unrelated loaded modules
+    never become support merely because they were loaded.
+    """
+    own = _own_file(item)
+    if own is None:
+        return []
+    paths = _test_helpers(own, root)
+    declarations = {own}
+    folder = Path(own).parent
+    while folder == Path(root) or Path(root) in folder.parents:
+        declarations.add(str(folder / "conftest.py"))
+        folder = folder.parent
+    for module in list(sys.modules.values()):
+        file = getattr(module, "__file__", None)
+        if not file or os.path.abspath(file) not in declarations:
+            continue
+        plugins = getattr(module, "pytest_plugins", ())
+        if isinstance(plugins, str):
+            plugins = [plugins]
+        if not isinstance(plugins, (list, tuple)):
+            continue
+        for name in plugins:
+            path = getattr(sys.modules.get(name), "__file__", None) if isinstance(name, str) else None
+            if path and Path(root) in Path(path).resolve().parents:
+                paths.add(os.path.abspath(path))
+    return sorted(_rel(path, root) for path in paths)
+
+
 def pytest_sessionfinish(session, exitstatus):
     target = os.environ.get("DEKSPEC_EVIDENCE_REPORT")
     if not target:
         return
     _state["exitstatus"] = int(exitstatus)
+    # The existing detail transport carries the per-node details map, but not
+    # arbitrary report keys. Keep provenance alongside (not inside) phase
+    # failures so the runner's outcomes and transport stay unchanged.
+    for item in session.items:
+        _state["failures"].setdefault(item.nodeid, {})["support_files"] = _runtime_support(item, _root(session.config))
     files = set()
     for plugin in session.config.pluginmanager.get_plugins():
         path = getattr(plugin, "__file__", None)

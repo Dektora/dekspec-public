@@ -11,14 +11,14 @@ related_skills: [write-ibs, write-tests, write-evals, implement, review-pr, land
 
 **Model inheritance.** Inherit the engineer's selected host model for authoring, implementation, review and mechanical work alike. DekSpec must not select a concrete model, choose a capability tier or silently substitute a model for a role. Independent review requires separate identities and contexts; it need not use a different model. If host configuration prevents inheritance or the selected model is unavailable, surface the capability/policy conflict without selecting a substitute.
 
-Execute accepted IBs directly (ADR-056): no code beads, no bead claiming. This is the construction phase on its own; to carry ready work all the way through review, integration and completion without further prompts, use `/dekspec:implement` (ADR-059). Its driver renders builder and reviewer prompts in core from the same `dekspec ib context` packet this skill pastes, so both paths hand workers one contract. The IB is the work contract, its execution record (`.dekspec/execution/<IB>/`) holds ownership, plan, attempts, deviations, blockers and evidence, and `dekspec ib …` is the only interface to it. This skill runs the work and produces evidence; it never records a review verdict and never completes an IB.
+Execute accepted IBs directly (ADR-056): no code beads, no bead claiming. This is the construction phase on its own; to carry ready work all the way through review, integration and completion without further prompts, use `/dekbuilder:implement` (ADR-059). Its driver renders builder and reviewer prompts in core from the same `dekspec ib context` packet this skill pastes, so both paths hand workers one contract. The IB is the work contract, its execution record (`.dekspec/execution/<IB>/`) holds ownership, plan, attempts, deviations, blockers and evidence, and `dekspec ib …` is the only interface to it. This skill runs the work and produces evidence; it never records a review verdict and never completes an IB.
 
-> **Fresh-context dispatch — structural, not advisory.** Orchestration decides which IBs to run and how to reconcile results; a stale conversation can anchor those decisions on phantom state. This skill therefore delegates its body to the `dekspec:coding-orchestrator` subagent — being invoked as a subagent **is** the fresh context. This skill resolves the inputs (the IB set and the delivery worktree) and hands them over; the sections below are the contract the subagent follows.
+> **Fresh-context dispatch — structural, not advisory.** Orchestration decides which IBs to run and how to reconcile results; a stale conversation can anchor those decisions on phantom state. This skill therefore delegates its body to the `dekbuilder:coding-orchestrator` subagent — being invoked as a subagent **is** the fresh context. This skill resolves the inputs (the IB set and the delivery worktree) and hands them over; the sections below are the contract the subagent follows.
 
 ## Starter Prompt
 
 ```prompt
-/dekspec:orchestrate-coding-session INT-123
+/dekbuilder:orchestrate-coding-session INT-123
 
 Run INT-123's ready IBs in parallel worktrees. Show me the plan, then go.
 ```
@@ -33,7 +33,7 @@ Parse `$ARGUMENTS`. If `--help` is present, skip to **Help Mode**. Otherwise:
 
 ## Help Mode
 
-See [`_lib/help_mode_template.md`](../_lib/help_mode_template.md). Manifest:
+See `dekspec resource lib help_mode_template.md` (Spec-owned `_lib/help_mode_template.md`). Manifest:
 
 ```yaml
 skill_name: "/orchestrate-coding-session"
@@ -54,7 +54,7 @@ extra_sections:
       - "2. Per IB: dekspec ib start --owner <builder>; prompt = dekspec ib context"
       - "3. Builder: investigate → ib plan → counted attempts → ib verify"
       - "4. Merge, dekspec delivery verify at the head"
-      - "5. Hand off: /dekspec:review-pr → dekspec ib complete → /dekspec:land-intent"
+      - "5. Hand off: /dekbuilder:review-pr → dekspec ib complete → /dekbuilder:land-intent"
 ```
 
 At runtime, render the manifest per `_lib/help_mode_template.md` and stop.
@@ -73,7 +73,7 @@ Not executable here — report and skip, never work around:
 
 - **Legacy IB** (`**Authority policy:** legacy`) — it keeps its ADR-049 meaning (ADR-055), and `dekspec ib start` refuses it. Adopt it first (`/dekspec:write-ibs --adopt`, then `dekspec ib adopt`); in-flight legacy bead work moves into the record with `dekspec ib import-beads`.
 - **Not ACCEPTED** — authorization is `dekspec ib accept` (ADR-057), not this skill's decision. Acceptance tests are mandatory before it, in the one authoring order (ADR-062): write the IB (`dekspec ib lint`, `dekspec ib propose`) → `/dekspec:write-tests` → `/dekspec:review-ib` (the oracle review; a `Floor reviewed:` row) → `dekspec ib accept`. A pre-start re-baseline (`dekspec ib baseline`) after the tests change repeats the oracle review and records a new row first.
-- **Acceptance floor incomplete** — `dekspec implement ready IB-NNN` reports `acceptance-tests-missing` (a named acceptance node or declared asset is not in the baseline) or `acceptance-floor-unreviewed` (no `Floor reviewed:` row names the baseline digest). The IB was authorized out of that order and `/dekspec:implement` refuses it. Report it with the fix and skip it unless the engineer directs otherwise. A builder never creates a missing acceptance test: anything added after the baseline goes through `dekspec ib amend` and is an attention item the completing reviewer oracle-judges before acknowledging it (ADR-057, ADR-062).
+- **Acceptance floor incomplete** — `dekbuilder implement ready IB-NNN` reports `acceptance-tests-missing` (a named acceptance node or declared asset is not in the baseline) or `acceptance-floor-unreviewed` (no `Floor reviewed:` row names the baseline digest). The IB was authorized out of that order and `/dekbuilder:implement` refuses it. Report it with the fix and skip it unless the engineer directs otherwise. A builder never creates a missing acceptance test: anything added after the baseline goes through `dekspec ib amend` and is an attention item the completing reviewer oracle-judges before acknowledging it (ADR-057, ADR-062).
 - **Dependencies incomplete** — an IB whose `**Depends on:**` IBs are not COMPLETE is not ready and `ib start` refuses it. It becomes ready once its dependencies pass review and `dekspec ib complete`, so a chain of dependent IBs alternates execution and review.
 - **Blocked** — a recorded blocker refuses new attempts until the operator records `dekspec ib unblock --decision …`.
 
@@ -88,7 +88,7 @@ DISPATCH PLAN — delivery <branch> (<worktree>)
 
 ## Delivery and session prelude
 
-One pull request = one worktree = one delivery unit (ADR-048, ADR-058): an IB, an Intent's IBs, or a Mission cluster. Work in that delivery worktree (`/dekspec:use-worktrees` creates one); record `PRE_SESSION_COMMIT=$(git rev-parse HEAD)`.
+One pull request = one worktree = one delivery unit (ADR-048, ADR-058): an IB, an Intent's IBs, or a Mission cluster. Work in that delivery worktree (`/dekbuilder:use-worktrees` creates one); record `PRE_SESSION_COMMIT=$(git rev-parse HEAD)`.
 
 Bind the commit-time scope guard: `dekspec session start IB-NNN` makes the pre-commit `vibecoding-check` refuse staged files outside that IB's Scope or on its Protected Surfaces. Bind the delivery worktree to its single IB, or to the Intent for a multi-IB delivery. Session state is per worktree, so each builder binds its own worktree to its own IB. Never nest:
 
@@ -114,13 +114,13 @@ Per IB, in the delivery worktree:
 
 1. `DEKSPEC_ACTOR=builder-IB-NNN dekspec ib start IB-NNN --owner builder-IB-NNN`. It checks status and dependencies, binds the generated context, and runs the IB's Environment Prerequisites probes. Exit 3 means blocked: a required prerequisite is unavailable. Report it and do not dispatch. Give each builder its own actor name: the review verdict must come from an identity outside the run's owner and attempt actors (ADR-057).
 2. Commit the new record (`git add .dekspec/execution/IB-NNN && git commit -m "IB-NNN: start run"`) so the builder's worktree inherits the run.
-3. `dekspec ib context IB-NNN` — the generated packet: precedence, binding obligations with canonical text and hashes, Scope, Protected Surfaces, acceptance conditions, hypothesis, escalation list. Paste it verbatim into the prompt below. Never paraphrase it or copy obligation text from ADRs, ICs or WSs yourself (ADR-056 §5–6). If the packet lists problems, the contract is not dispatchable: report it.
+3. `dekspec ib context IB-NNN` — the generated packet: precedence, binding obligations with canonical text and hashes, Scope, Protected Surfaces, acceptance conditions, hypothesis, escalation list. Paste it verbatim into the prompt below. Never paraphrase it or copy obligation text from ADRs, ICs or Behavior Specifications yourself (ADR-056 §5–6). If the packet lists problems, the contract is not dispatchable: report it.
 
 **Where the record is written.** Each IB has its own record directory, so parallel IBs merge without record conflicts. When task agents split one IB, they write record events against the IB's checkout (`--at <that worktree>`; appends are file-locked) and make code changes in their own worktrees. The IB's builder merges their branches and runs `dekspec ib verify` there. A hash-chained `record.jsonl` is never hand-merged.
 
 ### Builder prompt
 
-Compose it in the four layers of [`_lib/agent_roles.md`](../_lib/agent_roles.md): governing policy, the **`implementer`** role (the verbatim output of `dekspec resource role implementer` — if that command fails, dispatch nothing and report the broken installation), this procedure, then the assignment.
+Compose it in the four layers of `dekspec resource lib agent_roles.md` (Spec-owned `_lib/agent_roles.md`): governing policy, the **`implementer`** role (the verbatim output of `dekspec resource role implementer` — if that command fails, dispatch nothing and report the broken installation), this procedure, then the assignment.
 
 ```
 # Dispatch instructions
@@ -146,7 +146,7 @@ You are builder-IB-NNN, executing IB-NNN in this worktree. Set DEKSPEC_ACTOR=bui
 for every dekspec command. Bind the commit guard now, and end the session when you finish:
   dekspec session start IB-NNN
   dekspec session end
-- Read whatever you need: code, ADRs, ICs, WSs, history, dependency source (reference/repos/<host>/<org>/<project>
+- Read whatever you need: code, ADRs, ICs, Behavior Specifications, history, dependency source (reference/repos/<host>/<org>/<project>
   when present). Reading rationale is not authority to change an obligation.
 - Investigate before planning, then commit a plan with findings:
     dekspec ib plan IB-NNN --file plan.yaml
@@ -209,9 +209,9 @@ Report what ran and hand off:
 ```
 SESSION DONE — delivery <branch> @ <head>
   verified at head: IB-214, IB-215     blocked: IB-218 (acceptance-invalid: …)
-  next: /dekspec:review-pr  (independent verdict per IB: dekspec ib review)
+  next: /dekbuilder:review-pr  (independent verdict per IB: dekspec ib review)
         dekspec ib complete IB-NNN   (only after that verdict)
-        /dekspec:land-intent        (operator-confirmed merge per ADR-026, gated by dekspec delivery check)
+        /dekbuilder:land-intent        (operator-confirmed merge per ADR-026, gated by dekspec delivery check)
   diff: git diff <PRE_SESSION_COMMIT>..HEAD --stat
 ```
 
@@ -232,4 +232,4 @@ Completion is evidence plus an independent verdict at the head (ADR-057). A gree
 - [ ] Every IB ended VERIFIED (evidence recorded) or BLOCKED (blocker recorded), and each blocker was surfaced with its route.
 - [ ] `dekspec delivery verify` ran at the final head; regressions were checked against `PRE_SESSION_COMMIT`.
 - [ ] `dekspec session report` ran, and the session this skill opened was ended.
-- [ ] The report hands off to `/dekspec:review-pr` and `/dekspec:land-intent` and claims no completion.
+- [ ] The report hands off to `/dekbuilder:review-pr` and `/dekbuilder:land-intent` and claims no completion.

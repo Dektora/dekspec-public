@@ -1,5 +1,6 @@
 import asyncio
 import sys
+from dekspec.spec_kinds import BEHAVIOR_SPEC_NAMES as BS
 import subprocess
 import shlex
 from pathlib import Path
@@ -7,6 +8,7 @@ import mcp.types as types
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from dekspec.vendoring import library_root
+from dekspec.skill_headers import SkillHeaderError, read_header
 
 server = Server("dekspec-mcp")
 
@@ -39,24 +41,14 @@ def get_skills_dir() -> Path:
 def parse_skill_file(skill_md_path: Path) -> tuple[dict, str]:
     """Parse frontmatter and body from a SKILL.md file."""
     try:
-        content = skill_md_path.read_text(encoding="utf-8")
-    except Exception as e:
-        print(f"Error reading {skill_md_path}: {e}", file=sys.stderr)
-        return {}, ""
-
-    if content.startswith("---"):
-        parts = content.split("---", 2)
-        if len(parts) >= 3:
-            frontmatter = {}
-            for line in parts[1].splitlines():
-                line = line.strip()
-                if not line or ":" not in line:
-                    continue
-                k, v = line.split(":", 1)
-                frontmatter[k.strip()] = v.strip()
-            return frontmatter, parts[2].strip()
-                
-    return {}, content.strip()
+        frontmatter, body = read_header(skill_md_path)
+        return frontmatter, body.strip()
+    except SkillHeaderError as exc:
+        print(f"Error reading {skill_md_path}: {exc}", file=sys.stderr)
+        try:
+            return {}, skill_md_path.read_text(encoding="utf-8").strip()
+        except (OSError, UnicodeError):
+            return {}, ""
 
 
 @server.list_prompts()
@@ -161,7 +153,7 @@ async def handle_get_prompt(name: str, arguments: dict[str, str] | None = None) 
                 print(f"Error reading template {template_name}: {e}", file=sys.stderr)
 
     # 2. Dynamic next ID calculations
-    if name in ("write-adr", "write-ae", "write-intent", "write-mission", "write-ws", "write-ic", "write-ibs"):
+    if name in ("write-adr", "write-ae", "write-intent", "write-mission", *BS.old_skills, BS.skill, "write-ic", "write-ibs"):
         try:
             from dekspec._vendored.skills._lib.scripts.artifact_ops import next_id as get_next_id
             kind_map = {
@@ -169,12 +161,17 @@ async def handle_get_prompt(name: str, arguments: dict[str, str] | None = None) 
                 "write-ae": "ae",
                 "write-intent": "intent",
                 "write-mission": "mission",
-                "write-ws": "ws",
+                **{skill: prefix.lower() for skill, prefix in zip((BS.skill, *BS.old_skills), BS.prefixes)},
                 "write-ic": "ic",
                 "write-ibs": "ib",
             }
             kind = kind_map[name]
-            next_val = get_next_id(kind, Path.cwd())
+            if name in (*BS.old_skills, BS.skill):
+                from dekspec.registry import next_behavior_id
+                prefix = BS.id_prefix if name == BS.skill else BS.old_id_prefixes[0]
+                next_val = next_behavior_id(prefix, Path.cwd() / "dekspec")
+            else:
+                next_val = get_next_id(kind, Path.cwd())
             context_lines.append(f"* DETERMINISTIC NEXT ID FOR THIS ARTIFACT: {next_val}")
         except Exception as e:
             print(f"Error calculating next ID: {e}", file=sys.stderr)

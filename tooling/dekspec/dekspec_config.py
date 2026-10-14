@@ -28,12 +28,6 @@ Recognised dotted keys: `schema_version`, `methodology_profile`, `repo.scope`,
 the setup-dekspec fields (INT-174) `issue_tracker`, `ephemeral_scratch_dir`,
 `glossary_path`, `triage_labels.hitl`, `triage_labels.afk`,
 `triage_labels.buckets`.
-
-The retired `dektools.enabled` key (ADR-064) is still accepted on load for
-one release, unchanged and unread, so a v0.126.0 config keeps working;
-`carries_legacy_tool_selection(repo_root)` tells `dekspec install` to print
-its notice. It is not a recognised dotted key: `get_key` / `set_key` refuse
-it, and no write drops it.
 """
 from __future__ import annotations
 
@@ -42,6 +36,8 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+
+from ._yaml import safe_load
 from jsonschema import Draft202012Validator
 
 from .schemas import load_schema
@@ -53,7 +49,6 @@ __all__ = [
     "DEKSPEC_CONFIG_KEYS",
     "DEKSPEC_CONFIG_KEY_ALIASES",
     "DekspecConfigError",
-    "carries_legacy_tool_selection",
     "config_exists",
     "config_path",
     "get_key",
@@ -76,6 +71,12 @@ DEKSPEC_CONFIG_KEYS: tuple[str, ...] = (
     "repo.scope",
     "beads.project_prefix",
     "specification.reference_mode",
+    "roles.project_rules.gates",
+    "roles.project_rules.write_paths",
+    "roles.project_rules.credentials",
+    "roles.project_rules.review_concerns",
+    "roles.project_rules.models",
+
     # setup-dekspec fields (INT-174). `set_key` auto-vivifies the nested
     # `triage_labels` object, so the dotted sub-keys need no extra machinery.
     "issue_tracker",
@@ -161,7 +162,7 @@ def load_config(repo_root: str | Path) -> dict[str, Any]:
             "or `dekspec config set <key> <value>` after init."
         )
     try:
-        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+        raw = safe_load(path.read_text(encoding="utf-8"))
     except yaml.YAMLError as err:
         raise DekspecConfigError(f"Could not parse YAML in {path}: {err}") from err
     if raw is None:
@@ -175,23 +176,13 @@ def load_config(repo_root: str | Path) -> dict[str, Any]:
     # retired (it only paired with `executor.kind=dekfactory`).
     raw.pop("executor", None)
     raw.pop("auth", None)
+    if "dektools" in raw:
+        raise DekspecConfigError(
+            f"Invalid DekSpec config at {path}: delete the retired top-level "
+            "`dektools` key."
+        )
     _validate(raw, path)
     return raw
-
-
-def carries_legacy_tool_selection(repo_root: str | Path) -> bool:
-    """Whether the repo's config carries the retired `dektools.enabled` key.
-
-    ADR-064 (g) accepts the key for one release and ignores it with a notice;
-    this answers whether that notice is due. A missing, unparseable or
-    schema-invalid config answers False, so it never fails a caller.
-    """
-    try:
-        config = load_config(repo_root)
-    except DekspecConfigError:
-        return False
-    block = config.get("dektools")
-    return isinstance(block, dict) and "enabled" in block
 
 
 def write_config(
@@ -211,6 +202,16 @@ def write_config(
         raise DekspecConfigError(
             f"DekSpec config already exists at {path}; pass force=True to overwrite."
         )
+    data = dict(data)
+    if path.exists():
+        # --force replaces invalid old settings, but a recorded marker survives
+        # independently of validation of those unrelated settings.
+        try:
+            previous = yaml.safe_load(path.read_text(encoding="utf-8"))
+        except yaml.YAMLError as error:
+            raise DekspecConfigError(f"Could not parse YAML in {path}: {error}") from error
+        if isinstance(previous, dict) and previous.get("pattern_dialect") == "folder-local":
+            data["pattern_dialect"] = previous["pattern_dialect"]
     _validate(data, path)
     path.parent.mkdir(parents=True, exist_ok=True)
     text = yaml.safe_dump(data, sort_keys=False, default_flow_style=False)
@@ -247,9 +248,8 @@ def set_key(repo_root: str | Path, dotted_key: str, value: Any) -> Path:
     """Set `dotted_key` to `value`, re-validate, and atomically rewrite.
 
     Raises `DekspecConfigError` if the key is unrecognised, the config file
-    is absent, or the resulting document fails schema validation. Keys this
-    call does not name — the retired `dektools` block included — are written
-    back as loaded.
+    is absent, or the loaded or resulting document fails schema validation.
+    Keys this call does not name are written back as loaded.
     """
     dotted_key = DEKSPEC_CONFIG_KEY_ALIASES.get(dotted_key, dotted_key)
     if dotted_key not in DEKSPEC_CONFIG_KEYS:

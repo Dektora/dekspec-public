@@ -1,5 +1,7 @@
 # Implementation Brief: [bounded outcome, in a few words]
 
+<!-- Before writing content, read `dekspec resource purpose implementation-brief` for the canonical purpose and routing items. -->
+
 **Status:** DRAFT
 **Authority policy:** delegated
 **Parent:** none
@@ -7,8 +9,9 @@
 **Spec impact:** none
 
 <!--
-An IB is the smallest governed work contract and is executed directly — no
-code beads. It separates three kinds of content by meaning (ADR-055):
+Read `dekspec resource purpose implementation-brief` for the contract purpose.
+Execute directly, without code beads; preserve the following authority
+semantics when authoring its sections (ADR-055):
 
   Binding obligations   — Obligations, Protected Surfaces, Scope (the boundary).
                           Preserve them; change them only by amending this IB
@@ -19,11 +22,9 @@ code beads. It separates three kinds of content by meaning (ADR-055):
                           implementing agent revises after investigating the
                           repository, within Scope and without permission.
 
-One authoritative home (ADR-056): an obligation owned by an ADR, IC, WS, SP,
-AE or the Constitution is REFERENCED here, never copied. `dekspec ib context`
-resolves the reference and delivers the canonical text, with its revision, to
-the implementing agent. State an obligation in full only when this IB is its
-canonical home (tag it `local`).
+Apply implementation-brief.holds.obligations from the purpose entry (ADR-056).
+`dekspec ib context` resolves each reference and delivers canonical text with
+its revision to the implementing agent; tag a locally owned obligation `local`.
 
 `Parent` is optional context (INT-/WS-/MSN-NNN). A bounded change needs no
 parent: Outcome + Rationale + references are enough.
@@ -38,6 +39,8 @@ parent: Outcome + Rationale + references are enough.
 [Why this change is wanted — enough for a reviewer to judge it without a parent artifact. One short paragraph. If a parent Intent/WS already carries the rationale, reference it instead.]
 
 ## Scope
+
+Patterns are anchored at the repository root. `*`, `?` and `[...]` stay within one folder and never match `/`; `**` matches any depth, including none. A trailing `/` names a folder and covers everything inside it. Unlike `.gitignore`, all patterns are root-anchored, there is no negation (a leading `!` is literal), and brace groups such as `{a,b}` expand. Use `docs/*.md` for Markdown files directly in `docs`, `docs/**/*.md` for any depth, and `**/build/` for build folders at any depth.
 
 Changes are allowed anywhere inside these globs without further permission. A change outside them is a scope expansion and needs an amendment to this IB.
 
@@ -58,6 +61,8 @@ Binding. Reference the canonical home; add a short applicability note only when 
 ## Protected Surfaces
 
 Binding, and stronger than Scope: nothing listed here may be modified, renamed or deleted by this IB, even inside an allowed glob. Use `path::symbol` to protect one Python function or class.
+
+Protection refuses every change except ADR-073 lifecycle bookkeeping: on the delivery's own existing brief files and their parent Intent files, only the status value under an engine transition (DRAFT → PROPOSED, PROPOSED → ACCEPTED, ACCEPTED → COMPLETE, COMPLETE → ACCEPTED) and rows appended to the Amendment Log; execution-record writes are exempt only for added or modified record files. Modified dates, edited/deleted/reordered existing rows, other sections or artifacts, mixed edits, and artifact additions, deletions or renames (including archive moves) stay refused. The check judges content, not authorship; hand-written bookkeeping grants no completion authority.
 
 | Surface | Reason |
 |---------|--------|
@@ -80,11 +85,25 @@ Acceptance conditions: what must be demonstrated, and the evidence that demonstr
   condition: "[integrated behavior through the real entry point]"
   verify:
     command: "[shell command that exits 0 only when the behavior holds]"
+    test_files: ["tests/test_entry_point.py"]
 - id: AC-4
   condition: "[property a reviewer must judge, e.g. architectural fidelity to AE-NNN]"
   verify:
     review: "[what the reviewer must establish]"
 ```
+
+`test_files` belongs beside `command` and lists repository-relative files or folders,
+without `*`, `?` or `[`. Use `[]` to declare that a command runs or reads no test
+files. These paths are acceptance assets and part of the contract hash and baseline;
+DekSpec never discovers them from command text. `ib lint` rejects malformed lists
+and declarations on pytest/review conditions. Where a brief has pytest conditions
+or declared assets, `ib floor` refuses commands with undeclared or missing test
+files. Command-only declared assets also require a reviewed floor for readiness.
+
+The floor reports `support changed:` for a test made new by changed expectation
+support. Such a test needs a non-empty Basis but no red if it passes on the base.
+A report with `0 assessed` says `not red or green test evidence`; it does not say
+`acceptance floor OK`.
 
 Protected acceptance assets (test files named above are protected automatically; list any other fixtures or golden data):
 
@@ -92,7 +111,7 @@ Protected acceptance assets (test files named above are protected automatically;
 
 ## Implementation Hypothesis
 
-Revisable. The implementing agent investigates the repository first and may change any of this within Scope; material departures are recorded in the execution record, not here.
+Revisable. The implementing agent investigates the repository first and may change any of this within Scope; material departures are recorded in the execution record, not here. <!-- purpose: implementation-brief.not.execution-history -->
 
 - Likely files: `path/to/file.py` — [expected change]
 - Approach: [suggested approach, if useful]

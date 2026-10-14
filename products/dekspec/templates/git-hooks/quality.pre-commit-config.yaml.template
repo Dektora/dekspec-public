@@ -1,0 +1,33 @@
+# DekSpec quality gate (INT-175) — opt-in pre-commit fragment.
+#
+# Drop or merge this `repos:` block into your repo's
+# `.pre-commit-config.yaml`. It wires the Python QUALITY gate DekSpec runs
+# on itself: ruff (lint/format), pytest (suite), and `dekspec doctor`
+# (health/fidelity). Built on the pre-commit framework (https://pre-commit.com),
+# NOT Husky/Prettier.
+#
+# Installed by the `setup-dekspec` skill (ι1). Each hook carries a stable
+# `id`, so re-running the installer's merge replaces-by-id rather than
+# duplicating (idempotent). This fragment is the frozen output of
+# `dekspec.constraint_compiler.emitters.quality_precommit.emit_quality_precommit()`.
+repos:
+- repo: local
+  hooks:
+  - id: ruff
+    name: ruff
+    entry: ruff check
+    language: system
+    pass_filenames: false
+    always_run: true
+  - id: pytest
+    name: pytest
+    entry: pytest -q
+    language: system
+    pass_filenames: false
+    always_run: true
+  - id: dekspec-doctor
+    name: dekspec doctor
+    entry: dekspec doctor --at .
+    language: system
+    pass_filenames: false
+    always_run: true

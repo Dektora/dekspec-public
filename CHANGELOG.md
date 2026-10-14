@@ -2,6 +2,105 @@
 
 All notable changes to DekSpec are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/); versioning follows [Semantic Versioning](https://semver.org/).
 
+## [v0.129.0] — 2026-10-14
+
+**Three products, a landing gate that judges every change, and opt-in lean construction.** The repository now builds three packages at one version (ADR-065, IB-173): DekSpec keeps authoring, audits, authorization and evidence judgment; DekBuilder owns construction (`dekbuilder implement`, `dekbuilder wave`, `dekbuilder pr-branch`); DekTools owns the standalone craft commands (`dektools handoff`, `dektools deepen-record`). One tag publishes all three on the public mirror, at the same version: the root package is DekSpec, and DekBuilder and DekTools install from `products/dekbuilder` and `products/dektools` of the same tag. The landing gate now judges a change that carries no brief (IB-291). Lean construction (ADR-079) is in this release and is off unless a project switches it on.
+
+### What you will notice after upgrading, even if you change nothing
+
+1. **`dekspec delivery check` judges every change, and no setting turns this off (IB-291; BS-045 rules 58 to 65).** At v0.128.0 a change that delivered no brief passed with `governed-ibs: this change delivers no delegated IB`. Now every change is one of four kinds: briefs, Intent completion, direct change, or documents only. A change is documents only when every changed path is under the spec tree, is an execution or tracker record, is under `docs/`, `spec/` or `products/<product>/docs/`, or is `CHANGELOG.md`, `README.md` or `RELEASING.md` at the root or `CHANGELOG.md` or `README.md` of a product. Every other path is code, including tests, CI files, scripts, `AGENTS.md` and `.dekspec/config.yaml`. A direct change needs an independent review committed into the change itself: one file `.dekspec/execution/direct-reviews/<name>.json` holding exactly `reviewer`, `commit`, `verdict` (`pass` or `fail`) and `notes`, added by a commit that changes nothing else and whose author and committer share no name or email with any other commit of the change. Without it the check prints `direct:independent-review: no review on record` and exits 1. A review of older content is reported as `stale` with the paths that moved; later edits to documents and spec files do not stale it. No command writes the file: the reviewer commits it. The check cannot tell an invented second identity from a real reviewer (BS-045 rule 65).
+2. **`dekspec implement`, `dekspec handoff` and `dekspec deepen-record` moved out of DekSpec (ADR-065, IB-173).** `dekspec implement …` now exits 1 with `construction moved to Deck Builder; use dekbuilder implement`; `dekspec handoff` and `dekspec deepen-record` exit 1 with `command moved to DekTools; use dektools handoff or dektools deepen-record`. They do not forward. A project whose skills, scripts or CI call `dekspec implement` must change them to `dekbuilder implement` (and `dekspec handoff` / `deepen-record` to `dektools …`), and must install DekBuilder (and DekTools) beside DekSpec: `scripts/install.sh` installs DekBuilder from the same tag, and DekTools with `--with-dektools`.
+3. **Hosts other than Claude Code do not get DekBuilder's skills.** On Claude Code the one `dekspec` plugin carries all skills, DekBuilder's and DekTools' included. `dekspec install --platform <host>` (Codex and the other hosts) installs DekSpec's 21 skills and, for Codex, the three hook handlers. It does not install DekBuilder's seven skills, `implement` among them: `--source` pointed at DekBuilder's skills, or at the mirror's `plugins/dekspec`, is refused because their headers are not valid YAML, and `dekbuilder install` writes nothing yet. Such a project today runs the `dekbuilder implement` and `dekbuilder wave` commands directly; DekTools' nine skills install with `dekspec install --platform <host> --source <site-packages>/dektools/_resources`. `dekspec install --platform amp` exits 0 and writes nothing: Amp is not supported.
+4. **File patterns are read one way everywhere (ADR-068, IB-176, IB-177).** `*`, `?` and `[...]` stay inside one folder; `**` matches any depth, including none; a trailing `/` names a folder and everything in it; every pattern is anchored at the repository root. The engine reads patterns this way from the moment it is installed, whether or not the repository has been converted. Until it is converted, `dekspec doctor` and `dekspec ib lint` list each pattern in play whose reading changed, as `<file>:<line>: old pattern dialect … run dekspec migrate --apply`. `dekspec sync` runs that conversion itself. Conversion rewrites patterns still in play so they cover exactly what they covered before, adds one Amendment Log row to each changed brief, Intent and Mission, leaves COMPLETE and retired artifacts byte-identical, and records `pattern_dialect: folder-local` in `.dekspec/config.yaml`. A pattern with no exact rewrite, or one in a LOCKED artifact, is reported as stopped, its file is left unchanged, and `dekspec migrate` exits 1. The marker is recorded even then, and after it `dekspec doctor` no longer lists unconverted patterns: the stopped list printed by that run is the only report, and a stopped pattern keeps its old text under the new reading until it is rewritten by hand. A converted ACCEPTED brief has a changed contract and must be accepted again after an independent review.
+5. **A leftover top-level `dektools` key in `.dekspec/config.yaml` is now an error (IB-202).** v0.127.0 and v0.128.0 ignored the key with a notice. Now `dekspec doctor`, `dekspec config` and `dekspec migrate` exit 2 and name the key. Nothing removes it for you: delete it by hand.
+6. **Evidence recorded by an earlier version goes stale once in a repository that tracks its bead files (IB-186, #223).** Tracker files under root `.beads/`, `.beads-issues/` and `.beads-dekspec/` no longer count toward the evidence fingerprint, so a tracker-only commit no longer stales a brief or an Intent. The fingerprint itself changed, so earlier evidence reads as `implementation content changed since verification` until `dekspec ib verify` (or `dekspec intent verify`) is run once more. Stale Intent refusals now name every path that was added, removed or changed.
+7. **An obligation reference must name exactly one section (IB-218, ADR-076).** A reference that matched a heading by prefix, or that matches several headings, now fails `dekspec ib lint`, `ib propose` and `ib context`; the message names the heading it used to match and asks for the full title or the section label. `dekspec doctor` reports it at P2 on an ACCEPTED brief and at P3 on a COMPLETE one. Briefs with `**Authority policy:** legacy` are not checked by doctor or lint.
+8. **Acceptance-floor readiness is stricter (IB-182, IB-183, IB-171).** The latest `Floor reviewed:` row for a baseline decides: a FAIL after a PASS takes readiness away, and a later PASS restores it. A test whose fixtures or helpers changed is reported as `support changed:` and needs a stated Basis. In a brief with protected test files, a command condition must declare its `test_files`, or `ib floor` refuses it. A floor report with nothing assessed no longer says OK.
+9. **Audit findings print the Behavior Specification rule ids (IB-212).** `LINK-IB-WS-EXISTS` is now printed as `LINK-IB-BS-EXISTS`, and so on for the twelve ids in the table under Changed. Old ids still work where an audit profile names a rule. A script that searches audit output for an old id finds nothing.
+10. **Install, sync and session start print a notice about project rules for the built-in roles (IB-225 to IB-228).** `dekspec install` and `dekspec sync` print it when it is due and record that in `.dekspec-role-disclosure.json`; the Claude Code session hook prints it each session until then. `dekspec doctor` adds the P3 advisory `L-ROLE-PROJECT-RULES-UNRECORDED` when execution records hold dispatched work and no `roles.project_rules` record exists. `/setup-dekspec` records the five rule locations.
+11. **`dekspec install` warns about a leftover core tree (IB-201).** When an unowned `.claude/` tree can shadow the installed `dekspec@dekspec` plugin, a successful install lists the paths and how to remove them by hand. It changes no file.
+12. **Vendored templates changed.** `dekspec sync` refreshes them. The Intent template gains a Behavior placement table; `dekspec validate` exits 4 for a DRAFT or PROPOSED Intent whose table is malformed and only reports it for later statuses (IB-213). `dekspec init` now scaffolds `behavior-specs/`; existing `working-specs/` folders and `WS-` ids are still read (IB-207, ADR-075).
+
+### Lean construction (ADR-079): in this release, off unless you switch it on
+
+- **What it is.** A third authority policy for a brief, `lean`, beside `legacy` and `delegated`. A lean brief is one page. Its tests are written after acceptance, as the first commit of the brief's pull request, and are no longer pinned red on the base. CI proves them red at the test author's commit and keeps the builder off them. Evidence binds to the brief's own change, so unrelated landings on the base no longer stale it.
+- **Off by default.** Nothing changes until `.dekspec/config.yaml` holds `execution: {lean: true}`. With the switch off a lean brief is refused with `lean is switched off`, and `legacy` and `delegated` briefs keep their contract hashes and behavior. `dekspec config set execution.lean true` does not work yet (`Unknown config key`): edit the file.
+- **Python tests run by pytest only.** In this release a lean brief is accepted only with `**Risk:** normal`, a `## Design intent` section and at least one `pytest:` condition that names a `.py` file. A whole-suite command is refused as an acceptance condition, and high risk is not supported. Other languages and test runners are later work.
+- **DekSpec side (IB-285, IB-286, IB-287).** `dekspec ib tests-authored <ib> --commit … --author … [--skeleton …]` records the test author's commit and the skeleton files a builder may fill in. `dekspec ib floor-review` records the independent verdict a builder waits for. `dekspec delivery lean-guard --base <commit> --head <commit>` is the read-only CI check: tests genuinely red at the author's commit, author files and skeleton interfaces untouched since. IC-020 1.4.0 adds the read-only `lean_state`. Both of this repository's CI gates install and judge with the base commit's DekSpec, so a change to the judge is never judged by itself.
+- **DekBuilder side (IB-288, IB-290).** `dekbuilder implement next` builds a lean brief tests-first with four workers in a fixed order: test author, floor reviewer, builder, code reviewer. A builder that finds the interface wrong sends it back to the test author; after two returns the brief stops for the operator. `dekbuilder wave next "<request>"` takes one step for every brief in flight and starts ready briefs up to `integration.parallel_briefs` (default 2); `dekbuilder wave status` is read-only and shows stage times, base merges, CI runs, repairs and one stop cause per stopped brief. Both wave commands also work for `delegated` briefs.
+- **Landing queue (IB-289).** A completed lean brief joins a landing queue for its base branch. The driver pushes the head of the line, CI runs once on the merge of that head into the current base, and the driver merges only what that run tested: the base tip it recorded in the brief's run record before the push must still be the base, and every check the base requires and the check named `lean gate` must be reported on the head and passed. It never merges with a bypass. A conflict, or a change on the base that touches the brief, sends the brief back for its own tests and review. `dekbuilder wave status` shows the line. For every delivery, the driver now reads the base's required checks when none are reported on the head, and stops with `checks-requirement-unreadable` when it cannot read them (#288).
+
+### Added
+
+- Behavior Specifications (`BS`) parse, validate, allocate, promote, index, relink and export alongside legacy Working Specs (`WS`). One public alias map and shared numbering keep unmigrated repositories working, with a forward IR schema migration and Behavior Specification ingest drafts (IB-207, ADR-075).
+- Declare a non-numeric brief identity and location with `named_briefs` in `.dekspec/config.yaml`. One resolver, exported through `dekspec.api`, serves parsing, contract loading, CLI checks and session commit guards. Numbered allocation is unchanged (IB-241, ADR-078).
+- One installed, schema-validated purpose record for all eleven artifact types: `dekspec resource purpose <type>`. Templates and authoring pointers share its item ids (IB-219).
+- `dekspec resource role --list [--json]` lists the installed role revisions; `roles.project_rules` config pointers and one operating-guide section hold a project's own rules for the built-in roles, which add to a role and never relax it (IB-225, ADR-077).
+- Read-only `dekspec ci acceptance-plan` lists required and expected-red protected acceptance tests per test root, so CI can set aside only the tests of briefs not built yet (IB-234, #209).
+- `dekspec.file_patterns`: one matcher for root-anchored, folder-local wildcards, with exact conversion from the old readings (IB-176, ADR-068).
+- `dekbuilder implement status --json` reports each dispatch's worktree, run, id, role, key, prompt hash and record state (IB-236).
+- `dekbuilder pr-branch [target]` builds a clean `<branch>-pr` branch in pure git; it leaves out commits that only change Behavior Specification files, in both name forms, and never pushes or rewrites the original branch (IB-232).
+
+### Changed
+
+- Each delivery runs its own code (IB-264). Acceptance and integration commands use the delivery checkout's own environment; `integration.worktree_setup` runs first and a failure blocks; every result and run event names the interpreter and the driver and engine copy that ran; a broken environment never falls back silently.
+- The installer projects skill headers per host from one field table (IB-193, ADR-074, #219). Existing hosts receive unchanged skill files. The Amp row is groundwork only; this does not add Amp support.
+- Audit rule ids take the Behavior Specification form (IB-212). Old ids keep working wherever a rule id is read; retired `L<n>` ids stay refused. Detection, severity and messages are unchanged.
+
+  | Old ID | New ID |
+  |---|---|
+  | `LINK-IB-WS-EXISTS` | `LINK-IB-BS-EXISTS` |
+  | `LINK-WS-AE-EXISTS` | `LINK-BS-AE-EXISTS` |
+  | `LINK-WS-AE-MISSING` | `LINK-BS-AE-MISSING` |
+  | `LINK-WS-BLOCKING-PRE-IB-CLEAN` | `LINK-BS-BLOCKING-PRE-IB-CLEAN` |
+  | `T20-WS-BUSINESS-RULES` | `T20-BS-BUSINESS-RULES` |
+  | `T21-WS-FAILURE-BEHAVIOR` | `T21-BS-FAILURE-BEHAVIOR` |
+  | `T-PROSE-WS-BUSINESS-RULE` | `T-PROSE-BS-BUSINESS-RULE` |
+  | `T-PROSE-WS-FAILURE-BEHAVIOR` | `T-PROSE-BS-FAILURE-BEHAVIOR` |
+  | `D17-AE-NUMERIC-NO-WS-CITE` | `D17-AE-NUMERIC-NO-BS-CITE` |
+  | `D19-INT-NUMERIC-NO-WS-CITE` | `D19-INT-NUMERIC-NO-BS-CITE` |
+  | `D-15d-IC-NUMERIC-NO-WS-CITE` | `D-15d-IC-NUMERIC-NO-BS-CITE` |
+  | `D-15a-WS-RATIONALE-NO-ADR-CITE` | `D-15a-BS-RATIONALE-NO-ADR-CITE` |
+
+- The spec reviewer checks an Intent's behavior placement at policy revision 3. A spec review dispatched under revision 2 must be repeated (IB-216).
+- Review lenses receive the generated obligations and the acceptance sources they judge, through existing input slots (IB-175). DekBuilder's review and dispatch text names the Behavior Specification, in both id forms (IB-233).
+- Terminal Mission queues no longer produce historical `LINK-MSN-INT-MIRROR` findings (#238).
+
+### Fixed
+
+- Carried deliveries are attributed to their original committed ranges, with per-unit scope and protection checks and fresh evidence at the final head. A unit cannot borrow another unit's scope, and a merge resolution that discards a moved base's contribution is charged to the merging unit (IB-172).
+- Lifecycle bookkeeping on delivered briefs and their parent Intents passes protected surfaces, as do added or modified execution records; every other protected edit is still refused (IB-179, ADR-073).
+- Acceptance tests compile from source: planted bytecode cannot run, and cached dependency checks detect in-place corruption (IB-171).
+- Execution context reports delegated contract problems beside reference and policy problems, and `ib context` refuses malformed packets in human, JSON and output-file modes (IB-169).
+- AGENTS.md generation and migration ignore DekSpec markers inside code blocks, report destinations that escape the repository as `invalid`, and name the path and reason for unreadable files without a traceback. A refusal leaves the destination untouched (IB-189).
+- All 21 DekSpec skills carry valid YAML headers; installs and product builds refuse an invalid DekSpec header through one shared check (IB-192).
+- Codex installs emit `.codex/hooks.json` and portable edit handlers. The guard reads `apply_patch` paths and protects LOCKED artifacts; missing hook dependencies warn and fail open (IB-198). See Known limits for installs from the public mirror.
+- The release mirror publishes real files in place of links and carries DekBuilder and DekTools beside DekSpec; an isolated install of all three and a smoke test now gate every mirror push (#305).
+- The engine wheel built from the mirror carries the Codex hook handlers, so a Codex install guards LOCKED artifacts again; `scripts/install.sh --platform <host>` emits from the installed engine instead of the mirror's plugin folder, which other hosts' installer refuses.
+
+### Removed
+
+- The DekTools selection shim (IB-202): `dekspec install --dektools-source` and `--dektools-only` are unknown arguments, and the `dektools.enabled` notice and config schema entry are gone. The v0.126.0 installation migration is kept.
+- The `dekspec implement`, `dekspec handoff` and `dekspec deepen-record` commands, replaced by refusals that name the new command (IB-173; notice item 2).
+
+### Known limits
+
+- **One plugin, one tag.** Claude Code users get every skill, DekBuilder's and DekTools' included, from the one `dekspec` plugin; there is no separate DekBuilder or DekTools plugin. DekBuilder and DekTools have no tags or installers of their own: they install from the DekSpec release tag.
+- **Hosts other than Claude Code** receive DekSpec's skills only (item 3). Codex session hooks and live qualification on Codex are not done; Amp is not supported.
+- **Lean.** Python and pytest only; no high-risk briefs; the switch cannot be set through `dekspec config set`; the shipped brief template and `dekspec ib new` still write the delegated form; nothing ships for the pull-request check a lean project needs in its own CI (this repository's job uses a script that is not published).
+- **Landing queue.** When a conflict is resolved to exactly the reviewed content, a lean brief stops with `acceptance-invalid` and waits for a person, where the rule asks for its tests and review to run again automatically; nothing unreviewed lands. Required checks are read from repository rulesets only, not from classic branch protection. For `delegated` deliveries the driver can still call merge while a required check has not yet reported; the forge refuses that merge.
+- **Commands that do nothing yet.** `dekspec ib prove`, `dekspec ib migrate-id`, `dekspec intent placement`, `dekspec ib lint --delivery`, `dekbuilder install` and `dektools install` are accepted and exit 0 without effect. Several flags on `audit`, `install` and `migrate` say "not yet in effect" in their help.
+
+**BREAKING — upgrading.** Existing `legacy` and `delegated` briefs keep their meaning and Working Specs still parse. What needs a hand, in order:
+
+1. Re-run `scripts/install.sh` (add `--with-dektools` for `handoff` or governed `deepen`), or install DekBuilder from the same tag into DekSpec's environment by hand (README, "Manual install"). Change any skill, script or CI step that calls `dekspec implement`, `dekspec handoff` or `dekspec deepen-record` (item 2).
+2. Delete any top-level `dektools` key from `.dekspec/config.yaml`.
+3. Preview the pattern conversion with `dekspec migrate --dry-run`, then run `dekspec sync`, which applies it. Keep the list of stopped entries it prints, because it is printed once, and rewrite each by hand. Have each converted ACCEPTED brief independently reviewed and accepted again.
+4. In a repository that tracks its bead files, run `dekspec ib verify` or `dekspec intent verify` once for work whose evidence must stay current.
+5. Fix each obligation reference `dekspec ib lint` reports, by naming the section's full title or label.
+6. Refresh the host installation: `claude plugin update dekspec@dekspec`, or `dekspec install --platform <host>`.
+7. Where CI runs `dekspec delivery check`, a code change that carries no brief needs a review verdict committed by a second identity (item 1 above).
+
 ## [v0.128.0] — 2026-10-04
 
 ### Fixed

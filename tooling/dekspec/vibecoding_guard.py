@@ -16,8 +16,12 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+
+from dekspec.diff_confinement import matches_any_glob
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+from .brief_identity import is_brief_id
 
 if TYPE_CHECKING:
     from dekspec.session_lifecycle import SessionState
@@ -33,7 +37,6 @@ REASON_UNRESOLVED_INTENT = "unresolved-intent"
 # install location). Module-level so tests can monkeypatch a scratch dir
 # (IB-082 seam).
 _INTENTS_DIR: Path | None = None
-_IB_ID = re.compile(r"^IB-\d{3,}$")
 
 
 def _repo_root() -> Path:
@@ -75,47 +78,6 @@ class VibecodingResult:
     in_scope_files: list[str]
     claimed_intent_id: str | None
     reason: str
-
-
-def _glob_to_regex(glob: str) -> re.Pattern[str]:
-    """Translate a path glob to an anchored regex.
-
-    ``**/`` matches zero or more leading path segments; ``**`` matches any
-    run of characters including ``/``; ``*`` matches within a single
-    segment (no ``/``); ``?`` matches one non-``/`` char. Everything else is
-    literal. Exact-match discipline per MSN-009 — no fuzzy tolerance.
-    """
-    out: list[str] = []
-    i, n = 0, len(glob)
-    while i < n:
-        if glob[i] == "*":
-            if glob[i : i + 3] == "**/":
-                out.append("(?:.*/)?")
-                i += 3
-            elif glob[i : i + 2] == "**":
-                out.append(".*")
-                i += 2
-            else:
-                out.append("[^/]*")
-                i += 1
-        elif glob[i] == "?":
-            out.append("[^/]")
-            i += 1
-        else:
-            out.append(re.escape(glob[i]))
-            i += 1
-    return re.compile("^" + "".join(out) + "$")
-
-
-def _path_matches_glob(path: str, glob: str) -> bool:
-    """True iff ``path`` matches ``glob`` exactly (literal or glob match)."""
-    path = path.strip()
-    glob = glob.strip()
-    if not path or not glob:
-        return False
-    if path == glob:
-        return True
-    return _glob_to_regex(glob).match(path) is not None
 
 
 def _read_components_affected(intent_path: Path) -> list[str]:
@@ -216,7 +178,7 @@ def classify(
             reason=REASON_NO_CLAIMED_INTENT,
         )
 
-    if session.bound_bead_id and _IB_ID.match(session.bound_bead_id):
+    if session.bound_bead_id and is_brief_id(session.bound_bead_id):
         return _classify_ib(session.bound_bead_id, staged)
 
     try:
@@ -236,7 +198,7 @@ def classify(
     in_scope: list[str] = []
     off_spec: list[str] = []
     for path in staged:
-        if any(_path_matches_glob(path, glob) for glob in globs):
+        if matches_any_glob(path, globs):
             in_scope.append(path)
         else:
             off_spec.append(path)
@@ -284,8 +246,12 @@ def _classify_ib(ib_id: str, staged: list[str]) -> VibecodingResult:
     same precedence as `dekspec ib verify`, applied at commit time."""
     from dekspec.diff_confinement import matches_any_glob
     from dekspec.execution.contract import ContractError, load_contract
+    from dekspec.execution.fingerprint import is_tracker_record
     from dekspec.execution.record import EXECUTION_DIRNAME
-    from dekspec.execution.scope import symbol_protection_violation
+    import subprocess
+
+    from dekspec.execution.lifecycle_bookkeeping import bookkeeping_paths, is_protection_bookkeeping
+    from dekspec.execution.scope import Change, symbol_protection_violation
 
     try:
         contract = load_contract(_repo_root(), ib_id)
@@ -299,17 +265,31 @@ def _classify_ib(ib_id: str, staged: list[str]) -> VibecodingResult:
     in_scope: list[str] = []
     off_spec: list[str] = []
     sources = _staged_rename_sources(root)
+    covered = bookkeeping_paths(root, [contract], "HEAD", staged=True)
+    try:
+        listing = subprocess.run(
+            ["git", "diff", "--cached", "--name-status", "--no-renames", "-z"],
+            cwd=root, capture_output=True, text=True)
+    except OSError:
+        listing = None
+    parts = listing.stdout.split("\0") if listing is not None and listing.returncode == 0 else []
+    statuses = {parts[i + 1]: parts[i] for i in range(0, len(parts) - 1, 2)}
+    renamed = set(sources) | set(sources.values())
 
     def verdict(path: str) -> str:
-        if matches_any_glob(path, whole_files) or path in whole_files:
+        change = Change("R" if path in renamed else statuses.get(path, ""), path)
+        if is_protection_bookkeeping(root, change, covered, "HEAD", staged=True):
+            return "in"
+        if matches_any_glob(path, whole_files):
             return "off"  # protected wins over every allowance
-        if any(symbol_protection_violation(_blob(root, "HEAD", path), _blob(root, "", path), s)
-               for s in symbols if s.split("::", 1)[0] == path):
+        if any(symbol_protection_violation(_blob(root, "HEAD", path), _blob(root, "", path),
+                                           f"{path}::{s.split('::', 1)[1]}")
+               for s in symbols if matches_any_glob(path, [s.split("::", 1)[0]])):
             return "off"  # the staged change edits, removes or renames a protected symbol
         if (path in lifecycle or path.startswith(EXECUTION_DIRNAME + "/")
-                or path.split("/", 1)[0] in (".beads", ".beads-issues", ".beads-dekspec")):
+                or is_tracker_record(path)):
             return "in"
-        if (contract.is_delegated and matches_any_glob(path, contract.scope)) or path in contract.scope:
+        if matches_any_glob(path, contract.scope):
             return "in"
         return "off"
 
@@ -323,12 +303,11 @@ def _classify_ib(ib_id: str, staged: list[str]) -> VibecodingResult:
             off_spec.extend(rejected)
         else:
             in_scope.append(path)
-    # A protected file deleted or renamed away is absent from the index even
-    # when a rename listing names only its new path.
-    for surface in contract.protected:
-        path = surface.split("::", 1)[0]
-        if (path not in staged and not any(ch in path for ch in "*?[")
-                and _blob(root, "HEAD", path) is not None and _blob(root, "", path) is None):
+    # --no-renames includes deleted and renamed-away source paths even when
+    # the hook supplied only destinations. Judge concrete paths, never pattern
+    # text (a folder pattern is not an index entry).
+    for path, status in statuses.items():
+        if status == "D" and path not in staged and verdict(path) == "off":
             off_spec.append(path)
     return VibecodingResult(off_spec_files=sorted(set(off_spec)), in_scope_files=sorted(in_scope),
                             claimed_intent_id=ib_id,
