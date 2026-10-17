@@ -36,7 +36,7 @@ class ContractError(RuntimeError):
 class AcceptanceCondition:
     id: str
     condition: str
-    kind: str  # pytest | command | review
+    kind: str  # command | review | the test runner whose tests ``nodes`` names (pytest, …)
     nodes: tuple[str, ...] = ()
     command: str | None = None
     review: str | None = None
@@ -53,7 +53,11 @@ class AcceptanceCondition:
             return cls(raw["id"], raw["condition"], "command", command=verify["command"],
                        timeout=raw.get("timeout"),
                        test_files=tuple(verify["test_files"]) if "test_files" in verify else None)
-        return cls(raw["id"], raw["condition"], "review", review=verify["review"])
+        if "review" in verify:
+            return cls(raw["id"], raw["condition"], "review", review=verify["review"])
+        # A test runner named by its key, followed by its tests (IB-292 O-12).
+        (runner, tests), = verify.items()
+        return cls(raw["id"], raw["condition"], runner, nodes=tuple(tests), timeout=raw.get("timeout"))
 
     def as_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {"id": self.id, "condition": self.condition, "kind": self.kind}
@@ -71,6 +75,18 @@ class AcceptanceCondition:
 def pytest_node_file(node: str) -> str:
     """`tests/test_x.py::TestA::test_b[p]` → `tests/test_x.py`."""
     return node.split("::", 1)[0]
+
+
+def _test_file(runner: str, test: str) -> str:
+    """The file holding ``test``, as the adapter of ``runner`` finds it. A
+    test it places in no test file of its own (answers None), and a test of a
+    runner without an adapter, keep the path before the first `::`, as before
+    adapters: a delegated brief's directory node, or a lean brief accept refuses."""
+    from dekspec.execution.test_runners import adapter_for
+
+    adapter = adapter_for(runner)
+    found = adapter.file_of(test) if adapter is not None else None
+    return found if found is not None else pytest_node_file(test)
 
 
 @dataclass(frozen=True)
@@ -120,7 +136,7 @@ class IBContract:
         return self.ir.get("design_intent", "")
 
     def acceptance_asset_paths(self) -> list[str]:
-        files = {pytest_node_file(n) for c in self.acceptance for n in c.nodes}
+        files = {_test_file(c.kind, n) for c in self.acceptance for n in c.nodes}
         files.update(self.declared_assets)
         files.update(p for c in self.acceptance for p in (c.test_files or ()))
         return sorted(files)
@@ -168,13 +184,9 @@ class IBContract:
                 problems.append("Risk must be normal; high, missing and unknown Risk are not supported")
             if not self.design_intent.strip():
                 problems.append("§Design intent is missing or blank")
-            if not any(c.kind == "pytest" for c in self.acceptance):
-                problems.append("lean acceptance needs a pytest condition")
+            problems.extend(_test_problems(self.acceptance))
             integration = " ".join((settings.integration_command or "").split()) if settings else ""
             for condition in self.acceptance:
-                for node in condition.nodes:
-                    if not pytest_node_file(node).endswith(".py"):
-                        problems.append(f"{condition.id}: pytest node must name a .py file: {node}")
                 command = " ".join((condition.command or "").split())
                 if command and ("check-product.py" in command or (integration and integration in command)):
                     problems.append(f"{condition.id}: whole-suite command is not a lean acceptance condition")
@@ -182,6 +194,33 @@ class IBContract:
             if w.get("severity") == "warning":
                 problems.append(f"{w.get('field')}: {w.get('reason')}")
         return problems
+
+
+def _test_problems(acceptance: tuple[AcceptanceCondition, ...]) -> list[str]:
+    """BS-045 BR 6: a lean brief names tests of a supported runner, in that
+    runner's test files. Each refusal names the condition, and the runner
+    where that is the cause; the runner's adapter alone knows its files."""
+    from dekspec.execution.test_runners import CannotAnswer, adapter_for, runners
+
+    named = [c for c in acceptance if c.nodes]
+    problems = []
+    if not any(adapter_for(c.kind) for c in named):
+        problems.append("lean acceptance needs a condition that names tests of a supported test runner ("
+                        + ", ".join(runners()) + ")")
+    for condition in named:
+        adapter = adapter_for(condition.kind)
+        if adapter is None:
+            problems.append(f"{condition.id}: DekSpec has no adapter for the test runner {condition.kind}")
+            continue
+        try:
+            outside = [node for node in condition.nodes if adapter.file_of(node) is None]
+        except CannotAnswer as exc:
+            problems.append(f"{condition.id}: {exc}")
+            continue
+        words = f" ({adapter.test_files})" if adapter.test_files else ""
+        problems.extend(f"{condition.id}: {node} is not in a test file of the test runner {adapter.name}{words}"
+                        for node in outside)
+    return problems
 
 
 def _legacy_protected(text: str) -> list[str]:

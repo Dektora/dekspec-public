@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased]
+
+## 0.130.0 — 2026-10-16
+
+Released with DekSpec and DekTools 0.130.0 under one tag on the public mirror; requires `dekspec==0.130.0`. Install it from `products/dekbuilder` of that tag into DekSpec's environment (`scripts/install.sh` does this). The repository changelog's v0.130.0 entry has the full notes and known limits.
+
+- Lean delivery normalizes in-worktree skeleton paths, follows DekSpec review-loop decisions, preserves owner stops and carries review history and floor notes into prompts (IB-297).
+- The lean driver names a brief's own tests to the builder and the reviewer whatever its test runner, and the test-author and floor-reviewer prompts name the conditions that name tests by the brief's own word for its runner (IB-295). The reviewer prompt says a change to the test runner's own entry in the package list is a gate change. Readiness names a runner that cannot run. After a resolved conflict a lean brief's own tests and review run again before it rejoins the landing queue, also when the resolution restores the reviewed content, and an interrupted resolver is dispatched again. For a pytest brief the prompts read as before apart from the reviewer's one added sentence.
+- The `review-pr` bug-scan lens also flags weight that buys no correctness: a defensive check or fallback for a case the contract and every caller rule out, and re-deriving what an authoritative source answers (#348).
+
 ## 0.129.0 — 2026-10-14
 
 Released with DekSpec and DekTools 0.129.0 under one tag on the public mirror; requires `dekspec==0.129.0`.

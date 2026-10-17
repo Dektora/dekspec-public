@@ -9,6 +9,8 @@ Intent's execution record (``.dekspec/execution/INT-NNN/``).
 
 from __future__ import annotations
 
+from dekspec.spec_kinds import OUTCOME_NAMES as OUT
+
 from pathlib import Path
 from typing import Any
 
@@ -35,12 +37,19 @@ __all__ = ["intent_children", "intent_complete", "unintegrated_intent_completion
 
 
 def _intent(engine: Engine, ref: str) -> tuple[Path, dict[str, Any]]:
-    folder = engine.repo_root / engine.spec_root / "intents"
-    path = Path(ref) if ref.endswith(".md") else next(iter(sorted(folder.glob(f"{ref}-*.md"))), None)
+    paths = [Path(ref)] if ref.endswith(".md") else OUT.paths(engine.repo_root / engine.spec_root, ref)
+    if len(paths) > 1:
+        raise ExecutionError(f"Ambiguous {ref}: " + ", ".join(map(str, paths)))
+    path = paths[0] if paths else None
     if path is None or not Path(path).is_file():
-        raise ExecutionError(f"no Intent file for {ref}")
+        raise ExecutionError(f"no {OUT.for_artifact(ref, 'heading')} file for {ref}")
     try:
-        return Path(path), parse_intent(path)
+        ir = parse_intent(path)
+        problems = [warning["reason"] for warning in ir.get("parse_warnings", [])
+                    if warning["field"] == "outcome_form"]
+        if problems:
+            raise ExecutionError("; ".join(problems))
+        return Path(path), ir
     except IntentParseError as exc:
         raise ExecutionError(str(exc)) from exc
 
@@ -53,7 +62,7 @@ def intent_children(engine: Engine, intent_id: str) -> list[Any]:
             c = load_contract(engine.repo_root, str(p), spec_root=engine.spec_root)
         except ContractError:
             continue
-        if c.parent == intent_id:
+        if c.parent and OUT.canonical(c.parent, surface="id") == OUT.canonical(intent_id, surface="id"):
             out.append(c)
     return out
 
@@ -91,7 +100,7 @@ def _refuse_integrated_intent(engine: Engine, ir: dict[str, Any], path: Path) ->
                              "pass --base or set DEKSPEC_BASE") from exc
     if engine.completed_in_base(ir["id"], rel):
         raise ExecutionError(f"{ir['id']}'s completion is already integrated in the delivery base; "
-                             "later work needs its own Intent")
+                             f"later work needs its own {OUT.for_artifact(ir['id'], 'heading')}")
 
 
 def intent_verify(engine: Engine, ref: str, actor: str, *, record: bool = True) -> dict[str, Any]:
@@ -102,7 +111,8 @@ def intent_verify(engine: Engine, ref: str, actor: str, *, record: bool = True) 
     if not conds:
         raise ExecutionError(f"{ir['id']} declares no Verification commands")
     results = [acc.run_condition(engine.repo_root, c, python=engine.python,
-                                 timeout=engine.settings.command_timeout) for c in conds]
+                                 timeout=engine.settings.command_timeout, settings=engine.settings)
+               for c in conds]
     overall = "passed" if all(r["status"] in ("passed", "needs-review") for r in results) else "failed"
     manifest = engine.manifest()
     payload = {"kind": "intent", "fingerprint": fingerprint_of(manifest), "commit": current_commit(engine.repo_root),
@@ -180,7 +190,7 @@ def _changed_paths_detail(engine: Engine, intent_id: str, fingerprint: str,
     except (OSError, ValueError, TypeError):
         before = None  # invalid encoding or entry hashes are unusable snapshots too
     if before is None:
-        return "changed paths cannot be named; run `dekspec intent verify` again"
+        return f"changed paths cannot be named; run `dekspec {OUT.for_artifact(intent_id, 'command')} verify` again"
     return "changed paths: " + ", ".join(manifest_changes(before, manifest))
 
 
@@ -191,7 +201,7 @@ def intent_evaluate(engine: Engine, ref: str) -> GateResult:
     children = intent_children(engine, ir["id"])
     incomplete = [c.ib_id for c in children if not engine.is_complete(str(c.path))]
     gate.checks.append(Check("child-ibs", bool(children) and not incomplete,
-                             "no IB names this Intent as parent" if not children
+                             f"no IB names this {OUT.for_artifact(ir['id'], 'heading')} as parent" if not children
                              else (f"incomplete: {', '.join(incomplete)}" if incomplete
                                    else f"{len(children)} IB(s) complete")))
     rec = engine.record(ir["id"])
@@ -201,7 +211,7 @@ def intent_evaluate(engine: Engine, ref: str) -> GateResult:
     gate.fingerprint = fp
     latest = st.latest_evidence("intent")
     if latest is None:
-        gate.checks.append(Check("outcome-evidence", False, "no evidence — run `dekspec intent verify`"))
+        gate.checks.append(Check("outcome-evidence", False, f"no evidence — run `dekspec {OUT.for_artifact(ir['id'], 'command')} verify`"))
         return gate
     seq, ev = latest
     gate.evidence_seq = seq
@@ -220,7 +230,7 @@ def intent_evaluate(engine: Engine, ref: str) -> GateResult:
         if stale_policy and _integration(engine, ir, _path)[0] == "integrated":
             stale_policy = None  # integrated completions are history (ADR-057); ADR-061 re-judges only unlanded work
         if verdict is None:
-            why = "no independent `dekspec intent review` verdict"
+            why = f"no independent `dekspec {OUT.for_artifact(ir['id'], 'command')} review` verdict"
         elif verdict["verdict"] != "pass":
             why = f"the latest attestation is a FAIL ({verdict.get('notes', '')[:200]})"
         elif verdict["fingerprint"] != fp:
@@ -278,6 +288,6 @@ def intent_complete(engine: Engine, ref: str, actor: str) -> GateResult:
         engine.record(ir["id"]).append("completion.recorded", actor,
                                        {"fingerprint": gate.fingerprint, "evidence_seq": gate.evidence_seq})
         set_status(path, {"ACCEPTED"}, "COMPLETE", author=actor,
-                   change=f"Completed (`dekspec intent complete`): child IBs complete, outcome evidence "
+                   change=f"Completed (`dekspec {OUT.for_artifact(ir['id'], 'command')} complete`): child IBs complete, outcome evidence "
                           f"#{gate.evidence_seq} current at {gate.fingerprint[:12]}.")
     return gate

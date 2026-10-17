@@ -10,6 +10,8 @@ staleness instead of silently diverging from a copied constraint.
 
 from __future__ import annotations
 
+from dekspec.spec_kinds import OUTCOME_NAMES as OUT
+
 import hashlib
 import json
 from dataclasses import dataclass
@@ -124,7 +126,7 @@ class ContextPacket:
             "",
             *d["precedence"],
             "",
-            "## Outcome",
+            "## " + (OUT.current("brief_goal_heading") if c.is_executable else OUT.legacy_brief_heading),
             "",
             d["outcome"] or "(none stated)",
         ]

@@ -10,16 +10,19 @@ Public API: parse(path) -> dict
 
 from __future__ import annotations
 
-from dekspec.spec_kinds import BEHAVIOR_SPEC_NAMES as BS
+from dekspec.spec_kinds import BEHAVIOR_SPEC_NAMES as BS, OUTCOME_NAMES as OUT
 
 from collections import OrderedDict
 from functools import wraps
 import pickle
+from copy import deepcopy
 from threading import RLock
 
 import hashlib
 import math
 import re
+import shlex
+import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -1082,7 +1085,7 @@ _AE_SUBTYPE_SLUGS = {
 }
 
 _LINKED_ARTIFACT_BULLET = re.compile(
-    rf"^[-*]\s*\*\*Related\s+(?P<kind>ADRs?|(?:{'|'.join(BS.prefixes)})s?|ICs?|IBs?|AEs?|INTs?|Intents?|Owners?):\*\*\s*(?P<value>.+?)$",
+    rf"^[-*]\s*\*\*Related\s+(?P<kind>ADRs?|(?:{'|'.join(BS.prefixes)})s?|ICs?|IBs?|AEs?|{OUT.pattern('id_prefix')}s?|{OUT.pattern('heading')}s?|Owners?):\*\*\s*(?P<value>.+?)$",
     re.MULTILINE | re.IGNORECASE,
 )
 _NON_GOAL_BULLET = re.compile(
@@ -2561,7 +2564,7 @@ IB_AUTHORITY_POLICIES = ("legacy", "delegated", "lean")
 _IB_H1_TITLE = re.compile(r"^#\s+(.+?)\s*$", re.MULTILINE)
 _IB_META_LINE = re.compile(r"^\*\*([^*]+?):\*\*\s*(.+?)\s*$", re.MULTILINE)
 _IB_AE_ID_REF = re.compile(r"\b(AE-\d{3,})\b")
-_IB_INT_ID_REF = re.compile(r"\b(INT-\d{3,})\b")
+_IB_INT_ID_REF = re.compile(rf"\b({OUT.pattern()})\b")
 _WS_ID_FROM_PATH_IB = re.compile(rf"\b({BS.id_pattern})\b")
 
 
@@ -2650,7 +2653,7 @@ def _parse_ib_text(src: Path, text: str) -> dict[str, Any]:
         if impact:
             ir["spec_impact"] = impact
 
-    goal = ctx.sections.get("Goal", "").strip()
+    goal = ctx.sections.get(OUT.current("brief_goal_heading"), "").strip()
     if goal:
         ir["goal"] = goal
 
@@ -2780,7 +2783,7 @@ def _extract_ib_spec(meta: dict[str, str]) -> dict[str, str] | None:
 
 
 def _extract_ib_intent(meta: dict[str, str]) -> dict[str, str] | None:
-    raw = (meta.get("Intent") or "").strip()
+    raw = next((value for key, value in meta.items() if OUT.canonical(key, surface="heading")), "").strip()
     if not raw or raw.lower() == "none":
         return None
     m = _IB_INT_ID_REF.search(raw)
@@ -2874,11 +2877,11 @@ def _extract_ib_domain_constraints(body: str) -> list[dict[str, str]]:
     return out
 
 
-_IB_PARENT_REF = re.compile(rf"\b((?:INT|{'|'.join(BS.prefixes)}|MSN)-\d{{3,}})\b")
+_IB_PARENT_REF = re.compile(rf"\b((?:{OUT.pattern('id_prefix')}|{'|'.join(BS.prefixes)}|MSN)-\d{{3,}})\b")
 _IB_SPEC_IMPACT_REF = re.compile(rf"\b((?:ADR|IC|{'|'.join(BS.prefixes)}|AE|SP)-\d{{3,}}|CONSTITUTION|SYSTEM-VISION)\b")
 _IB_OBLIGATION_REF = re.compile(
     r"^[-*]\s+\*\*(?P<id>O-\d+)\*\*\s*(?:→|->)\s*"
-    rf"(?P<ref>(?:ADR|IC|{'|'.join(BS.prefixes)}|AE|SP|INT|MSN|IB)-\d{{3,}}|CONSTITUTION|SYSTEM-VISION)"
+    rf"(?P<ref>(?:ADR|IC|{'|'.join(BS.prefixes)}|AE|SP|{OUT.pattern('id_prefix')}|MSN|IB)-\d{{3,}}|CONSTITUTION|SYSTEM-VISION)"
     r"(?:\s*§\s*(?P<section>[^\n]+?))?"
     r"(?:\s+—\s+(?P<note>.+?))?\s*$",
     re.MULTILINE,
@@ -2894,7 +2897,7 @@ _IB_PATH_DECLARATION = re.compile(
 _IB_ASSET_LABEL = re.compile(r"^Protected acceptance assets(?:\s*\([^\n]*\))?\s*:\s*$", re.I)
 _IB_EMPTY_ASSETS = re.compile(r"none(?: beyond the test files named above)?(?:\s+.*)?", re.I)
 _IB_ASSET_IDENTIFIER = re.compile(
-    rf"(?:(?:P-)?(?:ADR|AE|IC|{'|'.join(BS.prefixes)}|IB|INT|MSN|SP)-[0-9]{{3,}}|AC-[0-9]+|"
+    rf"(?:(?:P-)?(?:ADR|AE|IC|{'|'.join(BS.prefixes)}|IB|{OUT.pattern('id_prefix')}|MSN|SP)-[0-9]{{3,}}|AC-[0-9]+|"
     r"CONSTITUTION|SYSTEM-VISION|DOMAIN-GLOSSARY)"
 )
 _IB_H3_SPLIT = re.compile(r"^###\s+(.+?)\s*$", re.MULTILINE)
@@ -2902,6 +2905,9 @@ _IB_YAML_FENCE = re.compile(r"```ya?ml[^\n]*\n(?P<body>.*?)```", re.DOTALL)
 _IB_BACKTICK_PATH = re.compile(r"`([^`]+)`")
 _IB_AC_ID = re.compile(r"^AC-\d+$")
 _IB_VERIFY_KINDS = ("pytest", "command", "review")
+# A lean condition may name another test runner by its key (IB-292 O-12);
+# whether DekSpec supports that runner is the contract's question, not the parser's.
+_IB_RUNNER_KEY = re.compile(r"^[a-z][a-z0-9_-]*$")
 
 
 def _extract_ib_authority_policy(meta: dict[str, str], ctx: _ParseContext) -> str:
@@ -3013,7 +3019,8 @@ def _ib_asset_declarations(body: str, offset: int, ctx: _ParseContext) -> list[s
     return sorted(dict.fromkeys(assets))
 
 
-def _extract_ib_acceptance(body: str, ctx: _ParseContext) -> tuple[list[dict[str, Any]], list[str]]:
+def _extract_ib_acceptance(body: str, ctx: _ParseContext, *,
+                           runners: bool = False) -> tuple[list[dict[str, Any]], list[str]]:
     import yaml  # local import: only IBs with an Acceptance section need it
 
     fence = _IB_YAML_FENCE.search(body)
@@ -3055,7 +3062,18 @@ def _extract_ib_acceptance(body: str, ctx: _ParseContext) -> tuple[list[dict[str
         if not condition or condition.startswith("["):
             ctx.warnings.append(_Warn(field=where, reason=f"{ac_id} has no condition", severity="warning"))
             continue
-        if not isinstance(verify, dict) or len([k for k in _IB_VERIFY_KINDS if k in verify]) != 1:
+        runner = _ib_runner_key(verify) if runners else None
+        other = _ib_runner_key(verify) if not runners else None
+        if other is not None:
+            ctx.warnings.append(_Warn(
+                field=where,
+                reason=f"{ac_id} names {other} tests; only a lean brief may name tests of a test runner "
+                       "other than pytest",
+                severity="warning",
+            ))
+            continue
+        if runner is None and (not isinstance(verify, dict)
+                               or len([k for k in _IB_VERIFY_KINDS if k in verify]) != 1):
             ctx.warnings.append(_Warn(
                 field=where,
                 reason=f"{ac_id} verify must name exactly one of pytest / command / review",
@@ -3073,15 +3091,17 @@ def _extract_ib_acceptance(body: str, ctx: _ParseContext) -> tuple[list[dict[str
                     "file or folder paths without patterns, on a command condition only", severity="warning"))
                 continue
         entry: dict[str, Any] = {"id": ac_id, "condition": condition}
-        if "pytest" in verify:
-            nodes = verify["pytest"]
+        if "pytest" in verify or runner is not None:
+            key = runner or "pytest"
+            nodes = verify[key]
             if isinstance(nodes, str):
                 nodes = [nodes]
             nodes = [str(n).strip() for n in (nodes or []) if str(n).strip()]
             if not nodes:
-                ctx.warnings.append(_Warn(field=where, reason=f"{ac_id} lists no pytest nodes", severity="warning"))
+                what = "pytest nodes" if key == "pytest" else f"{key} tests"
+                ctx.warnings.append(_Warn(field=where, reason=f"{ac_id} lists no {what}", severity="warning"))
                 continue
-            entry["verify"] = {"pytest": nodes}
+            entry["verify"] = {key: nodes}
         elif "command" in verify:
             cmd = str(verify["command"] or "").strip()
             if not cmd or cmd.startswith("["):
@@ -3105,6 +3125,18 @@ def _extract_ib_acceptance(body: str, ctx: _ParseContext) -> tuple[list[dict[str
     return conditions, _ib_asset_declarations(body, fence.end(), ctx)
 
 
+def _ib_runner_key(verify: Any) -> str | None:
+    """The test runner a `verify` mapping names by its only key, when that key
+    is not one of the built-in kinds and its value lists tests."""
+    if not isinstance(verify, dict) or len(verify) != 1:
+        return None
+    (key, value), = verify.items()
+    if (not isinstance(key, str) or key in (*_IB_VERIFY_KINDS, "test_files")
+            or not _IB_RUNNER_KEY.match(key) or not isinstance(value, (list, str))):
+        return None
+    return key
+
+
 def _extract_ib_contract_sections(ir: dict[str, Any], ctx: _ParseContext) -> None:
     """ADR-055/056 contract sections. Present on delegated IBs; a legacy IB
     simply lacks them (its Files to Modify / Do Not Touch / Done When remain)."""
@@ -3112,7 +3144,14 @@ def _extract_ib_contract_sections(ir: dict[str, Any], ctx: _ParseContext) -> Non
 
     if "Design intent" in sections:
         ir["design_intent"] = sections["Design intent"].strip()
-    outcome = sections.get("Outcome", "").strip()
+    if ir.get("authority_policy") in ("delegated", "lean"):
+        headings = [heading for heading in sections
+                    if OUT.canonical(heading, surface="brief_goal_heading")]
+        if len(headings) > 1:
+            raise IBParseError("One brief goal has multiple headings: " + ", ".join(headings))
+        outcome = sections[headings[0]].strip() if headings else ""
+    else:
+        outcome = sections.get(OUT.legacy_brief_heading, "").strip()
     if outcome and not outcome.startswith("["):
         ir["outcome"] = outcome
     rationale = sections.get("Rationale", "").strip()
@@ -3195,7 +3234,8 @@ def _extract_ib_contract_sections(ir: dict[str, Any], ctx: _ParseContext) -> Non
             ir["protected_surfaces"] = surfaces
 
     if "Acceptance" in sections:
-        conditions, assets = _extract_ib_acceptance(sections["Acceptance"], ctx)
+        conditions, assets = _extract_ib_acceptance(sections["Acceptance"], ctx,
+                                                    runners=ir.get("authority_policy") == "lean")
         conditions = [c for c in conditions if not c["condition"].startswith("[")]
         if conditions:
             ir["acceptance"] = conditions
@@ -3226,7 +3266,15 @@ def _extract_ib_contract_sections(ir: dict[str, Any], ctx: _ParseContext) -> Non
 
 def _load_ib_schema() -> dict[str, Any]:
     from ..schemas import load_schema as _load
-    return _load("implementation_brief")
+    schema = deepcopy(_load("implementation_brief"))
+    # The same schema accepts the kind's aliases without changing the IR or
+    # rewriting identifiers. Names stay owned by the names service.
+    properties = schema["properties"]
+    for field_schema in (properties["parent"]["properties"]["id"],
+                         properties["intent"]["properties"]["id"],
+                         properties["obligations"]["items"]["properties"]["ref"]):
+        field_schema["pattern"] = f"(?:{field_schema['pattern']}|^{OUT.pattern()}$)"
+    return schema
 
 
 def _validate_ib(ir: dict[str, Any]) -> None:
@@ -3245,7 +3293,7 @@ def _validate_ib(ir: dict[str, Any]) -> None:
 # Intent IR (INT-NNN) parser
 # --------------------------------------------------------------------------- #
 
-_INT_FILENAME = re.compile(r"^(INT-\d{3,})-.+\.md$")
+_INT_FILENAME = re.compile(rf"^({OUT.pattern()})-.+\.md$")
 _INT_VALID_STATUSES = {
     # `TODO` + `TESTFAIL` retired 2026-05-25 (E3 audit: 0 in-degree,
     # 0 out-degree, 0 as-initial across the 99-Intent history). Files
@@ -3270,7 +3318,7 @@ _INT_VALID_TYPES = {
     "feature", "bug", "nfr", "adr-driven", "refactor", "documentation", "environment",
 }
 _INT_VALID_AUTONOMY = {"manual", "low", "medium", "high"}
-_INT_H1_TITLE = re.compile(r"^#\s+(?:P-)?INT-\d{3,}:\s*(.+?)\s*$", re.MULTILINE)
+_INT_H1_TITLE = re.compile(rf"^#\s+(?:{OUT.pattern()}|{OUT.pattern('provisional_id')}):\s*(.+?)\s*$", re.MULTILINE)
 _INT_AE_REF = re.compile(r"^[-*]\s*(?:\*\*)?(AE-\d{3,})(?:\*\*)?\s*[:\-—]\s*(?P<rest>.+?)$", re.MULTILINE)
 _INT_GLOB_BULLET = re.compile(r"^[-*]\s*`([^`]+)`(?:[ \t]+.*)?$", re.MULTILINE)
 _INT_FENCED_YAML = re.compile(r"```(?:yaml)?\s*\n(.*?)\n```", re.DOTALL)
@@ -3283,7 +3331,7 @@ _INT_VERIF_MANUAL_RATIONALE = re.compile(
 )
 # ds-9hma / ADR-035: a Superseded-By successor may be an Intent or a Mission
 # (non-LOCKED absorption case).
-_SUPERSEDED_BY_ID = re.compile(r"\b(?:INT|MSN)-\d{3,}\b")
+_SUPERSEDED_BY_ID = re.compile(rf"\b(?:{OUT.pattern()}|MSN-\d{{3,}})\b")
 
 
 class IntentParseError(Exception):
@@ -3318,6 +3366,10 @@ def parse_intent(path: str | Path) -> dict[str, Any]:
         },
     }
 
+    compact = re.search(r"\*\*Status:\*\*", text.split("\n## ", 1)[0]) is not None
+    if compact:
+        _extract_outcome_form(ir, ctx)
+
     intent_type = _extract_intent_type(ctx)
     if intent_type:
         ir["intent_type"] = intent_type
@@ -3337,7 +3389,7 @@ def parse_intent(path: str | Path) -> dict[str, Any]:
     if branch:
         ir["branch"] = branch
 
-    mission = _extract_intent_mission(ctx.sections.get("Mission", ""))
+    mission = _extract_intent_mission(ctx.sections.get("Mission", "") or (_outcome_meta(ctx, "Mission") if compact else ""))
     if mission:
         ir["mission"] = mission
 
@@ -3361,7 +3413,7 @@ def parse_intent(path: str | Path) -> dict[str, Any]:
     if motivation:
         ir["motivation"] = motivation
 
-    desired = ctx.sections.get("Desired Outcome", "").strip()
+    desired = _outcome_section(ctx, "changes_heading").strip()
     if desired:
         ir["desired_outcome"] = desired
 
@@ -3382,7 +3434,7 @@ def parse_intent(path: str | Path) -> dict[str, Any]:
         ir["components_affected"] = components
 
     verification = _extract_intent_verification(ctx.sections.get("Verification", ""))
-    if verification:
+    if verification and not compact:
         ir["verification"] = verification
 
     try:
@@ -3408,7 +3460,7 @@ def parse_intent(path: str | Path) -> dict[str, Any]:
     # Strip the template's instructional italic block (lines that are pure
     # `*...*` and start with `*Per ADR-029`) so an untouched template
     # section reads as empty for grandfather purposes.
-    _outcome_raw = ctx.sections.get("Outcome Verification", "")
+    _outcome_raw = _outcome_section(ctx, "check_heading")
     _outcome_body = "\n".join(
         line for line in _outcome_raw.splitlines()
         if not line.strip().startswith("*Per ADR-029")
@@ -3432,6 +3484,58 @@ def parse_intent(path: str | Path) -> dict[str, Any]:
 
     _validate_intent(ir)
     return ir
+
+
+def _outcome_section(ctx: _ParseContext, surface: str) -> str:
+    """Read one semantic section without teaching the parser alias spellings."""
+    return next((body for heading, body in ctx.sections.items()
+                 if OUT.canonical(heading, surface=surface)), "")
+
+
+def _outcome_meta(ctx: _ParseContext, label: str) -> str:
+    header = ctx.text.split("\n## ", 1)[0]
+    match = re.search(r"\*\*" + re.escape(label) + r":\*\*\s*([^\n·]+)", header)
+    return match[1].strip() if match else ""
+
+
+def _extract_outcome_form(ir: dict[str, Any], ctx: _ParseContext) -> None:
+    """Lower the compact Outcome form to the existing execution IR."""
+    for surface, field_name in (("changes_heading", "desired_outcome"),
+                                ("beneficiary_heading", "who_it_is_for"),
+                                ("check_heading", "outcome_verification")):
+        body = _outcome_section(ctx, surface).strip()
+        if body:
+            ir[field_name] = body
+        else:
+            ctx.warnings.append(_Warn("outcome_form", f"Missing or empty required section: {OUT.current(surface)}"))
+    date = _extract_first_date(_outcome_meta(ctx, "Date"))
+    if date:
+        ir["created"] = date
+    else:
+        ctx.warnings.append(_Warn("outcome_form", "Missing or invalid Date in the Outcome header"))
+    if _outcome_meta(ctx, "Id") != ir["id"]:
+        ctx.warnings.append(_Warn("outcome_form", f"Header Id must match the written id {ir['id']}"))
+    after = _outcome_meta(ctx, "After")
+    if after:
+        ir["after"] = after
+    # No type or autonomy field is required by this form. Acceptance retains
+    # the established medium autonomy default; an explicit restriction wins.
+    ir["autonomy"] = "medium"
+    check = ir.get("outcome_verification", "")
+    if not check:
+        return
+    first = check.splitlines()[0].strip()
+    try:
+        declaration = safe_load(first)
+    except Exception:
+        declaration = None
+    if isinstance(declaration, dict) and isinstance(declaration.get("pytest"), list):
+        nodes = declaration["pytest"]
+        if len(nodes) == 1 and isinstance(nodes[0], str) and nodes[0].strip():
+            ir["verification"] = [{"name": "outcome-check", "cmd": shlex.join(
+                [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", nodes[0]])}]
+            return
+    ctx.warnings.append(_Warn("outcome_form", f"{OUT.current('check_heading')} must name one pytest test on its first line"))
 
 
 def _extract_intent_id(filename: str) -> str:
@@ -3461,7 +3565,8 @@ def _extract_intent_name(text: str) -> str:
 
 
 def _extract_intent_status(ctx: _ParseContext) -> str:
-    body = ctx.sections.get("Status", "")
+    body = ctx.sections.get("Status", "") or _outcome_meta(ctx, "Status")
+    label = OUT.for_artifact(_extract_intent_id(ctx.src.name), "heading")
     for line in body.splitlines():
         s = line.strip()
         if not s or s.startswith("*"):
@@ -3471,12 +3576,12 @@ def _extract_intent_status(ctx: _ParseContext) -> str:
             return token
         if token in _INT_RETIRED_STATUSES:
             raise IntentParseError(
-                f"Intent Status `{token}` is retired (ADR-046 / ADR-057: an Intent's status records "
+                f"{label} Status `{token}` is retired (ADR-046 / ADR-057: an {label}'s status records "
                 f"decisions — DRAFT -> PROPOSED -> ACCEPTED -> COMPLETE, or SUPERSEDED). Run "
                 f"`dekspec migrate` — it maps {token} -> {_INT_RETIRED_STATUSES[token]} and records "
-                f"the change in the Intent's Amendment Log."
+                f"the change in the {label}'s Amendment Log."
             )
-    raise IntentParseError("Could not extract a valid Intent Status.")
+    raise IntentParseError(f"Could not extract a valid {label} Status.")
 
 
 def _extract_intent_type(ctx: _ParseContext) -> str | None:
@@ -3806,7 +3911,7 @@ def parse_mission(path: str | Path) -> dict[str, Any]:
 
     first = h3.get("First Intent", "").strip()
     if first:
-        m = re.search(r"\bINT-(?:\d{3,}|\?{3,})\b", first)
+        m = re.search(rf"\b(?:{OUT.pattern()}|{OUT.pattern('id_prefix')}-\?{{3,}})\b", first)
         if m:
             ir["first_intent"] = m.group(0)
 

@@ -2,10 +2,11 @@
 
 Audit rule-id aliases and retired display-form renames also live here (IB-212).
 Runtime readers use ``canonical_rule_id``; retired forms are text renames only.
+Outcome names, recognition and file discovery share one compatibility boundary.
 """
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 import re
@@ -14,6 +15,8 @@ from types import MappingProxyType
 __all__ = [
     "BEHAVIOR_SPEC_NAMES",
     "BehaviorSpecNames",
+    "OUTCOME_NAMES",
+    "OutcomeNames",
     "RETIRED_RULE_ID_RENAMES",
     "RULE_ID_ALIASES",
     "canonical_rule_id",
@@ -118,3 +121,159 @@ class BehaviorSpecNames:
 
 
 BEHAVIOR_SPEC_NAMES = BehaviorSpecNames()
+
+
+class OutcomeNames:
+    """Hide all Outcome/Intent spellings behind current and canonical.
+
+    Callers never enumerate old names; ids retain their number when canonicalized.
+    Unrelated values return None; unknown surfaces raise ValueError, so a caller
+    mistake is never confused with a nonmatching artifact. Both operations are pure.
+    Alias tables and per-surface methods were rejected: callers need recognition
+    and current names, not alias storage or an expanding family of special cases.
+    """
+
+    def current(self, surface: str) -> str:
+        """Return the current name for a supported surface; unknown: ValueError.
+
+        Surfaces: id, provisional_id, folder, index, template, schema, heading,
+        command, changes_heading, check_heading, brief_goal_heading.
+        Id surfaces return their prefix (OUT or P-OUT), without a number.
+        """
+        return self._names(surface)[0]
+
+    def canonical(self, value: str, *, surface: str) -> str | None:
+        """Recognize either spelling and return its current name, else None.
+
+        For id surfaces accept a whole numbered id, preserving its numeric text.
+        Unknown surfaces raise ValueError. This does not rewrite any artifact.
+        """
+        names = self._names(surface)
+        if surface in ("id", "provisional_id"):
+            match = re.fullmatch(self.pattern(surface), value)
+            return names[0] + "-" + value.rsplit("-", 1)[1] if match else None
+        return names[0] if value in names else None
+
+    legacy_brief_heading = "Outcome"
+    legacy_parent_heading = "Intent"
+    command_aliases = ("intent",)
+
+    _surfaces = {
+        "id": ("OUT", "INT"),
+        "id_prefix": ("OUT", "INT"),
+        "provisional_id": ("P-OUT", "P-INT"),
+        "folder": ("outcomes", "intents"),
+        "index": ("outcome-index.md", "intent-index.md"),
+        "template": ("outcome-template.md", "intent-template.md"),
+        "schema": ("intent.schema.yaml", "outcome.schema.yaml"),
+        "heading": ("Outcome", "Intent"),
+        "command": ("outcome", "intent"),
+        "changes_heading": ("What changes", "Desired Outcome"),
+        "check_heading": ("Outcome check", "Outcome Verification"),
+        "brief_goal_heading": ("Goal", "Outcome"),
+        "beneficiary_heading": ("Who it is for",),
+    }
+
+    def _names(self, surface: str) -> tuple[str, ...]:
+        try:
+            return self._surfaces[surface]
+        except KeyError:
+            raise ValueError(f"Unknown Outcome name surface: {surface}") from None
+
+    def pattern(self, surface: str = "id") -> str:
+        """A noncapturing regex recognizing this surface (no boundary anchors)."""
+        pattern = "(?:" + "|".join(map(re.escape, self._names(surface))) + ")"
+        return pattern + r"-\d{3,}" if surface in ("id", "provisional_id") else pattern
+
+    def for_artifact(self, artifact_id: str, surface: str) -> str:
+        """Vocabulary appropriate to a written id; unrelated ids use current names.
+
+        This preserves unmoved projects' diagnostics and authoring destinations
+        without asking callers to distinguish historical spellings.
+        """
+        names = self._names(surface)
+        for index, prefix in enumerate(self._names("id")):
+            if re.fullmatch(r"(?:P-)?" + re.escape(prefix) + r"-\d{3,}", artifact_id):
+                return names[min(index, len(names) - 1)]
+        for spellings in self._surfaces.values():
+            if artifact_id in spellings:
+                return names[min(spellings.index(artifact_id), len(names) - 1)]
+        return names[0]
+
+    def describe(self, text: str, artifact_id: str) -> str:
+        """Render human prose in the named artifact's vocabulary; never rewrite ids."""
+        recognized = any(self.canonical(artifact_id, surface=surface)
+                         for surface in ("id", "provisional_id", "index"))
+        if not recognized or self.for_artifact(artifact_id, "heading") != self.current("heading"):
+            return text
+        for surface in ("heading", "changes_heading", "check_heading"):
+            names = self._names(surface)
+            for alias in names[1:]:
+                text = re.sub(r"\b" + re.escape(alias) + r"(s?)\b",
+                              lambda match: names[0] + match[1], text)
+        for alias in self._names("command")[1:]:
+            text = text.replace("dekspec " + alias + " ", "dekspec " + self.current("command") + " ")
+        return text
+
+    def filename_id(self, filename: str) -> str | None:
+        """Read a numbered canonical or provisional filename, retaining its id."""
+        match = re.fullmatch(rf"((?:{self.pattern()}|{self.pattern('provisional_id')}))-.+\.md", filename)
+        return match[1] if match else None
+
+    def paths(self, spec_dir: Path, artifact_id: str | None = None) -> list[Path]:
+        """Find canonical files recursively in either home; never choose an ambiguity.
+
+        An id selects its shared numeric identity. No files are changed; callers
+        that require one match must refuse multiple results, naming all files.
+        """
+        wanted = self.canonical(artifact_id, surface="id") if artifact_id else None
+        if artifact_id and wanted is None:
+            return []
+        found = []
+        for folder in self._names("folder"):
+            for path in (spec_dir / folder).rglob("*.md"):
+                ident = self.filename_id(path.name)
+                identity = self.canonical(ident or "", surface="id")
+                # Unfiltered walks retain malformed files so parsers can report
+                # them, just as the original kind-folder loader did.
+                recognized_file = re.match(self.pattern("id_prefix") + "-", path.name)
+                if (wanted is None and recognized_file) or (wanted is not None and wanted == identity):
+                    found.append(path)
+        return sorted(found)
+
+    def index_path(self, spec_dir: Path) -> Path:
+        """Select an existing index, preferring current; default to current."""
+        for name in self._names("index"):
+            if (spec_dir / name).is_file():
+                return spec_dir / name
+        for folder in self._names("folder"):
+            if (spec_dir / folder).is_dir():
+                return spec_dir / self.for_artifact(folder, "index")
+        return spec_dir / self.current("index")
+
+    def next_number(self, spec_dir: Path, reserved: Iterable[str] = ()) -> int:
+        """Next canonical number across both forms, plus any reserved ids.
+
+        Provisional hints are not allocations. Reserved ids may be a registry
+        snapshot or numbers assigned earlier in the same transaction.
+        """
+        ids = [self.filename_id(path.name) for path in self.paths(spec_dir)]
+        ids.extend(reserved)
+        numbers = [int(value.rsplit("-", 1)[1]) for value in ids
+                   if value and self.canonical(value, surface="id")]
+        return max(numbers, default=0) + 1
+
+
+OUTCOME_NAMES = OutcomeNames()
+
+
+# Shared layout registrations. Callers enumerate artifact kinds, never aliases.
+# Kept here so name changes do not spread into command, graph or audit tables.
+ARTIFACT_FOLDERS = MappingProxyType({
+    "ADR": "adrs", "AE": "architecture-elements",
+    **dict(zip(BEHAVIOR_SPEC_NAMES.prefixes, BEHAVIOR_SPEC_NAMES.folders)),
+    "IC": "interface-contracts", "IB": "impl-briefs", "MSN": "missions",
+    "SP": "security-profiles",
+    **dict(zip(OUTCOME_NAMES._names("id"), OUTCOME_NAMES._names("folder"))),
+})
+ARTIFACT_PREFIXES = tuple(ARTIFACT_FOLDERS)

@@ -10,6 +10,8 @@ v0.2.0 commands:
 
 from __future__ import annotations
 
+from dekspec.spec_kinds import OUTCOME_NAMES as OUT, ARTIFACT_FOLDERS
+
 from dekspec.spec_kinds import BEHAVIOR_SPEC_NAMES as BS
 
 import argparse
@@ -79,7 +81,7 @@ _IC_PREFIX = _re.compile(r"^IC-\d{3,}-")
 _AE_PREFIX = _re.compile(r"^AE-\d{3,}-")
 _WS_PREFIX = _re.compile(rf"^{BS.id_pattern}-")
 _ADR_PREFIX = _re.compile(r"^ADR-\d{3,}-")
-_INT_PREFIX = _re.compile(r"^INT-\d{3,}-")
+_INT_PREFIX = _re.compile(rf"^{OUT.pattern()}-")
 _MSN_PREFIX = _re.compile(r"^MSN-\d{3,}-")
 _SP_PREFIX = _re.compile(r"^SP-\d{3,}-")
 
@@ -2965,7 +2967,7 @@ def _add_validate_subparser(sub: argparse._SubParsersAction) -> None:
     p.add_argument(
         "--kind",
         choices=[
-            "ic", "ae", "ws", "adr", "ib", "intent", "mission",
+            "ic", "ae", "ws", "adr", "ib", "intent", OUT.current("command"), "mission",
             "sp", "contextspec", "vision", "glossary", "constitution",
         ],
         help=(
@@ -2995,6 +2997,8 @@ def cmd_validate(args: argparse.Namespace) -> int:
         print(f"Error: {exc}", file=sys.stderr)
         return 2
     artifact_kind = getattr(args, "kind", None) or _detect_artifact_kind(src.name)
+    if OUT.canonical(artifact_kind or "", surface="command"):
+        artifact_kind = "intent"
     if artifact_kind is None:
         print(
             f"Error: cannot detect artifact kind from filename '{src.name}'. "
@@ -3022,6 +3026,18 @@ def cmd_validate(args: argparse.Namespace) -> int:
     )
     try:
         ir = parse_fn(src)
+        if artifact_kind == "intent":
+            # Discovery (including both folder/id forms) belongs to the names module.
+            spec_dir = next((parent.parent for parent in src.parents
+                             if OUT.canonical(parent.name, surface="folder")), None)
+            if spec_dir:
+                matches = OUT.paths(spec_dir, ir["id"])
+                if len(matches) > 1:
+                    raise IntentParseError("One identity has multiple files: " + ", ".join(map(str, matches)))
+            required = [w["reason"] for w in ir.get("parse_warnings", [])
+                        if w["field"] == "outcome_form"]
+            if required:
+                raise IntentParseError("; ".join(required))
     except error_classes as e:
         if args.json:
             print(json.dumps({"ok": False, "error": str(e),
@@ -4339,7 +4355,7 @@ def _render_graph_dot(
 # Kind grouping order for the human-readable `text` graph render.
 _GRAPH_KIND_ORDER = [
     "SYSTEM-VISION", "CONSTITUTION", "AE", "ADR", "IC",
-    *BS.prefixes, "IB", "INT", "MSN", "SP", "DOMAIN-GLOSSARY",
+    *BS.prefixes, "IB", *(kind for kind in ARTIFACT_FOLDERS if OUT.canonical(kind + "-000", surface="id")), "MSN", "SP", "DOMAIN-GLOSSARY",
 ]
 
 
@@ -4394,7 +4410,7 @@ def cmd_graph_export(args: argparse.Namespace) -> int:
         prefix_filter: set[str] | None = None
     else:
         valid = {
-            "AE", "ADR", *BS.prefixes, "IC", "IB", "INT", "MSN", "SP",
+            *ARTIFACT_FOLDERS,
             "GLOSSARY", "VISION", "CONSTITUTION",
         }
         kinds = {k.strip().upper() for k in args.include.split(",") if k.strip()}
@@ -4409,7 +4425,8 @@ def cmd_graph_export(args: argparse.Namespace) -> int:
         # Map kind name → id prefix used in irs_by_id
         prefix_map = {
             "AE": "AE-", "ADR": "ADR-", **{p: p + "-" for p in BS.prefixes}, "IC": "IC-",
-            "IB": "IB-", "INT": "INT-", "MSN": "MSN-", "SP": "SP-",
+            "IB": "IB-", "MSN": "MSN-", "SP": "SP-",
+            **{kind: kind + "-" for kind in ARTIFACT_FOLDERS if OUT.canonical(kind + "-000", surface="id")},
             "GLOSSARY": "DOMAIN-GLOSSARY", "VISION": "SYSTEM-VISION",
             "CONSTITUTION": "CONSTITUTION",
         }
@@ -4527,7 +4544,6 @@ _RELINK_ARTIFACT_DIRS: tuple[tuple[str, str, bool], ...] = (
     ("security-profiles", "SP-*.md", False),
     ("interface-contracts", "IC-*.md", False),
     ("impl-briefs", "IB-*.md", True),
-    ("intents", "INT-*.md", True),
     ("missions", "MSN-*.md", True),
 )
 # Singleton artifacts: filename -> the bare artifact ID SpecGraph keys them by.
@@ -4538,7 +4554,7 @@ _RELINK_SINGLETONS: tuple[tuple[str, str], ...] = (
 )
 # An artifact ID embedded at the start of a filename: <ID>-slug.md or <ID>.md.
 _RELINK_ID_RE = _re.compile(
-    rf"^((?:ADR|AE|{'|'.join(BS.prefixes)}|SP|IC|IB|INT|MSN)-\d+)(?:-.*)?$"
+    rf"^((?:{'|'.join(ARTIFACT_FOLDERS)})-\d+)(?:-.*)?$"
 )
 
 
@@ -4568,6 +4584,8 @@ def _relink_artifact_paths(dekspec_dir: Path) -> dict[str, Path]:
         singleton = dekspec_dir / filename
         if singleton.exists():
             paths[artifact_id] = singleton
+    paths.update({identity: path for path in OUT.paths(dekspec_dir)
+                  if (identity := OUT.filename_id(path.name)) is not None})
     return paths
 
 
@@ -6073,7 +6091,7 @@ _ID_ARTIFACT_DIRS: tuple[tuple[str, bool], ...] = (
     ("interface-contracts", False),
     ("security-profiles", False),
     ("impl-briefs", True),
-    ("intents", True),
+    *((folder, True) for folder in ARTIFACT_FOLDERS.values() if OUT.canonical(folder, surface="folder")),
     ("missions", True),
 )
 
@@ -6085,13 +6103,13 @@ _ID_KIND_GLOBS: tuple[tuple[str, str, bool], ...] = (
     ("IC", "interface-contracts", False),
     ("SP", "security-profiles", False),
     ("IB", "impl-briefs", True),
-    ("INT", "intents", True),
+    *((kind, folder, True) for kind, folder in ARTIFACT_FOLDERS.items() if OUT.canonical(kind + "-000", surface="id")),
     ("MSN", "missions", True),
 )
 
 _ID_IB_SPEC_RE = _re.compile(rf"^\*\*Spec:\*\*\s.*?({BS.id_pattern})", _re.MULTILINE)
 _ID_CANONICAL_FILENAME_RE = _re.compile(
-    rf"^(ADR|AE|{'|'.join(BS.prefixes)}|IC|IB|INT|MSN|SP)-(\d{{3,}})-([a-z0-9]+(?:-[a-z0-9]+)*)\.md$"
+    rf"^({'|'.join(ARTIFACT_FOLDERS)})-(\d{{3,}})-([a-z0-9]+(?:-[a-z0-9]+)*)\.md$"
 )
 
 
@@ -6244,7 +6262,12 @@ def cmd_id_allocate(args: argparse.Namespace) -> int:
         kind, slug = parse_draft_filename(path.name)
         pool_kinds = BS.prefixes if kind in BS.prefixes else (kind,)
         pool = [cid for k in pool_kinds for cid in (*corpus_ids.get(k, []), *assigned_by_kind.get(k, []))]
-        canonical = _registry.next_canonical_id(kind, reg, pool)
+        if OUT.canonical(kind + "-000", surface="id"):
+            reserved = [row["id"] for row in reg["entries"]]
+            reserved.extend(cid for ids in assigned_by_kind.values() for cid in ids)
+            canonical = f"{kind}-{OUT.next_number(dekspec_dir, reserved):03d}"
+        else:
+            canonical = _registry.next_canonical_id(kind, reg, pool)
         assigned_by_kind.setdefault(kind, []).append(canonical)
         number = canonical.split("-", 1)[1]
         new_name = canonical_filename(kind, number, slug)
@@ -6295,6 +6318,13 @@ def cmd_id_allocate(args: argparse.Namespace) -> int:
         if reply not in ("y", "yes"):
             print("Aborted — no changes applied.")
             return 1
+
+    # Refuse an unsupported registry entry before changing any authored file.
+    try:
+        _registry.validate_registry({**reg, "entries": [*reg["entries"], *(entry.to_dict() for entry in new_entries)]})
+    except _registry.RegistryError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
 
     # Apply atomically: stage every write, then commit it. We rewrite IDs in
     # ALL artifact files (renamed DRAFT files + canonical siblings) so
@@ -6635,7 +6665,7 @@ def cmd_lint_ib(args: argparse.Namespace) -> int:
 
 
 _PROVISIONAL_BRANCH_PREFIX: dict[str, str] = {
-    "INT": "int",
+    **{kind: OUT.for_artifact(kind + "-000", "id").lower() for kind in ARTIFACT_FOLDERS if OUT.canonical(kind + "-000", surface="id")},
     "MSN": "mission",
     "ADR": "feat",
     "AE": "feat",
@@ -6650,7 +6680,7 @@ _PROVISIONAL_BRANCH_PREFIX: dict[str, str] = {
 # kind; this mirrors `promote.KIND_TO_DIR` (the promotion-target mapping) so a
 # `--canonical` author-target and its eventual promotion agree on the home dir.
 _CANONICAL_DIR_BY_KIND: dict[str, str] = {
-    "INT": "intents",
+    **{kind: folder for kind, folder in ARTIFACT_FOLDERS.items() if OUT.canonical(kind + "-000", surface="id")},
     "MSN": "missions",
     "ADR": "adrs",
     "AE": "architecture-elements",
@@ -6931,7 +6961,7 @@ def _render_provisional_skeleton(
     Engineer fills in the rest via the corresponding write-* skill or manual
     editing."""
     kind_long = {
-        "INT": "Intent",
+        **{kind: OUT.for_artifact(kind + "-000", "heading") for kind in ARTIFACT_FOLDERS if OUT.canonical(kind + "-000", surface="id")},
         "MSN": "Mission",
         "ADR": "Architecture Decision Record",
         "AE":  "Architecture Element",

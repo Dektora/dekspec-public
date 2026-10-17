@@ -2,7 +2,8 @@
 lean_state(engine, ib) is read-only and returns the provider's LeanHistory snapshot (lean_records.py); it answers with lean switched off and for a lean brief with no lean record, and never raises LeanNotBuilt; LeanHistory is not exported here.
 Callers use IC-020's arguments/results and never probe implementation availability, read lean records or events themselves, name the view's type or check the switch before a read.
 Writes refuse invalid input without effects; read-only unbuilt calls raise LeanNotBuilt naming the facade call; lean_state refuses a brief that is not lean with ExecutionError naming the brief and "not lean", and never returns an empty view for one.
-Alternatives: expose provider internals; new versioned client; a next-step call, a mapping or lean fields on RunState for the state read; the retained facade with one read call on the one view wins because Builder consumes the specified five calls and reads the answer the engine judges by."""
+For any brief, whatever its policy or runner (IC-020 1.5.0): own_tests(engine, ib) -> tuple[str, ...] is the tests its conditions name, as the brief names them, in its order, each once, () when it names none, and reads nothing else; runners_unable(engine, ib) -> dict[str, str] maps each runner it names that cannot run here, a runner with no adapter included, to why not, {} when all can or it names no tests, running each runner's own probe and writing nothing; both refuse an unknown brief as engine.contract does (ContractError), and check_test_interpreter keeps its signature and its pytest answer. Callers never learn condition kinds, decide by a runner's name or probe a runner.
+Alternatives: expose provider internals; new versioned client; a next-step call, a mapping or lean fields on RunState for the state read; the retained facade with one read call on the one view wins because Builder consumes the specified five calls and reads the answer the engine judges by. For a brief's tests: one call returning tests and probe results together (every read of the names would run programs), or check_test_interpreter widened per brief (changes its answer); two calls, one pure read and one probe, won."""
 
 from dekspec.execution.artifact_edit import ArtifactEditError
 from dekspec.execution.context import ContextPacket
@@ -44,6 +45,7 @@ __all__ = [
     "intent_complete", "intent_reopen", "intent_completion", "load_role", "compose", "verdict_policy_problem",
     "probe_blocker", "hooks_installed", "resolve_base", "completion_receipt", "fold", "ReadinessTarget",
     "AuthorityAssessment", "assess_authority", "check_delivery_source", "check_test_interpreter",
+    "own_tests", "runners_unable",
 ]
 
 
@@ -80,7 +82,9 @@ def completion_receipt(engine: Engine, ref: str) -> dict | None:
     verdict = by_seq.get(data.get("verdict_seq"))
     if not (evidence and evidence.type == "evidence.recorded" and evidence.data.get("overall") == "passed"):
         return None
-    if not (verdict and verdict.type == "verdict.recorded" and verdict.data.get("verdict") == "pass"):
+    ended = engine.contract(ref).is_lean and lean_state(engine, ref).code_loop.disposition == "ended"
+    if not (verdict and verdict.type == "verdict.recorded"
+            and (verdict.data.get("verdict") == "pass" or ended)):
         return None
     return {"seq": seq, "hash": by_seq[seq].hash,
             "evidence_seq": evidence.seq, "verdict_seq": verdict.seq}
@@ -120,3 +124,44 @@ def lean_state(engine: Engine, ib: str) -> _LeanHistory:
     if not contract.is_lean:
         raise ExecutionError(f"{contract.ib_id} is not lean")
     return _current_lean_history(engine, ib)
+
+
+def own_tests(engine: Engine, ib: str) -> tuple[str, ...]:
+    """The tests ``ib``'s conditions name, exactly as the brief writes them,
+    in the brief's order and each once; () when no condition names tests.
+    Any policy, status or runner; reads the brief only. An unknown brief
+    refuses as ``engine.contract`` does."""
+    contract = _brief(engine, ib)
+    return tuple(dict.fromkeys(test for condition in contract.acceptance for test in condition.nodes))
+
+
+def runners_unable(engine: Engine, ib: str) -> dict[str, str]:
+    """Each test runner ``ib``'s conditions name that cannot run in the
+    project here, mapped to the reason (a runner DekSpec has no adapter for
+    included); {} when every one can, or when no condition names tests.
+    Runs each runner's own probe in this environment, like
+    ``probe_prerequisites``; writes nothing. An unknown brief refuses as
+    ``engine.contract`` does."""
+    from dekspec.execution.test_runners import CannotAnswer, adapter_for
+
+    unable: dict[str, str] = {}
+    for runner in dict.fromkeys(c.kind for c in _brief(engine, ib).acceptance if c.nodes):
+        adapter = adapter_for(runner)
+        if adapter is None:
+            unable[runner] = f"DekSpec has no adapter for the test runner {runner}"
+            continue
+        try:
+            reason = adapter.ready(engine.repo_root, engine.settings)
+        except CannotAnswer as exc:
+            reason = str(exc)
+        if reason:
+            unable[runner] = reason
+    return unable
+
+
+def _brief(engine: Engine, ib: str) -> IBContract:
+    """The brief's contract; an unknown or unreadable brief raises the
+    ContractError ``engine.contract`` reports."""
+    from dekspec.execution.contract import load_contract
+
+    return load_contract(engine.repo_root, ib, spec_root=engine.spec_root)

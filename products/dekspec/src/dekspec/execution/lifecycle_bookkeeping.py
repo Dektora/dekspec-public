@@ -6,9 +6,11 @@ Modified dates and existing amendment rows, which protection must preserve.
 
 from __future__ import annotations
 
+from dekspec.execution import git_reads
+from dekspec.spec_kinds import OUTCOME_NAMES as OUT
+
 import re
 import stat
-import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterable
 
@@ -31,7 +33,7 @@ _TRANSITIONS = {("DRAFT", "PROPOSED"), ("PROPOSED", "ACCEPTED"),
 def _git_bytes(repo_root: Path, *args: str) -> bytes | None:
     """Unavailable comparison data grants no bookkeeping exemption."""
     try:
-        result = subprocess.run(["git", *args], cwd=repo_root, capture_output=True)
+        result = git_reads.run(repo_root, *args, capture_output=True)
     except OSError:
         return None
     return result.stdout if result.returncode == 0 else None
@@ -59,7 +61,7 @@ def bookkeeping_paths(repo_root: Path, contracts: Iterable[IBContract], base: st
     paths = set()
     for contract in contracts:
         paths.add(contract.rel_path)
-        if not contract.parent or not contract.parent.startswith("INT-"):
+        if not contract.parent or not OUT.canonical(contract.parent, surface="id"):
             continue
         before = _text(repo_root, contract.rel_path, base)
         after = _text(repo_root, contract.rel_path, "" if staged else end)
@@ -68,7 +70,7 @@ def bookkeeping_paths(repo_root: Path, contracts: Iterable[IBContract], base: st
         old, new = _extract_ib_metadata(before), _extract_ib_metadata(after)
         parent_ref = _extract_ib_parent(old) or _extract_ib_intent(old) or {}
         if (parent_ref.get("id") != contract.parent
-                or any(old.get(key) != new.get(key) for key in ("Parent", "Intent", "Spec"))):
+                or any(old.get(key) != new.get(key) for key in ("Parent", OUT.legacy_parent_heading, OUT.current("heading"), "Spec"))):
             continue
         try:
             parent = artifact_path(repo_root, contract.parent, spec_root=spec_root)

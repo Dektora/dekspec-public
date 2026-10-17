@@ -34,6 +34,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
+from dekspec.execution import git_reads
 from dekspec.execution import acceptance as acc
 from dekspec.execution.contract import ContractError, IBContract, find_ib_path, load_contract, pytest_node_file
 
@@ -228,7 +229,7 @@ def declared_bases(source: str, names: list[str]) -> list[dict[str, Any]] | str:
 
 # ------------------------------------------------------------------ history: new or preserved
 def _git(root: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(["git", *args], cwd=str(root), capture_output=True, text=True)
+    return git_reads.run(str(root), *args, capture_output=True, text=True)
 
 
 def ib_origin(root: Path, rel_path: str) -> tuple[bool, str | None]:
@@ -557,7 +558,7 @@ class _History:
 
     def _different(self, rel: str) -> bool:
         if rel not in self.file_changes:
-            old = subprocess.run(["git", "show", f"{self.origin}:{rel}"], cwd=self.root, capture_output=True)
+            old = git_reads.run(self.root, "show", f"{self.origin}:{rel}", capture_output=True)
             path = self.root / rel
             now = path.read_bytes() if path.is_file() else None
             self.file_changes[rel] = now != (old.stdout if old.returncode == 0 else None)

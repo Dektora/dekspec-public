@@ -48,7 +48,7 @@ properties:
   id:
     description: 'Canonical Intent identifier derived from filename (e.g., INT-042).'
     type: string
-    pattern: "^(?:P-)?INT-\\d{3,}$"
+    pattern: "^(?:P-)?(?:INT|OUT)-\\d{3,}$"
 
   name:
     description: 'Verb-first title from the markdown H1.'
@@ -140,7 +140,7 @@ properties:
       status=SUPERSEDED. INT-NNN (successor Intent) or, per ADR-035
       (non-LOCKED absorption), MSN-NNN (absorbing Mission).
     type: string
-    pattern: "^(?:INT|MSN)-\\d{3,}$"
+    pattern: "^(?:INT|OUT|MSN)-\\d{3,}$"
 
   created:
     type: string
@@ -166,6 +166,13 @@ properties:
 
   motivation:
     description: 'Why this change is needed. Prose. Subject to D20 (no rationale) + D19 (no targets).'
+    type: string
+
+  after:
+    description: Written ordering declaration; carried without scheduling it.
+    type: string
+
+  who_it_is_for:
     type: string
 
   desired_outcome:

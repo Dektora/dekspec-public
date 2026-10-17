@@ -41,7 +41,7 @@ The template `dekspec/templates/implementation-brief-template.md` is authoritati
 - **Three kinds of content (ADR-055).** *Binding obligations* — `## Obligations`, `## Protected Surfaces`, `## Scope`; the implementing agent preserves them. *Acceptance conditions* — the `## Acceptance` YAML block; the agent demonstrates them and never weakens them. *Implementation hypothesis* — `## Implementation Hypothesis`; a starting guess the agent revises after investigating, within Scope, without asking. Classify by meaning, not by where a sentence used to live.
 - **One home per fact (ADR-056).** An obligation owned by an ADR, IC, WS, AE, SP or the Constitution is *referenced* (`- **O-1** → ADR-036`, `- **O-2** → IC-012 §Shape`), never copied — no Spec Context, no reconciled restatement. Tag an obligation `(local)` only when this IB is its canonical home. `dekspec ib context IB-NNN` delivers the canonical text, its source revision and hash to the implementing agent; DekSpec's project reference policy decides source eligibility. The default `strict` policy requires approved sources; `evolving` also permits canonical PROPOSED ADRs and AEs with their actual status and policy notice visible. Missing, ambiguous, DRAFT and retired sources still block `propose`, `accept` and `start`. Referencing an evolving source never authorizes an IB by itself.
 - **No mandatory chain (ADR-056).** `**Parent:**` (INT-, WS- or MSN-NNN) is optional. A bounded change needs only Outcome, Rationale and references. When the change alters architecture or a contract, name the specs in `**Spec impact:**` — verification fails unless the delivery modifies them.
-- **Authority policy.** New IBs say `**Authority policy:** delegated`. An IB without the line, or with `legacy`, keeps the ADR-049 meaning (Files to Modify is an allowlist) until it is adopted (`--adopt`).
+- **Authority policy.** New IBs say `**Authority policy:** delegated`, or `lean` when the project has lean switched on and the owner approves the brief as normal risk (see **Lean briefs** below). An IB without the line, or with `legacy`, keeps the ADR-049 meaning (Files to Modify is an allowlist) until it is adopted (`--adopt`).
 - **Lifecycle (ADR-057).** `DRAFT` → `PROPOSED` (`dekspec ib propose`) → `ACCEPTED` (`dekspec ib accept`, which takes the acceptance baseline) → `COMPLETE` (only `dekspec ib complete`), plus `SUPERSEDED` / `DEPRECATED`. Ownership, plans, attempts, deviations, evidence and verdicts live in the execution record (`.dekspec/execution/IB-NNN/`), never in the IB.
 - **The authoring order (ADR-062).** Write the IB (`dekspec ib lint`, `dekspec ib propose`) → `/dekspec:write-tests` (mandatory for every `pytest:` condition: a `Basis:` per new assertion, a behavior-free surface skeleton, genuine red on `dekspec ib floor`) → `/dekspec:review-ib` (its `acceptance-oracle` lens records a passing floor review as a `Floor reviewed: PASS — digest …` Amendment Log row) → `dekspec ib accept`, run by the authorizer only while `dekspec ib floor` still reports the digest that row names (the command does not check it; `/implement` readiness does). A pre-start re-baseline after the tests change repeats the review. The builder never writes acceptance tests; `/implement` readiness refuses an IB whose named nodes are missing from its baseline or whose baseline digest no floor review names.
 
@@ -150,9 +150,22 @@ Do not absorb a shared type into whichever slice needs it first — that is a hi
 
 **Deep-module pass (Constitution Article 4 / ADR-036).** Where an IB exposes an interface to other IBs, design it for depth: fewer operations, simpler parameters, complexity hidden inside, dependencies injected rather than constructed, operation-specific signatures rather than a generic conduit — so the boundary is mockable and dependents stay testable without this IB.
 
+### Lean briefs (lean switched on)
+
+The switch is `execution.lean` in `.dekspec/config.yaml`. When it is not `true`, skip this subsection: every brief is delegated, as below.
+
+When it is `true`:
+
+1. **Ask the owner to approve each brief's risk level** before writing it: `normal`, or `high` for a brief that changes the evidence engine, protection, completion or a gating path (ADR-079 item 5). Ask once per brief, in plain words; never assume it.
+2. **Normal risk → the lean form.** Scaffold with `dekspec ib new <slug> --title "<title>" --parent <id> --form lean` (add `--runner <name>` when the project's tests do not run under pytest). It writes a one-page brief with `**Authority policy:** lean` and `**Risk:** normal`, and the sections Outcome, Scope, Design intent, Acceptance and Implementation Hypothesis. Fill those and nothing more: no restated standing obligations, no Amendment Log, no floor-review rows (ADR-079 item 7). Add another section (Rationale, Out of scope, Obligations, Protected Surfaces, Open Issues) only when this brief needs it.
+3. **Design intent** says what a new module hides, what callers need from it and what they must never need to know — never names or signatures; the test author designs the interface. **Acceptance** gives each condition the tests that prove it.
+4. **High risk, or any level other than normal → the delegated form** (`--form delegated`), written in full as below; `dekspec ib accept` refuses a lean brief whose Risk is not `normal` (BS-045 BR 5).
+
+A lean brief's acceptance tests land in its own pull request (ADR-079 item 3), so it needs no written tests or `Floor reviewed:` row before `dekspec ib accept`. The rest of this mode — investigation, the cut, lint, validate, propose and the report — applies to lean briefs unchanged.
+
 ### Write each IB
 
-Scaffold with `dekspec ib new <slug> --title "<title>"` (add `--parent INT-NNN` or `--parent WS-NNN`); it allocates the next IB id, writes the template with `**Authority policy:** delegated` at DRAFT, and logs the creation. Then fill:
+Scaffold with `dekspec ib new <slug> --title "<title>"` (add `--parent INT-NNN` or `--parent WS-NNN`); with lean off it allocates the next IB id, writes the template with `**Authority policy:** delegated` at DRAFT, and logs the creation (with lean on, pass `--form delegated` for a delegated brief). Then fill:
 
 - **Outcome** — the observable state when the IB is complete, not a task list.
 - **Rationale** — enough for a reviewer to judge the change without a parent; with a parent, reference it instead of restating it.
@@ -219,7 +232,7 @@ IBs hold references, not copies, so an upstream edit reaches them at the next `d
 
 Authorization is the engineer's decision (ADR-057); passing `--accept` after the audit report is that decision.
 
-1. Resolve the target(s); run Audit Mode on each. Refuse any IB with a lint problem, an unresolved `P1` open issue, or an unresolved reference — and, for an IB with `pytest:` conditions or declared assets, any IB whose acceptance tests are not written (`/dekspec:write-tests`) or whose current floor digest (`dekspec ib floor IB-NNN`) no `Floor reviewed:` row in its Amendment Log names (run `/dekspec:review-ib` first; ADR-062).
+1. Resolve the target(s); run Audit Mode on each. Refuse any IB with a lint problem, an unresolved `P1` open issue, or an unresolved reference — and, for a delegated IB with `pytest:` conditions or declared assets, any IB whose acceptance tests are not written (`/dekspec:write-tests`) or whose current floor digest (`dekspec ib floor IB-NNN`) no `Floor reviewed:` row in its Amendment Log names (run `/dekspec:review-ib` first; ADR-062).
 2. Present the plan (ready / blocked / already ACCEPTED) and wait for an explicit yes.
 3. For each ready IB: `dekspec ib propose IB-NNN` if it is still DRAFT, then `dekspec ib accept IB-NNN`. Accept writes ACCEPTED and records the acceptance baseline — the contract hash, the acceptance assets named by the conditions (the reviewed tests, `Basis:` lines included) and the runner inputs. Surface stderr on refusal and skip that IB. Pass `--actor <identity>` (or set `DEKSPEC_ACTOR`) when the engineer is not the git user.
 4. Report the next steps: execution picks up from `dekspec ib ready` (or `/dekspec:implement`). Any pre-start change to the acceptance tests repeats the oracle review (a new `Floor reviewed:` row) before `dekspec ib baseline IB-NNN --reason "…"` re-protects them.
@@ -275,7 +288,7 @@ See [`_lib/cow_write_guard.md`](../_lib/cow_write_guard.md) for the canonical co
 
 ## Verification Checklist
 
-- [ ] Every IB is `**Authority policy:** delegated`, passes `dekspec ib lint`, and validates.
+- [ ] Every IB is `**Authority policy:** delegated` (or `lean`, with lean on and the owner's approval of normal risk), passes `dekspec ib lint`, and validates.
 - [ ] Obligations are references (or `(local)` for IB-owned ones); nothing is copied from an ADR, IC or WS.
 - [ ] Acceptance covers observable, integration and failure behavior; each condition names exactly one verification.
 - [ ] Scope, Protected Surfaces and Out of scope are explicit; the hypothesis binds nothing.

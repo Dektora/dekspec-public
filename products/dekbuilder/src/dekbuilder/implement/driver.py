@@ -1112,6 +1112,23 @@ def _advance_lean(ctx: _Ctx, ib: str) -> dict[str, Any] | None:
             _block(ctx, f"lean:{ib}", "cannot-start", str(exc))
             return _blocked(ctx, {})
         _commit(d.path, f"implement({d.slug}): start {ib}")
+    # A resolver owns its partial work until acknowledged, even if it has
+    # already concluded the merge. Reissue from the durable dispatch on restart.
+    events = eng.record(d.run_id).events()
+    departure = next((e for e in reversed(events)
+                      if e.type == "queue.left" and e.data.get("brief") == ib), None)
+    if departure and departure.data.get("reason") == "conflict":
+        resolver = next((e for e in reversed(events) if e.type == "dispatch.issued"
+                         and e.data.get("role") == "resolver" and e.seq > departure.seq), None)
+        returned = {e.data["id"] for e in events if e.type == "dispatch.returned"}
+        conflicted = _git(d.path, "diff", "--name-only", "--diff-filter=U").stdout.splitlines()
+        if conflicted or (resolver and resolver.data["id"] not in returned):
+            role = _role("resolver")
+            files = conflicted or resolver.data.get("files", [])
+            actor = f"resolver-{d.slug}"
+            return _dispatch(ctx, "resolver", "resolve:base", actor,
+                             prompts.resolver(d.path, actor, ctx.view.auth, base_ref=ctx.base_ref,
+                                              files=files, role=role), agent_role=role, files=files)
     step = lean.next_step(eng, d.run_id, ib, base_ref=ctx.base_ref)
     if step.operation != "stop":
         _clear(ctx, f"lean:{ib}")
@@ -1138,6 +1155,8 @@ def _advance_lean(ctx: _Ctx, ib: str) -> dict[str, Any] | None:
             step = lean.next_step(eng, d.run_id, ib, base_ref=ctx.base_ref,
                                   record_error=ExecutionError(result))
     if step.operation == "stop":
+        if step.kind == "review-not-converging" and not state.blockers:
+            eng.block(ib, DRIVER, "other", "review-not-converging: " + step.detail)
         _block(ctx, f"lean:{ib}", step.kind, step.detail)
         return _blocked(ctx, {})
     if step.operation == "land":
@@ -1168,11 +1187,20 @@ def _advance_lean(ctx: _Ctx, ib: str) -> dict[str, Any] | None:
     actor = f"{step.worker}-{ib}"
     role = _role(step.worker)
     packet = eng.context(ib).render_markdown()
-    common = dict(base_ref=ctx.base_ref, role=role)
+    common = dict(base_ref=ctx.base_ref, role=role,
+                  **prompts._loop_arguments(step.floor_loop if step.worker in ("test-author", "floor-reviewer")
+                                            else step.code_loop,
+                                            step.floor_loop if step.worker in ("builder", "reviewer") else None))
+    if step.worker in ("test-author", "floor-reviewer"):
+        common["_test_runners"] = tuple(dict.fromkeys(
+            condition.kind for condition in eng.contract(ib).acceptance if condition.nodes))
     info = {"ib": ib}
     if step.worker == "test-author":
+        author_facts = step.findings
+        if step.task == "repair" and step.commit:
+            author_facts = (f"Current test-author commit to repair: {step.commit}", *author_facts)
         prompt = prompts.test_author(d.path, ib, actor, ctx.view.auth, packet, **common,
-                                     findings=step.findings, interface_problem=step.interface_problem)
+                                     findings=author_facts, interface_problem=step.interface_problem)
         key = f"author:{ib}"
         info.update(task=step.task, commit=step.commit, findings=list(step.findings),
                     interface_problem=step.interface_problem)
@@ -1191,9 +1219,8 @@ def _advance_lean(ctx: _Ctx, ib: str) -> dict[str, Any] | None:
     else:
         latest = state.latest_evidence("ib")
         attention = sorted(latest[1].get("attention", [])) if latest else []
-        previous = state.verdicts[-1][1].get("notes", "") if state.verdicts else None
         prompt = prompts.reviewer(d.path, ib, actor, ctx.view.auth, packet, **common,
-                                  attention=attention, previous=previous,
+                                  attention=attention, previous=None,
                                   facts=prompts.review_facts(latest[1] if latest else None, state.deviations),
                                   own_gates=_changes_gates(ctx), own_nodes=step.own_nodes, skeletons=step.skeletons)
         key = f"review:{ib}"
@@ -1248,7 +1275,7 @@ def _lean_landing(ctx: _Ctx) -> dict[str, Any]:
                 return stop("integration-failed", (merged.stderr or merged.stdout).strip())
         history = spec.lean_state(eng, ib)
         state = eng.state(ib)[2]
-        nodes = [node for ac in eng.contract(ib).acceptance if ac.kind == "pytest" for node in ac.nodes]
+        nodes = spec.own_tests(eng, ib)
         actor, role = f"builder-{ib}", _role("builder")
         prompt = prompts.builder(
             d.path, ib, actor, ctx.view.auth, eng.context(ib).render_markdown(),
@@ -1307,20 +1334,6 @@ def _lean_landing(ctx: _Ctx) -> dict[str, Any]:
         if (_checks_exhausted_here(ctx, eng.fingerprint())
                 or ctx.view.blockers.get("integration", {}).get("kind") == "cannot-reopen"):
             return _action("blocked", d, result=_result(ctx, "blocked"))
-        events = eng.record(d.run_id).events()
-        departure = next((e for e in reversed(events)
-                          if e.type == "queue.left" and e.data.get("brief") == ib), None)
-        if departure and departure.data["reason"] == "conflict":
-            since = [e for e in events if e.seq > departure.seq]
-            verified = any(e.type == "verification.reported" and e.data.get("artifact") == ib
-                           and e.data.get("kind") == "ib"
-                           and e.data.get("result", {}).get("overall") == "passed" for e in since)
-            reviews = {e.data["id"] for e in since if e.type == "dispatch.issued"
-                       and e.data.get("role") == "reviewer" and e.data.get("ib") == ib}
-            reviewed = any(e.type == "dispatch.returned" and e.data["id"] in reviews for e in since)
-            if not verified or not reviewed:
-                return stop("acceptance-invalid", "interface: driver._advance_lean has no conflict-return "
-                            "step requiring fresh own verification and review; refusing to rejoin")
         admission = line.join(d.path, ib)
         _clear(ctx, "integration")
         head = _git(d.path, "rev-parse", "HEAD").stdout.strip()
@@ -1812,8 +1825,17 @@ def _operation(payload: dict) -> dict:
     """Run a prepared delivery step or coordinator admission with bound provenance."""
     token = _provenance.set({"environment": payload["environment"], "copy": payload["copy"]})
     try:
-        if payload["verb"] in ("probes", "test-interpreter"):
+        if payload["verb"] in ("probes", "test-interpreter", "runners-unable"):
             engine = Engine(Path(payload["root"]))
+            if payload["verb"] == "runners-unable":
+                probe = getattr(spec, "runners_unable", None)
+                if not callable(probe):
+                    raise EnvironmentUnavailable("prerequisite-unavailable",
+                                                 "runners_unable is missing from dekspec.builder_compat")
+                try:
+                    return {"unable": probe(engine, payload["ib"])}
+                except Exception as exc:
+                    raise EnvironmentUnavailable("prerequisite-unavailable", f"runners_unable: {exc}") from exc
             if payload["verb"] == "test-interpreter":
                 return {"ok": check_test_interpreter(engine)}
             return {"results": probe_prerequisites(engine, engine.contract(payload["ib"])),
@@ -1882,8 +1904,14 @@ def _ack_delivery(d: Delivery, dispatch_id: str, summary: str) -> dict:
     # Lean authors alone report a bounded factual path list (BS-046 BR 37).
     extra = {}
     if info["role"] == "test-author":
-        extra["skeletons"] = [line.partition("SKELETON:")[2].strip()
-                              for line in summary.splitlines() if line.startswith("SKELETON:")]
+        paths = [line.partition("SKELETON:")[2].strip()
+                 for line in summary.splitlines() if line.startswith("SKELETON:")]
+        extra["skeletons"] = []
+        for path in paths:
+            parsed = Path(path)
+            if parsed.is_absolute() and parsed.is_relative_to(d.path):
+                path = parsed.relative_to(d.path).as_posix()
+            extra["skeletons"].append(path)
     # Reports remain inert hashes and sizes, never reviewer evidence or commit messages.
     engine.record(d.run_id).append("dispatch.returned", DRIVER, {
         "id": dispatch_id, "summary_sha256": hashlib.sha256(summary.encode()).hexdigest(),

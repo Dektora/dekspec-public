@@ -11,6 +11,8 @@ INT-provisional-promote-verb (provisional Intent under MSN-014).
 
 from __future__ import annotations
 
+from dekspec.spec_kinds import OUTCOME_NAMES as OUT, ARTIFACT_FOLDERS
+
 from dekspec.spec_kinds import BEHAVIOR_SPEC_NAMES as BS
 
 import re
@@ -25,7 +27,7 @@ from pathlib import Path
 # T-STATUS-IB-FOLDER); engineers transition through active/completed
 # via the IB status walk after promotion.
 KIND_TO_DIR: dict[str, str] = {
-    "INT": "intents",
+    **{kind: folder for kind, folder in ARTIFACT_FOLDERS.items() if OUT.canonical(kind + "-000", surface="id")},
     "MSN": "missions",
     "ADR": "adrs",
     "AE": "architecture-elements",
@@ -112,8 +114,8 @@ def find_canonical_path(canonical_id: str, dekspec_dir: Path) -> Path | None:
     directory, or None if not found. For IBs, searches all 3 lifecycle
     subdirs (queued, active, completed).
     """
-    if canonical_id.startswith(BS.id_starts):
-        paths = BS.paths(dekspec_dir, canonical_id)
+    if OUT.canonical(canonical_id, surface="id") or canonical_id.startswith(BS.id_starts):
+        paths = OUT.paths(dekspec_dir, canonical_id) if OUT.canonical(canonical_id, surface="id") else BS.paths(dekspec_dir, canonical_id)
         if len(paths) > 1:
             raise PromoteError(f"Ambiguous {canonical_id}: " + ", ".join(map(str, paths)))
         return paths[0] if paths else None
@@ -141,6 +143,10 @@ def find_canonical_path(canonical_id: str, dekspec_dir: Path) -> Path | None:
 def _find_next_canonical_id(kind: str, dekspec_dir: Path) -> int:
     """Scan the canonical directory for the highest existing
     `<kind>-NNN-*.md` and return the next-free integer."""
+    if OUT.canonical(kind + "-000", surface="id"):
+        from .registry import load_registry
+        registry = load_registry(dekspec_dir.parent, dekspec_dir.name)
+        return OUT.next_number(dekspec_dir, (row["id"] for row in registry["entries"]))
     if kind in BS.prefixes:
         from .registry import next_behavior_id
         allocated = next_behavior_id(kind, dekspec_dir)
@@ -215,7 +221,8 @@ def plan_promotion(
             continue
 
         # NEW mode: allocate next-free canonical ID.
-        pool_kind = BS.id_prefix if kind in BS.prefixes else kind
+        pool_kind = (OUT.current("id") if OUT.canonical(kind + "-000", surface="id")
+                     else BS.id_prefix if kind in BS.prefixes else kind)
         if pool_kind not in next_id_per_kind:
             next_id_per_kind[pool_kind] = _find_next_canonical_id(kind, dekspec_dir)
         new_num = next_id_per_kind[pool_kind]

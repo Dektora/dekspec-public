@@ -10,9 +10,9 @@ from dataclasses import dataclass as _dataclass
 from hashlib import sha256 as _sha256
 from pathlib import Path as _Path
 import posixpath as _posixpath
-import subprocess as _subprocess
 from tempfile import TemporaryDirectory as _TemporaryDirectory
 
+from dekspec.execution import git_reads
 from dekspec.diff_confinement import matches_any_glob as _matches
 from dekspec.execution import acceptance as _acceptance
 from dekspec.execution import fingerprint as _fingerprint
@@ -42,7 +42,7 @@ _MISSING = _sha256(b"missing\0").hexdigest()
 
 def _git(root, *args):
     """Read git output, refusing failures rather than mistaking them for absence."""
-    proc = _subprocess.run(["git", *args], cwd=root, capture_output=True)
+    proc = git_reads.run(root, *args, capture_output=True)
     if proc.returncode == 1 and args[:2] == ("merge-base", "--is-ancestor"):
         raise _ExecutionError(f"base commit {args[2]} is not an ancestor of {args[3]}")
     if proc.returncode:
@@ -59,59 +59,66 @@ def _merge_base(engine, head):
     """Find the change's origin for the requested content, not always HEAD."""
     candidates = [engine.base] if engine.base else ["main", "origin/main", "master", "origin/master"]
     for ref in candidates:
-        proc = _subprocess.run(["git", "merge-base", head, ref], cwd=engine.repo_root, capture_output=True)
+        proc = git_reads.run(engine.repo_root, "merge-base", head, ref, capture_output=True)
         if proc.returncode == 0 and proc.stdout.strip():
             return proc.stdout.decode().strip()
     raise _ExecutionError(f"cannot find a merge base with {' / '.join(candidates)}")
 
 
-@_contextmanager
-def _snapshot(engine, head, contract=None):
-    """Sparse git-only parser view, disposed outside the repository.
-
-    Contract reads need specification/configuration files. Runner reads need
-    only ancestor inputs; the existing runner reader still owns their rules.
-    Resolve in-tree symlinks from objects, never through the host filesystem.
-    """
+def _tree(engine, head):
+    """Every entry of ``head``'s tree: path -> (mode, kind, object id)."""
     rows = _git(engine.repo_root, "ls-tree", "-r", "-t", "-z", head).decode("utf-8", "surrogateescape")
     entries = {}
     for row in rows.split("\0"):
         if row:
             metadata, rel = row.split("\t", 1)
             entries[rel] = metadata.split()
+    return entries
+
+
+def _object_reader(engine, head):
+    """read(path) over ``head``'s git objects: a file's bytes, None when it is
+    absent or a directory. In-tree symlinks resolve from objects, never through
+    the host filesystem; one that leaves the tree or never resolves refuses."""
+    entries = _tree(engine, head)
+
+    def read(rel):
+        if rel not in entries:
+            return None
+        source, visited = rel, set()
+        while True:
+            if source in visited or source not in entries:
+                raise _ExecutionError(f"cannot read {rel} at {head}: unresolved git symlink")
+            visited.add(source)
+            mode, kind, oid = entries[source]
+            if kind != "blob":
+                return None  # a directory is not an optional runner file
+            content = _git(engine.repo_root, "cat-file", "blob", oid)
+            if mode != "120000":
+                return content
+            link = content.decode("utf-8", "surrogateescape")
+            source = _posixpath.normpath(_posixpath.join(_posixpath.dirname(source), link))
+            if _posixpath.isabs(source) or source == ".." or source.startswith("../"):
+                raise _ExecutionError(f"cannot read {rel} at {head}: symlink leaves the git tree")
+
+    return read
+
+
+@_contextmanager
+def _snapshot(engine, head):
+    """Sparse git-only parser view of the specification and configuration
+    files, disposed outside the repository."""
+    read = _object_reader(engine, head)
     with _TemporaryDirectory(prefix="dekspec-scoped-") as temporary:
         root = _Path(temporary)
-        if contract is None:
-            wanted = {p for p in entries if p.startswith(engine.spec_root + "/") and p.endswith(".md")}
-        else:
-            wanted = set()
-            targets = {n.split("::", 1)[0] for c in contract.acceptance for n in c.nodes} or {"."}
-            for rel in targets:
-                if rel in entries and entries[rel][1] == "tree":
-                    (root / rel).mkdir(parents=True, exist_ok=True)
-                for folder in _acceptance._ancestor_dirs(root, rel):
-                    for name in (*_acceptance._CONFIG_CANDIDATES, "conftest.py"):
-                        wanted.add(str((folder / name).relative_to(root)))
+        wanted = {p for p in _tree(engine, head) if p.startswith(engine.spec_root + "/") and p.endswith(".md")}
         wanted.add(".dekspec/config.yaml")
-        for rel in sorted(wanted & entries.keys()):
-            source, visited = rel, set()
-            while True:
-                if source in visited or source not in entries:
-                    raise _ExecutionError(f"cannot read {rel} at {head}: unresolved git symlink")
-                visited.add(source)
-                mode, kind, oid = entries[source]
-                if kind != "blob":
-                    break  # a directory is not an optional runner file
-                content = _git(engine.repo_root, "cat-file", "blob", oid)
-                if mode != "120000":
-                    target = root / rel
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    target.write_bytes(content)
-                    break
-                link = content.decode("utf-8", "surrogateescape")
-                source = _posixpath.normpath(_posixpath.join(_posixpath.dirname(source), link))
-                if _posixpath.isabs(source) or source == ".." or source.startswith("../"):
-                    raise _ExecutionError(f"cannot read {rel} at {head}: symlink leaves the git tree")
+        for rel in sorted(wanted):
+            content = read(rel)
+            if content is not None:
+                target = root / rel
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(content)
         try:
             yield root
         except _ContractError as exc:
@@ -120,11 +127,29 @@ def _snapshot(engine, head, contract=None):
 
 
 def _runner_inputs(engine, contract, head):
-    """Apply the one runner rule to working content or an immutable parser view."""
+    """BR18(c): each named runner's bound support files, asked of its adapter,
+    and DekSpec's own execution block, in working content or at ``head``."""
+    from dekspec.execution.test_runners import adapter_for
+
     if head is None:
-        return _acceptance.runner_input_hashes(engine.repo_root, contract)
-    with _snapshot(engine, head, contract) as root:
-        return _acceptance.runner_input_hashes(root, contract)
+        def read(rel):
+            path = engine.repo_root / rel
+            return path.read_bytes() if path.is_file() else None
+    else:
+        read = _object_reader(engine, head)
+    inputs = {}
+    for runner in dict.fromkeys(c.kind for c in contract.acceptance if c.nodes):
+        adapter = adapter_for(runner)
+        if adapter is None:
+            raise _ExecutionError(f"{contract.ib_id}: DekSpec has no adapter for the test runner {runner}")
+        tests = [t for c in contract.acceptance if c.kind == runner for t in c.nodes]
+        files = sorted({f for f in map(adapter.file_of, tests) if f is not None})
+        inputs.update(adapter.support(files, read).bound)
+    config = read(".dekspec/config.yaml")
+    block = _acceptance._execution_block(config) if config is not None else None
+    if block is not None:
+        inputs[".dekspec/config.yaml#execution"] = _sha256(block.encode("utf-8")).hexdigest()
+    return dict(sorted(inputs.items()))
 
 
 def _require_lean(contract):
@@ -211,7 +236,8 @@ def changed_paths(previous: ScopedBinding, current: ScopedBinding) -> list[str]:
     """Sorted changed repository paths; unavailable computation refuses."""
     manifest = _fingerprint.manifest_changes(previous.manifest, current.manifest)
     runners = _fingerprint.manifest_changes(previous.runner_inputs, current.runner_inputs)
-    return sorted(set(manifest) | {p.rsplit("#", 1)[0] if p.endswith(("#pytest", "#execution")) else p
+    # A runner input is a path, or a path, "#" and the part of the file that counts.
+    return sorted(set(manifest) | {p.rsplit("#", 1)[0] if "#" in p.rsplit("/", 1)[-1] else p
                                    for p in runners})
 
 

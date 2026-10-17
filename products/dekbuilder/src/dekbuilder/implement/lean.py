@@ -1,9 +1,9 @@
-"""Public Step and next_step(engine, run_id, ib, *, base_ref, record_error=None) answer one read-only question: the next mechanical action for a lean brief; identical records/git give the same immutable Step.
-Step carries operation and arguments: dispatch(worker, task, assignment facts), record-tests(commit, author, skeletons), reset(source commit), verify/complete/land(brief), or stop(kind, detail); paths are repository-relative.
-Hides order, checkpoints, five-call availability, floor bounds and returns; callers never fold lean records or decide which count, and the module reads current commit, skeletons, floor/notes and returns only through spec.lean_state.
-Empty history starts authorship and interrupted work resumes normally, without a session or new writer; a refused record is passed back as record_error, never a caller-derived returning flag.
-Distinct remedies stay distinct: cannot-start for unavailable/refused calls (including first record), review-not-converging for failed rounds, review-not-recorded for silence, interface-not-returned for unsafe/refused returns; guard-only completion failures repair, others are completion-refused; no verdict is inferred.
-Alternatives: mutable begin/review/return sessions expose restart/order; separate stage helpers duplicate policy in callers; one derived next action wins because every restart asks the same question."""
+"""Step and next_step answer the next mechanical action for a lean brief, read-only.
+A Step carries the operation and its assignment, including DekSpec's loop snapshots.
+Callers never fold lean records or know review limits, return order or checkpoints.
+Empty history starts authorship; refusals retain their distinct remedies on restart.
+Alternatives: mutable sessions expose restart order; event helpers duplicate policy; one derived action hides both.
+"""
 
 from __future__ import annotations
 
@@ -36,6 +36,8 @@ class Step:
     findings: tuple[str, ...] = ()
     interface_problem: str | None = None
     strategy_reason: str | None = None
+    floor_loop: object | None = None
+    code_loop: object | None = None
     verdicts: int = 0
     kind: str = ""
     detail: str = ""
@@ -137,7 +139,8 @@ def next_step(engine, run_id, ib, *, base_ref, record_error=None) -> Step:
     pass ExecutionError(result): the existing exception transports the provider's
     GateResult unchanged, so this module alone chooses its distinct remedy.
     """
-    names = ("record_tests_authored", "record_floor_verdict", "base_move_touches", "lean_guard", "lean_state")
+    names = ("record_tests_authored", "record_floor_verdict", "base_move_touches", "lean_guard", "lean_state",
+             "own_tests", "runners_unable")
     for name in names:
         if not callable(getattr(_spec, name, None)):
             return _stop("cannot-start", f"{name} is missing from dekspec.builder_compat")
@@ -145,9 +148,16 @@ def next_step(engine, run_id, ib, *, base_ref, record_error=None) -> Step:
         history = _spec.lean_state(engine, ib)
     except _spec.ExecutionError as exc:
         return _stop("cannot-start", f"lean_state: {exc}")
+    for answer in ("floor_loop", "code_loop"):
+        if not hasattr(history, answer):
+            return _stop("cannot-start", f"incompatible dekspec.builder_compat lean_state: missing {answer}")
     state = engine.state(ib)[2]
-    nodes = tuple(node for ac in engine.contract(ib).acceptance if ac.kind == "pytest" for node in ac.nodes)
-    facts = dict(skeletons=history.skeletons, own_nodes=nodes)
+    try:
+        nodes = _spec.own_tests(engine, ib)
+    except _spec.ExecutionError as exc:
+        return _stop("cannot-start", f"own_tests: {exc}")
+    facts = dict(skeletons=history.skeletons, own_nodes=nodes,
+                 floor_loop=history.floor_loop, code_loop=history.code_loop)
     if record_error is not None:
         result = record_error.args[0] if record_error.args else None
         if isinstance(result, _spec.GateResult):
@@ -162,7 +172,8 @@ def next_step(engine, run_id, ib, *, base_ref, record_error=None) -> Step:
         return _stop("interface-not-returned" if returning else "cannot-start", str(record_error))
 
     events = engine.record(run_id).events()
-    issued = [e for e in events if e.type == "dispatch.issued" and e.data.get("ib") == ib]
+    issued = [e for e in events if e.type == "dispatch.issued"
+              and (e.data.get("ib") == ib or e.data.get("role") == "resolver")]
     returned = {e.data["id"]: e for e in events if e.type == "dispatch.returned"}
     author = next((e for e in reversed(issued) if e.data["role"] == "test-author"), None)
     if author and author.data["id"] in returned:
@@ -180,6 +191,10 @@ def next_step(engine, run_id, ib, *, base_ref, record_error=None) -> Step:
     returning = _return_step(engine, ib, history, state, author, base_ref)
     if returning:
         return returning
+    for loop_name, loop in (("floor", history.floor_loop), ("code", history.code_loop)):
+        if loop.disposition == "stopped":
+            detail = "; ".join(f"{f.level} {f.text}" for f in loop.findings if f.level == "P1")
+            return _stop("review-not-converging", f"{ib}: {loop_name} review stopped for the owner: {detail}")
     if state.blockers:
         detail = "; ".join(f"{b['reason']}: {b.get('detail', '')}" for b in state.blockers)
         if {b["reason"] for b in state.blockers} <= {"attempts-exhausted", "no-progress", "stalled"}:
@@ -206,14 +221,9 @@ def next_step(engine, run_id, ib, *, base_ref, record_error=None) -> Step:
             except _spec.ExecutionError as exc:
                 return _stop("cannot-start", str(exc))
         return Step("dispatch", worker="test-author", task="build")
-    if history.floor == "fail":
-        failed = {e.data.get("commit") for e in issued if e.data["role"] == "test-author"
-                  and e.data.get("findings") and not e.data.get("interface_problem")}
-        if len(failed | {history.commit}) >= 3:
-            return _stop("review-not-converging", f"{ib}: three failed floor rounds; {history.floor_notes}")
-        return Step("dispatch", worker="test-author", task="repair", commit=history.commit,
-                    findings=(history.floor_notes,))
-    if not history.floor_passed:
+    if history.floor == "fail" and history.floor_loop.disposition != "ended":
+        return Step("dispatch", worker="test-author", task="repair", commit=history.commit, **facts)
+    if history.floor_loop.disposition not in ("passed", "ended") or history.floor is None:
         quiet = sum(e.data["id"] in returned for e in issued
                     if e.data["role"] == "floor-reviewer" and e.data.get("commit") == history.commit)
         if quiet >= 3:
@@ -228,6 +238,17 @@ def next_step(engine, run_id, ib, *, base_ref, record_error=None) -> Step:
         return Step("dispatch", worker="builder", task="resume",
                     findings=tuple(built.data.get("reasons", ())), **facts)
     build_ack = returned[built.data["id"]].seq
+    # A conflict starts a new verification/review cycle even when its resolution
+    # restores identical content. Only the current resolver's acknowledgement
+    # and records after it can satisfy that cycle.
+    departure = next((e for e in reversed(events)
+                      if e.type == "queue.left" and e.data.get("brief") == ib), None)
+    conflict_return = departure and departure.data.get("reason") == "conflict"
+    if conflict_return:
+        resolver = next((e for e in reversed(issued)
+                         if e.data["role"] == "resolver" and e.seq > departure.seq), None)
+        if resolver and resolver.data["id"] in returned:
+            build_ack = max(build_ack, returned[resolver.data["id"]].seq)
     verification = next((e for e in reversed(events) if e.type == "verification.reported"
                          and e.data.get("artifact") == ib and e.data.get("kind") == "ib"
                          and e.seq > build_ack), None)
@@ -242,13 +263,13 @@ def next_step(engine, run_id, ib, *, base_ref, record_error=None) -> Step:
     if review is None or review.data["id"] not in returned:
         return Step("dispatch", worker="reviewer", verdicts=len(state.verdicts), **facts)
     last = state.verdicts[-1][1] if state.verdicts else None
-    if last and last.get("verdict") == "fail" and last.get("fingerprint") == evidence.get("fingerprint")             and not _spec.verdict_policy_problem(_spec.CODE_REVIEWER_ROLE, last):
-        detail = f"independent review ({last.get('reviewer')}) failed: {last.get('notes', '')}"
-        exhausted = state.attempts_used >= engine.settings.max_attempts + state.extra_attempts
-        return Step("dispatch", worker="builder", task="repair", findings=(detail,),
-                    strategy_reason=detail if exhausted else None, kind="review-not-converging", **facts)
+    if (last and last.get("verdict") == "fail" and history.code_loop.disposition != "ended"
+            and last.get("fingerprint") == evidence.get("fingerprint")
+            and not _spec.verdict_policy_problem(_spec.CODE_REVIEWER_ROLE, last)):
+        return Step("dispatch", worker="builder", task="repair", **facts)
     failures = {ch.name: ch.detail for ch in gate.failures()}
-    if "independent-review" in failures:
+    if ("independent-review" in failures
+            or (conflict_return and len(state.verdicts) <= review.data.get("verdicts", -1))):
         silent = 0
         for dispatch in reversed(issued):
             if dispatch.data["role"] != "reviewer" or dispatch.data["id"] not in returned:

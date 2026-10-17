@@ -5,7 +5,14 @@ or choose a fallback, and base reads never inherit the working tree switch.
 Alternatives: a separate feature-flag service; caller YAML; existing settings.
 Existing settings wins because all execution policy already travels as one value.
 The settings loader supplies the value; only contract_problems combines it with
-the brief policy. Exposing the raw setting does not make callers policy judges."""
+the brief policy. Exposing the raw setting does not make callers policy judges.
+IB-294 surface extension (designed before tests): ExecutionSettings.vitest_install
+is an optional checkout installation command; None/empty means lockfile defaults.
+The existing loaders hide YAML and base-revision selection; callers never parse
+settings or choose a package manager. Preparation faults stay distinct from tests.
+Alternatives: caller install steps or a new settings service; the existing settings
+value wins because policy already travels with it. The loaders supply the command; the runner prepares the checkout.
+"""
 
 from __future__ import annotations
 
@@ -16,6 +23,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from dekspec.execution import git_reads
 
 __all__ = ["ExecutionSettings", "load_settings", "load_settings_at", "resolve_python"]
 
@@ -38,20 +46,41 @@ class ExecutionSettings:
     #: project's own interpreter (see :func:`resolve_python`) — never simply
     #: dekspec's, which in a pipx install has neither pytest nor the project.
     python: str | None = None
+    #: The configuration file vitest's tests run under, repository-relative.
+    #: ``None`` means vitest's default lookup from the project root.
+    vitest_config: str | None = None
     #: Extra globs excluded from the implementation fingerprint.
     fingerprint_exclude: tuple[str, ...] = ()
     #: Governed spec root, relative to the repo.
     spec_root: str = "dekspec"
+    #: Optional command for a clean vitest checkout.
+    #: None/empty selects the commit's lockfile; no install behavior here.
+    vitest_install: str | None = None
 
 
 def load_settings_at(repo_root: Path, commit: str, *, spec_root: str = "dekspec") -> ExecutionSettings:
     """Settings as they are on ``commit`` (CI reads the *base* branch's policy,
     so a delivery cannot relax its own limits, interpreter or exclusions)."""
-    import subprocess
+    return _from_text(_config_text_at(repo_root, commit), spec_root)
 
-    proc = subprocess.run(["git", "show", f"{commit}:.dekspec/config.yaml"], cwd=str(repo_root),
-                          capture_output=True, text=True)
-    return _from_text(proc.stdout if proc.returncode == 0 else "", spec_root)
+
+def _config_text_at(repo_root: Path, commit: str) -> str:
+    """Read immutable project configuration; absent configuration means defaults."""
+    proc = git_reads.run(str(repo_root), "show", f"{commit}:.dekspec/config.yaml", capture_output=True, text=True)
+    return proc.stdout if proc.returncode == 0 else ""
+
+
+def _worktree_setup_at(repo_root: Path, commit: str) -> str | None:
+    """The base-owned checkout setup, without adding to the execution facade."""
+    import yaml
+
+    try:
+        config = yaml.safe_load(_config_text_at(repo_root, commit))
+    except yaml.YAMLError:
+        return None
+    integration = config.get("integration") if isinstance(config, dict) else None
+    command = integration.get("worktree_setup") if isinstance(integration, dict) else None
+    return command if isinstance(command, str) and command.strip() else None
 
 
 def load_settings(repo_root: Path, *, spec_root: str = "dekspec") -> ExecutionSettings:
@@ -88,6 +117,10 @@ def _from_text(text: str, spec_root: str) -> ExecutionSettings:
         integration_command=raw.get("integration_command") or None,
         command_timeout=_int("command_timeout", defaults.command_timeout),
         python=raw.get("python") or None,
+        vitest_config=raw.get("vitest_config") if isinstance(raw.get("vitest_config"), str)
+        and raw["vitest_config"].strip() else None,
+        vitest_install=raw.get("vitest_install") if isinstance(raw.get("vitest_install"), str)
+        and raw["vitest_install"].strip() else None,
         fingerprint_exclude=tuple(raw.get("fingerprint_exclude") or ()),
         spec_root=spec_root,
     )
@@ -107,7 +140,7 @@ def _has_pytest(python: str, cwd: Path) -> bool:
 def _auto_python(repo_root: str) -> str:
     root = Path(repo_root)
     venv = (".venv/Scripts/python.exe" if os.name == "nt" else ".venv/bin/python")
-    candidates = [venv] if (root / venv).exists() else []
+    candidates = [str(root / venv)] if (root / venv).exists() else []
     candidates += [c for c in (shutil.which("python3"), shutil.which("python")) if c]
     candidates.append(sys.executable)
     for candidate in dict.fromkeys(candidates):
@@ -119,9 +152,25 @@ def _auto_python(repo_root: str) -> str:
 def resolve_python(repo_root: Path, configured: str | None) -> str:
     """The interpreter that runs pytest acceptance nodes.
 
+    Configured absolute paths stay unchanged; relative paths use the resolved
+    repository root without following executable links. Bare names search PATH
+    with the repository's venv first; an absent name yields an unusable absolute
+    repository path so the acceptance gate can name it. Historical record values
+    use this same rule when compared.
+
     ``execution.python`` wins when set. Otherwise the first of the repo's
     ``.venv``, ``python3``/``python`` on PATH, and dekspec's own interpreter
     that can import pytest — the project's test environment, which is rarely
     the one dekspec itself is installed in.
     """
-    return configured or _auto_python(str(Path(repo_root).resolve()))
+    root = Path(repo_root).resolve()
+    configured = configured or _auto_python(str(root))
+    candidate = Path(configured).expanduser()
+    if candidate.is_absolute():
+        return str(candidate)
+    if os.sep in configured or (os.altsep and os.altsep in configured):
+        return str((root / candidate).absolute())
+    bin_dir = root / ".venv" / ("Scripts" if os.name == "nt" else "bin")
+    search_path = str(bin_dir) + os.pathsep + os.environ.get("PATH", os.defpath)
+    found = shutil.which(str(candidate), path=search_path)
+    return str(Path(found).absolute() if found else root / candidate)

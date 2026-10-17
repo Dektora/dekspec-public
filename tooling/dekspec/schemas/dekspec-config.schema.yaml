@@ -205,6 +205,13 @@ properties:
         description: 'Interpreter that runs acceptance test nodes. Default: the first of the repo `.venv`, `python3`/`python` on PATH, and the interpreter running dekspec that can import pytest. An interpreter that is part of the repository content (tracked or unignored) is refused.'
         type: string
         minLength: 1
+      vitest_config:
+        description: 'The configuration file vitest''s tests run under, repository-relative (for example `vitest.acceptance.config.ts`), where vitest''s default would not find them. Default: vitest''s default configuration file in the project root (`vitest.config.*`, then `vite.config.*`); never one beside a test file. CI reads it from the base commit, as every `execution` setting.'
+        type: string
+        minLength: 1
+      vitest_install:
+        description: 'Shell command installing the test-author checkout dependencies. Empty or absent infers npm ci, pnpm install --frozen-lockfile, or yarn install --frozen-lockfile from the committed lockfile. Other managers require a command. Bound with execution settings; CI reads base policy.'
+        type: string
       fingerprint_exclude:
         description: 'Extra globs excluded from the implementation fingerprint (for generated files a check writes).'
         type: array
@@ -238,7 +245,7 @@ properties:
         description: '`merge` only: also push the updated base branch. Default false.'
         type: boolean
       worktree_setup:
-        description: 'Shell command run once in each new delivery worktree (for example, create its virtual environment).'
+        description: 'Shell command run once in each new delivery worktree (for example, create its virtual environment). The lean red check also runs it, as read at the judged base, inside its temporary checkout of the test author''s commit, in the delivery worktree and in CI; keep it free of absolute paths and of one Python version.'
         type: string
         minLength: 1
   agents_md:

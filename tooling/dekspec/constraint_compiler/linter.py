@@ -5,7 +5,7 @@ checklist boxes, and path integrity of an Implementation Brief (IB) markdown fil
 """
 from __future__ import annotations
 
-from dekspec.spec_kinds import BEHAVIOR_SPEC_NAMES as BS
+from dekspec.spec_kinds import BEHAVIOR_SPEC_NAMES as BS, OUTCOME_NAMES as OUT
 
 import re
 from pathlib import Path
@@ -14,7 +14,7 @@ from typing import Any
 # Known metadata keys required in the header block
 REQUIRED_META_KEYS = {
     "Spec",
-    "Intent",
+    OUT.legacy_parent_heading,
     "Source AEs",
     "Depends on",
     "Production gate",
@@ -23,7 +23,7 @@ REQUIRED_META_KEYS = {
 
 # Required H2 section headers
 REQUIRED_H2_SECTIONS = [
-    "Goal",
+    OUT.current("brief_goal_heading"),
     "Out of Scope",
     "Files to Modify",
     "Do Not Touch",
@@ -56,7 +56,7 @@ PLACEHOLDER_PATTERNS = [
     r"\[initial draft / audit / review / resync / cascade from <artifact>\]",
     r"IC-NNN",
     rf"(?:{'|'.join(BS.prefixes)})-NNN",
-    r"INT-NNN",
+    rf"{OUT.pattern('id_prefix')}-NNN",
     r"AE-NNN",
     r"ADR-NNN",
 ]
@@ -142,10 +142,10 @@ def lint_ib(text_or_path: str | Path, workspace_root: Path | None = None) -> lis
     for m in meta_lines:
         key = m.group(1).strip()
         val = m.group(2).strip()
-        found_keys.add(key)
+        found_keys.add(OUT.legacy_parent_heading if OUT.canonical(key, surface="heading") else key)
         line_num = get_line_number(text, h1_end + m.start())
 
-        if key not in REQUIRED_META_KEYS:
+        if key not in REQUIRED_META_KEYS and not OUT.canonical(key, surface="heading"):
             violations.append({
                 "rule": "METADATA_KEY_UNKNOWN",
                 "severity": "P2",
@@ -169,7 +169,7 @@ def lint_ib(text_or_path: str | Path, workspace_root: Path | None = None) -> lis
                             "message": f"Referenced {BS.display_name} file does not exist: '{spec_path_str}'",
                             "line": line_num,
                         })
-            elif key == "Intent":
+            elif OUT.canonical(key, surface="heading"):
                 # Intent can be a markdown link like [INT-032](dekspec/intents/...)
                 intent_path_str = val
                 link_match = re.search(r"\[.+?\]\((.+?)\)", val)

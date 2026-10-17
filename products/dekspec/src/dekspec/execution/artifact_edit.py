@@ -13,7 +13,7 @@ from pathlib import Path
 
 __all__ = ["ArtifactEditError", "append_amendment_row", "set_status"]
 
-_META_STATUS = re.compile(r"^(\*\*Status:\*\*\s*)(\S+)(.*)$", re.MULTILINE)
+_META_STATUS = re.compile(r"^((?:\*\*Id:\*\*[^\n]*?·\s*)?\*\*Status:\*\*\s*)(\S+)(.*)$", re.MULTILINE)
 _H2_STATUS = re.compile(r"(^##\s+Status\s*\n+)([A-Za-z_]+)", re.MULTILINE)
 
 

@@ -15,6 +15,7 @@ import re
 import subprocess
 from pathlib import Path
 
+from dekspec.execution import git_reads
 from dekspec.constraint_compiler.parser import IB_AUTHORITY_POLICIES, _extract_ib_metadata
 from dekspec.execution.record import EXECUTION_DIRNAME
 
@@ -33,7 +34,7 @@ LEGACY_TERMINAL_STATUSES = frozenset({"COMPLETED", "COMPLETE"})
 
 
 def _git(repo_root: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(["git", *args], cwd=str(repo_root), capture_output=True, text=True)
+    return git_reads.run(str(repo_root), *args, capture_output=True, text=True)
 
 
 def authority_policy_of(text: str) -> str:
@@ -107,8 +108,8 @@ class _BatchObjects:
     """
 
     def __init__(self, repo_root: Path, *, env=None):
-        self.process = subprocess.Popen(
-            ["git", "cat-file", "--batch", "-z"], cwd=str(repo_root),
+        self.process = git_reads.popen(
+            str(repo_root), "cat-file", "--batch", "-z",
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=env,
         )
         self.objects: dict[str, tuple[str, str, bytes] | None] = {}

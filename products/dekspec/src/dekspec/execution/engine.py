@@ -14,6 +14,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from dekspec.execution import git_reads
 from dekspec.diff_confinement import matches_any_glob
 from dekspec.execution import acceptance as acc
 from dekspec.execution.artifact_edit import append_amendment_row, set_status
@@ -176,8 +177,7 @@ def integrated_completion(repo_root: Path, ident: str, rev: str) -> int | None:
     at ``rev`` (``None`` when there is none)."""
     from dekspec.execution.record import parse_record_text
 
-    shown = subprocess.run(["git", "show", f"{rev}:{EXECUTION_DIRNAME}/{ident}/record.jsonl"], cwd=str(repo_root),
-                           capture_output=True, text=True)
+    shown = git_reads.run(str(repo_root), "show", f"{rev}:{EXECUTION_DIRNAME}/{ident}/record.jsonl", capture_output=True, text=True)
     if shown.returncode != 0:
         return None
     st = fold(parse_record_text(shown.stdout))
@@ -268,7 +268,15 @@ class Engine:
 
     def _completion_rule_problem(self, ib_id: str, completion: dict[str, Any]) -> str | None:
         _rec, _events, st = self.state(ib_id)
-        if st.verdicts and st.verdicts[-1][1].get("verdict") != "pass":
+        ended = False
+        if self.contract(ib_id).is_lean:
+            from dekspec.execution.lean_records import _history
+            loop = _history(_events).code_loop
+            if loop.disposition == "stopped":
+                return "code review stopped for the owner; resolve with ib unblock"
+            ended = (loop.disposition == "ended" and st.verdicts
+                     and completion.get("verdict_seq") == st.verdicts[-1][0])
+        if st.verdicts and st.verdicts[-1][1].get("verdict") != "pass" and not ended:
             seq, latest = st.verdicts[-1]
             return (f"a later independent review failed (verdict #{seq} by {latest.get('reviewer')}): "
                     f"{latest.get('notes', '')[:200]}")
@@ -306,8 +314,7 @@ class Engine:
             return "unknown", str(exc)
         if integrated_completion(self.repo_root, ident, rev):
             return "integrated", ""
-        shown = subprocess.run(["git", "show", f"{rev}:{rel_path}"], cwd=str(self.repo_root),
-                               capture_output=True, text=True)
+        shown = git_reads.run(str(self.repo_root), "show", f"{rev}:{rel_path}", capture_output=True, text=True)
         held = shown.returncode == 0 and artifact_status(shown.stdout) == "COMPLETE"
         return ("integrated" if held else "unintegrated"), ""
 
@@ -678,8 +685,8 @@ class Engine:
         if c.is_lean:
             from dekspec.execution.lean_records import current
             history = current(self, c.ib_id)
-            if not history.floor_passed:
-                raise ExecutionError("a passing floor verdict for the current test-author commit is required")
+            if history.floor is None or history.floor_loop.disposition not in ("passed", "ended"):
+                raise ExecutionError("a passing floor verdict or an ended floor loop for the current test-author commit is required")
             problems = history.builder_problems(actor)
             if problems:
                 raise ExecutionError("; ".join(problems))
@@ -780,6 +787,7 @@ class Engine:
         if not decision.strip():
             raise ExecutionError("record the decision that resolves the blocker")
         rec.append("blocker.resolved", actor, {"decision": decision, "extra_attempts": extra_attempts,
+                                                **({"resolution": "operator-decision"} if c.is_lean else {}),
                                                 "resolved": [b["reason"] for b in st.blockers]})
 
     # ----------------------------------------------------------- verification
@@ -845,6 +853,25 @@ class Engine:
     def python(self) -> str:
         return resolve_python(self.repo_root, self.settings.python)
 
+    def _program(self, c: IBContract) -> str:
+        """The program that runs ``c``'s tests, as evidence records it (BS-045
+        BR 19): the test interpreter, or for a lean brief what the adapter of
+        each runner its conditions name answers (for pytest, the interpreter)."""
+        if not c.is_lean:
+            return self.python
+        from dekspec.execution.test_runners import adapter_for
+
+        programs: dict[str, str] = {}
+        for cond in c.acceptance:
+            if cond.nodes and cond.kind not in programs:
+                adapter = adapter_for(cond.kind)
+                if adapter is None:
+                    raise ExecutionError(f"{c.ib_id} {cond.id}: DekSpec has no adapter for the test runner {cond.kind}")
+                programs[cond.kind] = adapter.program(self.repo_root, self.settings)
+        if len(programs) == 1:
+            return next(iter(programs.values()))
+        return "; ".join(f"{runner}: {program}" for runner, program in sorted(programs.items()))
+
     def _interpreter_problem(self) -> str | None:
         configured = self.python
         python = Path(configured)
@@ -861,8 +888,7 @@ class Engine:
             inside = False
         # An ignored, untracked interpreter (a local `.venv`) is environment,
         # not delivered content; one the delivery could commit is refused.
-        if inside and subprocess.run(["git", "check-ignore", "-q", str(real)], cwd=str(self.repo_root),
-                                     capture_output=True).returncode != 0:
+        if inside and git_reads.run(str(self.repo_root), "check-ignore", "-q", str(real), capture_output=True).returncode != 0:
             return (f"the test interpreter {configured!r} is part of the repository's content; "
                     "evidence must come from an interpreter the delivery cannot rewrite")
         return None
@@ -892,7 +918,7 @@ class Engine:
         if not c.is_lean:
             return {}
         return {"scoped_manifest": binding.manifest, "runner_inputs": binding.runner_inputs,
-                "python": self.python}
+                "python": self._program(c)}
 
     def verify(self, ref: str, actor: str, *, base: str | None = None, record: bool = True,
                kind: str = "ib") -> dict[str, Any]:
@@ -919,7 +945,8 @@ class Engine:
         except ScopeError as exc:
             scope, scope_dict = None, {"ok": False, "violations": [{"kind": "indeterminate", "detail": str(exc)}]}
         results = [acc.run_condition(self.repo_root, cond, python=self.python,
-                                     timeout=self.settings.command_timeout) for cond in c.acceptance]
+                                     timeout=self.settings.command_timeout, settings=self.settings)
+                   for cond in c.acceptance]
         # Test-runner plugins the run loaded from the repository (beyond the
         # hashed conftest files) change what "passed" means: any that differ
         # from the authorization baseline need the reviewer's acknowledgment.
@@ -1008,7 +1035,8 @@ class Engine:
                 or ev.get("baseline_digest") != acc.baseline_digest(st.baseline) \
                 or ev.get("fingerprint") != self.fingerprint() \
                 or ev.get("manifest_hash") != build_context(self.repo_root, c, spec_root=self.spec_root).manifest_hash \
-                or ev.get("python") != self.python:
+                or not ev.get("python") \
+                or resolve_python(self.repo_root, ev["python"]) != self._program(c):
             return None
         from dekspec.execution.ranges import resolve_ranges
 
@@ -1025,10 +1053,13 @@ class Engine:
     def review(self, ref: str, reviewer: str, verdict: str, *, criteria: list[str] | None = None,
                acknowledge: list[str] | None = None, notes: str = "",
                policy_revision: int | None = None,
-               approved_test_changes: list[str] | None = None) -> dict[str, Any]:
+               approved_test_changes: list[str] | None = None,
+               findings: list[str] | None = None) -> dict[str, Any]:
         if verdict not in ("pass", "fail"):
             raise ExecutionError("verdict must be pass or fail")
         c = self.contract(ref)
+        from dekspec.execution.lean_records import _findings
+        normalized = _findings(verdict, findings, lean=c.is_lean)
         self._require_delegated(c)
         self._refuse_integrated(c)
         rec, _events, st = self.state(c.ib_id)
@@ -1084,6 +1115,8 @@ class Engine:
         except ScopeError:
             payload["range_binding"] = []
         payload.update(self._binding_fields(c, binding))
+        if normalized:
+            payload["findings"] = normalized
         if approvals:
             from dekspec.execution.record import ExecutionRecord as RecordWriter
 
@@ -1130,9 +1163,7 @@ class Engine:
         integrity = rec.verify_chain()
         # The hash chain cannot see its own tail being cut; the committed
         # history can: the working record must extend the committed one.
-        committed = subprocess.run(
-            ["git", "show", f"HEAD:{rec.path.relative_to(self.repo_root).as_posix()}"],
-            cwd=str(self.repo_root), capture_output=True, text=True)
+        committed = git_reads.run(str(self.repo_root), "show", f"HEAD:{rec.path.relative_to(self.repo_root).as_posix()}", capture_output=True, text=True)
         if committed.returncode == 0 and rec.path.is_file() and \
                 not rec.path.read_text(encoding="utf-8").startswith(committed.stdout):
             integrity = integrity + ["the working record no longer extends the committed record (events removed)"]
@@ -1206,8 +1237,6 @@ class Engine:
         stale = ([binding_problem] if binding_problem else [])
         if not ev:
             stale.append("no evidence after current tests.authored")
-        if c.is_lean and ev.get("python") != self.python:
-            stale.append("test interpreter changed")
         if ev.get("fingerprint") != fp:
             if c.is_lean and binding_problem is None and ev:
                 from dekspec.execution.evidence_scope import ScopedBinding, changed_paths
@@ -1255,13 +1284,18 @@ class Engine:
         vseq, verdict = st.verdicts[-1]
         gate.verdict_seq = vseq
         vproblems = [binding_problem] if binding_problem else []
-        if c.is_lean and verdict.get("python") != self.python:
-            vproblems.append("test interpreter changed")
         if c.is_lean and verdict.get("manifest_hash") != packet.manifest_hash:
             vproblems.append("governing sources changed since review")
         if verdict.get("range_binding", []) != range_binding:
             vproblems.append("constituent range binding changed since review")
-        if verdict["verdict"] != "pass":
+        ended = False
+        if c.is_lean:
+            from dekspec.execution.lean_records import _history
+            disposition = _history(events).code_loop.disposition
+            ended = disposition == "ended"
+            if disposition == "stopped":
+                vproblems.append("code review stopped for the owner; resolve with ib unblock")
+        if verdict["verdict"] != "pass" and not ended:
             vproblems.append(f"latest verdict is FAIL ({verdict.get('notes', '')})")
         if verdict["reviewer"] in st.builder_identities:
             vproblems.append(f"{verdict['reviewer']} is a builder of this IB")
@@ -1317,7 +1351,7 @@ class Engine:
     def complete(self, ref: str, actor: str, *, base: str | None = None) -> GateResult:
         c = self.contract(ref)
         self._refuse_integrated(c, base)
-        gate = self.evaluate_completion(ref, base=base)
+        gate = self.evaluate_completion(ref, base=base, readonly=c.is_lean)
         # Closing must not revoke the attribution that made the open unit
         # eligible. A repair needs a retained passing receipt before its
         # active-tail allowance disappears at COMPLETE.
@@ -1339,13 +1373,23 @@ class Engine:
             return gate
         rec = self.record(c.ib_id)
         st = fold(self._events(rec))
+        known_issues = []
+        new_completion = (not st.completions
+                          or st.completions[-1][1].get("fingerprint") != gate.fingerprint
+                          or st.completions[-1][1].get("verdict_seq") != gate.verdict_seq)
+        if c.is_lean and new_completion:
+            from dekspec.execution._lean_issues import _file_follow_ups
+            try:
+                known_issues = _file_follow_ups(self, c.ib_id)
+            except ExecutionError as exc:
+                gate.checks.append(Check("follow-up-issues", False, str(exc)))
+                return gate
         if st.open_attempt:
             rec.append("attempt.ended", actor, {
                 "attempt": st.open_attempt.number, "outcome": "passed",
                 "summary": "closed at completion: the completion gate passed on current evidence",
                 "progress": {"fingerprint": gate.fingerprint, "evidence": True}})
-        if not st.completions or st.completions[-1][1].get("fingerprint") != gate.fingerprint \
-                or st.completions[-1][1].get("verdict_seq") != gate.verdict_seq:
+        if new_completion:
             # A new completion cites the evidence and verdict it rests on — also when a
             # fresh review (a review-policy change, ADR-061) replaced the one cited before.
             payload = {
@@ -1356,6 +1400,8 @@ class Engine:
                 payload.update(self._binding_fields(c, self._content_binding(c)))
                 payload.update(contract_hash=c.contract_hash(),
                                manifest_hash=build_context(self.repo_root, c, spec_root=self.spec_root).manifest_hash)
+            if known_issues:
+                payload["known_issues"] = known_issues
             rec.append("completion.recorded", actor, payload)
         if c.status == "ACCEPTED":
             set_status(c.path, {"ACCEPTED"}, "COMPLETE", author=actor, change=(
@@ -1404,7 +1450,6 @@ class Engine:
         status newly set to COMPLETE on an IB that cannot complete on evidence
         (legacy policy, unparseable), a delegated IB relabelled legacy, and an
         IB file that no longer parses."""
-        import subprocess as _sp
 
         from dekspec.execution.scope import changed_files, resolve_base
 
@@ -1420,8 +1465,7 @@ class Engine:
             except ContractError as exc:
                 problems.append(f"{path} does not parse: {exc}")
                 continue
-            before = _sp.run(["git", "show", f"{base_commit}:{ch.old_path or path}"], cwd=str(self.repo_root),
-                             capture_output=True, text=True)
+            before = git_reads.run(str(self.repo_root), "show", f"{base_commit}:{ch.old_path or path}", capture_output=True, text=True)
             old_status = old_policy = None
             if before.returncode == 0:
                 import re as _re
@@ -1450,7 +1494,8 @@ class Engine:
             "ib": c.ib_id, "path": c.rel_path, "status": c.status, "authority_policy": c.authority_policy,
             "phase": st.phase(), "owner": st.owner,
             "attempts": {"used": st.attempts_used, "allowed": allowed,
-                         "open": st.open_attempt.number if st.open_attempt else None},
+                         "open": st.open_attempt.number if st.open_attempt else None,
+                         "outcome": st.attempts[-1].outcome if st.attempts else None},
             "blockers": st.blockers, "plan_revision": st.plan_revision,
             "tasks": {tid: {"status": t.get("status"), "owner": t.get("owner"), "covers": t.get("covers", [])}
                       for tid, t in st.tasks.items()},

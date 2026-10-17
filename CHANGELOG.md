@@ -2,6 +2,91 @@
 
 All notable changes to DekSpec are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/); versioning follows [Semantic Versioning](https://semver.org/).
 
+## [v0.130.0] — 2026-10-16
+
+**Lean construction for projects that are not DekSpec: vitest beside pytest, a `lean gate` CI job to copy, and a guide to switching on.** v0.129.0 shipped lean construction (ADR-079) for Python and pytest only, with no CI job a project could use and no lean brief form. This release closes those gaps: a lean brief's tests can run under vitest (INT-233, IB-292 to IB-296), DekSpec ships a complete `lean gate` job for a Node project (INT-234, IB-298), and `dekspec ib new` writes the one-page lean brief, with an adoption guide to follow in order (INT-235, IB-300, IB-301). The lean driver's pilot defects are fixed and its review loops follow the owner's lighter rule (IB-297). DekSpec, DekBuilder and DekTools are released together at 0.130.0 under one tag, as in v0.129.0. Lean stays off unless a project switches it on.
+
+### New for a project switching lean on with vitest
+
+- **Name vitest tests in a lean brief (IB-292, IB-293).** A condition names its runner by the key of its `verify` entry: `vitest: ["src/orders/discount.test.ts"]` names every test in a file, and `vitest: ["src/orders/discount.test.ts > discounts > applies two"]` names one test by its full name as vitest reports it. pytest conditions read as before. `dekspec ib accept` refuses a condition whose runner DekSpec has no adapter for, and a file that is not a JavaScript or TypeScript source file, naming the condition and the runner.
+- **Tests run as evidence, judged test by test (IB-293).** `dekspec ib verify` runs exactly the named tests through vitest itself. A test counts only when it ran and passed the first time: a skipped, filtered-out, missing, retried or expected-failure test is reported as what it is, whatever vitest's exit code says. Node and vitest must be installed in the project; without them the condition reads `indeterminate`, naming vitest and the reason. If vitest's default configuration file would not find your acceptance tests, name the one that does in `.dekspec/config.yaml` under `execution: {vitest_config: <file>}`.
+- **vitest's support files are protected like the tests (IB-293).** The configuration in effect and what it loads (setup and global-setup files with their imports, project configurations, `tsconfig.json`, `__mocks__` files, `.env` files, and any file a quoted path in those files names, such as a `resolve.alias` target or a spawn argument, even a source file) are closed to the builder and bound to the brief's evidence, so a change to one on `main` makes the evidence stale. A file named only in the `coverage` option, `package.json` or a lockfile is not. Where DekSpec cannot tell from the files what the tests load, it refuses and says why (see Known limits).
+- **The red check and the test guard hold for vitest (IB-294).** At the test author's commit each new vitest test must fail on its own assertion, checked in a clean checkout that holds only that commit, with the dependencies it declares: from its lockfile (`npm ci`, `pnpm install --frozen-lockfile` or `yarn install --frozen-lockfile`), or by the command in `execution.vitest_install`. An older test the commit did not change must pass. A new test must state its basis in a comment line beginning `Basis:`. A vitest lean brief can now complete.
+- **TypeScript and JavaScript skeletons (IB-296).** A test author's skeleton in TypeScript or JavaScript needs a leading interface comment, or `dekspec ib tests-authored` refuses it, and a builder who adds or removes an exported name, or a public member of an exported class, is refused, naming the file and the name, as for Python. A skeleton in a language DekSpec does not read is reported as unchecked.
+- **The driver and the prompts name your runner (IB-295).** The builder and the reviewer are told the brief's own tests whatever the runner, the test author and floor reviewer prompts use the brief's own word for it, readiness says by name when a runner cannot run on this machine, and the reviewer is told that a change to the test runner's own entry in the package list is a change to the gate. After a merge conflict, a lean brief's own tests and review run again before it rejoins the landing queue, also when the resolution restores the reviewed content (in v0.129.0 it stopped with `acceptance-invalid`).
+- **The red check uses your project's own environment (IB-317).** When `integration.worktree_setup` is set, the red check runs that command, as read at the base, inside its temporary checkout and runs the tests with what it makes. A failing setup fails the check and says so. Lean evidence recorded on one machine stays current in CI on another, because CI runs the acceptance tests again in its own environment.
+- **A one-page lean brief from `dekspec ib new` (IB-300).** With lean on, `dekspec ib new <name> --parent INT-NNN --runner vitest` writes the lean form: `**Authority policy:** lean`, `**Risk:** normal`, Outcome, Scope, Design intent, one Acceptance condition naming a test, and Implementation Hypothesis. `--form delegated` writes the old form. A project's own `dekspec/templates/implementation-brief-lean-template.md` wins over the installed one. With lean on, `/write-ibs` writes lean briefs this way and asks the owner to approve each brief's risk.
+- **Review loops end (IB-297).** Each review loop, the floor review's and the code review's, runs up to five rounds and one more; a return to the test author, a passing verdict, a reopened completion or the owner's decision starts a new loop. A `fail` recorded without a `--finding`, as every verdict before this release was, counts as one P1. A code-review finding fails a round only at 80% confidence or more, as P1 or P2. After round 6, with only P2 findings open, the work moves on and each open finding is filed as a follow-up issue in the project's `.beads-issues` workspace; the completion is refused if that workspace is missing. With any P1 open, the brief stops for the owner until `dekspec ib unblock <IB> --decision "…"`. From round 2 reviewers see the earlier findings and the diff, and the floor reviewer's notes reach the builder and the code reviewer.
+- **Lean driver fixes (IB-297).** A builder that finds the interface wrong before starting an attempt now gets the automatic return to the test author, counted toward the two allowed. A skeleton reported by an absolute path inside the working copy is understood. `dekspec ib reopen <IB> --reason "…"` reopens an unintegrated completion.
+
+### How to adopt it
+
+1. **Read the guide.** `dekspec resource doc lean-adoption` prints the adoption guide from the installed release (IB-301): what must be in place first, the switch, the four workers and how the coordinator dispatches them, normal risk and how your Constitution defines it, the Constitution wording to change, the required check, the review-loop rules and your first lean brief.
+2. **Copy the `lean gate` job.** `dekspec resource doc lean-gate-ci` prints a complete GitHub Actions job named `lean gate` for a Node project with pnpm and vitest (IB-298). Change the runner, language setup and services it marks as yours; leave the judging step as it is. It installs the DekSpec release that `.dekspec-version` names at the pull request's base, from the public mirror, and judges with it, so a pull request never changes its own judge. Commit `.dekspec-version` and make `lean gate` a required check under exactly that name.
+3. **Set up, then switch on, on `main`, before your first lean brief.** In `.dekspec/config.yaml`: `integration.worktree_setup` (for example `pnpm install --frozen-lockfile`), `execution.vitest_config` and `execution.vitest_install` if you need them, and `execution: {lean: true}`; create the `.beads-issues` workspace (`dekspec beads init`) if you have none. CI reads these from the base of each pull request, so a pull request cannot switch lean on for itself.
+
+### What you will notice after upgrading, even if you change nothing
+
+1. **Outcomes are read as Intents under a new name (IB-304).** The engine reads `OUT-NNN` and `P-OUT-NNN` ids, an `outcomes/` folder and `outcome-index.md` as the Intent kind, and every Intent name as before. `dekspec outcome verify|review|complete|placement` do what `dekspec intent …` does, and `dekspec intent …` stays. One spec root cannot hold `OUT-007` and `INT-007`: they are one id written two ways, refused by name, and the next free number counts both forms. A `delegated` or `lean` brief may say `## Goal` where it says `## Outcome`, but not both; contract hashes are unchanged. Output meant for people says "result" where it said "outcome" for an attempt. Nothing writes the new Outcome form yet.
+2. **Evidence goes stale once for files with a one-line header (IB-304).** A spec file whose header is the one-line form (`**Id:** … · **Status:** …`) is now fingerprinted without its status, so evidence that binds such a file reads as changed once after upgrading. Run `dekspec ib verify` (or `dekspec intent verify`) again for work whose evidence must stay current.
+3. **`doctor`, `migrate` and `sync` skip ignored folders (IB-314, #314).** In a git checkout, file patterns resolve against the paths git shows, tracked and untracked but not ignored, so a checkout with installed dependencies no longer takes minutes to check. A Components pattern that matches only ignored paths now reports as unresolved, as it already did on an exported commit. A git failure inside a work tree is reported instead of falling back to walking the folder. Outside git nothing changes.
+4. **Lean refusals read differently (IB-292).** The refusal of a lean brief with no condition that names tests now lists the supported runners; the refusal of a test outside its runner's test files names the runner and quotes its rule; the skeleton refusal says "interface note" where it said "module docstring". For pytest, the same briefs are accepted and refused as before, and evidence, verdicts and gate results stay as they were.
+5. **Interpreter paths are recorded in one form (IB-317).** Evidence and verdicts record the interpreter as an absolute path, from `dekspec` and from DekBuilder's driver alike. A record written before, in the relative form, stays current when it names the same interpreter. A bare `execution.python` such as `python3` now finds the repository's `.venv` interpreter before `PATH`, for every brief, so a `delegated` brief may run under another interpreter than before.
+6. **Delivery checks ask git each question once (IB-320).** Within one run the engine answers git questions whose answers commit ids fix from memory, so `dekspec delivery check` and the completion gate run faster. Results are unchanged.
+
+`delegated` and `legacy` briefs keep their meaning; apart from item 5, their behaviour is unchanged.
+
+### Added
+
+- `vitest` as a lean test runner, beside `pytest`, behind one adapter per runner (IB-292, IB-293, IB-294, IB-296).
+- `execution.vitest_config` (IB-293) and `execution.vitest_install` (IB-294) in `.dekspec/config.yaml`.
+- `dekspec resource doc lean-gate-ci`: the `lean gate` job for a project's CI (IB-298).
+- `dekspec resource doc lean-adoption`: the lean adoption guide (IB-301).
+- `dekspec ib new --form lean|delegated --runner NAME`, and the lean brief template (IB-300).
+- `dekspec outcome …` commands and the `OUT-` id form (IB-304).
+- `dekspec ib reopen <IB> --reason <text>`, and `--finding "P1|P2 <text>"` on `dekspec ib review` and `dekspec ib floor-review` (IB-297).
+- Two read-only calls DekBuilder uses to ask DekSpec about a brief without knowing its runner, `own_tests` and `runners_unable` (IC-020 1.7.0, #352).
+
+### Changed
+
+- Lean review loops are bounded at five rounds and one more, with P2 findings filed as follow-up issues and P1 findings stopping for the owner (IB-297).
+- File patterns resolve against the paths git shows (IB-314).
+- The red check runs `integration.worktree_setup` in its temporary checkout (IB-317).
+
+### Fixed
+
+- A builder's interface return before its first attempt is counted, and an absolute skeleton path inside the working copy is accepted (IB-297).
+- A lean brief whose merge conflict was resolved to exactly the reviewed content re-runs its tests and review instead of stopping, and an interrupted conflict resolver is sent again (IB-295).
+- With `integration.worktree_setup` set, the red check runs the test author's commit against that commit's own code, so a test that fails on its own assertion there reads as genuinely red even where an installed copy of the built code would make it pass (IB-317).
+
+### This repository's CI and release (no effect on projects)
+
+- CI runs each product's suite as its own parallel job (#312); jobs no longer share `br` or a Python environment on the runner host (#333); the landing-queue tests start Python only for a push (#345).
+- A release run reuses CI's green result when the tagged content was already tested, and runs every suite otherwise (#327). `main` trusts its pull request's green run for the same content instead of running the full suite again after each merge (#354).
+- The `lean gate` and delivery gate jobs judge a landing batch member by member, each as its own delivery (IB-318). A pull request that is no batch is judged as before.
+- This repository's `integration.worktree_setup` works on any host and Python version (IB-317), and its CLAUDE.md is rewritten to route to the governing sources (#351).
+
+### Known limits
+
+- **vitest is read statically.** DekSpec reads the test and support files; it does not watch vitest load them. It refuses, and the check fails, where it cannot tell what the tests load: a setup or project value that is not a plain string, a glob or computed path, an import in a configuration or setup file that no installed package or workspace answers, such as an `@/` path alias (use relative imports there), or code that loads modules by any means other than a quoted name. Deliberately evasive forms (`eval` or `Function` reached through another object, `process.getBuiltinModule`) are not refused yet; asking vitest which files it loaded is planned. A file named only in a variable that the `coverage` option uses may still be closed to the builder.
+- **Builders on the coordinator's host only.** In this release the coordinator dispatches all four lean workers through DekBuilder as its own sub-agents. Builders on another host, such as Codex or Amp, are not covered for lean briefs: build those briefs `delegated`. `dekspec install --platform <host>` installs DekSpec's skills only; `dekbuilder install` and `dektools install` still write nothing.
+- **For a pytest brief, without `integration.worktree_setup`,** the red check runs the tests with the project's interpreter, and whether that interpreter imports the built code is not checked.
+- **Normal risk only.** A lean brief must say `**Risk:** normal`; write anything else `delegated`.
+- **The switch is a file edit.** `dekspec config set execution.lean true` still answers `Unknown config key`; edit `.dekspec/config.yaml`.
+- **npm 10.9.9.** Its plain `npm install` crashed on our build host; `npm ci` from a lockfile works. Use `npm ci` (or pnpm) in `integration.worktree_setup`.
+- **A driver stop for no convergence has no command to lift it.** After two strategy changes the driver stops a brief for good; `dekspec ib unblock --extra-attempts` does not reach that stop.
+- **Landing queue.** Required checks are read from repository rulesets only, not from classic branch protection. For `delegated` deliveries the driver can still call merge while a required check has not yet reported; the forge refuses that merge.
+- **An Intent with a `**Status:**` line above its first section heading** is read as the new Outcome form and checked against it. Intents written from the shipped template keep status under `## Status` and are unaffected.
+- **Commands that do nothing yet.** `dekspec ib prove`, `dekspec ib migrate-id`, `dekspec intent placement` (and `dekspec outcome placement`), `dekspec ib lint --delivery`, `dekbuilder install` and `dektools install` are accepted and exit 0 without effect. Several flags on `audit`, `install` and `migrate` say "not yet in effect" in their help.
+- **`dekspec migrate` lists the repository once per pattern (IB-314),** so on a checkout without large ignored folders its pattern step, and `dekspec sync`, can be slower than in v0.129.0.
+
+**Upgrading.** Nothing needs a hand unless you use what is new.
+
+1. Re-run `scripts/install.sh`, or install DekSpec and DekBuilder from the `v0.130.0` tag into one environment by hand (README, "Manual install"). Then `dekspec sync`, and commit `.dekspec-version`.
+2. Refresh the host installation: `claude plugin update dekspec@dekspec`, or `dekspec install --platform <host>`.
+3. If a spec file in your project has the one-line header, run `dekspec ib verify` or `dekspec intent verify` once for work whose evidence must stay current (notice item 2).
+4. To build lean with vitest, follow "How to adopt it" above.
+
 ## [v0.129.0] — 2026-10-14
 
 **Three products, a landing gate that judges every change, and opt-in lean construction.** The repository now builds three packages at one version (ADR-065, IB-173): DekSpec keeps authoring, audits, authorization and evidence judgment; DekBuilder owns construction (`dekbuilder implement`, `dekbuilder wave`, `dekbuilder pr-branch`); DekTools owns the standalone craft commands (`dektools handoff`, `dektools deepen-record`). One tag publishes all three on the public mirror, at the same version: the root package is DekSpec, and DekBuilder and DekTools install from `products/dekbuilder` and `products/dektools` of the same tag. The landing gate now judges a change that carries no brief (IB-291). Lean construction (ADR-079) is in this release and is off unless a project switches it on.

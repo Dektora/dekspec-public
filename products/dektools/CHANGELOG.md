@@ -1,3 +1,7 @@
+# 0.130.0
+
+Released with DekSpec and DekBuilder 0.130.0 (2026-10-16) under one tag on the public mirror. Install it from `products/dektools` of that tag (`scripts/install.sh --with-dektools`), never by bare name. No change to the craft workflows since 0.129.0. `dektools install` is accepted and writes nothing yet.
+
 # 0.129.0
 
 Released with DekSpec and DekBuilder 0.129.0 (2026-10-14) under one tag on the public mirror. Install it

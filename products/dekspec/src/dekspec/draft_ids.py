@@ -26,12 +26,12 @@ from dekspec.draft_ids import (
 """
 from __future__ import annotations
 
-from dekspec.spec_kinds import BEHAVIOR_SPEC_NAMES as BS
+from dekspec.spec_kinds import ARTIFACT_PREFIXES
 
 import re
 
 # Artifact kinds that participate in the DRAFT-slug / registry convention.
-KINDS: tuple[str, ...] = ("ADR", "AE", *BS.prefixes, "IC", "IB", "INT", "MSN", "SP")
+KINDS: tuple[str, ...] = ARTIFACT_PREFIXES
 
 # A slug is one-or-more lowercase-alnum segments joined by single hyphens.
 _SLUG = r"[a-z0-9]+(?:-[a-z0-9]+)*"

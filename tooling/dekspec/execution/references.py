@@ -16,6 +16,8 @@ artifact does not stale the evidence of an IB that never referenced it.
 
 from __future__ import annotations
 
+from dekspec.spec_kinds import OUTCOME_NAMES as OUT
+
 from dekspec.spec_kinds import BEHAVIOR_SPEC_NAMES as BS
 
 import hashlib
@@ -44,7 +46,6 @@ _KIND_DIRS: dict[str, tuple[str, bool]] = {
 
     "AE": ("architecture-elements", False),
     "SP": ("security-profiles", False),
-    "INT": ("intents", False),
     "MSN": ("missions", False),
     "IB": ("impl-briefs", True),
 }
@@ -56,7 +57,7 @@ _NON_BINDING_SECTIONS = {"status", "created", "modified", "date", "amendment log
                          "open questions / planned follow-ons", "supersession"}
 _HEADING = re.compile(r"^(#{2,4})\s+(.+?)\s*$")
 _STATUS_H2 = re.compile(r"^##\s+Status\s*\n+\s*([A-Za-z_]+)", re.MULTILINE)
-_STATUS_META = re.compile(r"^\*\*Status:\*\*\s*`?([A-Za-z_]+)", re.MULTILINE)
+_STATUS_META = re.compile(r"^(?:\*\*Id:\*\*[^\n]*?·\s*)?\*\*Status:\*\*\s*`?([A-Za-z_]+)", re.MULTILINE)
 _SUPERSEDED_BY = re.compile(r"(?:\*Superseded by:\*|##\s*Superseded-By\s*\n+)\s*([A-Z]+-\d{3,}|none)", re.IGNORECASE)
 _LOCAL_OBLIGATION = re.compile(r"^[-*]\s+\*\*(O-\d+)\*\*\s*\(local\):\s*(.+?)\s*$", re.MULTILINE)
 
@@ -102,8 +103,8 @@ def artifact_path(repo_root: Path, ref: str, *, spec_root: str = "dekspec") -> P
         p = base / _SINGLETONS[ref]
         return p if p.is_file() else None
     kind = ref.split("-", 1)[0]
-    if kind in BS.prefixes:
-        found = BS.paths(base, ref)
+    if OUT.canonical(ref, surface="id") or kind in BS.prefixes:
+        found = OUT.paths(base, ref) if OUT.canonical(ref, surface="id") else BS.paths(base, ref)
         if len(found) > 1:
             raise AmbiguousReference(f"{ref} matches {len(found)} files: " + ", ".join(
                 str(f.relative_to(base)) for f in found))

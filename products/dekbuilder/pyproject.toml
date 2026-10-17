@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dekbuilder"
-version = "0.129.0"
+version = "0.130.0"
 description = "Governed in-host construction consuming the installed Spec S0 boundary."
 requires-python = ">=3.11"
-dependencies = ["dekspec==0.129.0", "pyyaml>=6"]
+dependencies = ["dekspec==0.130.0", "pyyaml>=6"]
 
 [project.scripts]
 dekbuilder = "dekbuilder.cli:main"

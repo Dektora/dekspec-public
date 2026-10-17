@@ -18,5 +18,5 @@ of governed evidence. Existing continuity state paths stay readable.
 Run the owned suite with `python3 -m pytest -c pyproject.toml tests/dektools_tests`
 against the installed wheel, and run `python3 scripts/check-version.py` for
 local metadata consistency. The source product alone builds outside the shared
-repository; 0.129.0 is published on the public
+repository; 0.130.0 is published on the public
 mirror with DekSpec and DekBuilder under one tag (`#subdirectory=products/dektools`).

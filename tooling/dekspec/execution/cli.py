@@ -7,13 +7,13 @@ unavailable prerequisite, contract conflict).
 
 from __future__ import annotations
 
+from dekspec.execution import git_reads
+from dekspec.spec_kinds import OUTCOME_NAMES as OUT
+
 import argparse
 import json
 import os
-import re
-import subprocess
 import sys
-from datetime import date
 from pathlib import Path
 from typing import Any, Callable
 
@@ -23,7 +23,7 @@ __all__ = ["register"]
 def _repo_root(args: argparse.Namespace) -> Path:
     if getattr(args, "at", None):
         return Path(args.at).resolve()
-    proc = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True)
+    proc = git_reads.run(None, "rev-parse", "--show-toplevel", capture_output=True, text=True)
     return Path(proc.stdout.strip() or os.getcwd()).resolve()
 
 
@@ -32,7 +32,7 @@ def _actor(args: argparse.Namespace) -> str:
         return args.actor
     if os.environ.get("DEKSPEC_ACTOR"):
         return os.environ["DEKSPEC_ACTOR"]
-    proc = subprocess.run(["git", "config", "user.name"], capture_output=True, text=True)
+    proc = git_reads.run(None, "config", "user.name", capture_output=True, text=True)
     return proc.stdout.strip() or "unknown"
 
 
@@ -93,31 +93,15 @@ def _gate_text(gate: Any) -> str:
 # ----------------------------------------------------------------------- ib
 @_run
 def cmd_new(args: argparse.Namespace) -> int:
-    from dekspec.vendoring import resolve_template
+    from dekspec.execution.scaffold import new_brief
 
     root = _repo_root(args)
-    folder = root / args.dekspec_root / "impl-briefs"
-    folder.mkdir(parents=True, exist_ok=True)
-    used = [int(m.group(1)) for p in (root / args.dekspec_root).rglob("IB-*.md")
-            if (m := re.match(r"(?:P-)?IB-(\d{3,})-", p.name))]
-    ib_id = f"IB-{(max(used) + 1 if used else 1):03d}"
-    slug = re.sub(r"[^a-z0-9]+", "-", args.slug.lower()).strip("-")
-    target = folder / f"{ib_id}-{slug}.md"
-    template = resolve_template("implementation-brief", root)
-    if template is None:
-        print("REFUSED: implementation-brief template not found", file=sys.stderr)
-        return 1
-    text = template.read_text(encoding="utf-8")
-    title = args.title or slug.replace("-", " ")
-    text = text.replace("[bounded outcome, in a few words]", title, 1)
-    if args.parent:
-        text = text.replace("**Parent:** none", f"**Parent:** {args.parent}", 1)
-    text = text.replace("| Date | Type | Change | Author |\n|------|------|--------|--------|",
-                        "| Date | Type | Change | Author |\n|------|------|--------|--------|\n"
-                        f"| {date.today().isoformat()} | Create | Scaffolded with `dekspec ib new`. | {_actor(args)} |", 1)
-    target.write_text(text, encoding="utf-8")
-    _emit(args, {"ib": ib_id, "path": str(target.relative_to(root))},
-          lambda d: f"created {d['path']} ({d['ib']}, DRAFT, authority policy delegated)")
+    made = new_brief(root, args.slug, author=_actor(args), title=args.title, parent=args.parent,
+                     form=args.form, runner=args.runner, spec_root=args.dekspec_root)
+    _emit(args, {"ib": made.ib, "path": str(made.path.relative_to(root)), "form": made.form,
+                 "notice": made.notice},
+          lambda d: f"created {d['path']} ({d['ib']}, DRAFT, authority policy {d['form']})"
+          + (f"\nnote: {d['notice']}" if d["notice"] else ""))
     return 0
 
 
@@ -347,7 +331,7 @@ def cmd_review(args: argparse.Namespace) -> int:
     payload = _engine(args).review(args.ib, args.reviewer, args.verdict, criteria=args.criteria or None,
                                    acknowledge=args.acknowledge or [], notes=args.notes or "",
                                    policy_revision=revision,
-                                   approved_test_changes=args.approve_test_change)
+                                   approved_test_changes=args.approve_test_change, findings=args.finding)
     _emit(args, payload, lambda d: f"{args.ib}: verdict {d['verdict'].upper()} by {d['reviewer']} "
           f"bound to {d['fingerprint'][:12]}")
     return 0
@@ -358,6 +342,13 @@ def cmd_complete(args: argparse.Namespace) -> int:
     gate = _engine(args).complete(args.ib, _actor(args), base=args.base)
     _emit(args, gate.as_dict(), lambda _d: _gate_text(gate) + ("\n→ COMPLETE" if gate.ok else ""))
     return 0 if gate.ok else 1
+
+
+@_run
+def cmd_reopen(args: argparse.Namespace) -> int:
+    payload = _engine(args).reopen(args.ib, _actor(args), args.reason)
+    _emit(args, payload, lambda d: f"{args.ib}: reopened completion #{d['completion_seq']} → ACCEPTED")
+    return 0
 
 
 @_run
@@ -376,6 +367,8 @@ def cmd_status(args: argparse.Namespace) -> int:
         lines = [f"{d['ib']} ({d['path']}): {d['status']} · policy {d['authority_policy']} · run {d['phase']}"
                  f" · owner {d['owner'] or '-'} · attempts {att['used']}/{att['allowed']}"
                  + (f" (open #{att['open']})" if att["open"] else "")]
+        if att.get("outcome"):
+            lines.append(f"  result: {att['outcome']}")
         for b in d["blockers"]:
             lines.append(f"  BLOCKED {b['reason']}: {b.get('detail', '')}")
         for tid, t in d["tasks"].items():
@@ -546,7 +539,8 @@ def _cmd_lean_record(args: argparse.Namespace) -> int:
             return 1
         payload = record_floor_verdict(engine, args.ib, commit=args.commit,
                                        verdict=args.verdict, reviewer=args.reviewer,
-                                       criteria=args.criteria, notes=args.notes, policy_revision=revision)
+                                       criteria=args.criteria, notes=args.notes, policy_revision=revision,
+                                       findings=args.finding)
     _emit(args, payload)
     return 0
 
@@ -573,13 +567,24 @@ def register(sub: argparse._SubParsersAction) -> None:
             p.add_argument("--verdict", required=True, choices=["pass", "fail"])
             p.add_argument("--criteria", nargs="*", default=[])
             p.add_argument("--notes", default="")
+            p.add_argument("--finding", action="append", metavar="P1|P2 TEXT",
+                           help="failing lean finding with level and text (repeatable; fail only)")
             p.add_argument("--policy-revision", type=int)
         p.set_defaults(func=_cmd_lean_record)
 
-    p = ibs.add_parser("new", help="scaffold a delegated IB (no parent artifact required)")
+    p = ibs.add_parser("new", help="scaffold an IB in the lean or delegated form (no parent artifact required)")
     p.add_argument("slug")
     p.add_argument("--title")
     p.add_argument("--parent", help="optional parent Intent / WS / Mission id")
+    # Surface skeleton (ADR-062), written with IB-300's acceptance tests: the
+    # options of `dekspec.execution.scaffold.new_brief` (its module note is the
+    # interface note). Values are free text so an unknown form is REFUSED (exit 1,
+    # naming it) by the scaffold rather than a usage error; cmd_new passes them
+    # through to the scaffold.
+    p.add_argument("--form", metavar="lean|delegated",
+                   help="the brief's form (default: lean when execution.lean is on, else delegated)")
+    p.add_argument("--runner", default="pytest", metavar="NAME",
+                   help="test runner the lean form's condition names, written as given (default: pytest)")
     _common(p, ib=False)
     p.set_defaults(func=cmd_new)
 
@@ -604,6 +609,11 @@ def register(sub: argparse._SubParsersAction) -> None:
         if name == "verify":
             p.add_argument("--dry-run", action="store_true", help="run checks without recording evidence")
         p.set_defaults(func=fn)
+
+    p = ibs.add_parser("reopen", help="reopen an unintegrated completion (COMPLETE → ACCEPTED)")
+    _common(p)
+    p.add_argument("--reason", required=True, help="why the completion needs to be reopened")
+    p.set_defaults(func=cmd_reopen)
 
     p = ibs.add_parser("floor", help="the acceptance floor report (read-only): each criterion's nodes, "
                                      "new or preserved, failure kind and line, declared basis; floor digest")
@@ -686,6 +696,8 @@ def register(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--policy-revision", type=int, dest="policy_revision",
                    help="the code-reviewer policy revision the review was dispatched under (from its instructions); "
                         "refused if the policy has changed since (ADR-061)")
+    p.add_argument("--finding", action="append", metavar="P1|P2 TEXT",
+                   help="failing lean finding with level and text (repeatable; fail only)")
     p.add_argument("--approve-test-change", action="append", metavar="PATH=REASON",
                    help="approve a protected lean test-author path with a reason (repeatable)")
     p.set_defaults(func=cmd_review)
@@ -741,7 +753,7 @@ def register(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--ib", action="append", help="add a brief to those discovered (repeatable)")
     p.set_defaults(func=_cmd_lean_guard)
 
-    it = sub.add_parser("intent", help="Intent outcome verification and evidence-backed completion.")
+    it = sub.add_parser(OUT.current("command"), aliases=OUT.command_aliases, help="Outcome verification and evidence-backed completion.")
     its = it.add_subparsers(dest="intent_command", metavar="<intent-command>", required=True)
     p = its.add_parser("verify", help="run the Intent's Verification commands and record evidence")
     p.add_argument("intent")

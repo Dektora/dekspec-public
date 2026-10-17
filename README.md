@@ -15,7 +15,7 @@ A five-layer **agentic-(software-)engineering toolkit** for AI-augmented teams �
 - **Human oversight** — the engineer authorizes each IB's acceptance contract before construction (`dekspec ib accept`); completion requires an independent review verdict from an identity other than the builder; integration is confirmed by the operator, or by the explicit `/implement` request for that request's own delivery (ADR-059). The No Specless Edits guardrail is advisory instruction for the agent, not a runtime gate.
 - **Observable development** — completes work only on current evidence (every acceptance condition re-run against the exact content reviewed, recorded in the IB's execution record), and feeds what it learns back into the rules.
 
-DekSpec ships as a Python library and CLI installed from its curated public mirror at a release tag, a Claude Code plugin for its skills, and markdown templates and methodology docs vendored into consumer repos. The current version is **v0.129.0**.
+DekSpec ships as a Python library and CLI installed from its curated public mirror at a release tag, a Claude Code plugin for its skills, and markdown templates and methodology docs vendored into consumer repos. The current version is **v0.130.0**.
 
 ## What's here
 
@@ -233,20 +233,20 @@ Steps 1–3 are host-agnostic. Re-run to upgrade. For `--platform claude`, plugi
 
 CLI only via pipx (isolated venv):
 ```bash
-pipx install "git+https://github.com/Dektora/dekspec-public.git@v0.129.0"
+pipx install "git+https://github.com/Dektora/dekspec-public.git@v0.130.0"
 ```
 
 CLI only into a project venv:
 ```bash
-pip install "git+https://github.com/Dektora/dekspec-public.git@v0.129.0"
+pip install "git+https://github.com/Dektora/dekspec-public.git@v0.130.0"
 ```
 
-DekBuilder (construction: `dekbuilder implement`, `dekbuilder wave`) from the same tag, into the same environment. It pins `dekspec==0.129.0`, so it installs only beside the DekSpec of its release; `scripts/install.sh` does this step. DekTools (`dektools handoff`, `dektools deepen-record`) is optional, the same way, or `scripts/install.sh --with-dektools`:
+DekBuilder (construction: `dekbuilder implement`, `dekbuilder wave`) from the same tag, into the same environment. It pins `dekspec==0.130.0`, so it installs only beside the DekSpec of its release; `scripts/install.sh` does this step. DekTools (`dektools handoff`, `dektools deepen-record`) is optional, the same way, or `scripts/install.sh --with-dektools`:
 ```bash
-pipx inject --include-apps dekspec "dekbuilder @ git+https://github.com/Dektora/dekspec-public.git@v0.129.0#subdirectory=products/dekbuilder"
-pipx inject --include-apps dekspec "dektools @ git+https://github.com/Dektora/dekspec-public.git@v0.129.0#subdirectory=products/dektools"   # optional
+pipx inject --include-apps dekspec "dekbuilder @ git+https://github.com/Dektora/dekspec-public.git@v0.130.0#subdirectory=products/dekbuilder"
+pipx inject --include-apps dekspec "dektools @ git+https://github.com/Dektora/dekspec-public.git@v0.130.0#subdirectory=products/dektools"   # optional
 # or into a project venv, in ONE pip command:
-pip install "git+https://github.com/Dektora/dekspec-public.git@v0.129.0" "dekbuilder @ git+https://github.com/Dektora/dekspec-public.git@v0.129.0#subdirectory=products/dekbuilder"
+pip install "git+https://github.com/Dektora/dekspec-public.git@v0.130.0" "dekbuilder @ git+https://github.com/Dektora/dekspec-public.git@v0.130.0#subdirectory=products/dekbuilder"
 ```
 Never install `dekbuilder` or `dektools` by bare name: a `dektools` on PyPI belongs to someone else.
 
@@ -267,7 +267,7 @@ Upgrading from v0.126.0, where these tools were a separate plugin (ADR-064): fol
 The `bash <(curl …)` one-liner does **not** run in native Windows PowerShell/cmd (no `bash`, no process substitution). Use the portable `pipx` sequence — identical to the Linux steps:
 
 ```powershell
-py -m pipx install --force "git+https://github.com/Dektora/dekspec-public.git@v0.129.0"
+py -m pipx install --force "git+https://github.com/Dektora/dekspec-public.git@v0.130.0"
 dekspec dependencies install br     # user-scoped, no admin — downloads + checksum-verifies the pinned br
 dekspec sync                        # reconcile vendored content + .dekspec-version
 dekspec install --platform codex    # per-host tree; --platform is on `dekspec install`, NOT on pipx
@@ -428,7 +428,7 @@ CI runs `pytest -q` + `ruff check` on Python 3.11 / 3.12 / 3.13 via GitHub Actio
 
 ## Status
 
-**v0.129.0** is the current release. The Constraint Compiler PoC (v0.2) has matured into an 11-IR, five-layer agentic-engineering toolkit with ~80 audit rules, a namespaced CLI, a public Python API at `dekspec.api`, an Execution & Evidence Engine (`dekspec ib` / `dekspec delivery` / `dekspec intent`; ADR-055 – ADR-058) that executes Implementation Briefs and completes them only on evidence, and end-to-end test coverage. See [`CHANGELOG.md`](CHANGELOG.md) for the per-version detail.
+**v0.130.0** is the current release. The Constraint Compiler PoC (v0.2) has matured into an 11-IR, five-layer agentic-engineering toolkit with ~80 audit rules, a namespaced CLI, a public Python API at `dekspec.api`, an Execution & Evidence Engine (`dekspec ib` / `dekspec delivery` / `dekspec intent`; ADR-055 – ADR-058) that executes Implementation Briefs and completes them only on evidence, and end-to-end test coverage. See [`CHANGELOG.md`](CHANGELOG.md) for the per-version detail.
 
 Open follow-ons:
 - GitLab migration — when DekSpec moves to the self-hosted GitLab instance (per DekFactory ADR-003), the release workflow ports to `.gitlab-ci.yml`. Until then the curated public mirror (`Dektora/dekspec-public`, ADR-034) is the canonical install surface: `pipx install "git+https://github.com/Dektora/dekspec-public.git@vX.Y.Z"`. Public PyPI publication was removed 2026-05-12; the Cloudsmith index was retired 2026-06 (ADR-034).

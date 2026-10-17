@@ -25,6 +25,8 @@ Public API: SpecGraph.load(repo_root, dekspec_root='dekspec') -> SpecGraph
 
 from __future__ import annotations
 
+from dekspec.spec_kinds import OUTCOME_NAMES as OUT
+
 from dekspec.spec_kinds import BEHAVIOR_SPEC_NAMES as BS
 
 import re
@@ -39,7 +41,6 @@ from .parser import (
     GlossaryParseError,
     IBParseError,
     ICParseError,
-    IntentParseError,
     MissionParseError,
     SPParseError,
     VisionParseError,
@@ -171,7 +172,7 @@ class SpecGraph:
             (dekspec_dir / "security-profiles", "SP-*.md", "sp", parse_security_profile, SPParseError, False),
             (dekspec_dir / "interface-contracts", "IC-*.md", "ic", parse, ICParseError, False),
             (dekspec_dir / "impl-briefs", "IB-*.md", "ib", parse_ib, IBParseError, True),
-            (dekspec_dir / "intents", "INT-*.md", "intent", parse_intent, IntentParseError, True),
+
             (dekspec_dir / "missions", "MSN-*.md", "mission", parse_mission, MissionParseError, True),
             # No `context-specs/` loader: Context Specifications are retired
             # (ADR-061). Agent Role Specifications are library package data
@@ -212,6 +213,23 @@ class SpecGraph:
                             message=str(e),
                         )
                     )
+
+        for path in OUT.paths(dekspec_dir):
+            if is_draft_filename(path.name):
+                continue
+            try:
+                ir = parse_intent(path)
+                graph.irs_by_id[ir["id"]] = ir
+            except Exception as exc:
+                graph.failures.append(ParseFailure(str(path), "intent", type(exc).__name__, str(exc)))
+
+        identities = {}
+        for ir in graph.intents():
+            identity = OUT.canonical(ir["id"], surface="id")
+            if identity in identities:
+                graph.failures.append(ParseFailure(ir["source"]["path"], "intent", "AmbiguousReference",
+                    f"{identity} matches multiple files: {identities[identity]}, {ir['source']['path']}"))
+            identities[identity] = ir["source"]["path"]
 
         # Singleton artifacts: domain-glossary.md + system-vision.md +
         # constitution.md (the L0 trio). Each is optional; missing files
@@ -273,7 +291,7 @@ class SpecGraph:
         return (ir for ir in self.irs_by_id.values() if ir["id"].startswith("IB-"))
 
     def intents(self) -> Iterator[dict[str, Any]]:
-        return (ir for ir in self.irs_by_id.values() if ir["id"].startswith("INT-"))
+        return (ir for ir in self.irs_by_id.values() if OUT.canonical(ir["id"], surface="id"))
 
     def missions(self) -> Iterator[dict[str, Any]]:
         return (ir for ir in self.irs_by_id.values() if ir["id"].startswith("MSN-"))
@@ -301,6 +319,10 @@ class SpecGraph:
     # ----------------------------------------------------------------------- #
 
     def by_id(self, artifact_id: str) -> dict[str, Any] | None:
+        identity = OUT.canonical(artifact_id, surface="id")
+        if identity:
+            matches = [ir for ir in self.intents() if OUT.canonical(ir["id"], surface="id") == identity]
+            return matches[0] if len(matches) == 1 else None
         if artifact_id.startswith(BS.id_starts):
             wanted = BS.to_new_id(artifact_id)
             return next((ir for ir in self.bses() if BS.to_new_id(ir["id"]) == wanted), None)
@@ -441,7 +463,7 @@ class SpecGraph:
             ws_id = spec.get("id")
             if isinstance(ws_id, str) and ws_id:
                 out.append(ws_id)
-        elif artifact_id.startswith("INT-"):
+        elif OUT.canonical(artifact_id, surface="id"):
             out.extend(
                 r["id"] for r in ir.get("linked_architecture_elements", []) or []
             )
@@ -461,7 +483,7 @@ class SpecGraph:
             return "related_ics"
         if referrer_id.startswith("IB-"):
             return "related_ibs"
-        if referrer_id.startswith("INT-"):
+        if OUT.canonical(referrer_id, surface="id"):
             return "related_intents"
         return None
 

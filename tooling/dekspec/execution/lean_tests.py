@@ -1,37 +1,50 @@
 """guard(engine, *, base: str, head: str, ibs: list[str] | None = None) -> DeliveryResult judges committed head against base, unions added ibs with delivered briefs, and returns seven BR 29 checks naming faulty nodes/kinds, paths/names or identities; CLI prints them and maps ok to 0/1.
 completion_checks(engine, ib: str) -> list[Check] gives the same judgement for working content without lean-single-brief; may_approve(engine, ib: str, path: str) -> bool answers protected membership, False for skeletons/outside paths, not reviewer eligibility (Engine.review owns that refusal).
 These read-only queries hide current-author/floor selection, protected sets, red execution, name comparison and git cleanup: callers need no history, sequencing or cleanup; returns invalidate earlier floors/approvals, while identity separation reads all history.
-Ordinary record/test/name/identity failures are checks; an unknown commit raises ExecutionError naming it, and unreadable history refuses. No lean delivery succeeds as lean-briefs: none; no skeleton succeeds as skeletons: none, and non-Python skeletons are unchecked: no caller recovery is needed.
+Ordinary record/test/name/identity failures are checks; an unknown commit raises ExecutionError naming it, and unreadable history refuses. No lean delivery succeeds as lean-briefs: none; no skeleton succeeds as skeletons: none, and skeletons in a language no test runner adapter reads are unchecked: no caller recovery is needed.
+Tests, their support files and skeletons are read only through the adapter of the runner a condition names (test_runners); a question an adapter cannot answer fails the check that asked.
 Files, refs, worktrees and events stay unchanged; existing DeliveryResult/Check fields suffice, with no new public names, parameters, exceptions or return fields.
 Alternatives: separate checks leak sequencing/cleanup; a stateful judge adds lifecycle work; the three queries keep both gates consistent and review membership independent, so are easiest for callers.
 """
 
 from __future__ import annotations
 
-import ast as _ast
 import io as _io
+import os as _os
 import re as _re
 import subprocess as _subprocess
 import tarfile as _tarfile
+from dataclasses import replace as _replace
 from pathlib import Path as _Path, PurePosixPath as _PurePath
 from tempfile import TemporaryDirectory as _TemporaryDirectory
 
-from dekspec.execution import acceptance as _acceptance, floor as _floor
+from dekspec.execution import git_reads
+from dekspec.execution import acceptance as _acceptance
 from dekspec.execution.contract import load_contract as _load_contract, ContractError as _ContractError
 from dekspec.execution.delivery import DeliveryResult as _DeliveryResult
 from dekspec.execution.engine import (
     Check as _Check, ExecutionError as _ExecutionError, verdict_policy_problem as _policy_problem,
 )
-from dekspec.execution.lean_records import _DESIGN_CRITERIA
+from dekspec.execution.fingerprint import (
+    is_tracker_record as _is_tracker_record, normalize_governed_markdown as _normalize_governed,
+)
+from dekspec.execution.lean_records import _DESIGN_CRITERIA, _history
 from dekspec.execution.record import ExecutionRecord as _Record, RecordIntegrityError as _RecordError, is_record_file as _is_record
-from dekspec.execution.settings import load_settings_at as _settings_at, resolve_python as _resolve_python
+from dekspec.execution.settings import (
+    load_settings_at as _settings_at, resolve_python as _resolve_python,
+    _worktree_setup_at,
+)
 from dekspec.execution.state import fold as _fold
+from dekspec.execution.test_runners import (
+    CannotAnswer as _CannotAnswer, adapter_for as _adapter_for, skeleton as _read_skeleton,
+    _protected_paths,
+)
 
 __all__ = ["guard", "completion_checks", "may_approve"]
 
 
 def _git(root, *args):
-    result = _subprocess.run(["git", *args], cwd=root, capture_output=True)
+    result = git_reads.run(root, *args, capture_output=True)
     if result.returncode:
         raise _ExecutionError(f"git {' '.join(args)}: {result.stderr.decode(errors='replace').strip()}")
     return result.stdout
@@ -121,14 +134,30 @@ def _origin(engine, author, base):
     return _git(engine.repo_root, "merge-base", author, base).decode().strip()
 
 
-def _protected(engine, author, base, skeletons):
+def _adapters(contract):
+    """The adapter of each runner the brief's conditions name, once each."""
+    found = {}
+    for condition in contract.acceptance:
+        if condition.nodes and condition.kind not in found:
+            adapter = _adapter_for(condition.kind)
+            if adapter is None:
+                raise _ExecutionError(f"{contract.ib_id} {condition.id}: DekSpec has no adapter for "
+                                      f"the test runner {condition.kind}")
+            found[condition.kind] = adapter
+    return list(found.values())
+
+
+def _protected(engine, contract, author, base, skeletons):
     origin = _origin(engine, author, base)
     paths = set(_git(engine.repo_root, "diff", "--no-renames", "--name-only", "-z",
                      origin, author).decode().strip("\0").split("\0")) - {""}
-    paths = {p for p in paths if not _is_record(p)} - set(skeletons)
-    for path in tuple(paths):
-        for directory in _PurePath(path).parents:
-            paths.add(str(directory / "conftest.py"))
+    paths = {p for p in paths if not (_is_record(p) or _is_tracker_record(p))} - set(skeletons)
+    # BR 25 / 68 (c): each runner closes the support files of these tests.
+    read = _View(engine, author).read
+    changed = sorted(paths)
+    adapters = _adapters(contract)
+    if adapters:
+        paths = set().union(*(_protected_paths(adapter, changed, read) for adapter in adapters))
     return origin, paths - set(skeletons)
 
 
@@ -165,16 +194,19 @@ def _floor_check(contract, events, author):
     if verdict is None:
         return "no floor verdict after current tests.authored"
     data = verdict.data
-    if data.get("verdict") != "pass":
+    ended = _history(events).floor_loop.disposition == "ended"
+    if _history(events).floor_loop.disposition == "stopped":
+        return "floor review stopped for the owner; resolve with ib unblock"
+    if data.get("verdict") != "pass" and not ended:
         return f"floor verdict {data.get('verdict')}: {data.get('reviewer')}"
     criteria = data.get("criteria")
-    required = {c.id for c in contract.acceptance if c.kind == "pytest"} | {"tests-through-interface"}
+    required = {c.id for c in contract.acceptance if c.nodes} | {"tests-through-interface"}
     if author.data.get("skeletons"):
         required |= _DESIGN_CRITERIA
     allowed = {c.id for c in contract.acceptance} | _DESIGN_CRITERIA
     if not isinstance(criteria, list) or any(not isinstance(c, str) for c in criteria):
         return "floor verdict has malformed criteria"
-    if required - set(criteria) or set(criteria) - allowed:
+    if (not ended and required - set(criteria)) or set(criteria) - allowed:
         return "floor verdict criteria: " + ", ".join(sorted((required - set(criteria)) | (set(criteria) - allowed)))
     if not data.get("reviewer") or verdict.actor != data["reviewer"]:
         return "floor verdict actor does not match reviewer"
@@ -196,132 +228,113 @@ def _approvals(events, author):
             and isinstance(e.get("reason"), str) and e["reason"].strip()}
 
 
-def _names(source):
-    tree = _ast.parse(source)
-
-    def declared(body):
-        names = set()
-        for node in body:
-            if isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef, _ast.ClassDef)):
-                names.add(node.name)
-            elif isinstance(node, (_ast.Assign, _ast.AnnAssign)):
-                targets = node.targets if isinstance(node, _ast.Assign) else [node.target]
-                for target in targets:
-                    names.update(n.id for n in _ast.walk(target) if isinstance(n, _ast.Name))
-        return {n for n in names if not n.startswith("_")}
-
-    names = declared(tree.body)
-    for node in tree.body:
-        if isinstance(node, (_ast.Assign, _ast.AnnAssign)):
-            targets = node.targets if isinstance(node, _ast.Assign) else [node.target]
-            if any(isinstance(t, _ast.Name) and t.id == "__all__" for t in targets):
-                try:
-                    exports = _ast.literal_eval(node.value)
-                except (ValueError, TypeError):
-                    continue
-                if isinstance(exports, (list, tuple)) and all(isinstance(n, str) for n in exports):
-                    names = set(exports)
-    for node in tree.body:
-        if isinstance(node, _ast.ClassDef) and node.name in names:
-            names |= {node.name + "." + n for n in declared(node.body)}
-    return names
-
-
 def _skeleton_check(author_view, head_view, skeletons):
     problems, unchecked = [], []
     for path in skeletons:
-        if not path.endswith(".py"):
+        before = _read_skeleton(path, author_view.read(path) or b"")
+        if before is None:
             unchecked.append(path + ": unchecked")
             continue
-        try:
-            before = _names(author_view.read(path) or b"")
-            source = head_view.read(path)
-            after = _names(source) if source is not None else set()
-            if before != after or source is None:
-                problems.append(f"{path}: added {', '.join(sorted(after - before)) or 'none'}; "
-                                f"removed {', '.join(sorted(before - after)) or 'none'}"
-                                + ("; missing" if source is None else ""))
-        except (SyntaxError, ValueError, TypeError) as exc:
-            problems.append(f"{path}: cannot parse skeleton: {exc}")
+        source = head_view.read(path)
+        after = _read_skeleton(path, source) if source is not None else None
+        problem = before.problem if before.problem is not None else (after.problem if after else None)
+        if problem is not None:
+            problems.append(f"{path}: cannot parse skeleton: {problem}")
+            continue
+        after_names = after.names if after is not None else frozenset()
+        if before.names != after_names or source is None:
+            problems.append(f"{path}: added {', '.join(sorted(after_names - before.names)) or 'none'}; "
+                            f"removed {', '.join(sorted(before.names - after_names)) or 'none'}"
+                            + ("; missing" if source is None else ""))
     return _Check("skeleton-interface-kept", not problems,
                   "; ".join(problems + unchecked) or "skeletons: " + (", ".join(skeletons) or "none"))
 
 
-def _marked_xfail(source, names):
-    """A disabled xfail marker is still forbidden on an acceptance node."""
+def _red_environment(engine, root, base, settings):
+    """Build the author's environment from base policy, or retain legacy selection.
+
+    Returns the interpreter and timeout. Setup/selection failures name their cause
+    through ExecutionError; callers turn them into a failed check, never evidence.
+    The adapter judges whether this interpreter can run its tests.
+    No caller-substituted interpreter participates when setup is configured.
+    """
+    command = _worktree_setup_at(engine.repo_root, base)
+    if not command:
+        return _resolve_python(engine.repo_root, settings.python), settings.command_timeout
+    policy = _settings_at(engine.repo_root, base, spec_root=engine.spec_root)
+    env = _acceptance.clean_env(PYTHONDONTWRITEBYTECODE="1")
     try:
-        body = _ast.parse(source).body
-    except (SyntaxError, ValueError):
-        return False
-    markers = []
-    for name in [*names, None]:
-        for node in body:
-            if isinstance(node, (_ast.Assign, _ast.AnnAssign)):
-                targets = node.targets if isinstance(node, _ast.Assign) else [node.target]
-                if any(isinstance(t, _ast.Name) and t.id == "pytestmark" for t in targets):
-                    markers.append(node.value)
-        selected = next((n for n in body if isinstance(
-            n, (_ast.ClassDef, _ast.FunctionDef, _ast.AsyncFunctionDef)) and n.name == name), None)
-        if selected is None:
-            break
-        markers.extend(selected.decorator_list)
-        body = selected.body if isinstance(selected, _ast.ClassDef) else []
-    return any(isinstance(n, _ast.Attribute) and n.attr == "xfail"
-               for marker in markers if marker is not None for n in _ast.walk(marker))
+        setup = _subprocess.run(command, shell=True, cwd=root, env=env,
+                                capture_output=True, text=True, timeout=policy.command_timeout)
+    except (OSError, _subprocess.SubprocessError) as exc:
+        raise _ExecutionError(f"worktree setup failed: {exc}") from exc
+    if setup.returncode:
+        raise _ExecutionError(f"worktree setup failed (exit {setup.returncode}): "
+                              + (setup.stdout + setup.stderr)[-1500:])
+    configured = policy.python
+    candidate = configured or (".venv/Scripts/python.exe" if _os.name == "nt" else ".venv/bin/python")
+    python = _resolve_python(root, candidate)
+    # An explicitly absolute policy is used as written. Every other selection
+    # must stay in the checkout, including bare names that PATH could supply.
+    if not _Path(candidate).expanduser().is_absolute() and not _Path(
+            _os.path.abspath(python)).is_relative_to(root):
+        raise _ExecutionError(f"checkout interpreter {python} is outside the checkout")
+    return python, policy.command_timeout
 
 
-def _red_check(engine, contract, author_view, base_view, settings):
+def _red_check(engine, contract, author_view, base_view, settings, base):
+    """BR 26 at the test author's commit, in a checkout outside the working
+    tree; each runner's adapter runs and reads its own tests."""
     problems = []
     author = author_view.revision
-    python = _resolve_python(engine.repo_root, settings.python)
-    if not _Path(python).is_absolute() and "/" in python:
-        python = str(engine.repo_root / python)
     with _TemporaryDirectory(prefix="dekspec-lean-red-") as temp:
-        root = _Path(temp)
+        root = _Path(temp).resolve()
         with _tarfile.open(fileobj=_io.BytesIO(_git(engine.repo_root, "archive", author))) as archive:
             archive.extractall(root, filter="data")
+        try:
+            python, timeout = _red_environment(engine, root, base, settings)
+        except _ExecutionError as exc:
+            return _Check("red-at-test-author-commit", False, str(exc))
         for condition in contract.acceptance:
-            if condition.kind != "pytest":
+            if not condition.nodes:
+                continue
+            adapter = _adapter_for(condition.kind)
+            if adapter is None:
+                problems.append(f"{condition.id}: DekSpec has no adapter for the test runner {condition.kind}")
                 continue
             try:
-                run = _acceptance.run_pytest_detail(root, condition, python=python, timeout=settings.command_timeout)
-            except OSError as exc:
-                problems.extend(f"{node}: interpreter {python}: {exc}" for node in condition.nodes)
-                continue
-            report = run.get("report")
-            if report is None:
-                problems.extend(f"{node}: {run.get('detail', 'no pytest report')}" for node in condition.nodes)
-                continue
-            results = report["results"]
-            for requested in condition.nodes:
-                matched = [n for n in results if _acceptance._node_matches(requested, n)]
-                dropped = [n for n in report["deselected"] if _acceptance._node_matches(requested, n)]
-                problems.extend(f"{node}: deselected" for node in dropped)
-                if not matched and not dropped:
-                    kind = "collection-error (import/collection)" if report["collect_errors"] else "not-collected"
-                    problems.append(f"{requested}: {kind}")
-                for node in matched:
-                    kind = _floor.failure_kind(results[node], report["failures"].get(node, {}),
-                                               report["captured"].get(node, ""))
-                    path, names = _floor.node_path(node)
-                    source = (author_view.read(path) or b"").decode()
-                    if _marked_xfail(source, names):
-                        kind = "xfail"
-                    old = (base_view.read(path) or b"").decode()
-                    span = _floor.function_span(source, names)
-                    preserved = span is not None and span == _floor.function_span(old, names)
-                    expected = "passed" if preserved else _floor.GENUINE
-                    if kind != expected:
-                        problems.append(f"{node}: {kind} (expected {expected})")
-                    if not preserved:
-                        basis = _floor.declared_bases(source, names)
-                        if not isinstance(basis, list) or not basis:
-                            problems.append(f"{node}: missing basis")
-            if report["collect_errors"]:
-                problems.append(f"{condition.id}: collection-error (import/collection)")
-            if run.get("exit_code") not in (0, 1):
-                problems.append(f"{condition.id}: pytest exit {run.get('exit_code')}")
+                problems.extend(_red_problems(
+                    engine, condition, adapter, author_view, base_view,
+                    _replace(settings, python=python, command_timeout=timeout), root))
+            except _CannotAnswer as exc:
+                problems.append(f"{condition.id}: {exc}")
     return _Check("red-at-test-author-commit", not problems, "; ".join(problems) or "all nodes meet red/preservation rules")
+
+
+def _red_problems(engine, condition, adapter, author_view, base_view, settings, checkout):
+    """One condition's red-check findings: its new tests fail on their own
+    assertion and declare a basis, its preserved tests pass, and the run has no fault."""
+    run = adapter.run(condition.nodes, project=engine.repo_root, settings=settings,
+                      timeout=condition.timeout or settings.command_timeout, checkout=checkout)
+    if not run.outcomes:
+        # The runner reported nothing about its tests: each one carries the run's faults.
+        return [f"{node}: {fault}" for node in condition.nodes for fault in run.faults or ("no report",)]
+    problems = []
+    for outcome in run.outcomes:
+        if not outcome.ran:
+            problems.append(f"{outcome.test}: {outcome.result}")
+            continue
+        source = adapter.source(outcome.test, author_view.read)
+        kind = "xfail" if source.expected_failure else outcome.result
+        preserved = (source.text is not None
+                     and source.text == adapter.source(outcome.test, base_view.read).text)
+        expected = "passed" if preserved else "genuine-red"
+        if kind != expected:
+            problems.append(f"{outcome.test}: {kind} (expected {expected})")
+        if not preserved and not source.bases:
+            problems.append(f"{outcome.test}: missing basis")
+    problems.extend(f"{condition.id}: {fault}" for fault in run.faults)
+    return problems
 
 
 def _judge(engine, contract, events, head_view, base, settings):
@@ -348,7 +361,10 @@ def _judge(engine, contract, events, head_view, base, settings):
     checks = [_Check("tests-authored", authored_problem is None,
                      f"{contract.ib_id}: {authored_problem or commit}; {detail}")]
     floor_problem = _floor_check(contract, events, author)
-    checks.append(_Check("floor-verdict", floor_problem is None, floor_problem or "current passing floor verdict"))
+    loop = _history(events).floor_loop
+    floor_detail = ("ended floor loop: " + "; ".join(f"{f.level} {f.text}" for f in loop.findings)
+                    if loop.disposition == "ended" else "current passing floor verdict")
+    checks.append(_Check("floor-verdict", floor_problem is None, floor_problem or floor_detail))
     try:
         clashes = _identity_problems(events)
     except (KeyError, TypeError, AttributeError) as exc:
@@ -358,15 +374,25 @@ def _judge(engine, contract, events, head_view, base, settings):
         checks.extend(_Check(name, False, authored_problem or "no author commit") for name in (
             "red-at-test-author-commit", "test-files-unchanged", "skeleton-interface-kept"))
         return checks
-    origin, protected = _protected(engine, commit, base, skeletons)
+    try:
+        origin, protected = _protected(engine, contract, commit, base, skeletons)
+    except _CannotAnswer as exc:
+        origin, protected, unanswered = _origin(engine, commit, base), set(), str(exc)
+    else:
+        unanswered = None
     author_view, base_view, origin_view = _View(engine, commit), _View(engine, base), _View(engine, origin)
-    changed = []
+    changed = [unanswered] if unanswered else []
     approvals = _approvals(events, author)
     if origin == commit:
         changed.append(f"base contains test-author commit {commit}")
     for path in sorted(protected - approvals):
         current, authored = head_view.read(path), author_view.read(path)
         before, ancestor = base_view.read(path), origin_view.read(path)
+        # Completing the brief changes only its lifecycle text, which the
+        # delivery already treats as bookkeeping. Its authored contract stays fixed.
+        if path == contract.rel_path and current is not None and authored is not None:
+            if _normalize_governed(current.decode()) == _normalize_governed(authored.decode()):
+                continue
         # Optional conftests absent everywhere are unchanged, but deleting an
         # authored path is excused only by a deletion on the base branch.
         if current == authored and (current is not None or ancestor is None):
@@ -376,7 +402,7 @@ def _judge(engine, contract, events, head_view, base, settings):
         changed.append(path)
     checks.append(_Check("test-files-unchanged", not changed, "; ".join(changed) or "protected files unchanged or approved"))
     checks.append(_skeleton_check(author_view, head_view, skeletons))
-    checks.append(_red_check(engine, contract, author_view, origin_view, settings))
+    checks.append(_red_check(engine, contract, author_view, origin_view, settings, base))
     return checks
 
 
@@ -449,6 +475,6 @@ def may_approve(engine, ib: str, path: str) -> bool:
     try:
         base = _base_commit(engine)
         commit = _commit(engine.repo_root, author.data["commit"])
-        return path in _protected(engine, commit, base, author.data.get("skeletons", []))[1]
+        return path in _protected(engine, contract, commit, base, author.data.get("skeletons", []))[1]
     except OSError as exc:
         raise _ExecutionError(str(exc)) from exc

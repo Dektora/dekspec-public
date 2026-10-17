@@ -29,6 +29,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
+from dekspec.execution import git_reads
 from dekspec.execution.engine import (
     RETIRED_STATUSES,
     Check,
@@ -294,8 +295,7 @@ def _record_history_checks(engine: Engine, base_commit: str) -> list[Check]:
         seq = integrated_completion(engine.repo_root, rid, base_commit)
         if seq is None:
             continue
-        base_text = subprocess.run(["git", "show", f"{base_commit}:{EXECUTION_DIRNAME}/{rid}/record.jsonl"],
-                                   cwd=str(engine.repo_root), capture_output=True, text=True).stdout
+        base_text = git_reads.run(str(engine.repo_root), "show", f"{base_commit}:{EXECUTION_DIRNAME}/{rid}/record.jsonl", capture_output=True, text=True).stdout
         base_last = max((e.seq for e in parse_record_text(base_text)), default=0)
         added = sorted({e.type for e in engine.record(rid).events(strict=False) if e.seq > base_last})
         if added:
@@ -357,7 +357,7 @@ def _retirement_check(engine: Engine, ib: str, base_commit: str, active: list[st
     from dekspec.diff_confinement import matches_any_glob
     from dekspec.execution.lifecycle_bookkeeping import bookkeeping_paths, is_protection_bookkeeping
     from dekspec.execution.scope import (_bookkeeping_only, _is_lifecycle, _never_pre_run, _protected_hits,
-                                         changed_files, predates_run)
+                                         _steering, changed_files, predates_run)
 
     c = engine.contract(ib)
     _rec, _events, st = engine.state(c.ib_id)
@@ -383,7 +383,9 @@ def _retirement_check(engine: Engine, ib: str, base_commit: str, active: list[st
                                 spec_root=engine.spec_root)
     notes: list[str] = []
     left: list[str] = []
-    for change in changed_files(engine.repo_root, base_commit):
+    changes = changed_files(engine.repo_root, base_commit)
+    steers = _steering(engine.repo_root, [c, *owners], (p for ch in changes for p in (ch.path, ch.old_path)))
+    for change in changes:
         paths = [p for p in (change.path, change.old_path) if p]
         if is_protection_bookkeeping(engine.repo_root, change, covered, base_commit):
             continue
@@ -400,7 +402,7 @@ def _retirement_check(engine: Engine, ib: str, base_commit: str, active: list[st
         if any(all(matches_any_glob(p, list(o.scope)) for p in paths) and not any(
                 _protected_hits(engine.repo_root, base_commit, change, s, []) for s in o.protected) for o in owners):
             continue  # active work owns it; that IB's own gate judges it
-        if anchor and not any(_never_pre_run(p) for p in paths) and \
+        if anchor and not any(_never_pre_run(p, steers) for p in paths) and \
                 all(predates_run(engine.repo_root, base_commit, anchor, p, engine.spec_root) for p in paths):
             continue  # predates the retired run
         where = "inside" if all(matches_any_glob(p, list(c.scope)) for p in paths) else "outside"
@@ -450,11 +452,9 @@ def delivery_check(engine: Engine, ibs: list[str] | None = None, *, base: str | 
             "one lean brief" if len(ibs) == 1 else "a lean delivery must hold exactly one brief"))
     else:
         base_ref = base or "main"
-        proc = subprocess.run(["git", "merge-base", "--is-ancestor", base_ref, "HEAD"], cwd=str(engine.repo_root),
-                              capture_output=True)
+        proc = git_reads.run(str(engine.repo_root), "merge-base", "--is-ancestor", base_ref, "HEAD", capture_output=True)
         if proc.returncode not in (0, 1):
-            proc = subprocess.run(["git", "merge-base", "--is-ancestor", f"origin/{base_ref}", "HEAD"],
-                                  cwd=str(engine.repo_root), capture_output=True)
+            proc = git_reads.run(str(engine.repo_root), "merge-base", "--is-ancestor", f"origin/{base_ref}", "HEAD", capture_output=True)
         current = proc.returncode == 0
         result.checks.append(Check(
             "branch-current-with-base", current,

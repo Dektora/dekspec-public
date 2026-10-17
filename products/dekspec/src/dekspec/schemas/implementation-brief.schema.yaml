@@ -167,7 +167,7 @@ properties:
         reason: {type: string}
 
   acceptance:
-    description: Acceptance conditions, each verified by exactly one of pytest nodes, a command, or an independent review.
+    description: Acceptance conditions, each verified by exactly one of pytest nodes, a command, an independent review, or (lean briefs) the tests of another test runner named by its key.
     type: array
     items:
       type: object
@@ -199,6 +199,18 @@ properties:
                   - required: [pytest]
                   - required: [command]
                   - required: [test_files]
+            - maxProperties: 1
+              not:
+                anyOf:
+                  - required: [pytest]
+                  - required: [command]
+                  - required: [review]
+                  - required: [test_files]
+          patternProperties:
+            '^(?!(?:pytest|command|review|test_files)$)[a-z][a-z0-9_-]*$':
+              type: array
+              minItems: 1
+              items: {type: string, minLength: 1}
           properties:
             test_files:
               type: array

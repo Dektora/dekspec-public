@@ -34,13 +34,13 @@ import hashlib
 import os
 import re
 import stat
-import subprocess
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
+from dekspec.execution import git_reads
 from dekspec.diff_confinement import matches_any_glob
 from dekspec.execution.fingerprint import _is_cache, is_tracker_record
 from dekspec.execution.lifecycle_bookkeeping import bookkeeping_paths, is_protection_bookkeeping
@@ -93,8 +93,7 @@ class ScopeReport:
 
 
 def _git(repo_root: Path, *args: str, check: bool = True) -> str:
-    proc = subprocess.run(["git", "-c", "core.quotePath=false", *args], cwd=str(repo_root),
-                          capture_output=True, text=True)
+    proc = git_reads.run(str(repo_root), "-c", "core.quotePath=false", *args, capture_output=True, text=True)
     if check and proc.returncode != 0:
         raise ScopeError(f"git {' '.join(args)}: {proc.stderr.strip()}")
     return proc.stdout
@@ -104,8 +103,7 @@ def resolve_base(repo_root: Path, base: str | None = None) -> str:
     """Merge-base commit between HEAD and the delivery's base branch."""
     candidates = [base] if base else ["main", "origin/main", "master", "origin/master"]
     for ref in candidates:
-        proc = subprocess.run(["git", "merge-base", "HEAD", ref], cwd=str(repo_root),
-                              capture_output=True, text=True)
+        proc = git_reads.run(str(repo_root), "merge-base", "HEAD", ref, capture_output=True, text=True)
         if proc.returncode == 0 and proc.stdout.strip():
             return proc.stdout.strip()
     raise ScopeError(f"cannot find a merge base with {' / '.join(c for c in candidates if c)}")
@@ -247,8 +245,7 @@ def _symbol_span(source: str, symbol: str) -> tuple[int, int] | None:
 
 
 def _base_text(repo_root: Path, base_commit: str, path: str) -> str | None:
-    proc = subprocess.run(["git", "show", f"{base_commit}:{path}"], cwd=str(repo_root),
-                          capture_output=True, text=True)
+    proc = git_reads.run(str(repo_root), "show", f"{base_commit}:{path}", capture_output=True, text=True)
     return proc.stdout if proc.returncode == 0 else None
 
 
@@ -473,7 +470,7 @@ def _archive_git(repo_root: Path, *args: str) -> bytes:
     # Ambient alternate Git directories/indexes cannot supply replacement proof.
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
     env["GIT_NO_REPLACE_OBJECTS"] = "1"
-    result = subprocess.run(["git", *args], cwd=repo_root, env=env, capture_output=True)
+    result = git_reads.run(repo_root, *args, env=env, capture_output=True)
     if result.returncode:
         raise ScopeError("archive Git provenance unavailable: " + " ".join(args[:2]))
     return result.stdout
@@ -660,11 +657,46 @@ _RUNNER_FILENAMES = {"conftest.py", "pytest.ini", ".pytest.ini", "pytest.toml", 
                      "pyproject.toml", "sitecustomize.py", "usercustomize.py"}
 
 
-def _never_pre_run(path: str) -> bool:
+def _never_pre_run(path: str, steers: Callable[[str], bool] | None = None) -> bool:
     """Files that can change what verification means are always this IB's
     responsibility, whenever they changed: DekSpec state (including the
-    execution settings) and test-runner configuration."""
-    return path.startswith(".dekspec/") or path.rsplit("/", 1)[-1] in _RUNNER_FILENAMES
+    execution settings), test-runner configuration, and (``steers``, from
+    :func:`_steering`) the support files of every runner the briefs name."""
+    return (path.startswith(".dekspec/") or path.rsplit("/", 1)[-1] in _RUNNER_FILENAMES
+            or (steers is not None and steers(path)))
+
+
+def _steering(repo_root: Path, contracts: Iterable[Any], paths: Iterable[str]) -> Callable[[str], bool]:
+    """Whether a path is a support file (BS-045 BR 68 c) of the tests the
+    ``contracts`` name, among ``paths``, as each named runner's adapter
+    answers over the working tree. Asked once, on first use; a runner whose
+    adapter cannot answer makes every path one (fail closed). For pytest the
+    answer adds nothing to the runner files above (its support files are
+    conftest.py files)."""
+    from dekspec.execution.test_runners import CannotAnswer, adapter_for
+
+    contracts, paths = list(contracts), sorted({p for p in paths if p})
+    found: set[str] | None = None
+
+    def read(rel: str) -> bytes | None:
+        target = Path(repo_root) / rel
+        return target.read_bytes() if target.is_file() else None
+
+    def steers(path: str) -> bool:
+        nonlocal found
+        if found is None:
+            found = set()
+            for runner in dict.fromkeys(a.kind for c in contracts for a in c.acceptance if a.nodes):
+                adapter = adapter_for(runner)
+                if adapter is None:
+                    continue
+                try:
+                    found |= adapter.support(paths, read).closed
+                except CannotAnswer:
+                    found |= set(paths)
+        return path in found
+
+    return steers
 
 
 def anchor_in_history(repo_root: Path, commit: str | None) -> bool:
@@ -673,10 +705,8 @@ def anchor_in_history(repo_root: Path, commit: str | None) -> bool:
     run, so callers must not grant a pre-run allowance against it."""
     if not commit:
         return False
-    exists = subprocess.run(["git", "cat-file", "-e", f"{commit}^{{commit}}"], cwd=str(repo_root),
-                            capture_output=True).returncode == 0
-    return exists and subprocess.run(["git", "merge-base", "--is-ancestor", commit, "HEAD"], cwd=str(repo_root),
-                                     capture_output=True).returncode == 0
+    exists = git_reads.run(str(repo_root), "cat-file", "-e", f"{commit}^{{commit}}", capture_output=True).returncode == 0
+    return exists and git_reads.run(str(repo_root), "merge-base", "--is-ancestor", commit, "HEAD", capture_output=True).returncode == 0
 
 
 def _same_as(repo_root: Path, commit: str | None, path: str, spec_root: str = "dekspec",
@@ -689,10 +719,10 @@ def _same_as(repo_root: Path, commit: str | None, path: str, spec_root: str = "d
 
     if not anchor_in_history(repo_root, commit):
         return False
-    before = subprocess.run(["git", "show", f"{commit}:{path}"], cwd=str(repo_root), capture_output=True)
+    before = git_reads.run(str(repo_root), "show", f"{commit}:{path}", capture_output=True)
     current = Path(repo_root) / path
     if end is not None:
-        after = subprocess.run(["git", "show", f"{end}:{path}"], cwd=repo_root, capture_output=True)
+        after = git_reads.run(repo_root, "show", f"{end}:{path}", capture_output=True)
         if before.returncode != 0 or after.returncode != 0:
             return before.returncode != 0 and after.returncode != 0
         now = after.stdout
@@ -762,13 +792,12 @@ def predates_run(repo_root: Path, base_commit: str, anchor: str | None, path: st
     what the base changed after the authorization — is the run's."""
     if not anchor_in_history(repo_root, anchor):
         return False
-    fork = subprocess.run(["git", "merge-base", anchor, base_commit], cwd=str(repo_root),
-                          capture_output=True, text=True).stdout.strip()
+    fork = git_reads.run(str(repo_root), "merge-base", anchor, base_commit, capture_output=True, text=True).stdout.strip()
     if not fork:
         return False
 
     def at(rev: str) -> bytes | None:
-        shown = subprocess.run(["git", "show", f"{rev}:{path}"], cwd=str(repo_root), capture_output=True)
+        shown = git_reads.run(str(repo_root), "show", f"{rev}:{path}", capture_output=True)
         return shown.stdout if shown.returncode == 0 else None
 
     at_fork = at(fork)
@@ -782,11 +811,9 @@ def predates_run(repo_root: Path, base_commit: str, anchor: str | None, path: st
     # before the authorization also changed one of that specification's files. Unrelated
     # work — even work landing its own, other specification — is not exempt.
     own = set(companions_of)
-    commits = subprocess.run(["git", "log", "--format=%H", f"{fork}..{anchor}", "--", path], cwd=str(repo_root),
-                             capture_output=True, text=True).stdout.split()
+    commits = git_reads.run(str(repo_root), "log", "--format=%H", f"{fork}..{anchor}", "--", path, capture_output=True, text=True).stdout.split()
     for commit in commits:
-        touched = set(subprocess.run(["git", "diff-tree", "--no-commit-id", "--name-only", "-r", "--root", commit],
-                                     cwd=str(repo_root), capture_output=True, text=True).stdout.split())
+        touched = set(git_reads.run(str(repo_root), "diff-tree", "--no-commit-id", "--name-only", "-r", "--root", commit, capture_output=True, text=True).stdout.split())
         if not touched & own:
             return False
     return bool(commits)
@@ -877,6 +904,7 @@ def evaluate_scope(
             report.violations.append({"kind": "protected-surface", "ib": c.ib_id,
                                       "path": _ARCHIVE, "detail": f"{_ARCHIVE_GLOB}: {problem}"})
 
+    steers = _steering(repo_root, contracts, (p for ch in report.changes for p in (ch.path, ch.old_path)))
     for change in report.changes:
         hits = []
         bookkeeping = is_protection_bookkeeping(repo_root, change, covered, base_commit, end=end)
@@ -904,7 +932,7 @@ def evaluate_scope(
         for p in paths:
             if matches_any_glob(p, delegated_globs) or matches_any_glob(p, legacy_files):
                 continue
-            if (not any(_never_pre_run(q) for q in paths)
+            if (not any(_never_pre_run(q, steers) for q in paths)
                     and (all(q in pre_run_paths for q in paths)
                          or (since and all(predates_run(
                              repo_root, attribution_base or base_commit, since, q,

@@ -97,16 +97,34 @@ def _environment(engine: Engine, integration: IntegrationSettings, contracts: di
         add("push-remote-missing", f"integration.push is set but there is no remote `{integration.remote}`",
             "add the remote, or unset `integration.push`")
     environment = checkout_environment(root, configured_python=engine.settings.python)
-    if any(a.kind == "pytest" for c in contracts.values() for a in c.acceptance):
+    interpreter_runners = {a.kind for c in contracts.values() for a in c.acceptance if a.kind == "pytest"}
+    interpreter_failed = False
+    if interpreter_runners:
         try:
             has_pytest = run_coordinator_operation(environment, {"verb": "test-interpreter", "root": str(root)})["ok"]
         except EnvironmentUnavailable as exc:
+            interpreter_failed = True
             add(exc.kind, str(exc), "repair the project environment, or set `execution.python`")
         else:
             if not has_pytest:
+                interpreter_failed = True
                 add("no-test-interpreter", f"no pytest in selected interpreter {environment.python}",
                     "set `execution.python`, or install pytest into the project environment")
     for c in contracts.values():
+        if c.is_lean:
+            try:
+                result = run_coordinator_operation(environment, {
+                    "verb": "runners-unable", "root": str(root), "ib": c.ib_id})
+            except EnvironmentUnavailable as exc:
+                # An interpreter startup failure already has its original finding.
+                if not interpreter_failed or exc.kind == "prerequisite-unavailable":
+                    add(exc.kind, str(exc), "repair the project environment or the DekSpec facade")
+            else:
+                for runner, reason in result["unable"].items():
+                    if interpreter_failed and runner in interpreter_runners:
+                        continue
+                    add("no-test-interpreter", f"{runner}: {reason}",
+                        f"make {runner} available in the project environment")
         if c.status != "ACCEPTED" or not c.prerequisites:
             continue
         try:

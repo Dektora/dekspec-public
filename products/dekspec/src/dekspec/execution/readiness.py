@@ -16,6 +16,9 @@ that has already started.
 
 from __future__ import annotations
 
+from dekspec.execution import git_reads
+from dekspec.spec_kinds import OUTCOME_NAMES as OUT
+
 import hashlib
 import re
 import subprocess
@@ -120,7 +123,7 @@ class AuthorityAssessment:
 
 
 def _git(repo_root: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(["git", *args], cwd=str(repo_root), capture_output=True, text=True)
+    return git_reads.run(str(repo_root), *args, capture_output=True, text=True)
 
 
 def _spec_status(repo_root: Path, ref: str, spec_root: str) -> str | None:
@@ -382,7 +385,8 @@ def _check_floor(c: IBContract, baseline: dict[str, Any], add: Any, root: Path) 
 
 def _check_intent(engine: Engine, target: ReadinessTarget, tr: TargetReadiness, spec_root: str,
                   reference_policy: ReferencePolicy = ReferencePolicy()) -> list[IBContract]:
-    add = lambda code, detail, fix: tr.missing.append(Missing(target.id, code, detail, fix))  # noqa: E731
+    def add(code, detail, fix):
+        tr.missing.append(Missing(target.id, code, OUT.describe(detail, target.id), OUT.describe(fix, target.id)))
     if target.provisional:
         add("intent-provisional", f"{target.path} is a provisional draft",
             f"specify it: `/spec-intent {target.path}` (analyze, accept, decompose, authorize)")
@@ -422,8 +426,11 @@ def _check_intent(engine: Engine, target: ReadinessTarget, tr: TargetReadiness, 
     if status != "ACCEPTED":
         add("intent-not-accepted", f"{target.id} is {status}",
             f"specify and accept it: `/spec-intent {target.id}`")
+    for warning in ir.get("parse_warnings", []):
+        if warning["field"] == "outcome_form":
+            add("intent-unparseable", warning["reason"], f"fix {target.path}")
     if not (ir.get("desired_outcome") or "").strip():
-        add("intent-no-outcome", f"{target.id} has no Desired Outcome", "state the observable outcome")
+        add("intent-no-outcome", f"{target.id} has no {OUT.for_artifact(target.id, 'changes_heading')}", "state the observable outcome")
     if not [v for v in ir.get("verification") or [] if not v.get("manual")]:
         add("intent-no-verification", f"{target.id} has no executable Verification command",
             "add at least one Verification command that proves the outcome (ADR-029)")
@@ -602,7 +609,9 @@ def _implementation_ahead(engine: Engine, tip: str, contracts: dict[str, IBContr
     targets' specification material: governed specs, the targets' acceptance
     assets, execution and tracker records, workflow configuration."""
     from dekspec.execution.contract import ContractError, load_contract
-    from dekspec.execution.scope import _bookkeeping_only, _is_lifecycle, _never_pre_run, changed_files, predates_run
+    from dekspec.execution.scope import (
+        _bookkeeping_only, _is_lifecycle, _never_pre_run, _steering, changed_files, predates_run,
+    )
 
     root = engine.repo_root
     merge_base = _git(root, "merge-base", "HEAD", tip).stdout.strip() or tip
@@ -627,7 +636,9 @@ def _implementation_ahead(engine: Engine, tip: str, contracts: dict[str, IBContr
             continue
         anchors.append((st.pre_execution_baseline or st.baseline or {}).get("commit"))
     ahead = []
-    for change in changed_files(root, merge_base):
+    changes = changed_files(root, merge_base)
+    steers = _steering(root, contracts.values(), (p for ch in changes for p in (ch.path, ch.old_path)))
+    for change in changes:
         paths = [p for p in (change.path, change.old_path) if p]
         if all(p.startswith(engine.spec_root + "/") or _is_lifecycle(p, material, engine.spec_root) for p in paths):
             continue
@@ -636,7 +647,7 @@ def _implementation_ahead(engine: Engine, tip: str, contracts: dict[str, IBContr
         # An autonomous delivery carries only the specification's own companions: changes made
         # before the authorization in commits that also authored specification — never
         # unrelated earlier work, and never DekSpec state or test-runner configuration.
-        if anchors and not any(_never_pre_run(p) for p in paths) and all(
+        if anchors and not any(_never_pre_run(p, steers) for p in paths) and all(
                 a and predates_run(root, merge_base, a, p, engine.spec_root, companions_of=own)
                 for a in anchors for p in paths):
             continue

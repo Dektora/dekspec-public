@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dektools"
-version = "0.129.0"
+version = "0.130.0"
 description = "Standalone craft, assessment and continuity workflows."
 readme = "README.md"
 requires-python = ">=3.11"

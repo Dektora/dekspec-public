@@ -38,9 +38,9 @@ import hashlib
 import os
 import re
 import stat
-import subprocess
 from pathlib import Path
 
+from dekspec.execution import git_reads
 from dekspec.diff_confinement import matches_any_glob
 from dekspec.execution.record import EXECUTION_DIRNAME
 
@@ -60,6 +60,7 @@ __all__ = [
 _VOLATILE_SECTIONS = {"status", "modified", "amendment log"}
 _H2 = re.compile(r"^##\s+(.+?)\s*$")
 _STATUS_META = re.compile(r"^\*\*Status:\*\*.*$")
+_COMPACT_STATUS = re.compile(r"^(\*\*Id:\*\*[^\n]*?·\s*\*\*Status:\*\*\s*)\S+")
 _CACHE_DIRS = {"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
 _TRACKER_SUFFIXES = {"jsonl", "json", "yaml", "yml", "toml", "md", "db", "gitignore", "lock"}
 
@@ -76,10 +77,7 @@ class FingerprintError(RuntimeError):
 
 def _git(repo_root: Path, *args: str) -> str:
     try:
-        proc = subprocess.run(
-            ["git", "-c", "core.quotePath=false", *args], cwd=str(repo_root),
-            capture_output=True, text=True, check=False,
-        )
+        proc = git_reads.run(str(repo_root), "-c", "core.quotePath=false", *args, capture_output=True, text=True, check=False)
     except FileNotFoundError as exc:  # pragma: no cover - git absent
         raise FingerprintError("git is not installed") from exc
     if proc.returncode != 0:
@@ -101,6 +99,8 @@ def normalize_governed_markdown(text: str) -> str:
             continue
         if _STATUS_META.match(line):
             continue
+        # Preserve all other compact-header fields while ignoring lifecycle status.
+        line = _COMPACT_STATUS.sub(r"\1<status>", line)
         out.append(line)
     return "\n".join(out)
 
@@ -223,7 +223,7 @@ def named_entries(repo_root, paths, *, spec_root="dekspec", head=None):
             mode, kind, oid = metadata.split()
             if rel not in wanted or kind != "blob":
                 continue
-            proc = subprocess.run(["git", "cat-file", "blob", oid], cwd=root, capture_output=True)
+            proc = git_reads.run(root, "cat-file", "blob", oid, capture_output=True)
             if proc.returncode:
                 raise FingerprintError(f"cannot read {rel} at {commit}: {proc.stderr.decode(errors='replace')}")
             content = proc.stdout

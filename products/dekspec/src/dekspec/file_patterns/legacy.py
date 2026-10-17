@@ -166,7 +166,67 @@ def legacy_matches(reading: str, path: str, pattern: str) -> bool:
 
 
 def resolve_legacy(root, pattern, *, braces=False):
-    """Old resolve-only reader, exclusively for migration reports."""
-    import glob
+    """Return whether an old pattern resolves, exclusively for migration reports.
+
+    IB-314 interface note: keep resolve_legacy(root, pattern, braces=False).
+    It hides legacy glob quirks and Git path selection; callers supply no
+    traversal settings. No match is False; a Git failure remains a diagnostic
+    naming command and root, never False. Requiring a caller-built path set or
+    adding a resolver object would leak coordination into the migration.
+    """
+    from pathlib import Path
+
+    from dekspec.file_pattern_paths import repository_paths
+
+    paths = set(repository_paths(root))
+    children = {"": set()}
+    directories = {""}
+    for path in paths:
+        parent, _, name = path.rpartition("/")
+        children.setdefault(parent, set()).add(name)
+        directories.add(parent)
+        if (root / path).is_dir():
+            directories.add(path)
     patterns = expand_braces(pattern) if braces else [pattern]
-    return any(glob.glob(str(root / p), recursive=True) for p in patterns)
+    for pattern in patterns:
+        # Match the snapshot instead of globbing the disk and filtering later:
+        # glob would already have descended every ignored dependency directory.
+        try:
+            parts = (root / pattern).relative_to(root).parts
+        except ValueError:
+            continue
+
+        @lru_cache(maxsize=None)
+        def resolves(prefix="", index=0):
+            if index == len(parts):
+                return prefix in paths
+            if prefix not in directories:
+                return False
+            part = parts[index]
+            if part == "..":
+                try:
+                    parent = (root / prefix / "..").resolve().relative_to(root.resolve())
+                except ValueError:
+                    return False
+                return resolves("" if parent == Path() else parent.as_posix(), index + 1)
+            if part == "**":
+                # Zero segments names the current directory; recursive globs
+                # never enter hidden children, even before an explicit dot name.
+                if resolves(prefix, index + 1):
+                    return True
+                return any(
+                    not name.startswith(".") and (
+                        index == len(parts) - 1
+                        or resolves(f"{prefix}/{name}" if prefix else name, index)
+                    ) for name in children.get(prefix, ())
+                )
+            return any(
+                (part.startswith(".") or not name.startswith("."))
+                and fnmatch.fnmatchcase(name, part)
+                and resolves(f"{prefix}/{name}" if prefix else name, index + 1)
+                for name in children.get(prefix, ())
+            )
+
+        if resolves():
+            return True
+    return False

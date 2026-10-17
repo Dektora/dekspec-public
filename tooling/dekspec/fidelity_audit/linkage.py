@@ -23,6 +23,8 @@ Each check returns Finding objects with:
 
 from __future__ import annotations
 
+from dekspec.spec_kinds import OUTCOME_NAMES as OUT, ARTIFACT_FOLDERS
+
 from dekspec.file_pattern_paths import repository_paths, resolve_pattern
 from dekspec.spec_kinds import BEHAVIOR_SPEC_NAMES as BS
 
@@ -280,6 +282,10 @@ def audit_linkage(
     # this is the seam that honors that.
     findings = [f for f in findings if f.rule in active_profile.rules]
 
+    for finding in findings:
+        if OUT.canonical(finding.artifact_id, surface="id"):
+            finding.message = OUT.describe(finding.message, finding.artifact_id)
+
     findings.sort(key=lambda f: (severity_order.get(f.severity, 99), f.rule, f.artifact_id))
     return findings
 
@@ -427,7 +433,8 @@ def _lx_duplicate_ids(graph: SpecGraph) -> list[Finding]:
         *((folder, prefix + "-", False, False) for folder in BS.folders for prefix in BS.prefixes),
         ("interface-contracts", "IC-", False, False),
         ("impl-briefs", "IB-", True, True),
-        ("intents", "INT-", True, False),
+        *((folder, kind + "-", True, False) for kind, folder in ARTIFACT_FOLDERS.items()
+          if OUT.canonical(kind + "-000", surface="id")),
         ("missions", "MSN-", True, False),
     ]
     for dirname, prefix, recursive, parent_scoped in dirs:
@@ -493,7 +500,7 @@ _RECOGNIZED_KIND_DIRS = frozenset(
         "security-profiles",
         "interface-contracts",
         "impl-briefs",
-        "intents",
+        *(folder for folder in ARTIFACT_FOLDERS.values() if OUT.canonical(folder, surface="folder")),
         "missions",
         "context-specs",
     }
@@ -1667,7 +1674,7 @@ def _l7_intent_linkage(graph: SpecGraph) -> list[Finding]:
             continue
 
         aes = intent.get("linked_architecture_elements", []) or []
-        if not aes:
+        if not aes and "who_it_is_for" not in intent:
             out.append(
                 Finding(
                     severity=P2,
@@ -1698,7 +1705,7 @@ def _l7_intent_linkage(graph: SpecGraph) -> list[Finding]:
                     )
 
         components = intent.get("components_affected", []) or []
-        if not components:
+        if not components and "who_it_is_for" not in intent:
             out.append(
                 Finding(
                     severity=P2,
@@ -1892,7 +1899,7 @@ def _l8_mission_intent_bidirectional(graph: SpecGraph) -> list[Finding]:
         msn_id = msn["id"]
         for entry in msn.get("intent_queue", []) or []:
             int_id = entry.get("id", "") if isinstance(entry, dict) else entry
-            if not int_id or not int_id.startswith("INT-"):
+            if not int_id or not OUT.canonical(int_id, surface="id"):
                 continue
             intent = intents_by_id.get(int_id)
             if intent is None:
@@ -2717,7 +2724,7 @@ def _propose_l8_mirror_fixes(graph: SpecGraph) -> list[Fix]:
         msn_id = msn["id"]
         for entry in msn.get("intent_queue", []) or []:
             int_id = entry.get("id", "") if isinstance(entry, dict) else entry
-            if not int_id or not int_id.startswith("INT-"):
+            if not int_id or not OUT.canonical(int_id, surface="id"):
                 continue
             intent = intents_by_id.get(int_id)
             if intent is None:
@@ -4206,7 +4213,7 @@ def _l_no_draft_in_main(graph: SpecGraph) -> list[Finding]:
         ("interface-contracts", False),
         ("security-profiles", False),
         ("impl-briefs", True),
-        ("intents", True),
+        *((folder, True) for folder in ARTIFACT_FOLDERS.values() if OUT.canonical(folder, surface="folder")),
         ("missions", True),
     ]
     for dirname, recursive in dirs:
@@ -4341,7 +4348,7 @@ _APPROVAL_GATE_DIRS: list[tuple[str, str, bool]] = [
     *((prefix, folder, False) for prefix in BS.prefixes for folder in BS.folders),
     ("IC", "interface-contracts", False),
     ("SecurityProfile", "security-profiles", False),
-    ("Intent", "intents", True),
+    *((OUT.for_artifact(kind + "-000", "heading"), folder, True) for kind, folder in ARTIFACT_FOLDERS.items() if OUT.canonical(kind + "-000", surface="id")),
     ("Mission", "missions", True),
 ]
 
@@ -4562,7 +4569,8 @@ _INDEX_COHERENCE_TARGETS: tuple[tuple[str, str, str], ...] = (
     ("adr-index.md", r"(?<![A-Za-z0-9-])ADR-\d{3,}(?!\d)", "adrs"),
     ("architecture-elements-index.md", r"(?<![A-Za-z0-9-])AE-\d{3,}(?!\d)", "aes"),
     ("interface-contract-index.md", r"(?<![A-Za-z0-9-])IC-\d{3,}(?!\d)", "ics"),
-    ("intent-index.md", r"(?<![A-Za-z0-9-])INT-\d{3,}(?!\d)", "intents"),
+    *((OUT.for_artifact(kind + "-000", "index"), rf"(?<![A-Za-z0-9-]){OUT.pattern()}(?!\d)", "intents")
+      for kind in ARTIFACT_FOLDERS if OUT.canonical(kind + "-000", surface="id")),
     (BS.index_file, rf"(?<![A-Za-z0-9-]){BS.id_pattern}(?!\d)", "wses"),
     ("mission-index.md", r"(?<![A-Za-z0-9-])MSN-\d{3,}(?!\d)", "missions"),
 )
@@ -5327,7 +5335,7 @@ _T_STATUS_INDEX_FILES: dict[str, str] = {
     "AE-": "architecture-elements-index.md",
     "IC-": "interface-contract-index.md",
     **{prefix: BS.index_file for prefix in BS.id_starts},
-    "INT-": "intent-index.md",
+    **{kind + "-": OUT.for_artifact(kind + "-000", "index") for kind in ARTIFACT_FOLDERS if OUT.canonical(kind + "-000", surface="id")},
     "MSN-": "mission-index.md",
 }
 

@@ -51,6 +51,8 @@ to keep concerns clean).
 """
 from __future__ import annotations
 
+from dekspec.spec_kinds import OUTCOME_NAMES as OUT
+
 from dekspec.spec_kinds import BEHAVIOR_SPEC_NAMES as BS
 
 import json
@@ -202,10 +204,12 @@ def _kind_from_artifact_id(artifact_id: str) -> str:
         return "glossary"
     if artifact_id == "CONSTITUTION":
         return "constitution"
+    if OUT.canonical(artifact_id, surface="id"):
+        return "intent"
     for prefix, kind in (
         ("ADR-", "adr"), ("AE-", "ae"), *((p, BS.old_id_prefixes[0].lower()) for p in BS.id_starts),
         ("IC-", "ic"), ("IB-", "ib"),
-        ("INT-", "intent"), ("MSN-", "mission"),
+        ("MSN-", "mission"),
         ("SP-", "sp"),
     ):
         if artifact_id.startswith(prefix):

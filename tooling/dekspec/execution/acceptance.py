@@ -22,10 +22,14 @@ import tempfile
 import time
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import TYPE_CHECKING, Any, NamedTuple
 
+from dekspec.execution import git_reads
 from dekspec.execution import pytest_evidence
 from dekspec.execution.contract import AcceptanceCondition, IBContract
+
+if TYPE_CHECKING:
+    from dekspec.execution.settings import ExecutionSettings
 
 __all__ = [
     "asset_hashes",
@@ -63,45 +67,54 @@ def asset_hashes(repo_root: Path, contract: IBContract) -> dict[str, str | None]
     return out
 
 
-def _ini_section(path: Path, section: str) -> str | None:
+def _text(data: bytes, errors: str = "strict") -> str:
+    """``data`` decoded as a text-mode read gives it: UTF-8, universal newlines."""
+    return data.decode("utf-8", errors).replace("\r\n", "\n").replace("\r", "\n")
+
+
+def _ini_section(data: bytes, section: str) -> str | None:
     parser = configparser.ConfigParser(interpolation=None)
     try:
-        parser.read_string(path.read_text(encoding="utf-8"))
+        parser.read_string(_text(data))
     except (configparser.Error, UnicodeDecodeError):
-        return path.read_text(encoding="utf-8", errors="replace")
+        return _text(data, "replace")
     if not parser.has_section(section):
         return None
     return json.dumps(dict(parser.items(section)), sort_keys=True)
 
 
-def _pyproject_pytest(path: Path) -> str | None:
+def _pyproject_pytest(data: bytes) -> str | None:
     try:
         import tomllib
     except ModuleNotFoundError:  # pragma: no cover - Python < 3.11
-        return path.read_text(encoding="utf-8")
+        return _text(data)
     try:
-        data = tomllib.loads(path.read_text(encoding="utf-8"))
+        loaded = tomllib.loads(_text(data))
     except (tomllib.TOMLDecodeError, UnicodeDecodeError):
-        return path.read_text(encoding="utf-8", errors="replace")
-    section = data.get("tool", {}).get("pytest")
+        return _text(data, "replace")
+    section = loaded.get("tool", {}).get("pytest")
     return json.dumps(section, sort_keys=True) if section is not None else None
 
 
 _CONFIG_CANDIDATES = ("pytest.ini", ".pytest.ini", "pytest.toml", "pyproject.toml", "tox.ini", "setup.cfg")
 
 
+def _config_section(name: str, data: bytes) -> str | None:
+    """The pytest-relevant part of config file ``name`` holding ``data`` (None: not a pytest config)."""
+    if name in ("pytest.ini", ".pytest.ini", "pytest.toml"):
+        return _text(data, "replace")
+    if name == "pyproject.toml":
+        return _pyproject_pytest(data)
+    if name == "tox.ini":
+        return _ini_section(data, "pytest")
+    if name == "setup.cfg":
+        return _ini_section(data, "tool:pytest")
+    return None
+
+
 def _config_text(path: Path) -> str | None:
     """The pytest-relevant part of a config file (None: not a pytest config)."""
-    name = path.name
-    if name in ("pytest.ini", ".pytest.ini", "pytest.toml"):
-        return path.read_text(encoding="utf-8", errors="replace")
-    if name == "pyproject.toml":
-        return _pyproject_pytest(path)
-    if name == "tox.ini":
-        return _ini_section(path, "pytest")
-    if name == "setup.cfg":
-        return _ini_section(path, "tool:pytest")
-    return None
+    return _config_section(path.name, path.read_bytes())
 
 
 def _ancestor_dirs(root: Path, rel: str) -> list[Path]:
@@ -128,15 +141,18 @@ def root_pytest_config(root: Path) -> Path | None:
 
 def _execution_settings_text(root: Path) -> str | None:
     cfg = root / ".dekspec" / "config.yaml"
-    if not cfg.is_file():
-        return None
+    return _execution_block(cfg.read_bytes()) if cfg.is_file() else None
+
+
+def _execution_block(data: bytes) -> str | None:
+    """The `execution` block of `.dekspec/config.yaml` content, as it is hashed."""
     import yaml
 
     try:
-        data = yaml.safe_load(cfg.read_text(encoding="utf-8")) or {}
+        loaded = yaml.safe_load(_text(data)) or {}
     except yaml.YAMLError:
-        return cfg.read_text(encoding="utf-8", errors="replace")
-    block = data.get("execution") if isinstance(data, dict) else None
+        return _text(data, "replace")
+    block = loaded.get("execution") if isinstance(loaded, dict) else None
     return json.dumps(block, sort_keys=True) if block is not None else None
 
 
@@ -484,8 +500,7 @@ class _Repository(NamedTuple):
     @classmethod
     def read(cls, root: Path) -> _Repository | None:
         try:
-            proc = subprocess.run(["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
-                                  cwd=str(root), capture_output=True)
+            proc = git_reads.run(str(root), "ls-files", "-z", "--cached", "--others", "--exclude-standard", capture_output=True)
         except OSError:
             return None
         if proc.returncode != 0:
@@ -1224,57 +1239,21 @@ def _run_pytest_once(root: Path, cond: AcceptanceCondition, python: str, timeout
             return {"status": "indeterminate", "exit_code": proc.returncode, "duration": duration,
                     "detail": detail, "tail": tail}
         data = json.loads(report_path.read_text(encoding="utf-8"))
-    nodes: dict[str, str] = {}
-    problems: list[str] = []
-    deselected = data.get("deselected", [])
-    for requested in cond.nodes:
-        matched = {nid: _node_outcome(ph) for nid, ph in data["results"].items() if _node_matches(requested, nid)}
-        dropped = [d for d in deselected if _node_matches(requested, d)]
-        if dropped:
-            problems.append(f"{requested}: {len(dropped)} case(s) deselected")
-        if not matched:
-            if not dropped:
-                if data.get("collect_errors"):
-                    problems.append(f"{requested}: collection error")
-                else:
-                    problems.append(f"{requested}: not collected (missing, renamed or deleted)")
-            nodes[requested] = "not-run"
-            continue
-        nodes.update(matched)
-        for nid, outcome in matched.items():
-            if outcome != "passed":
-                problems.append(f"{nid}: {outcome}")
-    # The process exit status is an independent witness: a report that says
-    # "passed" from a run pytest itself calls failed is not evidence.
-    if not problems and proc.returncode != 0:
-        problems.append(f"pytest exited {proc.returncode} although every requested node reported passed")
-    plugins = sorted(
-        str(Path(f).resolve().relative_to(root)) for f in data.get("plugin_files", [])
-        if Path(f).resolve().is_relative_to(root) and Path(f).name != "conftest.py"
-    )
-    if any(v == "failed" for v in nodes.values()):
-        status = "failed"
-    elif problems:
-        status = "not-run" if all("pytest exited" not in p for p in problems) else "failed"
-    else:
-        status = "passed"
-    result = {"status": status, "exit_code": proc.returncode, "duration": duration, "nodes": nodes,
-              "detail": "; ".join(problems) if problems else f"{len(nodes)} node(s) passed",
-              "plugins_in_repo": plugins,
-              "collect_errors": data.get("collect_errors", [])[:5], "tail": tail if status != "passed" else ""}
-    if detail:
-        # What the plugin saw, per node, for the floor report (ADR-062); never part of evidence.
-        result["report"] = {k: data.get(k, default) for k, default in (
-            ("results", {}), ("deselected", []), ("collect_errors", []), ("failures", {}), ("captured", {}))}
-    return result
+    # What the plugin saw, per node; the pytest adapter turns it into facts
+    # (test_runners) and the floor report reads it (ADR-062).
+    report = {k: data.get(k, default) for k, default in (
+        ("results", {}), ("deselected", []), ("collect_errors", []), ("failures", {}), ("captured", {}),
+        ("plugin_files", []))}
+    return {"exit_code": proc.returncode, "duration": duration, "tail": tail, "report": report}
 
 
 def run_pytest_detail(repo_root: Path, cond: AcceptanceCondition, *, python: str, timeout: int) -> dict[str, Any]:
     """Run a `pytest:` condition as evidence does — same interpreter, nodes,
     configuration, plugin and timeout — except that failure messages and
     captured output are recorded in full (assertion verbosity 2, no length
-    caps in the plugin), and return the plugin's per-node report as well
-    (phases, failure details, captured output). Records nothing."""
+    caps in the plugin), and return the plugin's per-node report (phases,
+    failure details, captured output) with the exit code, duration and output
+    tail; without a report, the status and detail why. Records nothing."""
     return _run_pytest(repo_root, cond, python, cond.timeout or timeout, detail=True)
 
 
@@ -1296,11 +1275,36 @@ def _run_command(repo_root: Path, cond: AcceptanceCondition, timeout: int) -> di
     }
 
 
-def run_condition(repo_root: Path, cond: AcceptanceCondition, *, python: str, timeout: int) -> dict[str, Any]:
+def run_condition(repo_root: Path, cond: AcceptanceCondition, *, python: str, timeout: int,
+                  settings: ExecutionSettings | None = None) -> dict[str, Any]:
+    """Run one condition and return its evidence entry. A condition that names
+    tests runs through the adapter of the runner it names (test_runners), and
+    DekSpec makes the entry from the run's facts; ``python`` is the configured
+    test interpreter. ``settings`` are the execution settings the caller judges
+    by (read from the base in CI, BS-045 BR 32): an adapter reads what the
+    project states about its runner there (a configuration file, for one);
+    without them, nothing is stated."""
     if cond.kind == "review":
         result = {"status": "needs-review", "detail": cond.review}
-    elif cond.kind == "pytest":
-        result = _run_pytest(repo_root, cond, python, cond.timeout or timeout)
-    else:
+    elif cond.kind == "command":
         result = _run_command(repo_root, cond, cond.timeout or timeout)
+    else:
+        result = _run_tests(Path(repo_root), cond, python, cond.timeout or timeout, settings)
     return {"id": cond.id, "kind": cond.kind, **result}
+
+
+def _run_tests(repo_root: Path, cond: AcceptanceCondition, python: str, timeout: int,
+               settings: ExecutionSettings | None) -> dict[str, Any]:
+    from dataclasses import replace
+
+    from dekspec.execution.settings import ExecutionSettings
+    from dekspec.execution.test_runners import CannotAnswer, adapter_for
+
+    adapter = adapter_for(cond.kind)
+    if adapter is None:
+        return {"status": "failed", "detail": f"DekSpec has no adapter for the test runner {cond.kind}"}
+    settings = replace(settings or ExecutionSettings(), python=python, command_timeout=timeout)
+    try:
+        return adapter.run(cond.nodes, project=repo_root, settings=settings, timeout=timeout).evidence()
+    except CannotAnswer as exc:
+        return {"status": "failed", "detail": str(exc)}

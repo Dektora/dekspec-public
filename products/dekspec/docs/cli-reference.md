@@ -472,12 +472,18 @@ Exit codes (`ib`, `delivery`, `intent`): `0` ok · `1` refused / gate not satisf
 ### ib new
 
 ```
-dekspec ib new [-h] [--title TITLE] [--parent PARENT] [--at AT]
+dekspec ib new [-h] [--title TITLE] [--parent PARENT]
+               [--form lean|delegated] [--runner NAME] [--at AT]
                [--dekspec-root DEKSPEC_ROOT] [--actor ACTOR] [--json]
                slug
 ```
 
-Scaffold a delegated IB from the Implementation Brief template at `dekspec/impl-briefs/IB-NNN-<slug>.md` (next free number; status `DRAFT`; a `Create` Amendment Log row). No parent artifact is required — a bounded change is one IB (ADR-056).
+Scaffold an IB at `dekspec/impl-briefs/IB-NNN-<slug>.md` (next free number; status `DRAFT`). No parent artifact is required — a bounded change is one IB (ADR-056). The brief takes one of two forms:
+
+- **lean** — the default when `execution.lean` is `true`. A one-page brief (ADR-079): the title, `**Authority policy:** lean`, `**Risk:** normal` and `**Parent:**`, then Outcome, Scope, Design intent, Acceptance with one condition naming a test, and Implementation Hypothesis; no Amendment Log. Filled in without adding or removing a section, it passes `validate` and `ib lint` and, with lean on, `ib accept`.
+- **delegated** — the default when lean is off: the Implementation Brief template with a `Create` Amendment Log row, exactly as before the lean form existed.
+
+A project's own copy of a form (`dekspec/templates/implementation-brief-lean-template.md` or `implementation-brief-template.md`) is used in place of the installed one.
 
 Positional:
 - `slug` — filename slug (lower-cased, non-alphanumerics folded to `-`).
@@ -485,6 +491,9 @@ Positional:
 Options:
 - `--title TITLE` — the IB title. Default: the slug with spaces.
 - `--parent PARENT` — optional parent Intent / WS / Mission id (`INT-NNN`, `WS-NNN`, `MSN-NNN`), written to `**Parent:**`.
+- `--form lean|delegated` — `lean` or `delegated`, overriding the switch. Asked for with lean off, the lean form is still written, with a note that `ib accept` refuses it until lean is switched on. Any other value is refused (exit 1) and nothing is written.
+- `--runner NAME` — the runner the lean form's condition names its tests under. Default: `pytest`. Written as given; `ib new` judges nothing about it (`ib accept` does). The delegated form ignores it.
+- `--json` — prints `ib`, `path`, `form` and `notice` (`""` unless lean is off and the lean form was asked for).
 
 ### ib lint
 
@@ -673,7 +682,7 @@ dekspec ib verify [-h] [--at AT] [--dekspec-root DEKSPEC_ROOT] [--actor ACTOR] [
                   [--base BASE] [--dry-run] ib
 ```
 
-Run every acceptance condition and record evidence bound to the current content. Test conditions run through a per-node reporting plugin: a node that is skipped, expected-to-fail, deselected or not collected does **not** pass, and a condition whose file was deleted or renamed fails. Command conditions need exit status `0`. Review conditions are reported as needing a verdict. Also runs the scope and protected-surface check against the base (inside a multi-IB delivery the allowed scope is the union of the co-delivered IBs' scopes and every protected surface applies), checks `**Spec impact:**` specs were actually modified, and checks acceptance integrity (contract, asset and runner-input hashes against the baseline). In-Scope changes the hypothesis and plan did not name are recorded as deviations — no permission needed. A `.dekspec/config.yaml` change confined to the workflow setting (`integration.base`) is bookkeeping; any other DekSpec state (the `execution:` settings above all) or test-runner configuration is always judged as the IB's change. Evidence records the implementation fingerprint (a content hash of the repository excluding execution records, generated indexes and lifecycle bookkeeping), contract hash, baseline digest and context manifest hash; any later change makes it stale. Applies to `ACCEPTED` (and `COMPLETE`) delegated IBs. Exit `0` only when the overall result is `passed`.
+Run every acceptance condition and record evidence bound to the current content. A condition may name the tests of any supported test runner, under the runner's own key: `pytest: [nodes]`, or on a lean brief `vitest: ["<file> > <group> > <name>"]` (a vitest test is its file and its full name as vitest reports it, the groups around it then its own; a file alone names every test in it). Each runner's tests run through DekSpec's adapter for it, and only a named test that ran and passed the first time passes: one that is skipped, pending, expected-to-fail however marked, passed only on a retry, deselected or filtered out, excluded by the configuration, not collected or not found does **not** pass, whatever the runner's exit code says, and a condition whose file was deleted or renamed fails. A runner that cannot run here (for vitest: no Node, vitest's packages not installed, or a node or vitest that is repository content) leaves the condition `indeterminate`, naming the runner and the reason; it never reports passed or failed tests. vitest runs in a clean environment (no `NODE_*` or `VITE*` setting from the caller), with no results or module cache, under the configuration file `execution.vitest_config` states or vitest's default in the project root. Evidence records the program that ran the tests (for pytest the interpreter, for vitest node and vitest), and binds each runner's support files: for vitest, the configuration in effect, every repository file it loads (plugins, setup and global-setup files, project configurations `test.projects` names, inline project objects read in place, a repository file the `runner`, `environment`, `pool`, `diff`, `snapshotEnvironment`, `reporters` or `coverage.customProviderModule` option names, the `__mocks__` file vitest would use for a module `vi.mock` names), every other file a quoted path in a loaded module names (a spawn argument, an alias target: listed, its own imports not followed unless something loads it), each file that would take effect if added (a default configuration file, a missing module an import names), `tsconfig.json` on the tests' paths and vite's `.env` files; never a file named only in the `coverage` option, `package.json` or a lockfile. Where a static read cannot tell what vitest loads (a glob or a computed path, such as `import.meta.glob` or `projects: ["packages/*"]`; any use of `import`, `require` or a `createRequire`-made require, `vi.importActual` or `vi.mock` but loading one quoted name; `eval`, `new Function` or `node:vm`; code that reaches a setup option as a member), the check that asked fails. Command conditions need exit status `0`. Review conditions are reported as needing a verdict. Also runs the scope and protected-surface check against the base (inside a multi-IB delivery the allowed scope is the union of the co-delivered IBs' scopes and every protected surface applies), checks `**Spec impact:**` specs were actually modified, and checks acceptance integrity (contract, asset and runner-input hashes against the baseline). In-Scope changes the hypothesis and plan did not name are recorded as deviations — no permission needed. A `.dekspec/config.yaml` change confined to the workflow setting (`integration.base`) is bookkeeping; any other DekSpec state (the `execution:` settings above all) or test-runner configuration is always judged as the IB's change. Evidence records the implementation fingerprint (a content hash of the repository excluding execution records, generated indexes and lifecycle bookkeeping), contract hash, baseline digest and context manifest hash; any later change makes it stale. Applies to `ACCEPTED` (and `COMPLETE`) delegated IBs. Exit `0` only when the overall result is `passed`.
 
 **Bytecode.** The same rule holds in every acceptance run (`ib verify`, `ib floor`, `delivery check --rerun`, the `/dekbuilder:implement` driver):
 - **Reviewed files always run from source, by any path.** Every Python file the implementation fingerprint covers runs from its current source. No bytecode for it is read, in any invalidation mode: not from the repository's `__pycache__`, not from the bytecode cache, and not from pytest's assertion-rewrite cache, even when a file has been planted in one of them. This holds for the file's own path and for every other path that reaches it through the test interpreter's path entries: a symbolic link to it or to a directory holding it (as `flit install --symlink` and setuptools' strict editable mode make), a hard link, or a mount. Source-loader paths containing parent-directory (`..`) segments, including pytest assertion-rewrite imports, compile directly from source, without reading or writing bytecode, before any corrective rerun. Pytest still rewrites assertions from that source. Before each run those entries are scanned for aliases. Bytecode is neither read nor written at them, nor at the repository's own paths, so a subprocess a test starts cannot read any back. A run does not count when those entries change while it runs, or when it compiled a reviewed file by a path a test made during it (a link in a temporary directory, say). The condition is then run again from source without the cache, and that result is reported.
@@ -792,6 +801,18 @@ Exit codes:
 - `1` — otherwise. Also `1` for a legacy IB (`REFUSED: … has no delegated acceptance contract` on stderr) and when the runner produces no report.
 - `2` — a usage error (argparse's message), or an unknown IB. An unknown IB prints `ERROR: unknown IB <ref>: …` naming it, which is distinct from a usage error.
 
+
+### ib floor-review
+
+Record an independent verdict for a lean brief's current test-author commit with
+`dekspec ib floor-review <IB> --commit <sha> --reviewer <id> --verdict pass|fail --criteria <ids>`.
+
+This command and `dekspec ib review` accept repeatable
+`--finding "P1 <text>"` or `--finding "P2 <text>"` on a lean `fail` verdict.
+Put non-failing observations in `--notes`. A finding on `pass`, an unknown level,
+empty finding text, or a finding on a delegated/legacy brief is refused without
+recording a verdict. A fail with no finding counts as P1 for loop decisions.
+
 ### ib review
 
 ```
@@ -804,6 +825,7 @@ dekspec ib review [-h] [--at AT] [--dekspec-root DEKSPEC_ROOT] [--actor ACTOR] [
 Record an independent review verdict bound to the current fingerprint, contract hash, baseline, context manifest and the `code-reviewer` Agent Role Specification's policy stamp (ADR-061). Refused when the reviewer is a builder of the IB, when the acting identity (`--actor` / `DEKSPEC_ACTOR`) is not `--reviewer`, when the role definition cannot be loaded, and when the policy revision the review was dispatched under is no longer current. A verdict recorded under an older policy revision stops satisfying the completion gate: the IB needs a fresh review. A later change carries the verdict forward only if it touches none of the reviewed surfaces (scope, protected surfaces, acceptance assets, runner inputs, governing sources); otherwise a fresh review is needed.
 
 Options:
+- `--finding "P1 <text>"` / `--finding "P2 <text>"` — repeatable failing findings for lean briefs; see [ib floor-review](#ib-floor-review) for validation.
 - `--reviewer REVIEWER` — reviewer identity (required).
 - `--verdict {pass,fail}` — the verdict (required).
 - `--criteria [CRITERIA ...]` — review conditions covered (e.g. `AC-4`). Default: all review conditions.
@@ -829,6 +851,18 @@ The only path to `COMPLETE` (ADR-057). Evaluates the gate and, if every check pa
 
 Options:
 - `--base BASE` — the delivery's base branch for the scope check (default: `$DEKSPEC_BASE`, then `main`, `origin/main`, `master`). Pass it for a delivery based elsewhere — a stacked pull request or a release branch — or base-branch work merged in after authorization is charged to the IB. `ib status`, `ib gate`, `ib start`, `ib ready` and `intent complete` take the same option, and `delivery check --base` passes it to every IB's gate: one delivery-base context for scope, historical provenance and dependency completion (ADR-057).
+
+### ib reopen
+
+```
+dekspec ib reopen [-h] [--at AT] [--dekspec-root DEKSPEC_ROOT] [--actor ACTOR] [--json] ib --reason REASON
+```
+
+Reopens the brief's current, unintegrated completion through `Engine.reopen`,
+records the required reason and returns its status from `COMPLETE` to `ACCEPTED`.
+Prints a one-line result, or the engine's payload with `--json`. Engine refusals
+(such as no current completion or an already integrated completion) print
+`REFUSED: <reason>` and exit `1`.
 
 ### ib status
 
@@ -1252,6 +1286,8 @@ execution:
 | `integration_command` | none | Repository-wide integration check run by `dekspec delivery verify`; when set, `delivery check` requires a current passing delivery verification. |
 | `command_timeout` | `1800` | Per-command timeout, in seconds, for acceptance commands and test runs (and the integration command). |
 | `python` | auto | Interpreter that runs acceptance test nodes. Auto picks the first of the repo `.venv`, `python3`/`python` on PATH, and the interpreter running `dekspec` that can import pytest — a pipx-installed `dekspec` is rarely the project's test environment. The evidence plugin is staged per run, so the interpreter needs pytest but not dekspec. An interpreter that is part of the repository's content (tracked or unignored) is refused; an ignored local `.venv` is fine. |
+| `vitest_config` | none | The configuration file vitest's tests run under, repository-relative (for example `vitest.acceptance.config.ts`), where vitest's default would not find them. Without it, vitest's default configuration file in the project root (`vitest.config.*`, then `vite.config.*`); never one beside a test file, and never one above the repository. It is part of the `execution` block evidence is bound to, and CI reads it from the base commit. |
+| `vitest_install` | none | Shell command to install dependencies in the clean test-author checkout. Empty or absent selects `npm ci` for `package-lock.json` / `npm-shrinkwrap.json`, `pnpm install --frozen-lockfile` for `pnpm-lock.yaml`, or `yarn install --frozen-lockfile` for `yarn.lock`. Other managers require a statement. Only the checkout's committed dependencies are installed; nothing is borrowed from the working tree. Preparation failures name the cause and report no test outcomes. The command is bound with the execution settings, and CI reads it from the base commit. |
 | `fingerprint_exclude` | none | Extra globs excluded from the implementation fingerprint (execution records, interpreter and tool caches, generated spec indexes and lifecycle bookkeeping are always excluded). |
 
 ## Integration settings (`.dekspec/config.yaml` → `integration:`)

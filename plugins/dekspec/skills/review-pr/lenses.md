@@ -168,8 +168,8 @@ The commit-ordering half of the strong-TDD gate (DSF-014); `outcome-tdd-discipli
 ```yaml
 - id: bug-scan
   question: |
-    Does the diff introduce a correctness, security or concurrency bug
-    visible from the diff hunks?
+    Does the diff introduce a correctness, security or concurrency bug,
+    or weight that buys no correctness, visible from the diff hunks?
   input_slice: delivery.diff
   attack_patterns:
     - off-by-one / boundary error in a loop or slice
@@ -178,6 +178,8 @@ The commit-ordering half of the strong-TDD gate (DSF-014); `outcome-tdd-discipli
     - race condition on shared mutable state
     - resource leak (file, connection, lock) without paired release
     - swallowed exception that masks an underlying failure
+    - defensive check, validation or fallback for a case the contract and every caller rule out
+    - re-deriving what an authoritative source answers (scanning git history or a stale local ref instead of asking origin or the forge)
   severity_rubric: shared
 ```
 

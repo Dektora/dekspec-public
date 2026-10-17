@@ -13,6 +13,8 @@ merge-conflict gap).
 
 from __future__ import annotations
 
+from dekspec.spec_kinds import OUTCOME_NAMES as OUT
+
 from dekspec.spec_kinds import BEHAVIOR_SPEC_NAMES as BS
 
 import re
@@ -56,12 +58,10 @@ def _find_intent_filename(intent_id: str, dekspec_dir: Path) -> str | None:
     """Find the canonical filename for an Intent ID, e.g.
     `intents/INT-079-provisional-folder-scaffold.md`. Returns the path
     relative to dekspec/, or None if not found."""
-    target = dekspec_dir / "intents"
-    if not target.is_dir():
-        return None
-    for p in target.glob(f"{intent_id}-*.md"):
-        return f"intents/{p.name}"
-    return None
+    paths = OUT.paths(dekspec_dir, intent_id)
+    if len(paths) > 1:
+        raise ValueError(f"Ambiguous {intent_id}: " + ", ".join(map(str, paths)))
+    return str(paths[0].relative_to(dekspec_dir)) if paths else None
 
 
 def _extract_mission_id(mission_field: Any) -> str:
@@ -75,7 +75,7 @@ def _extract_mission_id(mission_field: Any) -> str:
 
 
 _INTENT_HEADER = (
-    "| Intent | Title | Type | Autonomy | Status | Linked AEs | Created | Modified |"
+    f"| {OUT.legacy_parent_heading} | Title | Type | Autonomy | Status | Linked AEs | Created | Modified |"
 )
 _INTENT_SEP = (
     "|---|---|---|---|---|---|---|---|"
@@ -138,7 +138,7 @@ def _replace_table_in_section(
     # Backward-compat aliases for intent-index (some older copies use
     # `| ID | Title |` instead of `| Intent | Title |`).
     aliases: list[str] = [prefix]
-    if prefix.startswith("| Intent "):
+    if OUT.canonical(prefix.split("|")[1].strip(), surface="heading"):
         aliases.append("| ID | Title |")
     lines = section.split("\n")
     out: list[str] = []
@@ -152,7 +152,11 @@ def _replace_table_in_section(
             # it above a populated table is contradictory empty-state prose.
             i += 1
             continue
-        if not table_replaced and any(line.startswith(a) for a in aliases):
+        cells = line.split("|")
+        kind_table = (len(cells) > 2 and OUT.canonical(cells[1].strip(), surface="heading")
+                      and OUT.canonical(prefix.split("|")[1].strip(), surface="heading")
+                      and cells[2].strip() == "Title")
+        if not table_replaced and (kind_table or any(line.startswith(a) for a in aliases)):
             out.append(header)
             out.append(separator)
             out.extend(new_rows)
@@ -178,20 +182,21 @@ def _replace_table_in_section(
     return result
 
 
-def _replace_intent_table(content: str, new_rows: list[str]) -> str:
+def _replace_intent_table(content: str, new_rows: list[str], vocabulary: str | None = None) -> str:
     """Replace the FIRST intent-index.md table body (the Active queue),
     preserving everything from `## Archive` onward."""
     pre_archive, archive = _split_at_archive_heading(content)
     new_pre = _replace_table_in_section(
-        pre_archive, _INTENT_HEADER, _INTENT_SEP, new_rows
+        pre_archive, OUT.describe(_INTENT_HEADER, vocabulary) if vocabulary else _INTENT_HEADER, _INTENT_SEP, new_rows
     )
     return new_pre + (archive or "")
 
 
-def _replace_archive_table(content: str, new_rows: list[str]) -> str:
+def _replace_archive_table(content: str, new_rows: list[str], vocabulary: str | None = None) -> str:
     """Replace the Archive section's table body. No-op if `## Archive`
     is not present (and no Archive rows to emit)."""
     pre_archive, archive = _split_at_archive_heading(content)
+    header = OUT.describe(_ARCHIVE_HEADER, vocabulary) if vocabulary else _ARCHIVE_HEADER
     if archive is None:
         if not new_rows:
             return content
@@ -200,7 +205,7 @@ def _replace_archive_table(content: str, new_rows: list[str]) -> str:
             pre_archive.rstrip("\n")
             + "\n\n## Archive\n\n"
             + "> Terminal-status Intents (`COMPLETE`, `LOCKED`, `SUPERSEDED`). Moved here from the Active queue above on completion or supersession.\n\n"
-            + _ARCHIVE_HEADER
+            + header
             + "\n"
             + _ARCHIVE_SEP
             + "\n"
@@ -208,7 +213,7 @@ def _replace_archive_table(content: str, new_rows: list[str]) -> str:
             + "\n"
         )
     new_archive = _replace_table_in_section(
-        archive, _ARCHIVE_HEADER, _ARCHIVE_SEP, new_rows
+        archive, header, _ARCHIVE_SEP, new_rows
     )
     return pre_archive + new_archive
 
@@ -224,7 +229,7 @@ _ARCHIVE_STATUSES = frozenset({"COMPLETE", "LOCKED", "SUPERSEDED", "DEPRECATED"}
 
 
 _ARCHIVE_HEADER = (
-    "| Intent | Title | Type | Status | Superseded-By | Linked AEs | Modified |"
+    f"| {OUT.legacy_parent_heading} | Title | Type | Status | Superseded-By | Linked AEs | Modified |"
 )
 _ARCHIVE_SEP = (
     "|---|---|---|---|---|---|---|"
@@ -273,15 +278,15 @@ def regen_intent_index(
     """
     repo_root = repo_root.resolve()
     dekspec_dir = repo_root / dekspec_root
-    index_path = dekspec_dir / "intent-index.md"
+    index_path = OUT.index_path(dekspec_dir)
     if not index_path.exists():
         return IndexResult(path=index_path, changed=False, rows_emitted=0)
 
     graph = SpecGraph.load(repo_root, dekspec_root=dekspec_root)
 
     def _id_key(ir: dict[str, Any]) -> tuple[int, str]:
-        m = re.match(r"^INT-(\d+)", ir.get("id", "") or "")
-        return (int(m.group(1)) if m else 99999, ir.get("id", ""))
+        identity = OUT.canonical(ir.get("id", ""), surface="id")
+        return (int(identity.rsplit("-", 1)[1]) if identity else 99999, ir.get("id", ""))
 
     active_intents = sorted(
         (ir for ir in graph.intents()
@@ -298,8 +303,8 @@ def regen_intent_index(
     archive_rows = [_format_archive_row(ir, dekspec_dir) for ir in archive_intents]
 
     content = index_path.read_text(encoding="utf-8")
-    new_content = _replace_intent_table(content, active_rows)
-    new_content = _replace_archive_table(new_content, archive_rows)
+    new_content = _replace_intent_table(content, active_rows, index_path.name)
+    new_content = _replace_archive_table(new_content, archive_rows, index_path.name)
     if new_content == content:
         return IndexResult(
             path=index_path,

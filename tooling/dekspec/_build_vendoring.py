@@ -28,6 +28,8 @@ VENDORED_DOCS = (
     "EXAMPLES.md",
     "amendment-log-types.md",
     "beads-recovery.md",
+    "lean-adoption.md",
+    "lean-gate-ci.md",
 )
 
 # Plugin subtrees vendored whole (ADR-045). `install --platform` repackages

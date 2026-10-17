@@ -38,6 +38,8 @@ so consumers can aggregate / replace fragments programmatically.
 
 from __future__ import annotations
 
+from dekspec.spec_kinds import OUTCOME_NAMES as OUT
+
 from dekspec.spec_kinds import BEHAVIOR_SPEC_NAMES as BS
 
 from pathlib import PureWindowsPath
@@ -68,7 +70,7 @@ def emit(ir: dict[str, Any]) -> str:
         return emit_ws(ir)
     if aid.startswith("IB-"):
         return emit_ib(ir)
-    if aid.startswith("INT-"):
+    if OUT.canonical(aid, surface="id"):
         return emit_intent(ir)
     if aid.startswith("MSN-"):
         return emit_mission(ir)
@@ -458,7 +460,7 @@ def emit_intent(ir: dict[str, Any]) -> str:
 
     parts = [
         _begin_marker(aid),
-        _header(ir, kind="Intent"),
+        _header(ir, kind=OUT.for_artifact(ir["id"], "heading")),
         f"## {aid}: {name}",
         "",
         f"**Status:** {status}  |  **Type:** {intent_type}  |  **Autonomy:** {autonomy}",

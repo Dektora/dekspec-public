@@ -8,8 +8,10 @@ Alternatives: classify()+review() leaks ordering and policy to delivery_check; a
 
 from __future__ import annotations
 
+from dekspec.execution import git_reads
+from dekspec.spec_kinds import OUTCOME_NAMES as OUT
+
 import json as _json
-import subprocess as _subprocess
 from pathlib import Path as _Path
 
 from dekspec.constraint_compiler.parser import IBParseError as _IBParseError, _parse_ib_text
@@ -43,7 +45,7 @@ _PINNED_STATUSES = {"DRAFT", "PROPOSED", "ACCEPTED"}
 
 def _git(root, *args):
     """Read git objects and report failed reads without writing state."""
-    proc = _subprocess.run(["git", *args], cwd=root, capture_output=True)
+    proc = git_reads.run(root, *args, capture_output=True)
     if proc.returncode:
         raise _ScopeError(proc.stderr.decode("utf-8", errors="replace").strip())
     return proc.stdout.decode("utf-8", errors="surrogateescape")
@@ -98,10 +100,10 @@ def _status(text):
 
 def _intent_completions(engine, changes, base):
     completions = {}
+    outcome_paths = set(OUT.paths(engine.repo_root / engine.spec_root))
     for change in changes:
         path = change.path
-        if not (path.startswith(f"{engine.spec_root}/intents/")
-                and _Path(path).name.startswith("INT-") and path.endswith(".md")):
+        if engine.repo_root / path not in outcome_paths:
             continue
         try:
             after = (engine.repo_root / path).read_text(encoding="utf-8")

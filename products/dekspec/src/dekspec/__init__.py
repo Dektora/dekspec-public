@@ -8,7 +8,7 @@ Provides:
 See docs/architecture.md in the repo root for the full architectural picture.
 """
 
-__version__ = "0.129.0"
+__version__ = "0.130.0"
 
 
 # The retained tooling/dekspec import surface links individual files here.
