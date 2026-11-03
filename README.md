@@ -1,3 +1,5 @@
+> **Status: archived (3 Nov 2026).** DekSpec was shut down on 19 Oct 2026, and this public mirror is frozen. Existing tags stay installable but get no updates. Its successors are DekBuilder and DekGovernance.
+
 # DekSpec
 
 [![CI](https://github.com/Dektora/dekspec/actions/workflows/ci.yml/badge.svg)](https://github.com/Dektora/dekspec/actions/workflows/ci.yml)
